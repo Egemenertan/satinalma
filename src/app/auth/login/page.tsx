@@ -180,10 +180,17 @@ function LoginForm() {
 // Loading component for Suspense fallback
 function LoginLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-100 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div className="flex justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="flex flex-col items-center space-y-4">
+          <img 
+            src="/d.png" 
+            alt="Logo" 
+            className="w-20 h-20 object-contain filter brightness-0 animate-pulse"
+          />
+          <div className="flex justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
         </div>
       </div>
     </div>

@@ -41,21 +41,32 @@ export default function HomePage() {
   return (
     <div className="min-h-screen bg-white flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8 text-center">
-        {/* Logo */}
-        <div className="mx-auto w-20 h-20 bg-gradient-to-br from-black to-gray-800 rounded-3xl flex items-center justify-center mb-6 shadow-lg">
-          <Package className="w-10 h-10 text-white" />
+        {/* Logo - Animasyonlu */}
+        <div className="mx-auto mb-8">
+          <img 
+            src="/d.png" 
+            alt="Logo" 
+            className="mx-auto w-24 h-24 object-contain filter brightness-0 animate-pulse"
+          />
         </div>
         
-        {/* Loading */}
-        <div className="space-y-4">
-          <h2 className="text-3xl font-normal text-black">
+        {/* İçerik */}
+        <div className="space-y-6">
+          <h2 className="text-4xl font-normal text-black tracking-wide">
             SATIN ALMA SİSTEMİ
           </h2>
-          <p className="text-gray-600 text-base">
+          <p className="text-gray-600 text-lg font-medium">
             Yönlendiriliyor...
           </p>
-          <div className="flex justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-black" />
+          
+          {/* Loading Çubuğu */}
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+            <div className="w-48 mx-auto bg-gray-200 rounded-full h-1.5 overflow-hidden">
+              <div className="bg-gradient-to-r from-black to-gray-600 h-1.5 rounded-full animate-pulse" style={{width: '60%'}}></div>
+            </div>
           </div>
         </div>
       </div>

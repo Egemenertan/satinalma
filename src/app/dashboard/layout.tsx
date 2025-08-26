@@ -50,8 +50,13 @@ export default function DashboardLayout({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen ">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-black mx-auto"></div>
+        <div className="text-center space-y-4">
+          <img 
+            src="/d.png" 
+            alt="Logo" 
+            className="mx-auto w-16 h-16 object-contain filter brightness-0 animate-pulse"
+          />
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto"></div>
           <p className="mt-6 text-gray-600 font-medium">Oturum kontrol ediliyor...</p>
         </div>
       </div>

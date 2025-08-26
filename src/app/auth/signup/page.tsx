@@ -98,8 +98,15 @@ function SignupForm() {
           <Card className="border border-gray-200 rounded-3xl shadow-sm">
             <CardContent className="pt-8 pb-8">
               <div className="text-center">
-                <div className="mx-auto w-20 h-20 bg-black rounded-3xl flex items-center justify-center mb-6">
-                  <CheckCircle className="w-10 h-10 text-white" />
+                <div className="mb-6">
+                  <img 
+                    src="/d.png" 
+                    alt="Logo" 
+                    className="mx-auto w-20 h-20 object-contain filter brightness-0 animate-pulse mb-4"
+                  />
+                  <div className="mx-auto w-16 h-16 bg-black rounded-3xl flex items-center justify-center">
+                    <CheckCircle className="w-8 h-8 text-white" />
+                  </div>
                 </div>
                 <div className="text-black text-2xl font-bold mb-3">
                   Kayıt Başarılı!
@@ -108,7 +115,7 @@ function SignupForm() {
                   Hesabınız oluşturuldu. Giriş sayfasına yönlendiriliyorsunuz...
                 </p>
                 <div className="mt-6">
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto text-black" />
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto text-gray-400" />
                 </div>
               </div>
             </CardContent>
@@ -242,10 +249,17 @@ function SignupForm() {
 // Loading component for Suspense fallback
 function SignupLoading() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-white py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
-        <div className="flex justify-center">
-          <Loader2 className="h-8 w-8 animate-spin" />
+        <div className="flex flex-col items-center space-y-4">
+          <img 
+            src="/d.png" 
+            alt="Logo" 
+            className="w-20 h-20 object-contain filter brightness-0 animate-pulse"
+          />
+          <div className="flex justify-center">
+            <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+          </div>
         </div>
       </div>
     </div>
