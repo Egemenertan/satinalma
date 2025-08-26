@@ -66,7 +66,10 @@ function LoginForm() {
               role: 'engineer',
               password: 'auth_user',
               is_active: true,
-              approval_limit: 0
+              approval_limit: 0,
+              department: null,
+              phone: null,
+              construction_site_id: null
             }])
 
           if (createError) {

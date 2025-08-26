@@ -71,7 +71,10 @@ function SignupForm() {
             is_active: true,
             approval_limit: role === 'general_manager' ? 100000 : 
                            role === 'project_manager' ? 20000 : 
-                           role === 'finance_manager' ? 10000 : 0
+                           role === 'finance_manager' ? 10000 : 0,
+            department: null,
+            phone: null,
+            construction_site_id: null
           })
 
         if (profileError) {
