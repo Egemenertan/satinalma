@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { supabase } from '@/lib/supabase'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { useToast } from '@/components/ui/toast'
 import { 
   Package, 
   Building2, 
@@ -22,7 +23,11 @@ import {
   Weight,
   Tag,
   Target,
-  Settings
+  Settings,
+  Camera,
+  Image as ImageIcon,
+  Upload,
+  X
 } from 'lucide-react'
 
 
@@ -37,6 +42,7 @@ const steps = [
 
 export default function CreatePurchaseRequestPage() {
   const router = useRouter()
+  const { showToast } = useToast()
   const supabaseClient = createClientComponentClient()
   const [loading, setLoading] = useState(false)
   const [sites, setSites] = useState([])
@@ -54,6 +60,15 @@ export default function CreatePurchaseRequestPage() {
     required_date: '',
     specifications: ''
   })
+  const [uploadedImages, setUploadedImages] = useState<File[]>([])
+  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
+
+  // Cleanup URL objects when component unmounts
+  useEffect(() => {
+    return () => {
+      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url))
+    }
+  }, [])
 
   // Şantiyeleri ve kullanıcı bilgilerini çek
   useEffect(() => {
@@ -162,6 +177,55 @@ export default function CreatePurchaseRequestPage() {
     }))
   }
 
+  const handleImageUpload = (files: FileList | null) => {
+    if (!files) return
+
+    const newFiles = Array.from(files).slice(0, 3 - uploadedImages.length) // Max 3 resim
+    const newPreviewUrls: string[] = []
+
+    newFiles.forEach(file => {
+      if (file.type.startsWith('image/')) {
+        const previewUrl = URL.createObjectURL(file)
+        newPreviewUrls.push(previewUrl)
+      }
+    })
+
+    setUploadedImages(prev => [...prev, ...newFiles])
+    setImagePreviewUrls(prev => [...prev, ...newPreviewUrls])
+  }
+
+  const removeImage = (index: number) => {
+    // Clean up URL object
+    URL.revokeObjectURL(imagePreviewUrls[index])
+    
+    setUploadedImages(prev => prev.filter((_, i) => i !== index))
+    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const triggerCameraCapture = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.capture = 'environment' // Arka kamera
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement
+      handleImageUpload(target.files)
+    }
+    input.click()
+  }
+
+  const triggerGallerySelect = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*'
+    input.multiple = true
+    input.onchange = (e) => {
+      const target = e.target as HTMLInputElement
+      handleImageUpload(target.files)
+    }
+    input.click()
+  }
+
   const isStepValid = (step: number) => {
     switch (step) {
       case 1:
@@ -203,7 +267,7 @@ export default function CreatePurchaseRequestPage() {
     e.preventDefault()
     
     if (!isFormValid()) {
-      alert('Lütfen zorunlu alanları doldurun')
+      showToast('Lütfen zorunlu alanları doldurun', 'error')
       return
     }
 
@@ -220,22 +284,23 @@ export default function CreatePurchaseRequestPage() {
         description: formData.specifications || formData.purpose,
         purpose: formData.purpose,
         site_id: formData.construction_site_id || userSite?.id,
-        site_name: formData.construction_site || userSite?.name
+        site_name: formData.construction_site || userSite?.name,
+        brand: formData.brand
       })
 
       if (!result.success) {
-        alert(`❌ Hata: ${result.error}`)
+        showToast(`Hata: ${result.error}`, 'error')
         return
       }
 
-      alert('✅ Talep başarıyla oluşturuldu!')
+      showToast('Talep başarıyla oluşturuldu!', 'success')
       
       // Requests sayfasına yönlendir
       router.push('/dashboard/requests')
       
     } catch (error) {
       console.error('Talep oluşturma hatası:', error)
-      alert('❌ Talep oluşturulurken bir hata oluştu.')
+      showToast('Talep oluşturulurken bir hata oluştu.', 'error')
     } finally {
       setLoading(false)
     }
@@ -395,6 +460,84 @@ export default function CreatePurchaseRequestPage() {
                   />
                 </div>
               </div>
+
+              {/* Image Upload Section */}
+              <div className="space-y-4">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4" />
+                  Malzeme Fotoğrafları (Opsiyonel)
+                </Label>
+                
+                {/* Upload Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Camera Button */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={triggerCameraCapture}
+                    disabled={uploadedImages.length >= 3}
+                    className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">Kamera</span>
+                  </Button>
+
+                  {/* Gallery Button */}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={triggerGallerySelect}
+                    disabled={uploadedImages.length >= 3}
+                    className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
+                  >
+                    <Upload className="w-5 h-5 text-gray-600" />
+                    <span className="text-sm font-medium text-gray-700">Galeri</span>
+                  </Button>
+                </div>
+
+                {/* Image Previews */}
+                {imagePreviewUrls.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-gray-600">Yüklenen Fotoğraflar:</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      {imagePreviewUrls.map((url, index) => (
+                        <div key={index} className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                          <img
+                            src={url}
+                            alt={`Preview ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeImage(index)}
+                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-gray-500">
+                      {uploadedImages.length}/3 fotoğraf yüklendi
+                    </p>
+                  </div>
+                )}
+
+                {/* Upload Instructions */}
+                {uploadedImages.length === 0 && (
+                  <div className="text-center py-4 px-4 bg-gray-50/50 rounded-xl">
+                    <ImageIcon className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                    <p className="text-sm text-gray-600">
+                      Malzeme fotoğrafları ekleyerek talebinizi detaylandırabilirsiniz
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Maksimum 3 fotoğraf yükleyebilirsiniz
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         )
@@ -508,6 +651,27 @@ export default function CreatePurchaseRequestPage() {
                 <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
                   <Label className="text-xs lg:text-sm font-medium text-gray-600">Teknik Özellikler</Label>
                   <p className="text-gray-900">{formData.specifications}</p>
+                </div>
+              )}
+
+              {/* Uploaded Images Summary */}
+              {uploadedImages.length > 0 && (
+                <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
+                  <Label className="text-xs lg:text-sm font-medium text-gray-600 mb-3 block">Malzeme Fotoğrafları</Label>
+                  <div className="grid grid-cols-3 gap-3">
+                    {imagePreviewUrls.map((url, index) => (
+                      <div key={index} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                        <img
+                          src={url}
+                          alt={`Preview ${index + 1}`}
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-600 mt-2">
+                    {uploadedImages.length} fotoğraf eklenmiş
+                  </p>
                 </div>
               )}
               

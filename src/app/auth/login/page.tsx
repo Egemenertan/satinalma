@@ -88,15 +88,17 @@ function LoginForm() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 flex items-center justify-center py-8 sm:py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-lg w-full space-y-6 sm:space-y-10">
-        {/* Logo ve Başlık */}
+        {/* Logo */}
         <div className="text-center">
-          <div className="mx-auto w-16 h-16 sm:w-20 sm:h-20 bg-gradient-to-br from-black to-gray-800 rounded-2xl sm:rounded-3xl flex items-center justify-center mb-4 sm:mb-6 shadow-lg">
-            <Package className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
+          <div className="mx-auto mb-6 sm:mb-8">
+            <img 
+              src="/d.png" 
+              alt="Logo" 
+              className="mx-auto w-28 h-28 sm:w-32 sm:h-32 object-contain filter brightness-0"
+            />
           </div>
-          <h2 className="text-2xl sm:text-3xl lg:text-4xl font-normal text-black">
-            SATIN ALMA SİSTEMİ
-          </h2>
-          <p className="mt-2 sm:mt-3 text-gray-600 text-sm sm:text-base lg:text-lg">
+        
+          <p className=" text-gray-600 text-sm sm:text-base lg:text-lg">
             Şantiye satın alma yönetim platformu
           </p>
         </div>
@@ -160,43 +162,13 @@ function LoginForm() {
               </Button>
             </form>
             
-            <div className="mt-8 text-center space-y-6">
+            <div className="mt-8 text-center">
               <p className="text-sm text-gray-600">
                 Hesabınız yok mu?{' '}
                 <Link href="/auth/signup" className="text-black hover:text-gray-700 font-semibold underline">
                   Kayıt olun
                 </Link>
               </p>
-              
-              <div className="border-t border-gray-200 pt-6">
-                <p className="text-sm font-semibold text-gray-900 mb-4">
-                  Demo Hesaplar:
-                </p>
-                <div className="space-y-2 sm:space-y-3 text-xs sm:text-sm">
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 bg-gray-50 rounded-2xl sm:rounded-3xl gap-1 sm:gap-3">
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <Building2 className="w-3 h-3 sm:w-4 sm:h-4 text-black flex-shrink-0" />
-                      <span className="font-medium text-gray-900">Şantiye Sorumlusu</span>
-                    </div>
-                    <span className="text-gray-600 text-xs sm:text-sm ml-5 sm:ml-0">demo@engineer.com</span>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 bg-gray-50 rounded-2xl sm:rounded-3xl gap-1 sm:gap-3">
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <Package className="w-3 h-3 sm:w-4 sm:h-4 text-black flex-shrink-0" />
-                      <span className="font-medium text-gray-900">Satın Alma Uzmanı</span>
-                    </div>
-                    <span className="text-gray-600 text-xs sm:text-sm ml-5 sm:ml-0">demo@procurement.com</span>
-                  </div>
-                  <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-2 sm:p-3 bg-gray-50 rounded-2xl sm:rounded-3xl gap-1 sm:gap-3">
-                    <div className="flex items-center gap-2 sm:gap-3">
-                      <Shield className="w-3 h-3 sm:w-4 sm:h-4 text-black flex-shrink-0" />
-                      <span className="font-medium text-gray-900">Yönetici</span>
-                    </div>
-                    <span className="text-gray-600 text-xs sm:text-sm ml-5 sm:ml-0">demo@manager.com</span>
-                  </div>
-                  <p className="text-gray-500 mt-2 sm:mt-3 text-xs sm:text-sm">Şifre: <span className="font-mono font-semibold">123456</span></p>
-                </div>
-              </div>
             </div>
           </CardContent>
         </Card>

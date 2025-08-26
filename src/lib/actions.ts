@@ -52,6 +52,7 @@ export async function createPurchaseRequest(data: {
   purpose?: string
   site_id?: string
   site_name?: string
+  brand?: string
 }) {
   try {
     console.log('createPurchaseRequest called with data:', data)
@@ -114,7 +115,8 @@ export async function createPurchaseRequest(data: {
       quantity: data.quantity,
       unit: data.unit,
       unit_price: 0, // Başlangıçta 0, sonra güncellenecek
-      specifications: data.purpose || 'Şantiye ihtiyacı'
+      specifications: data.purpose || 'Şantiye ihtiyacı',
+      brand: data.brand || null
     }
     
     console.log('Purchase request item data:', itemData)
@@ -185,6 +187,8 @@ export async function addOffers(requestId: string, offers: Array<{
   delivery_days: number
   delivery_date: string
   notes: string
+  currency: string
+  document_urls?: string[]
 }>) {
   try {
     console.log('addOffers called with requestId:', requestId, 'offers:', offers)
@@ -197,10 +201,10 @@ export async function addOffers(requestId: string, offers: Array<{
 
     const supabase = createClient()
     
-    // Talep var mı kontrol et
+    // Talep var mı kontrol et ve şantiye bilgisini al
     const { data: request, error: requestError } = await supabase
       .from('purchase_requests')
-      .select('id, status')
+      .select('id, status, site_id, site_name')
       .eq('id', requestId)
       .single()
 
@@ -211,7 +215,7 @@ export async function addOffers(requestId: string, offers: Array<{
 
     console.log('Found request:', request)
 
-    // Teklifleri ekle
+    // Teklifleri ekle (şantiye bilgisi dahil)
     const offerInserts = offers.map(offer => ({
       purchase_request_id: requestId,
       supplier_name: offer.supplier_name,
@@ -220,11 +224,15 @@ export async function addOffers(requestId: string, offers: Array<{
       delivery_days: offer.delivery_days,
       delivery_date: offer.delivery_date || null,
       notes: offer.notes || null,
-      currency: 'TRY',
-      is_selected: false
+      document_urls: offer.document_urls || [],
+      currency: offer.currency,
+      is_selected: false,
+      site_id: request.site_id,
+      site_name: request.site_name
     }))
 
-    console.log('Inserting offers:', offerInserts)
+    console.log('📥 Received offers with documents:', offers.map(o => ({ supplier: o.supplier_name, urls: o.document_urls })))
+    console.log('📋 Inserting offers:', offerInserts)
 
     const { data: insertedOffers, error: offersError } = await supabase
       .from('offers')
@@ -478,6 +486,49 @@ export async function getApprovals() {
   } catch (error) {
     console.error('Error fetching approvals:', error)
     return { success: false, error: 'Onaylar yüklenirken hata oluştu' }
+  }
+}
+
+// Şantiye harcama tutarını güncelle
+export async function updateSiteExpenses(siteId: string, approvedAmount: number) {
+  try {
+    const supabase = createClient()
+    
+    // Mevcut harcama tutarını al
+    const { data: site, error: siteError } = await supabase
+      .from('sites')
+      .select('approved_expenses')
+      .eq('id', siteId)
+      .single()
+    
+    if (siteError) {
+      console.error('Site fetch error:', siteError)
+      return { success: false, error: 'Şantiye bilgisi alınamadı' }
+    }
+    
+    const currentExpenses = parseFloat(site.approved_expenses) || 0
+    const newTotal = currentExpenses + approvedAmount
+    
+    // Şantiye harcama tutarını güncelle
+    const { error: updateError } = await supabase
+      .from('sites')
+      .update({ 
+        approved_expenses: newTotal,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', siteId)
+    
+    if (updateError) {
+      console.error('Site expense update error:', updateError)
+      return { success: false, error: 'Harcama tutarı güncellenemedi' }
+    }
+    
+    console.log(`✅ Site ${siteId} expenses updated: ${currentExpenses} + ${approvedAmount} = ${newTotal}`)
+    return { success: true, newTotal }
+    
+  } catch (error) {
+    console.error('Error updating site expenses:', error)
+    return { success: false, error: 'Harcama güncellemesi sırasında hata oluştu' }
   }
 }
 

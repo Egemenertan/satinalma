@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase'
+import { useToast } from '@/components/ui/toast'
 import { 
   Plus,
   Building,
@@ -66,6 +67,7 @@ interface SupplierPerformance {
 }
 
 export default function SupplierManagement() {
+  const { showToast } = useToast()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -182,7 +184,7 @@ export default function SupplierManagement() {
 
         if (error) throw error
 
-        alert('Tedarikçi başarıyla eklendi!')
+        showToast('Tedarikçi başarıyla eklendi!', 'success')
         setShowAddDialog(false)
         setFormData({
           name: '',
@@ -202,7 +204,7 @@ export default function SupplierManagement() {
         fetchSuppliers()
       } catch (error) {
         console.error('Tedarikçi ekleme hatası:', error)
-        alert('Tedarikçi eklenirken bir hata oluştu.')
+        showToast('Tedarikçi eklenirken bir hata oluştu.', 'error')
       }
     }
 

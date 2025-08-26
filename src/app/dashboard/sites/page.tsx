@@ -1,483 +1,622 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { supabase } from '@/lib/supabase'
 import { 
   Building2, 
   Plus, 
-  MapPin, 
   User, 
   Calendar,
   DollarSign,
   TrendingUp,
-  Eye,
-  Edit2,
   Search,
-  Filter
+  FileText,
+  Package,
+  Users,
+  Clock,
+  ChevronRight,
+  Truck
 } from 'lucide-react'
 
-interface ConstructionSite {
+interface Site {
   id: string
   name: string
-  code: string
-  location?: string
-  project_manager_id?: string
-  budget_total: number
-  budget_used: number
-  status: 'active' | 'completed' | 'suspended'
-  start_date?: string
-  end_date?: string
-  description?: string
   created_at: string
   updated_at: string
+  approved_expenses?: number // Onaylanan harcama tutarı
+  total_budget?: number // Toplam bütçe
+  // İstatistikler
+  total_requests: number
+  total_amount: number
+  pending_requests: number
+  approved_requests: number
+  recent_requesters: string[]
+  last_request_date?: string
+  // Onaylanan teklifler
+  approved_offers?: Array<{
+    id: string
+    supplier_name: string
+    total_price: number
+    currency: string
+    delivery_days: number
+    request_title: string
+    selected_at: string
+  }>
 }
 
 export default function SitesPage() {
-  const [sites, setSites] = useState<ConstructionSite[]>([])
+  const [sites, setSites] = useState<Site[]>([])
   const [loading, setLoading] = useState(true)
-  const [showAddDialog, setShowAddDialog] = useState(false)
-  const [filters, setFilters] = useState({
-    search: '',
-    status: 'all'
-  })
-
-  const [formData, setFormData] = useState({
-    name: '',
-    code: '',
-    location: '',
-    budget_total: '',
-    start_date: '',
-    end_date: '',
-    description: ''
-  })
+  const [searchTerm, setSearchTerm] = useState('')
+  const [selectedSite, setSelectedSite] = useState<Site | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
-    fetchSites()
-  }, [filters])
+    fetchSitesWithStats()
+  }, [])
 
-  const fetchSites = async () => {
+  const fetchSitesWithStats = async () => {
     setLoading(true)
     try {
-      let query = supabase
-        .from('construction_sites')
-        .select('*')
+      console.log('🔍 Fetching sites...')
+      
+      // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
+      const sitesResult = await supabase
+        .from('sites')
+        .select('id, name, created_at, updated_at, approved_expenses, total_budget')
+        .order('name')
 
-      if (filters.search) {
-        query = query.or(`
-          name.ilike.%${filters.search}%,
-          code.ilike.%${filters.search}%,
-          location.ilike.%${filters.search}%
-        `)
+      console.log('📊 Sites result:', sitesResult)
+
+      if (sitesResult.error) {
+        console.error('Sites fetch error:', sitesResult.error)
+        setSites([])
+        return
       }
 
-      if (filters.status !== 'all') {
-        query = query.eq('status', filters.status)
+      const allSitesData = sitesResult.data || []
+      console.log('📋 All sites data:', allSitesData)
+
+      if (allSitesData.length === 0) {
+        console.log('⚠️ No sites found')
+        setSites([])
+        return
       }
 
-      const { data, error } = await query.order('created_at', { ascending: false })
+      // Her site için istatistikleri hesapla
+      const sitesWithStats = await Promise.all(
+        allSitesData.map(async (site) => {
+          try {
+            // Purchase requests'leri çek (site_id için)
+            const requestsResult = await supabase
+              .from('purchase_requests')
+              .select(`
+                id,
+                status,
+                created_at,
+                total_amount,
+                purchase_request_items(
+                  quantity,
+                  unit,
+                  total_price
+                ),
+                profiles!purchase_requests_requested_by_fkey(
+                  full_name
+                )
+              `)
+              .eq('site_id', site.id)
 
-      if (error) throw error
-      setSites(data || [])
+            const allRequests = requestsResult.data || []
+            
+            console.log(`📋 Requests for site ${site.name}:`, allRequests.length)
+            
+            // İstatistikleri hesapla
+            const totalRequests = allRequests.length
+            const pendingRequests = allRequests.filter(r => r.status === 'pending').length
+            const approvedRequests = allRequests.filter(r => r.status === 'approved').length
+            
+            // Toplam miktar hesaplama (gerçek total_amount değerlerini kullan)
+            const totalAmount = allRequests.reduce((sum, req) => {
+              return sum + (parseFloat(req.total_amount) || 0)
+            }, 0)
+
+            // Son talep edenler
+            const requesterNames: string[] = []
+            allRequests.slice(0, 5).forEach(req => {
+              const profile = req.profiles as any
+              if (profile?.full_name) {
+                requesterNames.push(profile.full_name)
+              }
+            })
+            
+            const uniqueRequesters = Array.from(new Set(requesterNames))
+            const recentRequesters = uniqueRequesters.slice(0, 3)
+
+            // Son talep tarihi
+            const lastRequestDate = allRequests.length > 0 
+              ? allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+              : undefined
+
+            // Onaylanan teklifleri çek
+            let approvedOffers: any[] = []
+            try {
+              const { data: offersData, error: offersError } = await supabase
+                .from('offers')
+                .select(`
+                  id,
+                  supplier_name,
+                  total_price,
+                  currency,
+                  delivery_days,
+                  selected_at,
+                  purchase_requests!inner(
+                    title,
+                    status
+                  )
+                `)
+                .eq('site_id', site.id)
+                .eq('is_selected', true)
+                .eq('purchase_requests.status', 'approved')
+                .order('selected_at', { ascending: false })
+                .limit(10)
+
+              if (!offersError && offersData) {
+                approvedOffers = offersData.map(offer => {
+                  const purchaseRequest = offer.purchase_requests as any
+                  return {
+                    id: offer.id,
+                    supplier_name: offer.supplier_name,
+                    total_price: offer.total_price,
+                    currency: offer.currency,
+                    delivery_days: offer.delivery_days,
+                    request_title: purchaseRequest?.title || 'Bilinmeyen Talep',
+                    selected_at: offer.selected_at
+                  }
+                })
+              }
+            } catch (error) {
+              console.error('Error fetching approved offers for site', site.id, error)
+            }
+
+            return {
+              ...site,
+              total_requests: totalRequests,
+              total_amount: totalAmount,
+              pending_requests: pendingRequests,
+              approved_requests: approvedRequests,
+              recent_requesters: recentRequesters,
+              last_request_date: lastRequestDate,
+              approved_offers: approvedOffers
+            }
+          } catch (error) {
+            console.error('Error processing site', site.id, error)
+            return {
+              ...site,
+              total_requests: 0,
+              total_amount: 0,
+              pending_requests: 0,
+              approved_requests: 0,
+              recent_requesters: [],
+              last_request_date: undefined,
+              approved_offers: []
+            }
+          }
+        })
+      )
+
+      setSites(sitesWithStats)
     } catch (error) {
-      console.error('Şantiyeler yüklenirken hata:', error)
+      console.error('Sites fetch error:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    
-    try {
-      const siteData = {
-        name: formData.name,
-        code: formData.code,
-        location: formData.location || null,
-        budget_total: parseFloat(formData.budget_total) || 0,
-        budget_used: 0,
-        status: 'active' as const,
-        start_date: formData.start_date || null,
-        end_date: formData.end_date || null,
-        description: formData.description || null
-      }
-
-      const { error } = await supabase
-        .from('construction_sites')
-        .insert([siteData])
-
-      if (error) throw error
-
-      alert('Şantiye başarıyla eklendi!')
-      setShowAddDialog(false)
-      setFormData({
-        name: '',
-        code: '',
-        location: '',
-        budget_total: '',
-        start_date: '',
-        end_date: '',
-        description: ''
-      })
-      fetchSites()
-    } catch (error) {
-      console.error('Şantiye ekleme hatası:', error)
-      alert('Şantiye eklenirken bir hata oluştu.')
-    }
-  }
-
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge className="bg-green-100 text-green-800 border-green-200">Aktif</Badge>
-      case 'completed':
-        return <Badge className="bg-blue-100 text-blue-800 border-blue-200">Tamamlandı</Badge>
-      case 'suspended':
-        return <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200">Askıda</Badge>
-      default:
-        return <Badge variant="outline">{status}</Badge>
-    }
-  }
-
-  const formatCurrency = (amount: number) => {
-    return `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
+  const filteredSites = sites.filter(site =>
+    site.name.toLowerCase().includes(searchTerm.toLowerCase())
+  )
 
   const stats = {
     total: sites.length,
-    active: sites.filter(s => s.status === 'active').length,
-    totalBudget: sites.reduce((sum, s) => sum + s.budget_total, 0),
-    usedBudget: sites.reduce((sum, s) => sum + s.budget_used, 0)
+    totalRequests: sites.reduce((sum, s) => sum + s.total_requests, 0),
+    totalAmount: sites.reduce((sum, s) => sum + s.total_amount, 0),
+    activeSites: sites.filter(s => s.total_requests > 0).length
+  }
+
+  const formatCurrency = (amount: number) => {
+    return `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    })
+  }
+
+  const handleSiteClick = (site: Site) => {
+    // Şantiye detay sayfasına yönlendir veya modal aç
+    setSelectedSite(site)
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-900 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
+            <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
+          </div>
+          <p className="text-gray-600 font-medium">Şantiye verileri yükleniyor...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="px-4 sm:px-6 pb-6 space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-normal text-gray-900">Şantiye Yönetimi</h1>
-          <p className="text-gray-600 mt-2">İnşaat sahalarını ve projelerini yönetin</p>
+      <div className="space-y-4">
+        {/* Desktop: Header with button on right */}
+        <div className="hidden sm:flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900">Şantiyeler</h1>
+            <p className="text-gray-600 mt-2 text-lg font-light">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
+          </div>
         </div>
-        
-        <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-          <DialogTrigger asChild>
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-              <Plus className="w-4 h-4 mr-2" />
-              Yeni Şantiye
-            </Button>
-          </DialogTrigger>
-          
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>Yeni Şantiye Ekle</DialogTitle>
-            </DialogHeader>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="name">Şantiye Adı *</Label>
-                  <Input
-                    value={formData.name}
-                    onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="Proje adı..."
-                    className="mt-1"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="code">Şantiye Kodu *</Label>
-                  <Input
-                    value={formData.code}
-                    onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
-                    placeholder="ATK001"
-                    className="mt-1"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="location">Konum</Label>
-                <Input
-                  value={formData.location}
-                  onChange={(e) => setFormData(prev => ({ ...prev, location: e.target.value }))}
-                  placeholder="İl, ilçe..."
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="budget_total">Toplam Bütçe (£)</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={formData.budget_total}
-                  onChange={(e) => setFormData(prev => ({ ...prev, budget_total: e.target.value }))}
-                  placeholder="500000.00"
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <Label htmlFor="start_date">Başlangıç Tarihi</Label>
-                  <Input
-                    type="date"
-                    value={formData.start_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, start_date: e.target.value }))}
-                    className="mt-1"
-                  />
-                </div>
-
-                <div>
-                  <Label htmlFor="end_date">Bitiş Tarihi</Label>
-                  <Input
-                    type="date"
-                    value={formData.end_date}
-                    onChange={(e) => setFormData(prev => ({ ...prev, end_date: e.target.value }))}
-                    className="mt-1"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <Label htmlFor="description">Açıklama</Label>
-                <Textarea
-                  value={formData.description}
-                  onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Proje hakkında detaylar..."
-                  className="mt-1"
-                  rows={3}
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-4 border-t">
-                <Button 
-                  type="button" 
-                  variant="outline" 
-                  onClick={() => setShowAddDialog(false)}
-                >
-                  İptal
-                </Button>
-                <Button type="submit">Şantiye Ekle</Button>
-              </div>
-            </form>
-          </DialogContent>
-        </Dialog>
+        {/* Mobile: Header */}
+        <div className="sm:hidden space-y-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Şantiyeler</h1>
+            <p className="text-gray-600 mt-2 text-base font-light">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
+          </div>
+        </div>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Toplam Şantiye</CardTitle>
-            <Building2 className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-white/80">Toplam Şantiye</CardTitle>
+            <Building2 className="h-4 w-4 text-white/70" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal">{stats.total}</div>
-            <p className="text-xs text-muted-foreground">
-              Kayıtlı proje
-            </p>
+            <div className="text-2xl font-bold text-white">{stats.total}</div>
+            <p className="text-xs text-white/70">Kayıtlı şantiye</p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Aktif Şantiye</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-black/70">Aktif Şantiye</CardTitle>
+            <TrendingUp className="h-4 w-4 text-black/60" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal text-green-600">{stats.active}</div>
-            <p className="text-xs text-muted-foreground">
-              Devam eden
-            </p>
+            <div className="text-2xl font-bold text-black">{stats.activeSites}</div>
+            <p className="text-xs text-black/70">Talep olan</p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Toplam Bütçe</CardTitle>
-            <DollarSign className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-white/80">Toplam Talep</CardTitle>
+            <FileText className="h-4 w-4 text-white/70" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal">{formatCurrency(stats.totalBudget)}</div>
-            <p className="text-xs text-muted-foreground">
-              Ayrılan miktar
-            </p>
+            <div className="text-2xl font-bold text-white">{stats.totalRequests}</div>
+            <p className="text-xs text-white/70">Oluşturulan</p>
           </CardContent>
         </Card>
         
-        <Card>
+        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Kullanılan</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm font-medium text-black/70">Toplam Tutar</CardTitle>
+            <DollarSign className="h-4 w-4 text-black/60" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal text-blue-600">{formatCurrency(stats.usedBudget)}</div>
-            <p className="text-xs text-muted-foreground">
-              %{stats.totalBudget > 0 ? ((stats.usedBudget / stats.totalBudget) * 100).toFixed(1) : 0} kullanım
-            </p>
+            <div className="text-2xl font-bold text-black">
+              {stats.totalAmount > 999999 ? `${(stats.totalAmount / 1000000).toFixed(1)}M` : 
+               stats.totalAmount > 999 ? `${(stats.totalAmount / 1000).toFixed(0)}K` : stats.totalAmount}
+            </div>
+            <p className="text-xs text-black/70">Tahmini değer</p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Şantiye ara..."
-                value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-10"
-              />
-            </div>
+      {/* Search */}
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+        <Input
+          placeholder="Şantiye ara..."
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-10 h-12 rounded-xl border-gray-200 focus:border-black focus:ring-black/20"
+        />
+      </div>
 
-            <Select 
-              value={filters.status} 
-              onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
+      {/* Sites Grid */}
+      {filteredSites.length === 0 ? (
+        <div className="text-center py-12">
+          <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-400" />
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Şantiye bulunamadı</h3>
+          <p className="text-gray-600">Arama kriterlerinizi değiştirmeyi deneyin.</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+          {filteredSites.map((site) => (
+            <Card 
+              key={site.id} 
+              className="rounded-2xl bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer"
+              onClick={() => handleSiteClick(site)}
             >
-              <SelectTrigger>
-                <SelectValue placeholder="Durum" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Durumlar</SelectItem>
-                <SelectItem value="active">Aktif</SelectItem>
-                <SelectItem value="completed">Tamamlandı</SelectItem>
-                <SelectItem value="suspended">Askıda</SelectItem>
-              </SelectContent>
-            </Select>
+              <CardHeader className="pb-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <CardTitle className="text-xl font-semibold text-gray-900 mb-2">
+                      {site.name}
+                    </CardTitle>
+                    <div className="flex items-center gap-1 mt-2">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <p className="text-sm text-gray-500">
+                        Oluşturulma: {formatDate(site.created_at)}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                </div>
+              </CardHeader>
+              
+              <CardContent className="pt-0">
+                <div className="space-y-4">
+                  {/* Stats */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="text-center p-3 bg-gradient-to-r from-gray-50/50 to-gray-100/50 rounded-xl">
+                      <div className="text-2xl font-bold text-gray-900">{site.total_requests}</div>
+                      <p className="text-xs text-gray-600">Toplam Talep</p>
+                    </div>
+                    <div className="text-center p-3 bg-gradient-to-r from-green-50/50 to-emerald-50/50 rounded-xl">
+                      <div className="text-2xl font-bold text-green-700">{site.approved_requests}</div>
+                      <p className="text-xs text-gray-600">Onaylanan</p>
+                    </div>
+                  </div>
 
-            <Button 
-              variant="outline" 
-              onClick={() => setFilters({ search: '', status: 'all' })}
-              className="flex items-center gap-2"
-            >
-              <Filter className="w-4 h-4" />
-              Temizle
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+                  {/* Onaylanan Harcama Tutarı */}
+                  {(site.approved_expenses || 0) > 0 && (
+                    <div className="p-4 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-xl border border-blue-100/50">
+                      <div className="flex items-center gap-2 mb-2">
+                        <DollarSign className="w-4 h-4 text-blue-600" />
+                        <p className="text-xs font-medium text-blue-800 uppercase tracking-wide">Onaylanan Harcama</p>
+                      </div>
+                      <div className="text-xl font-bold text-blue-900">
+                        {formatCurrency(site.approved_expenses || 0)}
+                      </div>
+                      {site.total_budget && site.total_budget > 0 && (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs text-blue-700 mb-1">
+                            <span>Bütçe Kullanımı</span>
+                            <span>{((site.approved_expenses || 0) / site.total_budget * 100).toFixed(1)}%</span>
+                          </div>
+                          <div className="w-full bg-blue-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(((site.approved_expenses || 0) / site.total_budget * 100), 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-      {/* Sites Table */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Şantiyeler</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {loading ? (
-            <div className="flex items-center justify-center py-12">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-            </div>
-          ) : sites.length === 0 ? (
-            <div className="text-center py-8 text-gray-500">
-              <Building2 className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Şantiye bulunamadı</h3>
-              <p className="text-gray-600">Yeni şantiye eklemek için yukarıdaki butonu kullanın.</p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Şantiye</TableHead>
-                    <TableHead>Konum</TableHead>
-                    <TableHead>Bütçe</TableHead>
-                    <TableHead>Kullanım</TableHead>
-                    <TableHead>Durum</TableHead>
-                    <TableHead>Tarih</TableHead>
-                    <TableHead>İşlemler</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {sites.map(site => {
-                    const usagePercentage = site.budget_total > 0 ? (site.budget_used / site.budget_total) * 100 : 0
+                  {/* Pending requests */}
+                  {site.pending_requests > 0 && (
+                    <div className="flex items-center gap-2 p-3 bg-yellow-50/50 rounded-xl">
+                      <Clock className="w-4 h-4 text-yellow-600" />
+                      <span className="text-sm text-gray-700">
+                        <span className="font-medium">{site.pending_requests}</span> bekleyen talep
+                      </span>
+                    </div>
+                  )}
 
-                    return (
-                      <TableRow key={site.id}>
-                        <TableCell>
-                          <div>
-                            <div className="font-medium">{site.name}</div>
-                            <div className="text-sm text-gray-500">{site.code}</div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <MapPin className="w-3 h-3 text-gray-400" />
-                            {site.location || 'Belirtilmemiş'}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <DollarSign className="w-3 h-3 text-gray-400" />
-                            {formatCurrency(site.budget_total)}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center justify-between text-sm">
-                              <span>{formatCurrency(site.budget_used)}</span>
-                              <span className="text-gray-500">%{usagePercentage.toFixed(1)}</span>
+                  {/* Recent requesters */}
+                  {site.recent_requesters.length > 0 && (
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-2 uppercase tracking-wide">Son Talep Edenler</p>
+                      <div className="flex items-center gap-2">
+                        <Users className="w-4 h-4 text-gray-400" />
+                        <p className="text-sm text-gray-700">
+                          {site.recent_requesters.join(', ')}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Last request date */}
+                  {site.last_request_date && (
+                    <div className="flex items-center gap-2 text-sm text-gray-600">
+                      <Calendar className="w-4 h-4 text-gray-400" />
+                      <span>Son talep: {formatDate(site.last_request_date)}</span>
+                    </div>
+                  )}
+
+                  {/* No activity */}
+                  {site.total_requests === 0 && (
+                    <div className="text-center py-4">
+                      <Package className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+                      <p className="text-sm text-gray-500">Henüz talep oluşturulmamış</p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Site Detail Modal - basit bir örnek */}
+      {selectedSite && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <Card className="max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-2xl font-bold">{selectedSite.name}</CardTitle>
+                  <p className="text-gray-500 mt-1">
+                    Oluşturulma: {formatDate(selectedSite.created_at)}
+                  </p>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  onClick={() => setSelectedSite(null)}
+                  className="rounded-full w-10 h-10 p-0"
+                >
+                  ×
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Son güncelleme tarihi */}
+                <div className="flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-gray-400" />
+                  <span className="text-gray-700">
+                    Son güncelleme: {formatDate(selectedSite.updated_at)}
+                  </span>
+                </div>
+
+                {/* Stats Detail */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="p-4 bg-blue-50 rounded-xl">
+                    <div className="text-2xl font-bold text-blue-700">{selectedSite.total_requests}</div>
+                    <p className="text-sm text-gray-600">Toplam Talep</p>
+                  </div>
+                  <div className="p-4 bg-green-50 rounded-xl">
+                    <div className="text-2xl font-bold text-green-700">{selectedSite.approved_requests}</div>
+                    <p className="text-sm text-gray-600">Onaylanan</p>
+                  </div>
+                  <div className="p-4 bg-yellow-50 rounded-xl">
+                    <div className="text-2xl font-bold text-yellow-700">{selectedSite.pending_requests}</div>
+                    <p className="text-sm text-gray-600">Bekleyen</p>
+                  </div>
+                  <div className="p-4 bg-purple-50 rounded-xl">
+                    <div className="text-lg font-bold text-purple-700">{formatCurrency(selectedSite.total_amount)}</div>
+                    <p className="text-sm text-gray-600">Tahmini Tutar</p>
+                  </div>
+                  {(selectedSite.approved_expenses || 0) > 0 && (
+                    <div className="p-4 bg-blue-50 rounded-xl">
+                      <div className="text-lg font-bold text-blue-700">{formatCurrency(selectedSite.approved_expenses || 0)}</div>
+                      <p className="text-sm text-gray-600">Onaylanan Harcama</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Onaylanan Teklifler */}
+                {selectedSite.approved_offers && selectedSite.approved_offers.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                      <DollarSign className="w-5 h-5 text-green-600" />
+                      Onaylanan Teklifler ({selectedSite.approved_offers.length})
+                    </h4>
+                    <div className="space-y-3 max-h-60 overflow-y-auto">
+                      {selectedSite.approved_offers.map((offer, index) => (
+                        <div key={offer.id} className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg p-4 border border-green-100">
+                          <div className="flex justify-between items-start mb-2">
+                            <div className="flex-1">
+                              <h5 className="font-medium text-gray-900 text-sm">{offer.request_title}</h5>
+                              <p className="text-xs text-gray-600 mt-1">Tedarikçi: {offer.supplier_name}</p>
                             </div>
-                            <div className="w-full bg-gray-200 rounded-full h-2">
-                              <div 
-                                className={`h-2 rounded-full ${
-                                  usagePercentage > 90 ? 'bg-red-500' : 
-                                  usagePercentage > 70 ? 'bg-yellow-500' : 'bg-green-500'
-                                }`}
-                                style={{ width: `${Math.min(usagePercentage, 100)}%` }}
-                              ></div>
+                            <div className="text-right">
+                              <div className="text-lg font-bold text-green-700">
+                                {formatCurrency(offer.total_price)}
+                              </div>
+                              <div className="text-xs text-gray-500">
+                                {offer.currency || 'TRY'}
+                              </div>
                             </div>
                           </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          {getStatusBadge(site.status)}
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-1 text-sm">
-                            <Calendar className="w-3 h-3 text-gray-400" />
-                            {site.start_date ? new Date(site.start_date).toLocaleDateString('tr-TR') : 'Belirtilmemiş'}
+                          <div className="flex justify-between items-center text-xs text-gray-600">
+                            <span className="flex items-center gap-1">
+                              <Truck className="w-3 h-3" />
+                              {offer.delivery_days} gün teslimat
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3" />
+                              {new Date(offer.selected_at).toLocaleDateString('tr-TR')}
+                            </span>
                           </div>
-                        </TableCell>
-                        
-                        <TableCell>
-                          <div className="flex items-center gap-1">
-                            <Button variant="ghost" size="sm">
-                              <Eye className="w-4 h-4" />
-                            </Button>
-                            <Button variant="ghost" size="sm">
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
+                        </div>
+                      ))}
+                    </div>
+                    
+                    {/* Toplam Onaylanan Harcama Özeti */}
+                    <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium text-blue-900">Toplam Onaylanan Harcama:</span>
+                        <span className="text-xl font-bold text-blue-700">
+                          {formatCurrency(selectedSite.approved_expenses || 0)}
+                        </span>
+                      </div>
+                      {selectedSite.total_budget && selectedSite.total_budget > 0 && (
+                        <div className="mt-2">
+                          <div className="flex justify-between text-xs text-blue-700 mb-1">
+                            <span>Bütçe Kullanımı</span>
+                            <span>{((selectedSite.approved_expenses || 0) / selectedSite.total_budget * 100).toFixed(1)}%</span>
                           </div>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                          <div className="w-full bg-blue-200 rounded-full h-2">
+                            <div 
+                              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${Math.min(((selectedSite.approved_expenses || 0) / selectedSite.total_budget * 100), 100)}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Recent requesters detail */}
+                {selectedSite.recent_requesters.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold text-gray-900 mb-3">Son Talep Edenler</h4>
+                    <div className="space-y-2">
+                      {selectedSite.recent_requesters.map((requester, index) => (
+                        <div key={index} className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <span className="text-gray-700">{requester}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex gap-3 pt-4 border-t">
+                  <Button 
+                    onClick={() => {
+                      router.push(`/dashboard/requests?site=${selectedSite.id}`)
+                      setSelectedSite(null)
+                    }}
+                    className="flex-1 bg-black hover:bg-gray-900"
+                  >
+                    Talepleri Görüntüle
+                  </Button>
+                  <Button 
+                    variant="outline"
+                    onClick={() => setSelectedSite(null)}
+                  >
+                    Kapat
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
-
-

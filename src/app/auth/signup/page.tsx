@@ -121,17 +121,15 @@ function SignupForm() {
   return (
     <div className="min-h-screen bg-white flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-lg w-full space-y-10">
-        {/* Logo ve Başlık */}
+        {/* Logo */}
         <div className="text-center">
-          <div className="mx-auto w-20 h-20 bg-black rounded-3xl flex items-center justify-center mb-6">
-            <UserPlus className="w-10 h-10 text-white" />
+          <div className="mx-auto mb-6">
+            <img 
+              src="/d.png" 
+              alt="Logo" 
+              className="mx-auto w-24 h-24 sm:w-32 sm:h-32 object-contain filter brightness-0"
+            />
           </div>
-          <h2 className="text-4xl font-normal text-black">
-            HESAP OLUŞTUR
-          </h2>
-          <p className="mt-3 text-gray-600 text-lg">
-            Şantiye satın alma sistemi için kayıt olun
-          </p>
         </div>
         
         <Card className="border border-gray-200 rounded-3xl shadow-sm">

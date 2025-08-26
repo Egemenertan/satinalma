@@ -227,7 +227,7 @@ export default function PurchaseRequestsTable() {
     <Card className="rounded-2xl bg-transparent border-0 shadow-none">
       
       
-      <CardContent className="p-6">
+      <CardContent className="p-4 sm:p-6">
         {/* Filtreler */}
         <div className="mb-8 space-y-4">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">

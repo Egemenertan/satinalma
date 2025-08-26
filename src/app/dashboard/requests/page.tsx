@@ -41,79 +41,161 @@ export default function RequestsPage() {
   }
 
   return (
-    <div className="px-6 pb-6 space-y-8">
+    <div className="px-4 sm:px-6 pb-6 space-y-6 sm:space-y-8">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold text-gray-900">Satın Alma Talepleri</h1>
-          <p className="text-gray-600 mt-2 text-lg font-light">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
+      <div className="space-y-4">
+        {/* Desktop: Header with button on right */}
+        <div className="hidden sm:flex items-center justify-between">
+          <div>
+            <h1 className="text-4xl font-bold text-gray-900">Satın Alma Talepleri</h1>
+            <p className="text-gray-600 mt-2 text-lg font-light">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
+          </div>
+          <Button 
+            onClick={() => router.push('/dashboard/requests/create')}
+            className="bg-black hover:bg-gray-900 text-white font-light px-16 py-5 rounded-xl text-xl hover:shadow-2xl transition-all duration-200"
+          >
+            <Plus className="w-6 h-6 mr-3" />
+            Yeni Talep
+          </Button>
         </div>
-        <Button 
-          onClick={() => router.push('/dashboard/requests/create')}
-          className="bg-black  hover:bg-gray-900 text-white font-light px-16 py-5 rounded-xl text-xl  hover:shadow-2xl transition-all duration-200"
-        >
-          <Plus className="w-6 h-6 mr-3" />
-          Yeni Talep
-        </Button>
+
+        {/* Mobile: Header with button below */}
+        <div className="sm:hidden space-y-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Satın Alma Talepleri</h1>
+            <p className="text-gray-600 mt-2 text-base font-light">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
+          </div>
+          <Button 
+            onClick={() => router.push('/dashboard/requests/create')}
+            className="w-full h-14 bg-black hover:bg-gray-900 text-white font-light rounded-xl text-lg hover:shadow-2xl transition-all duration-200"
+          >
+            <Plus className="w-5 h-5 mr-3" />
+            Yeni Talep
+          </Button>
+        </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#2657ec' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-white/80">Toplam Talep</CardTitle>
-            <Package className="h-5 w-5 text-white/70" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-white">{stats.total}</div>
-            <p className="text-xs text-white/70">
-              +%12 geçen aya göre
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black/70">Bekleyen</CardTitle>
-            <Clock className="h-5 w-5 text-black/60" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-black">{stats.pending}</div>
-            <p className="text-xs text-black/70">
-              İşlem gerekli
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-white/80">Onaylanan</CardTitle>
-            <CheckCircle className="h-5 w-5 text-white/70" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-white">{stats.approved}</div>
-            <p className="text-xs text-white/70">
-              Bu ay onaylanan
-            </p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#2657ec' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-white/80">Acil</CardTitle>
-            <AlertTriangle className="h-5 w-5 text-red-300" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold text-red-300">{stats.urgent}</div>
-            <p className="text-xs text-white/70">
-              Hemen işlem gerekli
-            </p>
-          </CardContent>
-        </Card>
+      {/* Desktop: Stats Cards then Table */}
+      <div className="hidden sm:block space-y-8">
+        {/* Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white/80">Toplam Talep</CardTitle>
+              <Package className="h-5 w-5 text-white/70" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-white">{stats.total}</div>
+              <p className="text-xs text-white/70">
+                +%12 geçen aya göre
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-black/70">Bekleyen</CardTitle>
+              <Clock className="h-5 w-5 text-black/60" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-black">{stats.pending}</div>
+              <p className="text-xs text-black/70">
+                İşlem gerekli
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white/80">Onaylanan</CardTitle>
+              <CheckCircle className="h-5 w-5 text-white/70" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-white">{stats.approved}</div>
+              <p className="text-xs text-white/70">
+                Bu ay onaylanan
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-black/70">Acil</CardTitle>
+              <AlertTriangle className="h-5 w-5 text-black/60" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-3xl font-bold text-black">{stats.urgent}</div>
+              <p className="text-xs text-black/70">
+                Hemen işlem gerekli
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Requests Table */}
+        <PurchaseRequestsTable />
       </div>
 
-      {/* Requests Table */}
-      <PurchaseRequestsTable />
+      {/* Mobile: Table first, then Stats Cards */}
+      <div className="sm:hidden space-y-6">
+        {/* Requests Table */}
+        <PurchaseRequestsTable />
+
+        {/* Stats Cards */}
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white/80">Toplam</CardTitle>
+              <Package className="h-4 w-4 text-white/70" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white">{stats.total}</div>
+              <p className="text-xs text-white/70">
+                Talep
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-black/70">Bekleyen</CardTitle>
+              <Clock className="h-4 w-4 text-black/60" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-black">{stats.pending}</div>
+              <p className="text-xs text-black/70">
+                İşlem gerekli
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-white/80">Onaylanan</CardTitle>
+              <CheckCircle className="h-4 w-4 text-white/70" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-white">{stats.approved}</div>
+              <p className="text-xs text-white/70">
+                Bu ay
+              </p>
+            </CardContent>
+          </Card>
+          
+          <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-black/70">Acil</CardTitle>
+              <AlertTriangle className="h-4 w-4 text-black/60" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-black">{stats.urgent}</div>
+              <p className="text-xs text-black/70">
+                Hemen işlem
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
     </div>
   )
 }

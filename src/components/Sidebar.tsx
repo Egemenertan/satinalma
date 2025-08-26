@@ -137,7 +137,7 @@ export default function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent hover:bg-white/10 text-gray-300 text-sm font-light mb-1",
+              "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-300 text-gray-300 text-sm font-light mb-1",
               isCollapsed ? "px-2 justify-center w-full" : "px-4",
               level > 0 && "ml-4 w-[calc(100%-1rem)]",
               active && "bg-white/20 text-white font-medium"
@@ -148,11 +148,14 @@ export default function Sidebar({
             {(!isCollapsed || isMobileOpen) && (
               <>
                 <span className="flex-1 text-left font-light">{item.title}</span>
-                {isExpanded ? (
-                  <ChevronDown className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
+                {/* Chevron'u sadece desktop'ta göster */}
+                <div className="hidden lg:block">
+                  {isExpanded ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                </div>
               </>
             )}
           </Button>
@@ -172,11 +175,17 @@ export default function Sidebar({
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent hover:bg-white/10 text-gray-300 text-sm font-light mb-1",
+            "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-300 text-gray-300 text-sm font-light mb-1",
             isCollapsed ? "px-2 justify-center w-12" : "px-4",
             level > 0 && "ml-4 w-[calc(100%-1rem)]",
             active && "bg-white/20 text-white font-medium"
           )}
+          onClick={() => {
+            // Mobilde sidebar'ı kapat
+            if (isMobileOpen) {
+              setIsMobileOpen(false)
+            }
+          }}
         >
           <item.icon className={cn("h-4 w-4 shrink-0", !isCollapsed && "mr-3")} />
           {(!isCollapsed || isMobileOpen) && (
@@ -217,7 +226,7 @@ export default function Sidebar({
         isMobileOpen ? "flex right-4 left-4 w-auto" : "hidden",
         className
       )}>
-        {/* Logo and Collapse Toggle */}
+        {/* Logo and Toggle */}
         <div className={cn(
           "px-4 pt-6 pb-4 flex items-center",
           isCollapsed ? "justify-center" : "justify-between"
@@ -231,13 +240,19 @@ export default function Sidebar({
               />
             </div>
           )}
+          
+          {/* Desktop: Collapse Toggle, Mobile: Close Button */}
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleToggleCollapse}
-            className="h-8 w-8 p-0 rounded-lg bg-transparent hover:bg-white/10 text-gray-400 transition-all duration-200"
+            onClick={isMobileOpen ? () => setIsMobileOpen(false) : handleToggleCollapse}
+            className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200"
           >
-            {isCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            {isMobileOpen ? (
+              <X className="h-4 w-4" />
+            ) : (
+              <Menu className="h-4 w-4" />
+            )}
           </Button>
         </div>
 
@@ -257,7 +272,7 @@ export default function Sidebar({
             <Button 
               variant="ghost" 
               size="sm" 
-              className="w-full h-10 p-0 rounded-lg bg-transparent hover:bg-white/10 text-gray-400 transition-all duration-200" 
+              className="w-full h-10 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200" 
               onClick={handleLogout}
             >
               <LogOut className="h-5 w-5" />
@@ -267,14 +282,11 @@ export default function Sidebar({
               <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
                 <span className="text-xs font-medium text-white">EY</span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-white truncate">Egemen Yusuf</p>
-                <p className="text-xs text-gray-400 truncate">Proje Yöneticisi</p>
-              </div>
+             
               <Button 
                 variant="ghost" 
                 size="sm" 
-                className="h-8 w-8 p-0 rounded-lg bg-transparent hover:bg-white/10 text-gray-400 transition-all duration-200" 
+                className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200" 
                 onClick={handleLogout}
               >
                 <LogOut className="h-4 w-4" />

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/toast";
 
 export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
@@ -14,9 +15,11 @@ export default function RootLayout({
   return (
     <html lang="tr">
       <body className="font-helvetica-neue">
-        <div className="min-h-screen ">
-          {children}
-        </div>
+        <ToastProvider>
+          <div className="min-h-screen ">
+            {children}
+          </div>
+        </ToastProvider>
       </body>
     </html>
   );
