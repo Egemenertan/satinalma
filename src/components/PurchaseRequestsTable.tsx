@@ -143,9 +143,9 @@ export default function PurchaseRequestsTable() {
     const statusConfig = {
       draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-800 border-gray-200' },
       pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-      awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-purple-100 text-purple-800 border-purple-200' },
+      awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-black text-white border-black' },
       approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-green-200' },
-      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-red-200' },
+      rejected: { label: 'Reddedildi', className: 'bg-black text-white border-black' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-gray-200' }
     }
 
@@ -162,12 +162,12 @@ export default function PurchaseRequestsTable() {
     const urgencyConfig = {
       critical: { 
         label: 'Kritik', 
-        className: 'bg-red-100 text-red-800 border-red-200',
+        className: 'bg-black text-white border-black',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       high: { 
         label: 'Yüksek', 
-        className: 'bg-orange-100 text-orange-800 border-orange-200',
+        className: 'bg-black text-white border-black',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       normal: { 
@@ -301,7 +301,7 @@ export default function PurchaseRequestsTable() {
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('request_number')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"
+                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
                   >
                     Talep No
                     <ArrowUpDown className="w-3 h-3" />
@@ -311,7 +311,7 @@ export default function PurchaseRequestsTable() {
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('title')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"
+                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
                   >
                     Başlık
                     <ArrowUpDown className="w-3 h-3" />
@@ -326,7 +326,7 @@ export default function PurchaseRequestsTable() {
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('created_at')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-2xl"
+                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
                   >
                     Tarih
                     <ArrowUpDown className="w-3 h-3" />
@@ -358,15 +358,15 @@ export default function PurchaseRequestsTable() {
                 requests.map((request, index) => (
                   <TableRow 
                     key={request.id}
-                    className={`border-0 hover:bg-blue-50/50 transition-colors duration-200 ${
+                    className={`border-0 hover:bg-yellow-50/50 transition-colors duration-200 ${
                       (request.status === 'pending' || request.status === 'awaiting_offers') ? 'cursor-pointer' : ''
                     } ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                     onClick={() => handleRequestClick(request)}
                   >
                     <TableCell className="py-4">
                       <div className="flex items-center gap-3">
-                        <div className="p-2 bg-blue-100 rounded-2xl">
-                          <FileText className="w-4 h-4 text-blue-600" />
+                        <div className="p-2 bg-gray-100 rounded-2xl">
+                          <FileText className="w-4 h-4 text-black" />
                         </div>
                         <span className="font-semibold text-gray-800">{request.request_number}</span>
                       </div>
@@ -437,8 +437,8 @@ export default function PurchaseRequestsTable() {
                     
                     <TableCell className="py-4">
                       <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-purple-100 rounded-2xl">
-                          <Calendar className="w-3 h-3 text-purple-600" />
+                        <div className="p-1.5 bg-gray-100 rounded-2xl">
+                          <Calendar className="w-3 h-3 text-black" />
                         </div>
                         <div className="text-sm">
                           <div className="font-medium text-gray-800">{formatDate(request.created_at)}</div>
@@ -454,13 +454,13 @@ export default function PurchaseRequestsTable() {
                     
                     <TableCell className="py-4">
                       <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-blue-100 hover:text-blue-600">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-gray-100 hover:text-black">
                           <Eye className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-green-100 hover:text-green-600">
                           <Edit2 className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-purple-100 hover:text-purple-600">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-yellow-100 hover:text-yellow-800">
                           <ChevronRight className="w-4 h-4" />
                         </Button>
                       </div>
