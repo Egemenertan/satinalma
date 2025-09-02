@@ -10,9 +10,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, CheckCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { UserRole } from '@/lib/types'
 import Link from 'next/link'
-
-type UserRole = 'engineer' | 'site_supervisor' | 'procurement_specialist' | 'finance_manager' | 'project_manager' | 'general_manager'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
@@ -189,6 +188,10 @@ export default function SignupPage() {
                     <SelectItem value="finance_manager">Finans Yöneticisi</SelectItem>
                     <SelectItem value="project_manager">Proje Yöneticisi</SelectItem>
                     <SelectItem value="general_manager">Genel Müdür</SelectItem>
+                    <SelectItem value="muhendis">Mühendis</SelectItem>
+                    <SelectItem value="proje_sorumlusu">Proje Sorumlusu</SelectItem>
+                    <SelectItem value="satin_alma_sorumlusu">Satın Alma Sorumlusu</SelectItem>
+                    <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

@@ -20,7 +20,6 @@ import {
   FileText,
   TrendingUp,
   TrendingDown,
-  Edit2,
   CheckCircle,
   XCircle,
   AlertTriangle,
@@ -464,10 +463,6 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             <p className="text-gray-600 mt-1">Tedarikçi Detayları</p>
           </div>
         </div>
-        <Button className="bg-blue-600 hover:bg-blue-700">
-          <Edit2 className="w-4 h-4 mr-2" />
-          Düzenle
-        </Button>
       </div>
 
       {/* Content */}
@@ -570,10 +565,6 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     Birim: {material.material_item?.unit || '-'}
                                   </div>
                                 </div>
-                                <Button variant="outline" size="sm">
-                                  <Edit2 className="w-3 h-3 mr-1" />
-                                  Düzenle
-                                </Button>
                               </div>
                             </CardContent>
                           </Card>

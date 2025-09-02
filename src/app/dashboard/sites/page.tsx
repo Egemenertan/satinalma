@@ -63,15 +63,21 @@ export default function SitesPage() {
   const fetchSitesWithStats = async () => {
     setLoading(true)
     try {
-      console.log('🔍 Fetching sites...')
+            console.log('🔍 Fetching sites...')
       
-      // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
-      const sitesResult = await supabase
-        .from('sites')
-        .select('id, name, created_at, updated_at, approved_expenses, total_budget')
-        .order('name')
+      // Auth durumunu kontrol et
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      console.log('👤 Auth user:', user)
+      console.log('🔐 Auth error:', authError)
+        
+        // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
+        const sitesResult = await supabase
+          .from('sites')
+          .select('id, name, created_at, updated_at, approved_expenses, total_budget')
+          .order('name')
 
-      console.log('📊 Sites result:', sitesResult)
+        console.log('📊 Sites result:', sitesResult)
+        console.log('📊 Sites error details:', sitesResult.error)
 
       if (sitesResult.error) {
         console.error('Sites fetch error:', sitesResult.error)

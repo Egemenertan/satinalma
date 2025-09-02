@@ -6,6 +6,21 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+// Kullanıcı rolleri - mevcut ve yeni roller
+export type UserRole = 
+  | 'engineer' 
+  | 'site_supervisor' 
+  | 'procurement_specialist' 
+  | 'finance_manager' 
+  | 'project_manager' 
+  | 'general_manager'
+  | 'chief'
+  | 'approver'
+  | 'muhendis'
+  | 'proje_sorumlusu'
+  | 'satin_alma_sorumlusu'
+  | 'admin'
+
 export interface Database {
   public: {
     Tables: {
@@ -72,4 +87,5 @@ export interface Database {
     }
   }
 }
+
 

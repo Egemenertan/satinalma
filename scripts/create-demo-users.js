@@ -54,18 +54,17 @@ async function createDemoUsers() {
         throw authError
       }
 
-      // Users tablosuna profil ekle
+      // Profiles tablosuna profil ekle
       const { error: profileError } = await supabase
-        .from('users')
+        .from('profiles')
         .insert({
           id: authData.user.id,
           email: user.email,
-          name: user.name,
+          full_name: user.name,
           role: user.role,
-          password: 'auth_user',
           is_active: true,
-          approval_limit: user.role === 'project_manager' ? 20000 : 
-                         user.role === 'procurement_specialist' ? 5000 : 0
+          department: user.role === 'project_manager' ? 'Management' : 
+                     user.role === 'procurement_specialist' ? 'Procurement' : 'Engineering'
         })
 
       if (profileError) {

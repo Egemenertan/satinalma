@@ -69,7 +69,7 @@ export default function SettingsPage() {
       }
 
       const { data: profile } = await supabase
-        .from('users')
+        .from('profiles')
         .select('*')
         .eq('id', user.id)
         .single()
@@ -77,7 +77,7 @@ export default function SettingsPage() {
       if (profile) {
         setUser(profile)
         setUserSettings({
-          name: profile.name || '',
+          name: profile.full_name || '',
           email: profile.email || '',
           phone: profile.phone || '',
           department: profile.department || '',
@@ -97,9 +97,9 @@ export default function SettingsPage() {
     setSaveLoading(true)
     try {
       const { error } = await supabase
-        .from('users')
+        .from('profiles')
         .update({
-          name: userSettings.name,
+          full_name: userSettings.name,
           phone: userSettings.phone,
           department: userSettings.department
         })

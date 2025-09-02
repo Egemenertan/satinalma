@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { User, Settings } from 'lucide-react'
+import { getAllRoles, getRoleLabel } from '@/lib/roles'
 
 interface RoleSwitcherProps {
   currentRole: string
@@ -13,12 +14,7 @@ interface RoleSwitcherProps {
 export function RoleSwitcher({ currentRole, onRoleChange }: RoleSwitcherProps) {
   const [isOpen, setIsOpen] = useState(false)
 
-  const roles = [
-    { value: 'engineer', label: 'Şantiye Sorumlusu', description: 'Talep oluşturma ve takip' },
-    { value: 'chief', label: 'Satın Alma Şefi', description: 'Teklif yönetimi ve sipariş' },
-    { value: 'approver', label: 'Onaylayıcı', description: 'Onay/red kararları' }
-  ]
-
+  const roles = getAllRoles()
   const currentRoleInfo = roles.find(r => r.value === currentRole)
 
   return (
@@ -47,7 +43,7 @@ export function RoleSwitcher({ currentRole, onRoleChange }: RoleSwitcherProps) {
                   key={role.value}
                   className={`p-3 border rounded-lg cursor-pointer transition-colors ${
                     currentRole === role.value
-                      ? 'border-blue-500 bg-blue-50'
+                      ? 'border-black bg-gray-50'
                       : 'border-gray-200 hover:border-gray-300'
                   }`}
                   onClick={() => {
@@ -62,7 +58,7 @@ export function RoleSwitcher({ currentRole, onRoleChange }: RoleSwitcherProps) {
                       <div className="text-sm text-gray-600">{role.description}</div>
                     </div>
                     {currentRole === role.value && (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                      <div className="w-2 h-2 bg-black rounded-full"></div>
                     )}
                   </div>
                 </div>

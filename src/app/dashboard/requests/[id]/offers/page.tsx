@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail, ChevronDown, ChevronUp } from 'lucide-react'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Database } from '@/lib/types'
 import { useToast } from '@/components/ui/toast'
+import AssignSupplierModal from '@/components/AssignSupplierModal'
 
 // Para birimi seçenekleri
 const CURRENCIES = [
@@ -123,6 +124,24 @@ export default function OffersPage() {
     documents: [] as File[],
     documentPreviewUrls: [] as string[]
   })
+  
+  // Tedarikçi atama modal state'i
+  const [isAssignSupplierModalOpen, setIsAssignSupplierModalOpen] = useState(false)
+  
+  // Teklif formu açık/kapalı state'i
+  const [isOfferFormOpen, setIsOfferFormOpen] = useState(false)
+
+  // Teklif girilmeye başlandığında formu otomatik aç
+  useEffect(() => {
+    const hasValidData = newOffers.some(offer => 
+      offer.supplier_name.trim() !== '' || 
+      offer.unit_price > 0 || 
+      offer.documents.length > 0
+    )
+    if (hasValidData && !isOfferFormOpen) {
+      setIsOfferFormOpen(true)
+    }
+  }, [newOffers, isOfferFormOpen])
 
 
 
@@ -271,6 +290,7 @@ export default function OffersPage() {
     }
   }
 
+
   // Cleanup URL objects when component unmounts
   useEffect(() => {
     return () => {
@@ -288,13 +308,15 @@ export default function OffersPage() {
           closeApprovalModal()
         } else if (isModalOpen) {
           closeOfferModal()
+        } else if (isAssignSupplierModalOpen) {
+          setIsAssignSupplierModalOpen(false)
         }
       }
     }
 
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [isModalOpen, isApprovalModalOpen])
+  }, [isModalOpen, isApprovalModalOpen, isAssignSupplierModalOpen])
 
   // Modal açıldığında body scroll'unu engelle
   useEffect(() => {
@@ -853,66 +875,61 @@ export default function OffersPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
         <div className="space-y-6 lg:space-y-8">
           
-          {/* Üst Bölüm - Talep Detayları ve Ürün Bilgileri Yan Yana */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
+          {/* Şantiye Bilgisi - Sade */}
+          <div className="mb-6">
+            {request.site_name ? (
+              <h2 className="text-6xl font-light text-gray-900">{request.site_name}</h2>
+            ) : request.sites ? (
+              <h2 className="text-6xl font-bold text-gray-900">{request.sites.name}</h2>
+            ) : request.construction_sites ? (
+              <h2 className="text-3xl font-bold text-gray-900">{request.construction_sites.name}</h2>
+            ) : (
+              <h2 className="text-3xl font-bold text-gray-900">{request.department} Şantiyesi</h2>
+            )}
+          </div>
+
+          {/* Talep Detayları ve Ürün Bilgileri Yan Yana */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-6">
             
             {/* Sol Panel - Talep Detayları */}
-            <div className="space-y-6">
-              {/* Şantiye Bilgisi - Sade */}
-              <div className="mb-2">
-                {/* Sadece şantiye adı, büyükçe */}
-                {request.site_name ? (
-                  <h2 className="text-6xl font-light text-gray-900">{request.site_name}</h2>
-                ) : request.sites ? (
-                  <h2 className="text-6xl font-bold text-gray-900">{request.sites.name}</h2>
-                ) : request.construction_sites ? (
-                  <h2 className="text-3xl font-bold text-gray-900">{request.construction_sites.name}</h2>
-                ) : (
-                  <h2 className="text-3xl font-bold text-gray-900">{request.department} Şantiyesi</h2>
-                )}
+            <div className="rounded-2xl p-8 shadow-sm min-h-[300px] flex flex-col justify-between" style={{ backgroundColor: '#000000' }}>
+              <div className="mb-8">
+                <h3 className="text-3xl font-light text-white mb-2">Talep Detayları</h3>
+                <p className="text-base text-white/80">Temel bilgiler</p>
               </div>
-
-              {/* Talep Detayları */}
-              <div className="rounded-2xl p-8 shadow-sm min-h-[300px] flex flex-col justify-between" style={{ backgroundColor: '#000000' }}>
-                <div className="mb-8">
-                  <h3 className="text-3xl font-light text-white mb-2">Talep Detayları</h3>
-                  <p className="text-base text-white/80">Temel bilgiler</p>
+              
+              <div className="space-y-8 flex-1">
+                <div>
+                  <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Başlık</p>
+                  <p className="text-2xl text-white font-medium leading-relaxed">{request.title}</p>
                 </div>
-                
-                <div className="space-y-8 flex-1">
+                <div className="grid grid-cols-1 gap-6">
                   <div>
-                    <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Başlık</p>
-                    <p className="text-2xl text-white font-medium leading-relaxed">{request.title}</p>
+                    <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Departman</p>
+                    <p className="text-xl text-white font-medium">{request.department}</p>
                   </div>
-                  <div className="grid grid-cols-1 gap-6">
-                    <div>
-                      <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Departman</p>
-                      <p className="text-xl text-white font-medium">{request.department}</p>
-                    </div>
-                    <div>
-                      <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Talep Eden</p>
-                      <p className="text-xl text-white font-medium">{request.profiles?.full_name}</p>
-                    </div>
-                    {/* Kategori Bilgileri */}
-                    {request.category_name && (
-                      <div>
-                        <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Malzeme Kategorisi</p>
-                        <p className="text-xl text-white font-medium">{request.category_name}</p>
-                        {request.subcategory_name && (
-                          <p className="text-lg text-white/70 mt-2">→ {request.subcategory_name}</p>
-                        )}
-                      </div>
-                    )}
+                  <div>
+                    <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Talep Eden</p>
+                    <p className="text-xl text-white font-medium">{request.profiles?.full_name}</p>
                   </div>
+                  {/* Kategori Bilgileri */}
+                  {request.category_name && (
+                    <div>
+                      <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Malzeme Kategorisi</p>
+                      <p className="text-xl text-white font-medium">{request.category_name}</p>
+                      {request.subcategory_name && (
+                        <p className="text-lg text-white/70 mt-2">→ {request.subcategory_name}</p>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
 
             {/* Sağ Panel - Ürün Bilgileri */}
-            <div className="space-y-6 ">
-              {/* Ürün Bilgileri */}
+            <div>
               {item ? (
-                <div className="rounded-2xl p-6 shadow-sm" style={{ backgroundColor: '#EFE248' }}>
+                <div className="rounded-2xl p-6 shadow-sm h-full" style={{ backgroundColor: '#EFE248' }}>
                   <div className="mb-6">
                     <h3 className="text-2xl font-light text-black">Ürün Bilgileri</h3>
                     <p className="text-sm text-black/70">Detaylar ve özellikler</p>
@@ -964,7 +981,7 @@ export default function OffersPage() {
                 </div>
               ) : (
                 /* Ürün Bilgileri Yok */
-                <div className="rounded-2xl p-6 shadow-sm bg-gray-100">
+                <div className="rounded-2xl p-6 shadow-sm bg-gray-100 h-full">
                   <div className="text-center py-8">
                     <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
                       <Package className="w-8 h-8 text-gray-400" />
@@ -976,6 +993,31 @@ export default function OffersPage() {
               )}
             </div>
           </div>
+
+          {/* Tedarikçi Atama Butonu - Tam Genişlik */}
+          {!supplierMaterialInfo.isRegistered && item && (
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 w-full mb-6">
+              <div className="flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
+                    <Building2 className="h-5 w-5 text-yellow-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Tedarikçi Ataması</h3>
+                    <p className="text-sm text-gray-500">Bu ürünü bir tedarikçiye atayarak otomatik teklif alabilirsiniz</p>
+                  </div>
+                </div>
+                
+                <Button
+                  onClick={() => setIsAssignSupplierModalOpen(true)}
+                  className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
+                >
+                  <Building2 className="w-4 h-4 mr-2" />
+                  Tedarikçiye Ata
+                </Button>
+              </div>
+            </div>
+          )}
 
           {/* Mevcut Teklifler - Eğer varsa */}
           {existingOffers.length > 0 && (
@@ -1297,17 +1339,41 @@ export default function OffersPage() {
               </div>
             ) : (
               <div className="bg-gradient-to-br from-white/80 to-gray-50/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200/50">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="w-10 h-10 bg-gray-900/10 rounded-xl flex items-center justify-center">
-                    <Plus className="h-5 w-5 text-gray-900" />
+                {/* Clickable Header */}
+                <div 
+                  className="flex items-center justify-between mb-6 cursor-pointer group"
+                  onClick={() => setIsOfferFormOpen(!isOfferFormOpen)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 bg-gray-900/10 rounded-xl flex items-center justify-center group-hover:bg-gray-900/20 transition-colors duration-200">
+                      <Plus className="h-5 w-5 text-gray-900" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 group-hover:text-gray-700 transition-colors duration-200">
+                        Yeni Teklif Girişi
+                      </h3>
+                      <p className="text-sm text-gray-500">
+                        {isOfferFormOpen 
+                          ? 'Teklif formunu gizlemek için tıklayın' 
+                          : 'Manuel teklif girişi yapmak için tıklayın • Toplam 3 teklif'
+                        }
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Yeni Teklif Girişi</h3>
-                    <p className="text-sm text-gray-500">Toplam 3 teklif girildikten sonra onay sürecine geçer</p>
+                  
+                  {/* Toggle Icon */}
+                  <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center group-hover:bg-gray-200 transition-colors duration-200">
+                    {isOfferFormOpen ? (
+                      <ChevronUp className="h-4 w-4 text-gray-600" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-gray-600" />
+                    )}
                   </div>
                 </div>
               
-              <div className="space-y-6">
+              {/* Collapsible Form Content */}
+              {isOfferFormOpen && (
+                <div className="space-y-6 animate-in slide-in-from-top-4 duration-300">
                 
                 {newOffers.map((offer, index) => (
                   <div key={index} className="bg-gradient-to-br from-gray-50/50 to-gray-100/50 rounded-2xl p-6">
@@ -1589,6 +1655,7 @@ export default function OffersPage() {
                   </Button>
                 </div>
                 </div>
+                )}
               </div>
             )}
           </div>
@@ -2229,6 +2296,15 @@ export default function OffersPage() {
           </div>
         </div>
       )}
+
+      {/* Tedarikçi Atama Modal */}
+      <AssignSupplierModal
+        isOpen={isAssignSupplierModalOpen}
+        onClose={() => setIsAssignSupplierModalOpen(false)}
+        itemName={request?.purchase_request_items?.[0]?.item_name || ''}
+        itemUnit={request?.purchase_request_items?.[0]?.unit}
+        onSuccess={checkItemInSupplierMaterials}
+      />
     </div>
   )
 }

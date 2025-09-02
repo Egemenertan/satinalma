@@ -79,7 +79,7 @@ export async function middleware(request: NextRequest) {
   if (user && isProtectedRoute) {
     // Get user details from database
     const { data: userData } = await supabase
-      .from('users')
+      .from('profiles')
       .select('role')
       .eq('id', user.id)
       .single()

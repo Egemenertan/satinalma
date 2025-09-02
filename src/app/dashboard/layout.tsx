@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
+import AIChatbot from '@/components/AIChatbot'
 import { Button } from '@/components/ui/button'
 import { Menu, X } from 'lucide-react'
 
@@ -63,6 +64,9 @@ export default function DashboardLayout({
           </div>
         </div>
       </main>
+
+      {/* AI Chatbot - Dashboard'un her yerinde erişilebilir */}
+      <AIChatbot />
     </div>
   )
 }

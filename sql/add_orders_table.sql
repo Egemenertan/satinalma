@@ -31,3 +31,4 @@ create policy "Orders are updatable by authenticated users"
 create trigger handle_updated_at before update on orders
   for each row execute procedure moddatetime (updated_at);
 
+

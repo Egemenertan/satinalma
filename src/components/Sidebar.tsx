@@ -251,7 +251,7 @@ export default function Sidebar({
             variant="ghost"
             size="sm"
             onClick={isMobileOpen ? () => setIsMobileOpen(false) : handleToggleCollapse}
-            className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200"
+            className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10  hover:scale-150 text-gray-400 transition-all duration-200"
           >
             {isMobileOpen ? (
               <X className="h-4 w-4" />
