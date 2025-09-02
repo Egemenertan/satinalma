@@ -48,6 +48,8 @@ export default function AIChatbot() {
   ])
   const [inputValue, setInputValue] = useState('')
   const [isTyping, setIsTyping] = useState(false)
+  const [isThinking, setIsThinking] = useState(false)
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const quickActions: QuickAction[] = [
@@ -111,7 +113,20 @@ export default function AIChatbot() {
 
     setMessages(prev => [...prev, userMessage])
     setInputValue('')
-    setIsTyping(true)
+    setIsThinking(true)
+
+    // AI mesajı için placeholder oluştur
+    const aiMessageId = (Date.now() + 1).toString()
+    const aiMessage: Message = {
+      id: aiMessageId,
+      content: '...',
+      sender: 'ai',
+      timestamp: new Date(),
+      type: 'normal'
+    }
+
+    // Thinking mesajını ekle
+    setMessages(prev => [...prev, aiMessage])
 
     try {
       // Konuşma geçmişini hazırla (AI için format)
@@ -120,7 +135,7 @@ export default function AIChatbot() {
         content: msg.content
       }))
 
-      // AI API çağrısı - OpenAI GPT-4 ile
+      // AI API çağrısı - Streaming ile
       const response = await fetch('/api/ai-chat', {
         method: 'POST',
         headers: {
@@ -137,32 +152,93 @@ export default function AIChatbot() {
         throw new Error(`API Error: ${response.status}`)
       }
 
-      const data = await response.json()
+      // Streaming response'u handle et
+      const reader = response.body?.getReader()
+      const decoder = new TextDecoder()
 
-      // AI yanıtını ekle
-      const aiMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: data.response,
-        sender: 'ai',
-        timestamp: new Date(),
-        type: data.type || 'normal'
+      if (!reader) {
+        throw new Error('Response body reader not available')
       }
 
-      setMessages(prev => [...prev, aiMessage])
+      let accumulatedContent = ''
+      let hasStartedStreaming = false
+
+      while (true) {
+        const { done, value } = await reader.read()
+        
+        if (done) break
+
+        const chunk = decoder.decode(value)
+        const lines = chunk.split('\n')
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6))
+              
+              if (data.error) {
+                // Hata durumu
+                setIsThinking(false)
+                setStreamingMessageId(null)
+                setMessages(prev => prev.map(msg => 
+                  msg.id === aiMessageId 
+                    ? { ...msg, content: data.error, type: 'error' }
+                    : msg
+                ))
+                return
+              }
+
+              if (data.done) {
+                // Stream tamamlandı
+                setStreamingMessageId(null)
+                if (data.type) {
+                  setMessages(prev => prev.map(msg => 
+                    msg.id === aiMessageId 
+                      ? { ...msg, type: data.type }
+                      : msg
+                  ))
+                }
+                return
+              }
+
+              if (data.content) {
+                // İlk content geldiğinde thinking'i durdur ve streaming'e geç
+                if (!hasStartedStreaming) {
+                  setIsThinking(false)
+                  setStreamingMessageId(aiMessageId)
+                  hasStartedStreaming = true
+                }
+                
+                // İçeriği biriktir ve güncelle
+                accumulatedContent += data.content
+                setMessages(prev => prev.map(msg => 
+                  msg.id === aiMessageId 
+                    ? { ...msg, content: accumulatedContent, type: data.type || 'normal' }
+                    : msg
+                ))
+              }
+            } catch (parseError) {
+              console.error('JSON parse error:', parseError)
+            }
+          }
+        }
+      }
+
     } catch (error) {
       console.error('AI Chat Error:', error)
       
-      // Hata durumunda detaylı yanıt
-      const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        content: `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, DOVEC AI servislerine şu anda erişemiyorum. \n\n**Hata:** ${error.message}\n\nLütfen birkaç dakika sonra tekrar deneyin veya sorunuz devam ediyorsa sistem yöneticisiyle iletişime geçin.`,
-        sender: 'ai',
-        timestamp: new Date(),
-        type: 'error'
-      }
-      setMessages(prev => [...prev, errorMessage])
-    } finally {
-      setIsTyping(false)
+      // Thinking ve streaming'i durdur
+      setIsThinking(false)
+      setStreamingMessageId(null)
+      
+      // Hata durumunda AI mesajını güncelle
+      const errorContent = `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, DOVEC AI servislerine şu anda erişemiyorum. \n\n**Hata:** ${error.message}\n\nLütfen birkaç dakika sonra tekrar deneyin veya sorunuz devam ediyorsa sistem yöneticisiyle iletişime geçin.`
+      
+      setMessages(prev => prev.map(msg => 
+        msg.id === aiMessageId 
+          ? { ...msg, content: errorContent, type: 'error' }
+          : msg
+      ))
     }
   }
 
@@ -182,7 +258,7 @@ export default function AIChatbot() {
 
   if (!isOpen) {
     return (
-      <div className="fixed bottom-6 right-6 z-50">
+      <div className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 z-50">
         <div className="flex items-center gap-2">
           {/* AI Text - Yuvarlağın sol dışında */}
           <span className="text-[#071E51] font-bold text-sm bg-white px-2 py-1 rounded-lg shadow-lg border border-gray-200">
@@ -191,7 +267,7 @@ export default function AIChatbot() {
           {/* World Button - Yuvarlak buton */}
           <Button
             onClick={() => setIsOpen(true)}
-            className="rounded-full w-16 h-16 bg-white hover:bg-gray-100 shadow-2xl transition-all duration-300 hover:scale-110 border-2 border-gray-200 p-2"
+            className="rounded-full w-14 h-14 sm:w-16 sm:h-16 bg-white hover:bg-gray-100 shadow-2xl transition-all duration-300 hover:scale-110 border-2 border-gray-200 p-2"
             size="lg"
           >
             <img 
@@ -216,8 +292,11 @@ export default function AIChatbot() {
   }
 
       return (
-      <div className="fixed bottom-6 right-6 z-50">
-        <Card className={`${isMinimized ? 'w-80 h-16' : 'w-96 h-[580px]'} bg-white shadow-2xl border-0 rounded-3xl transition-all duration-300`}>
+      <div className="fixed bottom-4 right-4 left-4 sm:bottom-6 sm:right-6 sm:left-auto z-50">
+        <Card className={`${isMinimized 
+          ? 'w-full sm:w-80 h-16' 
+          : 'w-full sm:w-96 h-[580px] max-h-[calc(100vh-2rem)] sm:max-h-[580px]'
+        } bg-white shadow-2xl border-0 rounded-3xl transition-all duration-300`}>
         
         {/* Header */}
         <CardHeader className="p-4 text-white rounded-t-3xl" style={{ backgroundColor: '#071E51' }}>
@@ -286,7 +365,7 @@ export default function AIChatbot() {
         </CardHeader>
 
         {!isMinimized && (
-          <CardContent className="p-0 flex flex-col h-[516px] overflow-hidden">
+          <CardContent className="p-0 flex flex-col h-[calc(100vh-8rem)] sm:h-[516px] overflow-hidden">
             
             {/* Messages Area */}
             <div className="flex-1 overflow-y-auto p-4 space-y-4">
@@ -296,7 +375,7 @@ export default function AIChatbot() {
                   className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
-                    className={`max-w-[80%] p-3 rounded-2xl ${
+                    className={`max-w-[85%] sm:max-w-[80%] p-3 rounded-2xl ${
                       message.sender === 'user'
                         ? 'text-white rounded-br-md'
                         : message.type === 'suggestion'
@@ -309,7 +388,27 @@ export default function AIChatbot() {
                     }`}
                     style={message.sender === 'user' ? { backgroundColor: '#071E51' } : {}}
                   >
-                    <p className="text-sm whitespace-pre-wrap">{message.content}</p>
+                    <p className="text-sm whitespace-pre-wrap">
+                      {/* Thinking animasyonu */}
+                      {isThinking && message.id === messages[messages.length - 1]?.id ? (
+                        <span className="flex items-center space-x-1">
+                          <span className="text-gray-500">Düşünüyor</span>
+                          <div className="flex space-x-1">
+                            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                            <div className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                          </div>
+                        </span>
+                      ) : (
+                        <>
+                          {message.content}
+                          {/* Streaming cursor - sadece aktif streaming mesajında */}
+                          {streamingMessageId === message.id && (
+                            <span className="inline-block w-0.5 h-4 ml-1 bg-gray-600 animate-pulse"></span>
+                          )}
+                        </>
+                      )}
+                    </p>
                     <p className={`text-xs mt-2 ${
                       message.sender === 'user' ? 'text-gray-300' : 'text-gray-500'
                     }`}>
@@ -336,9 +435,9 @@ export default function AIChatbot() {
 
             {/* Quick Actions - Sadece ilk mesajda */}
             {messages.length === 1 && (
-              <div className="flex-shrink-0 p-4 border-t bg-gray-50">
+              <div className="flex-shrink-0 p-3 sm:p-4 border-t bg-gray-50">
                 <p className="text-sm text-gray-600 mb-3 font-medium">Hızlı Sorular:</p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                   {quickActions.slice(0, 4).map((action, index) => (
                     <Button
                       key={index}
@@ -358,20 +457,20 @@ export default function AIChatbot() {
             )}
 
             {/* Input Area - Card içinde, en altta */}
-            <div className="flex-shrink-0 p-4 border-t bg-white">
+            <div className="flex-shrink-0 p-3 sm:p-4 border-t bg-white">
               <div className="flex gap-2">
                 <Input
                   value={inputValue}
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
-                  placeholder="Soru sorun... (örn: Bugün kaç talep geldi?)"
-                  className="flex-1 rounded-xl border-gray-200 focus:border-black"
-                  disabled={isTyping}
+                  placeholder="Soru sorun..."
+                  className="flex-1 rounded-xl border-gray-200 focus:border-black text-sm"
+                  disabled={isTyping || isThinking}
                 />
                 <Button
                   onClick={() => handleSendMessage()}
-                  disabled={!inputValue.trim() || isTyping}
-                  className="rounded-xl px-4 text-white"
+                  disabled={!inputValue.trim() || isTyping || isThinking}
+                  className="rounded-xl px-3 sm:px-4 text-white"
                   style={{ backgroundColor: '#071E51' }}
                   onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#0a2660'}
                   onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#071E51'}

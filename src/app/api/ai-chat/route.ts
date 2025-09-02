@@ -53,14 +53,8 @@ export async function POST(request: NextRequest) {
     // Dashboard verilerini çek
     const dashboardData = await fetchDashboardData(supabase)
     
-    // OpenAI ile akıllı yanıt oluştur
-    const response = await generateOpenAIResponse(message, dashboardData, conversationHistory)
-    
-    return NextResponse.json({
-      response: response.content,
-      type: response.type,
-      timestamp: new Date().toISOString()
-    })
+    // OpenAI ile akıllı yanıt oluştur - streaming response döner
+    return await generateOpenAIResponse(message, dashboardData, conversationHistory)
 
   } catch (error) {
     console.error('AI Chat API Error:', error)
@@ -240,12 +234,30 @@ async function generateOpenAIResponse(message: string, data: DashboardData, conv
     // OpenAI client'ı al
     const aiClient = getOpenAIClient()
     
-    // API key yoksa fallback
+    // API key yoksa fallback - streaming response
     if (!aiClient) {
-      return {
-        content: `🔑 **API Key Eksik**\n\nOpenAI API key bulunamadı veya geçersiz.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`,
-        type: 'error'
-      }
+      const fallbackResponse = `🔑 **API Key Eksik**\n\nOpenAI API key bulunamadı veya geçersiz.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`
+      
+      const encoder = new TextEncoder()
+      const readableStream = new ReadableStream({
+        start(controller) {
+          const data = JSON.stringify({ 
+            content: fallbackResponse, 
+            type: 'error',
+            done: true 
+          })
+          controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+          controller.close()
+        }
+      })
+      
+      return new Response(readableStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
     }
 
     // Dashboard verilerini özetle
@@ -284,7 +296,7 @@ YANIT STİLİ:
       { role: 'user', content: message }
     ]
 
-    // OpenAI API çağrısı
+    // OpenAI API çağrısı - streaming ile
     const completion = await aiClient.chat.completions.create({
       model: 'gpt-4o-mini', // Daha hızlı ve ekonomik model
       messages: messages,
@@ -292,44 +304,102 @@ YANIT STİLİ:
       max_tokens: 1200,
       top_p: 0.9,
       frequency_penalty: 0.1,
-      presence_penalty: 0.1
+      presence_penalty: 0.1,
+      stream: true // Streaming aktif
     })
 
-    const aiResponse = completion.choices[0]?.message?.content || 'Üzgünüm, yanıt oluşturamadım.'
+    // Streaming response oluştur
+    const encoder = new TextEncoder()
     
-    // Yanıt tipini belirle
-    const responseType = determineResponseType(aiResponse, message)
+    const readableStream = new ReadableStream({
+      async start(controller) {
+        try {
+          let fullResponse = ''
+          
+          for await (const chunk of completion) {
+            const content = chunk.choices[0]?.delta?.content || ''
+            if (content) {
+              fullResponse += content
+              
+              // Her chunk'ı JSON olarak gönder
+              const data = JSON.stringify({ 
+                content, 
+                type: 'streaming',
+                done: false 
+              })
+              controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+            }
+          }
+          
+          // Son mesajı gönder
+          const responseType = determineResponseType(fullResponse, message)
+          const finalData = JSON.stringify({ 
+            content: '', 
+            type: responseType,
+            done: true,
+            fullResponse 
+          })
+          controller.enqueue(encoder.encode(`data: ${finalData}\n\n`))
+          
+        } catch (error) {
+          console.error('Streaming error:', error)
+          const errorData = JSON.stringify({ 
+            error: error.message,
+            type: 'error',
+            done: true 
+          })
+          controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
+        } finally {
+          controller.close()
+        }
+      }
+    })
 
-    return {
-      content: aiResponse,
-      type: responseType
-    }
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
 
   } catch (error) {
     console.error('OpenAI API Error:', error)
     console.log('API Key exists:', !!process.env.OPENAI_API_KEY)
     console.log('API Key prefix:', process.env.OPENAI_API_KEY?.substring(0, 10))
     
+    // Error handling için streaming response
+    const encoder = new TextEncoder()
+    let errorMessage = ''
+    
     // API key yoksa özel fallback
     if (!process.env.OPENAI_API_KEY) {
-      return {
-        content: `🔑 **API Key Eksik**\n\nOpenAI API key environment'ta bulunamadı.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`,
-        type: 'error'
-      }
+      errorMessage = `🔑 **API Key Eksik**\n\nOpenAI API key environment'ta bulunamadı.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`
+    } else if (error.code === 'invalid_api_key' || error.status === 401) {
+      errorMessage = `🔑 **Geçersiz API Key**\n\nOpenAI API key geçersiz görünüyor.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen OpenAI API key'inizi kontrol edin.*`
+    } else {
+      errorMessage = `🤖 **DOVEC AI - Bağlantı Sorunu**\n\n**Hata:** ${error.message}\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`
     }
     
-    if (error.code === 'invalid_api_key' || error.status === 401) {
-      return {
-        content: `🔑 **Geçersiz API Key**\n\nOpenAI API key geçersiz görünüyor.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen OpenAI API key'inizi kontrol edin.*`,
-        type: 'error'
+    const readableStream = new ReadableStream({
+      start(controller) {
+        const data = JSON.stringify({ 
+          content: errorMessage, 
+          type: 'error',
+          done: true 
+        })
+        controller.enqueue(encoder.encode(`data: ${data}\n\n`))
+        controller.close()
       }
-    }
+    })
     
-    // Diğer hatalar için fallback
-    return {
-      content: `🤖 **DOVEC AI - Bağlantı Sorunu**\n\n**Hata:** ${error.message}\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`,
-      type: 'error'
-    }
+    return new Response(readableStream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    })
   }
 }
 
