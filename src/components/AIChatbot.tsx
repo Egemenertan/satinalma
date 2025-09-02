@@ -464,7 +464,8 @@ export default function AIChatbot() {
                   onChange={(e) => setInputValue(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Soru sorun..."
-                  className="flex-1 rounded-xl border-gray-200 focus:border-black text-sm"
+                  className="flex-1 rounded-xl border-gray-200 focus:border-black text-base
+                  "
                   disabled={isTyping || isThinking}
                 />
                 <Button
