@@ -204,6 +204,44 @@ export type Database = {
           created_at?: string
         }
       }
+      orders: {
+        Row: {
+          id: string
+          purchase_request_id: string
+          supplier_id: string
+          delivery_date: string
+          amount: number
+          currency: string
+          document_urls: string[]
+          status: 'pending' | 'approved' | 'rejected' | 'completed'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          purchase_request_id: string
+          supplier_id: string
+          delivery_date: string
+          amount: number
+          currency: string
+          document_urls?: string[]
+          status?: 'pending' | 'approved' | 'rejected' | 'completed'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          purchase_request_id?: string
+          supplier_id?: string
+          delivery_date?: string
+          amount?: number
+          currency?: string
+          document_urls?: string[]
+          status?: 'pending' | 'approved' | 'rejected' | 'completed'
+          created_at?: string
+          updated_at?: string
+        }
+      }
       offers: {
         Row: {
           id: string

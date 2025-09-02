@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail } from 'lucide-react'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
-import { supabase } from '@/lib/supabase'
+import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+import { Database } from '@/lib/types'
 import { useToast } from '@/components/ui/toast'
 
 // Para birimi seçenekleri
@@ -50,6 +51,8 @@ interface PurchaseRequest {
   site_id?: string
   site_name?: string
   construction_site_id?: string
+  category_name?: string
+  subcategory_name?: string
   purchase_request_items: Array<{
     id: string
     item_name: string
@@ -82,9 +85,24 @@ export default function OffersPage() {
   const router = useRouter()
   const { showToast } = useToast()
   const requestId = params.id as string
+  const supabase = createClientComponentClient<Database>()
 
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
   const [existingOffers, setExistingOffers] = useState<any[]>([])
+  const [hasOrder, setHasOrder] = useState<boolean>(false)
+  const [supplierMaterialInfo, setSupplierMaterialInfo] = useState<{
+    isRegistered: boolean;
+    suppliers: Array<{
+      id: string;
+      name: string;
+      contact_person: string;
+      phone: string;
+      email: string;
+    }>;
+  }>({
+    isRegistered: false,
+    suppliers: []
+  })
   const [newOffers, setNewOffers] = useState<Offer[]>([
     { supplier_name: '', unit_price: 0, total_price: 0, delivery_days: 0, delivery_date: '', notes: '', currency: 'TRY', documents: [], documentPreviewUrls: [] }
   ])
@@ -93,13 +111,165 @@ export default function OffersPage() {
   const [approving, setApproving] = useState<string | null>(null)
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
+  const [isApprovalModalOpen, setIsApprovalModalOpen] = useState(false)
+  const [approvalReason, setApprovalReason] = useState('')
+  const [offerToApprove, setOfferToApprove] = useState<any | null>(null)
+  const [isCreateOrderModalOpen, setIsCreateOrderModalOpen] = useState(false)
+  const [selectedSupplier, setSelectedSupplier] = useState<any | null>(null)
+  const [orderDetails, setOrderDetails] = useState({
+    deliveryDate: '',
+    amount: '',
+    currency: 'TRY',
+    documents: [] as File[],
+    documentPreviewUrls: [] as string[]
+  })
+
+
 
   useEffect(() => {
     if (requestId) {
       fetchRequestData()
       fetchExistingOffers()
+      checkItemInSupplierMaterials()
+      fetchOrderDetails()
     }
   }, [requestId])
+
+  const fetchOrderDetails = async () => {
+    try {
+      setLoading(true)
+      console.log('🔍 Sipariş detayları alınıyor...', requestId)
+
+      const { data: order, error } = await supabase
+        .from('orders')
+        .select(`
+          *,
+          supplier:suppliers(
+            id,
+            name,
+            contact_person,
+            phone,
+            email
+          )
+        `)
+        .eq('purchase_request_id', requestId)
+        .maybeSingle()
+
+      console.log('📦 Sorgu sonucu:', { order, error })
+
+      if (error) {
+        console.error('❌ Sipariş detayları alınamadı:', error)
+        return
+      }
+
+      if (order) {
+        console.log('✅ Sipariş bulundu:', {
+          id: order.id,
+          supplier: order.supplier,
+          delivery_date: order.delivery_date,
+          amount: order.amount,
+          currency: order.currency,
+          document_urls: order.document_urls
+        })
+
+        // Önce mevcut talep durumunu kontrol et
+        const { data: currentRequest, error: requestError } = await supabase
+          .from('purchase_requests')
+          .select('status')
+          .eq('id', requestId)
+          .single()
+
+        if (!requestError && currentRequest && currentRequest.status !== 'sipariş verildi') {
+          // Sadece durum 'sipariş verildi' değilse güncelle
+          console.log('🔄 Talep durumu güncelleniyor...')
+          const { error: updateError } = await supabase
+            .from('purchase_requests')
+            .update({ 
+              status: 'sipariş verildi',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', requestId)
+
+          if (updateError) {
+            console.error('❌ Talep durumu güncellenirken hata:', updateError)
+            showToast('Talep durumu güncellenirken bir hata oluştu.', 'error')
+          } else {
+            console.log('✅ Talep durumu güncellendi')
+            await fetchRequestData()
+          }
+        }
+
+        // State'leri güncelle
+        setHasOrder(true)
+        setSelectedSupplier(order.supplier)
+        setOrderDetails({
+          deliveryDate: order.delivery_date,
+          amount: order.amount.toString(),
+          currency: order.currency,
+          documents: [],
+          documentPreviewUrls: order.document_urls || []
+        })
+      } else {
+        console.log('ℹ️ Bu talep için sipariş bulunamadı')
+      }
+    } catch (error) {
+      console.error('❌ Sipariş detayları alınırken hata:', error)
+    }
+  }
+
+  const checkItemInSupplierMaterials = async () => {
+    try {
+      // Önce talep edilen ürünün adını alalım
+      const { data: requestData } = await supabase
+        .from('purchase_requests')
+        .select('purchase_request_items(item_name)')
+        .eq('id', requestId)
+        .single()
+
+      if (requestData?.purchase_request_items?.[0]?.item_name) {
+        const itemName = requestData.purchase_request_items[0].item_name
+        
+        // Bu ürünün hangi tedarikçilere kayıtlı olduğunu bulalım
+        const { data: supplierMaterials, error: materialsError } = await supabase
+          .from('supplier_materials')
+          .select(`
+            id,
+            supplier_id,
+            material_item:material_items!inner(
+              id,
+              name
+            )
+          `)
+          .eq('material_items.name', itemName)
+
+        if (materialsError) throw materialsError
+
+        if (supplierMaterials && supplierMaterials.length > 0) {
+          // Tedarikçi bilgilerini alalım
+          const supplierIds = supplierMaterials.map(sm => sm.supplier_id)
+          const { data: suppliers, error: suppliersError } = await supabase
+            .from('suppliers')
+            .select('id, name, contact_person, phone, email')
+            .in('id', supplierIds)
+
+          if (suppliersError) throw suppliersError
+
+          setSupplierMaterialInfo({
+            isRegistered: true,
+            suppliers: suppliers || []
+          })
+        } else {
+          setSupplierMaterialInfo({
+            isRegistered: false,
+            suppliers: []
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Error checking supplier materials:', error)
+      showToast('Tedarikçi kontrolü yapılırken bir hata oluştu.', 'error')
+    }
+  }
 
   // Cleanup URL objects when component unmounts
   useEffect(() => {
@@ -113,18 +283,22 @@ export default function OffersPage() {
   // ESC tuşu ile modal kapatma
   useEffect(() => {
     const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isModalOpen) {
-        closeOfferModal()
+      if (e.key === 'Escape') {
+        if (isApprovalModalOpen) {
+          closeApprovalModal()
+        } else if (isModalOpen) {
+          closeOfferModal()
+        }
       }
     }
 
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [isModalOpen])
+  }, [isModalOpen, isApprovalModalOpen])
 
   // Modal açıldığında body scroll'unu engelle
   useEffect(() => {
-    if (isModalOpen) {
+    if (isModalOpen || isApprovalModalOpen) {
       // Modal açıldığında scroll'u engelle
       document.body.style.overflow = 'hidden'
     } else {
@@ -136,22 +310,37 @@ export default function OffersPage() {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [isModalOpen])
+  }, [isModalOpen, isApprovalModalOpen])
 
   const fetchRequestData = async () => {
     try {
       setLoading(true)
       console.log('🔍 Fetching request with ID:', requestId)
       
+      // İlk olarak purchase request'i çek
       const { data, error } = await supabase
         .from('purchase_requests')
         .select(`
           *,
-          purchase_request_items(*),
           profiles!purchase_requests_requested_by_fkey(full_name, email)
         `)
         .eq('id', requestId)
         .single()
+      
+      // Eğer başarılıysa, purchase request items'ları ayrı olarak çek
+      if (!error && data) {
+        const { data: items, error: itemsError } = await supabase
+          .from('purchase_request_items')
+          .select('*')
+          .eq('purchase_request_id', requestId)
+        
+        if (!itemsError && items) {
+          data.purchase_request_items = items
+        } else {
+          console.error('❌ Items fetch error:', itemsError)
+          data.purchase_request_items = []
+        }
+      }
       
       // Eğer başarılı ve site_id varsa, şantiye bilgisini ayrı çek
       if (!error && data) {
@@ -346,6 +535,18 @@ export default function OffersPage() {
     setIsModalOpen(false)
   }
 
+  const openApprovalModal = (offer: any) => {
+    setOfferToApprove(offer)
+    setIsApprovalModalOpen(true)
+    setApprovalReason('')
+  }
+
+  const closeApprovalModal = () => {
+    setOfferToApprove(null)
+    setIsApprovalModalOpen(false)
+    setApprovalReason('')
+  }
+
   const isValidOffer = (offer: Offer) => {
     return offer.supplier_name.trim() !== '' && 
            offer.unit_price > 0 && 
@@ -355,6 +556,14 @@ export default function OffersPage() {
 
   const uploadDocuments = async (offerIndex: number, documents: File[]) => {
     console.log('🚀 uploadDocuments called with:', { offerIndex, documentsCount: documents.length })
+    
+    // Debug: Authentication ve session kontrolü
+    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+    console.log('🔐 Current session:', session)
+    console.log('🔐 Session error:', sessionError)
+    console.log('🔐 User ID:', session?.user?.id)
+    console.log('🔐 User role:', session?.user?.role)
+    
     const uploadedUrls: string[] = []
     
     for (let i = 0; i < documents.length; i++) {
@@ -432,7 +641,9 @@ export default function OffersPage() {
 
       console.log('📊 Final offers with documents:', offersWithDocuments)
 
-      await addOffers(requestId, offersWithDocuments)
+      console.log('🚀 Calling addOffers function...')
+      const result = await addOffers(requestId, offersWithDocuments)
+      console.log('✅ addOffers result:', result)
       
       showToast('Teklifler başarıyla kaydedildi!', 'success')
       
@@ -453,7 +664,7 @@ export default function OffersPage() {
     }
   }
 
-  const handleApproveOffer = async (offerId: string) => {
+  const handleApproveOffer = async (offerId: string, reason?: string) => {
     try {
       setApproving(offerId)
       
@@ -479,12 +690,13 @@ export default function OffersPage() {
 
       if (error) throw error
 
-      // Seçilen teklifi approved olarak işaretle
+      // Seçilen teklifi approved olarak işaretle ve onay nedenini kaydet
       await supabase
         .from('offers')
         .update({ 
           is_selected: true,
-          selected_at: new Date().toISOString()
+          selected_at: new Date().toISOString(),
+          approval_reason: reason || null
         })
         .eq('id', offerId)
 
@@ -521,6 +733,16 @@ export default function OffersPage() {
     }
   }
 
+  const confirmApproval = async () => {
+    if (!offerToApprove || !approvalReason.trim()) {
+      showToast('Lütfen onay nedenini belirtin.', 'error')
+      return
+    }
+
+    await handleApproveOffer(offerToApprove.id, approvalReason.trim())
+    closeApprovalModal()
+  }
+
   const getUrgencyColor = (level: string) => {
     switch (level) {
       case 'critical': return 'bg-gray-900 text-white'
@@ -536,6 +758,7 @@ export default function OffersPage() {
       case 'pending': return 'bg-gray-700 text-white'
       case 'awaiting_offers': return 'bg-gray-800 text-white'
       case 'approved': return 'bg-gray-900 text-white'
+      case 'sipariş verildi': return 'bg-green-600 text-white'
       default: return 'bg-gray-600 text-white'
     }
   }
@@ -609,7 +832,8 @@ export default function OffersPage() {
               </div>
               <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
                 {request.status === 'pending' ? 'Beklemede' :
-                 request.status === 'awaiting_offers' ? 'Onay Bekliyor' : request.status}
+                 request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
+                 request.status === 'sipariş verildi' ? 'Sipariş Verildi' : request.status}
               </div>
             </div>
           </div>
@@ -635,7 +859,7 @@ export default function OffersPage() {
             {/* Sol Panel - Talep Detayları */}
             <div className="space-y-6">
               {/* Şantiye Bilgisi - Sade */}
-              <div className="mb-14">
+              <div className="mb-2">
                 {/* Sadece şantiye adı, büyükçe */}
                 {request.site_name ? (
                   <h2 className="text-6xl font-light text-gray-900">{request.site_name}</h2>
@@ -669,6 +893,16 @@ export default function OffersPage() {
                       <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Talep Eden</p>
                       <p className="text-xl text-white font-medium">{request.profiles?.full_name}</p>
                     </div>
+                    {/* Kategori Bilgileri */}
+                    {request.category_name && (
+                      <div>
+                        <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Malzeme Kategorisi</p>
+                        <p className="text-xl text-white font-medium">{request.category_name}</p>
+                        {request.subcategory_name && (
+                          <p className="text-lg text-white/70 mt-2">→ {request.subcategory_name}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -677,7 +911,7 @@ export default function OffersPage() {
             {/* Sağ Panel - Ürün Bilgileri */}
             <div className="space-y-6 ">
               {/* Ürün Bilgileri */}
-              {item && (
+              {item ? (
                 <div className="rounded-2xl p-6 shadow-sm" style={{ backgroundColor: '#EFE248' }}>
                   <div className="mb-6">
                     <h3 className="text-2xl font-light text-black">Ürün Bilgileri</h3>
@@ -726,6 +960,17 @@ export default function OffersPage() {
                         <p className="text-black/80 text-base leading-relaxed">{item.specifications}</p>
                       </div>
                     )}
+                  </div>
+                </div>
+              ) : (
+                /* Ürün Bilgileri Yok */
+                <div className="rounded-2xl p-6 shadow-sm bg-gray-100">
+                  <div className="text-center py-8">
+                    <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Package className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
+                    <p className="text-sm text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
                   </div>
                 </div>
               )}
@@ -849,7 +1094,7 @@ export default function OffersPage() {
                       
                       {/* Bunu Seç Butonu */}
                       <Button
-                        onClick={() => handleApproveOffer(offer.id)}
+                        onClick={() => openApprovalModal(offer)}
                         disabled={approving === offer.id || request?.status === 'approved'}
                         className={`w-full h-11 font-semibold rounded-xl transition-all duration-200 ${
                           offer.is_selected 
@@ -888,16 +1133,179 @@ export default function OffersPage() {
 
           {/* Alt Bölüm - Teklif Girişi */}
           <div>
-            <div className="bg-gradient-to-br from-white/80 to-gray-50/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200/50">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-gray-900/10 rounded-xl flex items-center justify-center">
-                  <Plus className="h-5 w-5 text-gray-900" />
+            {hasOrder ? (
+              <div className="bg-white rounded-2xl p-8 border border-gray-200/50">
+                <div className="text-left">
+                  <div className="flex items-center gap-3 mb-6">
+                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+                      <Check className="h-6 w-6 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-2xl font-semibold text-gray-900">Sipariş Detayları</h3>
+                      <p className="text-gray-600">Bu talep için sipariş oluşturuldu</p>
+                    </div>
+                  </div>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Yeni Teklif Girişi</h3>
-                  <p className="text-sm text-gray-500">Toplam 3 teklif girildikten sonra onay sürecine geçer</p>
+
+                {/* Sipariş Detayları */}
+                <div className="space-y-6">
+                  {/* Tedarikçi Bilgileri */}
+                  <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h4 className="text-lg font-semibold text-gray-900">{selectedSupplier?.name}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{selectedSupplier?.contact_person}</p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.push(`/dashboard/suppliers/${selectedSupplier?.id}`)}
+                        className="text-gray-700 border-gray-200 hover:bg-gray-50"
+                      >
+                        Tedarikçi Detayları
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Phone className="w-4 h-4" />
+                        <span>{selectedSupplier?.phone}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-gray-600">
+                        <Mail className="w-4 h-4" />
+                        <span>{selectedSupplier?.email}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sipariş Bilgileri */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-gray-600 mb-1">Teslimat Tarihi</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-gray-600 mb-1">Sipariş Tutarı</p>
+                      <p className="text-lg font-semibold text-gray-900">
+                        {getCurrencySymbol(orderDetails.currency)}
+                        {parseFloat(orderDetails.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </p>
+                    </div>
+                    <div className="bg-gray-50 rounded-xl p-4">
+                      <p className="text-sm font-medium text-gray-600 mb-1">Durum</p>
+                      <Badge className="bg-green-100 text-green-800 border-green-200">
+                        Sipariş Verildi
+                      </Badge>
+                    </div>
+                  </div>
+
+                  {/* Dökümanlar */}
+                  {orderDetails.documentPreviewUrls.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-700 mb-3">Sipariş Dökümanları</h4>
+                      <div className="grid grid-cols-4 gap-4">
+                        {orderDetails.documentPreviewUrls.map((url, index) => (
+                          <div key={index} className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                            {orderDetails.documents[index]?.type.includes('pdf') ? (
+                              <div className="w-full h-full flex flex-col items-center justify-center">
+                                <FileText className="w-8 h-8 text-gray-500" />
+                                <span className="text-xs text-gray-600 mt-2">PDF Döküman</span>
+                              </div>
+                            ) : (
+                              <img
+                                src={url}
+                                alt={`Döküman ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
+            ) : supplierMaterialInfo.isRegistered ? (
+              <div className="bg-white rounded-2xl p-8 border border-gray-200/50">
+                <div className="text-left">
+                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">
+                    Kayıtlı Tedarikçiler
+                  </h3>
+                  <p className="text-gray-600 mb-6">
+                    Bu ürün için sistemde kayıtlı tedarikçiler bulunduğundan manuel teklif girişi yapılamaz. 
+                    Lütfen aşağıdaki tedarikçiler ile iletişime geçiniz.
+                  </p>
+                </div>
+
+                <div className="grid gap-4 mb-6">
+                  {supplierMaterialInfo.suppliers.map((supplier) => (
+                    <div 
+                      key={supplier.id} 
+                      className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 relative group hover:border-gray-300 transition-all duration-200"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <h4 className="font-semibold text-gray-900">{supplier.name}</h4>
+                          <p className="text-sm text-gray-600 mt-1">{supplier.contact_person}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                            className="text-gray-700 border-gray-200 hover:bg-gray-50"
+                          >
+                            Detayları Gör
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-3 space-y-1">
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Phone className="w-4 h-4" />
+                          <span>{supplier.phone}</span>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-gray-600">
+                          <Mail className="w-4 h-4" />
+                          <span>{supplier.email}</span>
+                        </div>
+                      </div>
+                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                        <Button
+                          size="sm"
+                          className="bg-gray-900 hover:bg-black text-white shadow-lg"
+                          onClick={() => {
+                            setSelectedSupplier(supplier)
+                            setIsCreateOrderModalOpen(true)
+                          }}
+                        >
+                          Sipariş Oluştur
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="flex justify-center">
+                  <Button
+                    onClick={() => router.push('/dashboard/suppliers')}
+                    className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl px-6 py-2.5"
+                  >
+                    Tüm Tedarikçileri Görüntüle
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gradient-to-br from-white/80 to-gray-50/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200/50">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="w-10 h-10 bg-gray-900/10 rounded-xl flex items-center justify-center">
+                    <Plus className="h-5 w-5 text-gray-900" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Yeni Teklif Girişi</h3>
+                    <p className="text-sm text-gray-500">Toplam 3 teklif girildikten sonra onay sürecine geçer</p>
+                  </div>
+                </div>
               
               <div className="space-y-6">
                 
@@ -1180,11 +1588,388 @@ export default function OffersPage() {
                     )}
                   </Button>
                 </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
       </div>
+
+      {/* Sipariş Oluşturma Modal */}
+      {isCreateOrderModalOpen && selectedSupplier && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full">
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Sipariş Oluştur</h2>
+                  <p className="text-sm text-gray-500 mt-1">{selectedSupplier.name}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setIsCreateOrderModalOpen(false)
+                    setSelectedSupplier(null)
+                    setOrderDetails({
+                      deliveryDate: '',
+                      amount: '',
+                      currency: 'TRY',
+                      documents: [],
+                      documentPreviewUrls: []
+                    })
+                  }}
+                  className="h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Teslimat Tarihi */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Teslimat Tarihi
+                </label>
+                <Input
+                  type="date"
+                  value={orderDetails.deliveryDate}
+                  onChange={(e) => setOrderDetails({
+                    ...orderDetails,
+                    deliveryDate: e.target.value
+                  })}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200"
+                />
+              </div>
+
+              {/* Tutar ve Para Birimi */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Tutar
+                  </label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={orderDetails.amount}
+                    onChange={(e) => setOrderDetails({
+                      ...orderDetails,
+                      amount: e.target.value
+                    })}
+                    placeholder="0.00"
+                    className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Para Birimi
+                  </label>
+                  <Select 
+                    value={orderDetails.currency}
+                    onValueChange={(value) => setOrderDetails({
+                      ...orderDetails,
+                      currency: value
+                    })}
+                  >
+                    <SelectTrigger className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200">
+                      <SelectValue placeholder="TRY" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {CURRENCIES.map((currency) => (
+                        <SelectItem key={currency.value} value={currency.value}>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{currency.symbol}</span>
+                            <span>{currency.value}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Döküman Upload */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Dökümanlar
+                </label>
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const input = document.createElement('input')
+                      input.type = 'file'
+                      input.accept = 'image/*'
+                      input.multiple = true
+                      input.onchange = (e) => {
+                        const target = e.target as HTMLInputElement
+                        if (target.files) {
+                          const files = Array.from(target.files)
+                          const urls = files.map(file => URL.createObjectURL(file))
+                          setOrderDetails({
+                            ...orderDetails,
+                            documents: [...orderDetails.documents, ...files],
+                            documentPreviewUrls: [...orderDetails.documentPreviewUrls, ...urls]
+                          })
+                        }
+                      }
+                      input.click()
+                    }}
+                    className="h-12 border-2 border-dashed"
+                  >
+                    <ImageIcon className="w-5 h-5 mr-2" />
+                    Resim Yükle
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      const input = document.createElement('input')
+                      input.type = 'file'
+                      input.accept = '.pdf'
+                      input.multiple = true
+                      input.onchange = (e) => {
+                        const target = e.target as HTMLInputElement
+                        if (target.files) {
+                          const files = Array.from(target.files)
+                          const urls = files.map(file => URL.createObjectURL(file))
+                          setOrderDetails({
+                            ...orderDetails,
+                            documents: [...orderDetails.documents, ...files],
+                            documentPreviewUrls: [...orderDetails.documentPreviewUrls, ...urls]
+                          })
+                        }
+                      }
+                      input.click()
+                    }}
+                    className="h-12 border-2 border-dashed"
+                  >
+                    <FileText className="w-5 h-5 mr-2" />
+                    PDF Yükle
+                  </Button>
+                </div>
+
+                {/* Döküman Önizlemeleri */}
+                {orderDetails.documentPreviewUrls.length > 0 && (
+                  <div className="grid grid-cols-3 gap-3">
+                    {orderDetails.documentPreviewUrls.map((url, index) => (
+                      <div key={index} className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                        {orderDetails.documents[index]?.type.includes('pdf') ? (
+                          <div className="w-full h-full flex flex-col items-center justify-center">
+                            <FileText className="w-8 h-8 text-gray-500" />
+                            <span className="text-xs text-gray-600 mt-2">PDF Döküman</span>
+                          </div>
+                        ) : (
+                          <img
+                            src={url}
+                            alt={`Döküman ${index + 1}`}
+                            className="w-full h-full object-cover"
+                          />
+                        )}
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            URL.revokeObjectURL(url)
+                            setOrderDetails({
+                              ...orderDetails,
+                              documents: orderDetails.documents.filter((_, i) => i !== index),
+                              documentPreviewUrls: orderDetails.documentPreviewUrls.filter((_, i) => i !== index)
+                            })
+                          }}
+                          className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsCreateOrderModalOpen(false)
+                  setSelectedSupplier(null)
+                  setOrderDetails({
+                    deliveryDate: '',
+                    amount: '',
+                    currency: 'TRY',
+                    documents: [],
+                    documentPreviewUrls: []
+                  })
+                }}
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={async () => {
+                  try {
+                    console.log('🚀 Sipariş oluşturma başlatılıyor...')
+                    console.log('📋 Sipariş detayları:', {
+                      requestId,
+                      supplier: selectedSupplier,
+                      orderDetails
+                    })
+
+                    if (!orderDetails.deliveryDate || !orderDetails.amount) {
+                      showToast('Lütfen tüm zorunlu alanları doldurun.', 'error')
+                      return
+                    }
+
+                    // Dökümanları yükle
+                    console.log('📤 Döküman yükleme başlatılıyor...')
+                    const uploadedUrls = []
+                    for (const file of orderDetails.documents) {
+                      const fileExt = file.name.split('.').pop()
+                      const uniqueId = Math.random().toString(36).substring(2, 15)
+                      const fileName = `orders/${requestId}_${Date.now()}_${uniqueId}.${fileExt}`
+
+                      console.log(`📄 Döküman yükleniyor: ${fileName}`)
+                      const { data: uploadData, error: uploadError } = await supabase.storage
+                        .from('satinalma')
+                        .upload(fileName, file)
+
+                      if (uploadError) {
+                        console.error('❌ Döküman yükleme hatası:', {
+                          fileName,
+                          error: uploadError
+                        })
+                        throw new Error(`Döküman yükleme hatası: ${uploadError.message}`)
+                      }
+
+                      console.log('✅ Döküman yüklendi:', uploadData)
+
+                      const { data: urlData } = supabase.storage
+                        .from('satinalma')
+                        .getPublicUrl(fileName)
+
+                      console.log('🔗 Döküman URL:', urlData.publicUrl)
+                      uploadedUrls.push(urlData.publicUrl)
+                    }
+
+                    console.log('📦 Sipariş kaydı oluşturuluyor...')
+                    // Önce mevcut kullanıcı bilgisini al
+                    console.log('🔐 Oturum kontrolü başlatılıyor...')
+                    const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+                    
+                    if (sessionError) {
+                      console.error('❌ Oturum hatası:', sessionError)
+                      throw new Error(`Oturum bilgisi alınamadı: ${sessionError.message}`)
+                    }
+
+                    console.log('📋 Oturum bilgisi:', session)
+                    
+                    if (!session) {
+                      console.error('❌ Oturum bulunamadı')
+                      throw new Error('Aktif bir oturum bulunamadı. Lütfen tekrar giriş yapın.')
+                    }
+                    
+                    if (!session.user) {
+                      console.error('❌ Kullanıcı bilgisi bulunamadı')
+                      throw new Error('Kullanıcı bilgisi bulunamadı. Lütfen tekrar giriş yapın.')
+                    }
+                    
+                    if (!session.user.id) {
+                      console.error('❌ Kullanıcı ID bulunamadı')
+                      throw new Error('Kullanıcı ID bilgisi bulunamadı. Lütfen tekrar giriş yapın.')
+                    }
+                    
+                    console.log('✅ Oturum kontrolü başarılı:', {
+                      userId: session.user.id,
+                      email: session.user.email
+                    })
+
+                    const orderData = {
+                      purchase_request_id: requestId,
+                      supplier_id: selectedSupplier.id,
+                      delivery_date: orderDetails.deliveryDate,
+                      amount: parseFloat(orderDetails.amount),
+                      currency: orderDetails.currency,
+                      document_urls: uploadedUrls,
+                      user_id: session.user.id
+                    }
+                    console.log('📋 Sipariş verisi:', orderData)
+
+                    // Siparişi oluştur
+                    const { data: order, error: orderError } = await supabase
+                      .from('orders')
+                      .insert(orderData)
+                      .select()
+                      .single()
+
+                    if (orderError) {
+                      console.error('❌ Sipariş oluşturma hatası:', {
+                        error: orderError,
+                        data: orderData
+                      })
+                      throw new Error(`Sipariş oluşturma hatası: ${orderError.message}`)
+                    }
+
+                    console.log('✅ Sipariş oluşturuldu:', order)
+
+                    // Talep durumunu güncelle
+                    console.log('🔄 Talep durumu güncelleniyor...')
+                    const { error: updateError } = await supabase
+                      .from('purchase_requests')
+                      .update({ 
+                        status: 'sipariş verildi',
+                        updated_at: new Date().toISOString()
+                      })
+                      .eq('id', requestId)
+
+                    if (updateError) {
+                      console.error('❌ Talep güncelleme hatası:', updateError)
+                      throw new Error(`Talep güncelleme hatası: ${updateError.message}`)
+                    }
+
+                    console.log('✅ Talep durumu güncellendi')
+                    showToast('Sipariş başarıyla oluşturuldu!', 'success')
+                    
+                    // Modalı kapat ve state'i temizle
+                    setIsCreateOrderModalOpen(false)
+                    setSelectedSupplier(null)
+                    setOrderDetails({
+                      deliveryDate: '',
+                      amount: '',
+                      currency: 'TRY',
+                      documents: [],
+                      documentPreviewUrls: []
+                    })
+
+                    // Sayfayı yenile
+                    fetchRequestData()
+
+                  } catch (error: any) {
+                    console.error('❌ Sipariş oluşturma hatası:', {
+                      error,
+                      message: error.message,
+                      details: error.details,
+                      hint: error.hint,
+                      code: error.code
+                    })
+                    showToast(
+                      error.message || 'Sipariş oluşturulurken bir hata oluştu.',
+                      'error'
+                    )
+                  }
+                }}
+                disabled={!orderDetails.deliveryDate || !orderDetails.amount}
+                className="bg-gray-900 hover:bg-black text-white"
+              >
+                Siparişi Oluştur
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Teklif İnceleme Modal */}
       {isModalOpen && selectedOffer && (
@@ -1310,8 +2095,8 @@ export default function OffersPage() {
                   {!selectedOffer.is_selected && request?.status !== 'approved' && (
                     <Button
                       onClick={() => {
-                        handleApproveOffer(selectedOffer.id)
                         closeOfferModal()
+                        openApprovalModal(selectedOffer)
                       }}
                       className="px-6 bg-gradient-to-r from-gray-800 to-gray-900 hover:from-gray-900 hover:to-black"
                     >
@@ -1320,6 +2105,126 @@ export default function OffersPage() {
                   )}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Teklif Onaylama Modal */}
+      {isApprovalModalOpen && offerToApprove && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900">Teklifi Onayla</h2>
+                  <p className="text-gray-500 text-sm mt-1">{offerToApprove.supplier_name}</p>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={closeApprovalModal}
+                  className="w-8 h-8 p-0 rounded-full hover:bg-gray-100"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 space-y-6">
+              {/* Teklif Özeti */}
+              <div className="bg-gray-50 rounded-xl p-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Birim Fiyat:</span>
+                    <p className="font-semibold text-gray-900">
+                      {getCurrencySymbol(offerToApprove.currency || 'TRY')}
+                      {Number(offerToApprove.unit_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Toplam Tutar:</span>
+                    <p className="font-bold text-green-600">
+                      {getCurrencySymbol(offerToApprove.currency || 'TRY')}
+                      {Number(offerToApprove.total_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Teslimat:</span>
+                    <p className="font-semibold text-gray-900">{offerToApprove.delivery_days} gün</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Para Birimi:</span>
+                    <p className="font-semibold text-gray-900">{offerToApprove.currency || 'TRY'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Onay Nedeni */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-3">
+                  Onay Nedeni *
+                </label>
+                <textarea
+                  value={approvalReason}
+                  onChange={(e) => setApprovalReason(e.target.value)}
+                  placeholder="Bu teklifi neden seçiyorsunuz? (örn: En uygun fiyat, kaliteli malzeme, hızlı teslimat, güvenilir tedarikçi...)"
+                  className="w-full h-24 px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-gray-500/20 focus:border-gray-400 transition-all duration-200 resize-none"
+                  maxLength={500}
+                />
+                <div className="flex justify-between items-center mt-2">
+                  <p className="text-xs text-gray-500">
+                    Bu bilgi onay geçmişinde kayıt altına alınacaktır.
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    {approvalReason.length}/500
+                  </p>
+                </div>
+              </div>
+
+              {/* Uyarı */}
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
+                <div className="flex gap-3">
+                  <AlertCircle className="h-5 w-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-medium text-yellow-800">Dikkat</h4>
+                    <p className="text-sm text-yellow-700 mt-1">
+                      Bu teklifi onayladığınızda satın alma talebi sonuçlandırılacak ve 
+                      diğer teklifler reddedilecektir. Bu işlem geri alınamaz.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 flex gap-3">
+              <Button
+                variant="outline"
+                onClick={closeApprovalModal}
+                disabled={approving !== null}
+                className="flex-1 h-11 rounded-xl"
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={confirmApproval}
+                disabled={!approvalReason.trim() || approving !== null}
+                className="flex-1 h-11 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white rounded-xl font-medium disabled:opacity-50"
+              >
+                {approving === offerToApprove.id ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Onaylanıyor...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4 mr-2" />
+                    Teklifi Onayla
+                  </>
+                )}
+              </Button>
             </div>
           </div>
         </div>

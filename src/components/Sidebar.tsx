@@ -48,6 +48,11 @@ const navigation: NavItem[] = [
     icon: FileText
   },
   {
+    title: 'Tedarikçiler',
+    href: '/dashboard/suppliers',
+    icon: Users
+  },
+  {
     title: 'Şantiyeler',
     href: '/dashboard/sites',
     icon: Building2
@@ -241,7 +246,7 @@ export default function Sidebar({
             </div>
           )}
           
-          {/* Desktop: Collapse Toggle, Mobile: Close Button */}
+          {/* Desktop: Collapse Toggle with Earth Image, Mobile: Close Button */}
           <Button
             variant="ghost"
             size="sm"
@@ -250,6 +255,12 @@ export default function Sidebar({
           >
             {isMobileOpen ? (
               <X className="h-4 w-4" />
+            ) : isCollapsed ? (
+              <img 
+                src={`${supabase.storage.from('satinalma').getPublicUrl('earth.png').data.publicUrl}`}
+                alt="Earth"
+                className="h-7 w-7 object-contain"
+              />
             ) : (
               <Menu className="h-4 w-4" />
             )}

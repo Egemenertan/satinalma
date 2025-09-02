@@ -1,41 +1,102 @@
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  // Get session from cookie
-  const sessionCookie = request.cookies.get('session')
-  
-  // Protected routes
-  const protectedRoutes = ['/dashboard', '/admin', '/api']
+  let response = NextResponse.next({
+    request: {
+      headers: request.headers,
+    },
+  })
+
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        get(name: string) {
+          return request.cookies.get(name)?.value
+        },
+        set(name: string, value: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value,
+            ...options,
+          })
+        },
+        remove(name: string, options: CookieOptions) {
+          request.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
+          })
+          response.cookies.set({
+            name,
+            value: '',
+            ...options,
+          })
+        },
+      },
+    }
+  )
+
+  // Korunan route'ları kontrol et
+  const protectedRoutes = ['/dashboard', '/admin']
   const isProtectedRoute = protectedRoutes.some(route => 
     request.nextUrl.pathname.startsWith(route)
   )
 
-  // Check if user is authenticated
-  let user = null
-  if (sessionCookie) {
-    try {
-      user = JSON.parse(sessionCookie.value)
-    } catch {
-      // Invalid session cookie
+  if (isProtectedRoute) {
+    console.log('🔒 Middleware: Checking protected route:', request.nextUrl.pathname)
+    
+    // Session'ı refresh et - cookies'leri güncelle
+    const { data: session } = await supabase.auth.getSession()
+    console.log('📋 Middleware: Session exists:', !!session.session)
+    
+    const { data: { user }, error } = await supabase.auth.getUser()
+    console.log('🔍 Middleware: User check:', { user: user?.id, error })
+    
+    if (!user) {
+      console.log('❌ Middleware: No user, redirecting to login')
+      // Login'e yönlendir
+      const redirectUrl = new URL('/auth/login', request.url)
+      redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
     }
-  }
 
-  if (isProtectedRoute && !user) {
-    // Redirect to login if accessing protected route without auth
-    const redirectUrl = new URL('/auth/login', request.url)
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
-  }
+    // Kullanıcı profili kontrol et
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
 
-  // Role-based access control
-  if (user && isProtectedRoute) {
-    // Admin routes require admin role
-    if (request.nextUrl.pathname.startsWith('/admin') && user.role !== 'admin') {
+    console.log('👤 Middleware: Profile check:', { role: profile?.role })
+
+    // Admin route'ları için admin rolü gerekli
+    if (request.nextUrl.pathname.startsWith('/admin') && profile?.role !== 'admin') {
+      console.log('❌ Middleware: Admin role required, redirecting to dashboard')
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
+    
+    console.log('✅ Middleware: All checks passed, allowing access')
   }
 
-  return NextResponse.next()
+  return response
 }
 
 export const config = {
@@ -50,4 +111,3 @@ export const config = {
     '/((?!_next/static|_next/image|favicon.ico|public/).*)',
   ],
 }
-

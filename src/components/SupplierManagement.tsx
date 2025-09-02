@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { supabase } from '@/lib/supabase'
 import { useToast } from '@/components/ui/toast'
+
 import { 
   Plus,
   Building,
@@ -67,10 +69,9 @@ interface SupplierPerformance {
 }
 
 export default function SupplierManagement() {
+  const router = useRouter()
   const { showToast } = useToast()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null)
-  const [showAddDialog, setShowAddDialog] = useState(false)
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
@@ -111,8 +112,13 @@ export default function SupplierManagement() {
 
       if (error) throw error
       setSuppliers(data || [])
-    } catch (error) {
+    } catch (error: any) {
       console.error('Tedarikçiler yüklenirken hata:', error)
+      console.error('Error details:', {
+        message: error?.message,
+        code: error?.code,
+        details: error?.details
+      })
     } finally {
       setLoading(false)
     }
@@ -152,40 +158,45 @@ export default function SupplierManagement() {
       tax_number: '',
       payment_terms: '30',
       rating: '0',
-      is_approved: false,
-      contract_start_date: '',
-      contract_end_date: '',
-      notes: ''
+      is_approved: true
     })
 
     const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault()
       
+      // Validation
+      if (!formData.name.trim()) {
+        showToast('Tedarikçi adı zorunludur', 'error')
+        return
+      }
+      
       try {
+        console.log('📝 Submitting supplier data:', formData)
         const supplierData = {
           name: formData.name,
-          code: formData.code,
+          code: formData.code || null,
           contact_person: formData.contact_person || null,
           email: formData.email || null,
           phone: formData.phone || null,
           address: formData.address || null,
           tax_number: formData.tax_number || null,
-          payment_terms: parseInt(formData.payment_terms),
-          rating: parseFloat(formData.rating),
-          is_approved: formData.is_approved,
-          contract_start_date: formData.contract_start_date || null,
-          contract_end_date: formData.contract_end_date || null,
-          notes: formData.notes || null
+          payment_terms: parseInt(formData.payment_terms) || 30,
+          rating: parseFloat(formData.rating) || 0.0,
+          is_approved: formData.is_approved || true
+          // contract dates ve notes tabloda yok, kaldırdık
         }
 
-        const { error } = await supabase
+        console.log('💾 Inserting supplier data to Supabase:', supplierData)
+        const { data, error } = await supabase
           .from('suppliers')
           .insert([supplierData])
+          .select()
 
         if (error) throw error
 
+        console.log('✅ Supplier inserted successfully:', data)
         showToast('Tedarikçi başarıyla eklendi!', 'success')
-        setShowAddDialog(false)
+        router.push('/dashboard/suppliers')
         setFormData({
           name: '',
           code: '',
@@ -196,197 +207,30 @@ export default function SupplierManagement() {
           tax_number: '',
           payment_terms: '30',
           rating: '0',
-          is_approved: false,
-          contract_start_date: '',
-          contract_end_date: '',
-          notes: ''
+          is_approved: true
         })
         fetchSuppliers()
-      } catch (error) {
+      } catch (error: any) {
         console.error('Tedarikçi ekleme hatası:', error)
-        showToast('Tedarikçi eklenirken bir hata oluştu.', 'error')
+        console.error('Error details:', {
+          message: error?.message,
+          code: error?.code,
+          details: error?.details,
+          hint: error?.hint
+        })
+        const errorMessage = error?.message || 'Tedarikçi eklenirken bir hata oluştu.'
+        showToast(errorMessage, 'error')
       }
     }
 
     return (
-      <Dialog open={showAddDialog} onOpenChange={setShowAddDialog}>
-        <DialogTrigger asChild>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white">
-            <Plus className="w-4 h-4 mr-2" />
-            Yeni Tedarikçi
-          </Button>
-        </DialogTrigger>
-        
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Yeni Tedarikçi Ekle</DialogTitle>
-          </DialogHeader>
-
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="name">Tedarikçi Adı *</Label>
-                <Input
-                  value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="Şirket adı..."
-                  className="mt-1"
-                  required
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="code">Tedarikçi Kodu *</Label>
-                <Input
-                  value={formData.code}
-                  onChange={(e) => setFormData(prev => ({ ...prev, code: e.target.value }))}
-                  placeholder="TED001"
-                  className="mt-1"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="contact_person">İletişim Kişisi</Label>
-                <Input
-                  value={formData.contact_person}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contact_person: e.target.value }))}
-                  placeholder="Ad Soyad"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="email">E-posta</Label>
-                <Input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData(prev => ({ ...prev, email: e.target.value }))}
-                  placeholder="info@tedarikci.com"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="phone">Telefon</Label>
-                <Input
-                  value={formData.phone}
-                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                  placeholder="+90 212 555 0000"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="tax_number">Vergi Numarası</Label>
-                <Input
-                  value={formData.tax_number}
-                  onChange={(e) => setFormData(prev => ({ ...prev, tax_number: e.target.value }))}
-                  placeholder="1234567890"
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="address">Adres</Label>
-              <Textarea
-                value={formData.address}
-                onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
-                placeholder="Tam adres bilgisi..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid grid-cols-3 gap-4">
-              <div>
-                <Label htmlFor="payment_terms">Ödeme Vadesi (Gün)</Label>
-                <Input
-                  type="number"
-                  value={formData.payment_terms}
-                  onChange={(e) => setFormData(prev => ({ ...prev, payment_terms: e.target.value }))}
-                  placeholder="30"
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="rating">Başlangıç Puanı (0-5)</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  max="5"
-                  step="0.1"
-                  value={formData.rating}
-                  onChange={(e) => setFormData(prev => ({ ...prev, rating: e.target.value }))}
-                  placeholder="0"
-                  className="mt-1"
-                />
-              </div>
-
-              <div className="flex items-center space-x-2 mt-6">
-                <input
-                  type="checkbox"
-                  id="is_approved"
-                  checked={formData.is_approved}
-                  onChange={(e) => setFormData(prev => ({ ...prev, is_approved: e.target.checked }))}
-                  className="rounded border-gray-300"
-                />
-                <Label htmlFor="is_approved">Onaylı tedarikçi</Label>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="contract_start_date">Sözleşme Başlangıç</Label>
-                <Input
-                  type="date"
-                  value={formData.contract_start_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contract_start_date: e.target.value }))}
-                  className="mt-1"
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="contract_end_date">Sözleşme Bitiş</Label>
-                <Input
-                  type="date"
-                  value={formData.contract_end_date}
-                  onChange={(e) => setFormData(prev => ({ ...prev, contract_end_date: e.target.value }))}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-
-            <div>
-              <Label htmlFor="notes">Notlar</Label>
-              <Textarea
-                value={formData.notes}
-                onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))}
-                placeholder="Tedarikçi hakkında özel notlar..."
-                className="mt-1"
-                rows={3}
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-4 border-t">
-              <Button 
-                type="button" 
-                variant="outline" 
-                onClick={() => setShowAddDialog(false)}
-              >
-                İptal
-              </Button>
-              <Button type="submit">Tedarikçi Ekle</Button>
-            </div>
-          </form>
-        </DialogContent>
-      </Dialog>
+      <Button 
+        className="bg-black hover:bg-gray-800 text-white px-6 py-6 rounded-xl text-lg font-medium" 
+        onClick={() => router.push('/dashboard/suppliers/create')}
+      >
+        <Plus className="w-5 h-5 mr-3" />
+        Yeni Tedarikçi
+      </Button>
     )
   }
 
@@ -740,19 +584,8 @@ export default function SupplierManagement() {
       </div>
 
       {/* Tedarikçiler Listesi */}
-      <Card className="rounded-2xl border-0 shadow-lg bg-white">
-        <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 rounded-t-2xl border-b border-gray-100">
-          <CardTitle className="flex items-center gap-3 text-gray-800">
-            <div className="p-2 bg-green-100 rounded-2xl">
-              <Building className="w-6 h-6 text-green-600" />
-            </div>
-            <div>
-              <div className="text-xl font-semibold">Tedarikçiler</div>
-              <div className="text-sm text-gray-600 font-normal">Tüm tedarikçileri görüntüleyin ve yönetin</div>
-            </div>
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-6">
+      <div className="bg-white">
+        <div className="px-1 py-4">
           {suppliers.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <div className="p-4 bg-gray-100 rounded-2xl w-16 h-16 mx-auto mb-4 flex items-center justify-center">
@@ -772,16 +605,25 @@ export default function SupplierManagement() {
                       <TableHead className="py-4 text-gray-700 font-semibold">Puan</TableHead>
                       <TableHead className="py-4 text-gray-700 font-semibold">Ödeme Vadesi</TableHead>
                       <TableHead className="py-4 text-gray-700 font-semibold">Durum</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">İşlemler</TableHead>
+                      <TableHead className="py-4 text-gray-700 font-semibold">
+                        İşlemler
+                        <div className="text-xs text-gray-500 font-normal mt-1">
+                          💡 Malzeme seçimi için satıra tıklayın
+                        </div>
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {suppliers.map((supplier, index) => (
                       <TableRow 
                         key={supplier.id}
-                        className={`border-0 hover:bg-green-50/50 transition-colors duration-200 ${
+                        className={`border-0 hover:bg-blue-50/50 transition-colors duration-200 cursor-pointer ${
                           index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
                         }`}
+                        onClick={() => {
+                          console.log('Tedarikçiye tıklandı:', supplier)
+                          router.push(`/dashboard/suppliers/${supplier.id}`)
+                        }}
                       >
                         <TableCell className="py-4">
                           <div className="flex items-center gap-3">
@@ -859,8 +701,8 @@ export default function SupplierManagement() {
               </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }

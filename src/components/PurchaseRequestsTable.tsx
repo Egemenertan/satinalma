@@ -12,8 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { 
   Search, 
   Filter, 
-  Eye, 
-  Edit2, 
+
   FileText, 
   Building2, 
   Calendar,
@@ -23,7 +22,7 @@ import {
   Package,
   TrendingUp,
   User,
-  ChevronRight,
+
   ArrowUpDown
 } from 'lucide-react'
 
@@ -36,7 +35,7 @@ interface PurchaseRequest {
   total_amount: number
   currency?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers'
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi'
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -90,15 +89,43 @@ export default function PurchaseRequestsTable() {
   const fetchRequests = async () => {
     setLoading(true)
     try {
-      // Actions'dan veri çek
-      const { getPurchaseRequests } = await import('@/lib/actions')
-      const result = await getPurchaseRequests()
+      console.log('🔍 Fetching purchase requests...')
       
-      if (!result.success) {
-        throw new Error(result.error)
+      // Doğrudan Supabase'den veri çek
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      
+      const { data: requests, error } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          title,
+          status,
+          urgency_level,
+          created_at,
+          requested_by,
+          total_amount,
+          department,
+          orders!left (
+            id
+          )
+        `)
+        .order('created_at', { ascending: false })
+      
+      console.log('📊 Requests query result:', { requests: requests?.length, error })
+      
+      if (error) {
+        throw new Error(error.message)
       }
 
-      let data = result.data || []
+      let data = (requests || []).map(request => ({
+        ...request,
+        request_number: `REQ-${request.id.slice(0, 8)}`,
+        updated_at: request.created_at,
+        // Eğer orders varsa ve boş değilse status'u güncelle
+        status: request.orders && request.orders.length > 0 ? 'sipariş verildi' : request.status
+      })) as PurchaseRequest[]
+      console.log('✅ Requests fetched successfully:', data.length)
 
       // Filtreleri uygula
       if (filters.status !== 'all') {
@@ -146,7 +173,8 @@ export default function PurchaseRequestsTable() {
       awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-black text-white border-black' },
       approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-green-200' },
       rejected: { label: 'Reddedildi', className: 'bg-black text-white border-black' },
-      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-gray-200' }
+      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-gray-200' },
+      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-600 text-white border-green-700' }
     }
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
@@ -215,8 +243,8 @@ export default function PurchaseRequestsTable() {
   }
 
   const handleRequestClick = (request: PurchaseRequest) => {
-    // Pending ve awaiting_offers status'undaki taleplere teklif girilebilir
-    if (request.status === 'pending' || request.status === 'awaiting_offers') {
+    // Pending, awaiting_offers ve sipariş verildi status'undaki taleplere gidilebilir
+    if (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') {
       router.push(`/dashboard/requests/${request.id}/offers`)
     }
   }
@@ -254,6 +282,7 @@ export default function PurchaseRequestsTable() {
                 <SelectItem value="pending">Beklemede</SelectItem>
                 <SelectItem value="awaiting_offers">Onay Bekliyor</SelectItem>
                 <SelectItem value="approved">Onaylandı</SelectItem>
+                <SelectItem value="sipariş verildi">Sipariş Verildi</SelectItem>
                 <SelectItem value="rejected">Reddedildi</SelectItem>
                 <SelectItem value="cancelled">İptal Edildi</SelectItem>
               </SelectContent>
@@ -297,16 +326,7 @@ export default function PurchaseRequestsTable() {
           <Table>
             <TableHeader>
               <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 border-0 hover:bg-gray-100">
-                <TableHead className="w-[120px] py-4">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => handleSort('request_number')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
-                  >
-                    Talep No
-                    <ArrowUpDown className="w-3 h-3" />
-                  </Button>
-                </TableHead>
+                <TableHead className="py-4 text-gray-700">Durum</TableHead>
                 <TableHead className="py-4">
                   <Button 
                     variant="ghost" 
@@ -321,7 +341,6 @@ export default function PurchaseRequestsTable() {
                 <TableHead className="py-4 text-gray-700">Öğeler</TableHead>
                 <TableHead className="py-4 text-gray-700">Toplam Tutar</TableHead>
                 <TableHead className="py-4 text-gray-700">Aciliyet</TableHead>
-                <TableHead className="py-4 text-gray-700">Durum</TableHead>
                 <TableHead className="py-4">
                   <Button 
                     variant="ghost" 
@@ -332,13 +351,23 @@ export default function PurchaseRequestsTable() {
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
-                <TableHead className="py-4 text-gray-700">İşlemler</TableHead>
+
+                <TableHead className="w-[120px] py-4">
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => handleSort('request_number')}
+                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
+                  >
+                    Talep No
+                    <ArrowUpDown className="w-3 h-3" />
+                  </Button>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {loading ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={9} className="text-center py-12">
+                  <TableCell colSpan={8} className="text-center py-12">
                     <div className="flex items-center justify-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="text-gray-600">Yükleniyor...</span>
@@ -359,19 +388,14 @@ export default function PurchaseRequestsTable() {
                   <TableRow 
                     key={request.id}
                     className={`border-0 hover:bg-yellow-50/50 transition-colors duration-200 ${
-                      (request.status === 'pending' || request.status === 'awaiting_offers') ? 'cursor-pointer' : ''
+                      (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') ? 'cursor-pointer' : ''
                     } ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
                     onClick={() => handleRequestClick(request)}
                   >
                     <TableCell className="py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 bg-gray-100 rounded-2xl">
-                          <FileText className="w-4 h-4 text-black" />
-                        </div>
-                        <span className="font-semibold text-gray-800">{request.request_number}</span>
-                      </div>
+                      {getStatusBadge(request.status)}
                     </TableCell>
-                    
+
                     <TableCell className="py-4">
                       <div className="max-w-xs">
                         <div className="font-semibold text-gray-800 mb-1">{request.title}</div>
@@ -432,10 +456,6 @@ export default function PurchaseRequestsTable() {
                     </TableCell>
                     
                     <TableCell className="py-4">
-                      {getStatusBadge(request.status)}
-                    </TableCell>
-                    
-                    <TableCell className="py-4">
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-gray-100 rounded-2xl">
                           <Calendar className="w-3 h-3 text-black" />
@@ -452,17 +472,14 @@ export default function PurchaseRequestsTable() {
                       </div>
                     </TableCell>
                     
+
+
                     <TableCell className="py-4">
-                      <div className="flex items-center gap-1">
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-gray-100 hover:text-black">
-                          <Eye className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-green-100 hover:text-green-600">
-                          <Edit2 className="w-4 h-4" />
-                        </Button>
-                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-yellow-100 hover:text-yellow-800">
-                          <ChevronRight className="w-4 h-4" />
-                        </Button>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-gray-100 rounded-2xl">
+                          <FileText className="w-4 h-4 text-black" />
+                        </div>
+                        <span className="font-semibold text-gray-800">{request.request_number}</span>
                       </div>
                     </TableCell>
                   </TableRow>

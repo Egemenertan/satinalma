@@ -4,18 +4,14 @@ import { createClient } from './supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 
+
+
 // Güvenlik: Kullanıcı kimlik doğrulaması
 async function getAuthenticatedUser() {
-  console.log('getAuthenticatedUser called')
-  
   const supabase = createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   
-  console.log('Auth user:', user)
-  console.log('Auth error:', error)
-  
   if (error || !user) {
-    console.log('No authenticated user found')
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
 
@@ -26,11 +22,7 @@ async function getAuthenticatedUser() {
     .eq('id', user.id)
     .single()
 
-  console.log('Profile data:', userData)
-  console.log('Profile error:', profileError)
-
   if (!userData) {
-    console.log('No profile found')
     throw new Error('Kullanıcı profili bulunamadı')
   }
 
@@ -53,47 +45,41 @@ export async function createPurchaseRequest(data: {
   site_id?: string
   site_name?: string
   brand?: string
+  category_id?: string
+  category_name?: string
+  subcategory_id?: string
+  subcategory_name?: string
+  material_item_id?: string
 }) {
   try {
-    console.log('createPurchaseRequest called with data:', data)
-    
-    // Test için geçici kullanıcı - production'da authentication kontrolü olacak
-    const user = {
-      id: 'edf2d8ba-40fa-4701-bf12-63c1e4aacc78', // Mevcut kullanıcı ID'si
-      email: 'egemenyusufertan0@gmail.com',
-      full_name: 'Egemen Ertan',
-      department: 'IT',
-      role: 'user'
-    }
-    
-    console.log('Using test user:', user)
-
+    // Gerçek kullanıcıyı al
+    const user = await getAuthenticatedUser()
     const supabase = createClient()
     
     // Tarih ve request number oluştur
     const now = new Date()
     const requestNumber = `REQ-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
     
-    console.log('Generated request number:', requestNumber)
-    
-    // Purchase request data hazırla
+    // Purchase request data hazırla - direkt pending status ile oluştur
     const requestData = {
       request_number: requestNumber,
       title: data.material,
       description: data.description,
       department: user.department || 'Genel',
-      total_amount: 0, // Başlangıçta 0, items ekledikten sonra güncellenecek
+      total_amount: 0,
       currency: 'TRY',
-      urgency_level: 'normal',
-      status: 'draft', // Önce draft olarak oluştur
+      urgency_level: 'normal' as const,
+      status: 'pending' as const, // Direkt pending olarak oluştur
       requested_by: user.id,
       site_id: data.site_id || null,
-      site_name: data.site_name || null
+      site_name: data.site_name || null,
+      category_id: data.category_id || null,
+      category_name: data.category_name || null,
+      subcategory_id: data.subcategory_id || null,
+      subcategory_name: data.subcategory_name || null
     }
     
-    console.log('Purchase request data:', requestData)
-    
-    // Önce purchase request oluştur
+    // Purchase request oluştur
     const { data: purchaseRequest, error: requestError } = await supabase
       .from('purchase_requests')
       .insert(requestData)
@@ -101,76 +87,47 @@ export async function createPurchaseRequest(data: {
       .single()
 
     if (requestError) {
-      console.error('Purchase request insert error:', requestError)
-      throw requestError
+      throw new Error(`Purchase request oluşturulamadı: ${requestError.message}`)
     }
-    
-    console.log('Purchase request created:', purchaseRequest)
 
-    // Sonra purchase request item ekle
+    // Purchase request item ekle
     const itemData = {
       purchase_request_id: purchaseRequest.id,
       item_name: data.material,
       description: data.description,
       quantity: data.quantity,
       unit: data.unit,
-      unit_price: 0, // Başlangıçta 0, sonra güncellenecek
+      unit_price: 0,
       specifications: data.purpose || 'Şantiye ihtiyacı',
-      brand: data.brand || null
+      brand: data.brand || null,
+      material_item_id: data.material_item_id || null
     }
-    
-    console.log('Purchase request item data:', itemData)
     
     const { error: itemError } = await supabase
       .from('purchase_request_items')
       .insert(itemData)
 
     if (itemError) {
-      console.error('Purchase request item insert error:', itemError)
-      throw itemError
+      throw new Error(`Purchase request item oluşturulamadı: ${itemError.message}`)
     }
-    
-    console.log('Purchase request item created successfully')
 
-    // Status'u pending'e çevir
-    const { error: updateError } = await supabase
-      .from('purchase_requests')
-      .update({ status: 'pending' })
-      .eq('id', purchaseRequest.id)
-      
-    if (updateError) {
-      console.error('Purchase request status update error:', updateError)
-      throw updateError
-    }
-    
-    console.log('Purchase request status updated to pending')
-
-    // Approval history kaydı ekle
+    // Approval history kaydı ekle (kritik değil)
     const historyData = {
       purchase_request_id: purchaseRequest.id,
-      action: 'submitted',
+      action: 'submitted' as const,
       performed_by: user.id,
       comments: 'Talep oluşturuldu'
     }
     
-    console.log('Approval history data:', historyData)
-    
-    const { error: historyError } = await supabase
+    await supabase
       .from('approval_history')
       .insert(historyData)
-      
-    if (historyError) {
-      console.error('Approval history insert error:', historyError)
-      // History hatası kritik değil, devam et
-    }
 
-    console.log('Purchase request creation completed successfully')
     revalidatePath('/dashboard/requests')
     return { success: true, data: purchaseRequest }
   } catch (error) {
     console.error('Error creating purchase request:', error)
     
-    // Daha detaylı hata mesajı
     let errorMessage = 'Talep oluşturulurken hata oluştu'
     if (error instanceof Error) {
       errorMessage = error.message
@@ -193,11 +150,8 @@ export async function addOffers(requestId: string, offers: Array<{
   try {
     console.log('addOffers called with requestId:', requestId, 'offers:', offers)
     
-    // Test için geçici kullanıcı
-    const user = {
-      id: 'edf2d8ba-40fa-4701-bf12-63c1e4aacc78',
-      role: 'user'
-    }
+    // Gerçek kullanıcıyı al
+    const user = await getAuthenticatedUser()
 
     const supabase = createClient()
     
@@ -397,11 +351,8 @@ export async function markAsOrdered(requestId: string) {
 
 export async function getPurchaseRequests() {
   try {
-    // Test için geçici kullanıcı
-    const user = {
-      id: 'edf2d8ba-40fa-4701-bf12-63c1e4aacc78',
-      role: 'user'
-    }
+    // Gerçek kullanıcıyı al
+    const user = await getAuthenticatedUser()
     
     const supabase = createClient()
     

@@ -27,17 +27,30 @@ import {
   Camera,
   Image as ImageIcon,
   Upload,
-  X
+  X,
+  Wrench,
+  Ruler,
+  Truck,
+  Package2,
+  Zap,
+  Sparkles,
+  Grid3X3,
+  List,
+  Shield,
+  Palette
 } from 'lucide-react'
 
 
 
 const steps = [
   { id: 1, title: 'Şantiye Bilgileri', icon: Building2 },
-  { id: 2, title: 'Malzeme Detayları', icon: Package },
-  { id: 3, title: 'Kullanım & Zamanlama', icon: Target },
-  { id: 4, title: 'Teknik Özellikler', icon: Settings },
-  { id: 5, title: 'Onay & Gönderim', icon: CheckCircle2 }
+  { id: 2, title: 'Malzeme Sınıfı', icon: Grid3X3 },
+  { id: 3, title: 'Alt Kategori', icon: List },
+  { id: 4, title: 'Malzeme Seçimi', icon: Package },
+  { id: 5, title: 'Malzeme Detayları', icon: FileText },
+  { id: 6, title: 'Kullanım & Zamanlama', icon: Target },
+  { id: 7, title: 'Teknik Özellikler', icon: Settings },
+  { id: 8, title: 'Onay & Gönderim', icon: CheckCircle2 }
 ]
 
 export default function CreatePurchaseRequestPage() {
@@ -48,11 +61,20 @@ export default function CreatePurchaseRequestPage() {
   const [sites, setSites] = useState([])
   const [userSite, setUserSite] = useState(null)
   const [siteImages, setSiteImages] = useState({})
+  const [categories, setCategories] = useState([])
+  const [subcategories, setSubcategories] = useState([])
+  const [materialItems, setMaterialItems] = useState([])
   const [currentStep, setCurrentStep] = useState(1)
   const [formData, setFormData] = useState({
     construction_site: '',
     construction_site_id: '',
+    category_id: '',
+    category_name: '',
+    subcategory_id: '',
+    subcategory_name: '',
+    material_item_id: '',
     material_name: '',
+    material_description: '',
     unit: '',
     quantity: '',
     brand: '',
@@ -158,9 +180,23 @@ export default function CreatePurchaseRequestPage() {
                 construction_site: siteData.name,
                 construction_site_id: siteData.id
               }))
-              setCurrentStep(2) // Step 1'i atla
+              setCurrentStep(2) // Step 1'i atla - kategori seçimine geç
             }
           }
+        }
+
+        // Kategorileri çek
+        const { data: categoriesData, error: categoriesError } = await supabaseClient
+          .from('material_categories')
+          .select('id, name, description, icon, color')
+          .eq('is_active', true)
+          .order('sort_order')
+
+        if (categoriesError) {
+          console.error('Kategoriler yüklenirken hata:', categoriesError)
+        } else {
+          console.log('Kategoriler başarıyla yüklendi:', categoriesData)
+          setCategories(categoriesData || [])
         }
       } catch (error) {
         console.error('Veri yüklenirken hata:', error)
@@ -169,6 +205,46 @@ export default function CreatePurchaseRequestPage() {
 
     fetchData()
   }, [supabaseClient])
+
+  // Kategori seçildiğinde alt kategorileri çek
+  const fetchSubcategories = async (categoryId: string) => {
+    try {
+      const { data: subcategoriesData, error } = await supabaseClient
+        .from('material_subcategories')
+        .select('id, name, description, icon, color')
+        .eq('category_id', categoryId)
+        .eq('is_active', true)
+        .order('sort_order')
+
+      if (error) {
+        console.error('Alt kategoriler yüklenirken hata:', error)
+      } else {
+        setSubcategories(subcategoriesData || [])
+      }
+    } catch (error) {
+      console.error('Alt kategoriler yüklenirken hata:', error)
+    }
+  }
+
+  // Alt kategori seçildiğinde malzeme öğelerini çek
+  const fetchMaterialItems = async (subcategoryId: string) => {
+    try {
+      const { data: itemsData, error } = await supabaseClient
+        .from('material_items')
+        .select('id, name, description, unit')
+        .eq('subcategory_id', subcategoryId)
+        .eq('is_active', true)
+        .order('sort_order')
+
+      if (error) {
+        console.error('Malzeme öğeleri yüklenirken hata:', error)
+      } else {
+        setMaterialItems(itemsData || [])
+      }
+    } catch (error) {
+      console.error('Malzeme öğeleri yüklenirken hata:', error)
+    }
+  }
 
   const handleInputChange = (field: string, value: string) => {
     setFormData(prev => ({
@@ -227,16 +303,33 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const isStepValid = (step: number) => {
+    // Desteklenen kategoriler listesi
+    const supportedCategories = ['İş Araçları', 'Mimari Malzemeler (İnce İşler)', 'Kaba İnşaat Malzemeleri', 'Mobilyasyon, Demobilizasyon', 'Mekanik Malzemeler', 'Elektrik Malzemeler', 'Temizlik Malzemeleri', 'İş Güvenliği']
+    
     switch (step) {
       case 1:
         return formData.construction_site || userSite // Kullanıcının şantiyesi varsa geçerli
       case 2:
-        return formData.material_name && formData.unit && formData.quantity
+        return formData.category_id && formData.category_name
       case 3:
-        return formData.purpose
+        // Desteklenen kategoriler için alt kategori zorunlu
+        if (supportedCategories.includes(formData.category_name)) {
+          return formData.subcategory_id && formData.subcategory_name
+        }
+        return true // Diğer kategoriler için alt kategori opsiyonel
       case 4:
-        return true // Teknik özellikler opsiyonel
+        // Desteklenen kategoriler için malzeme seçimi zorunlu
+        if (supportedCategories.includes(formData.category_name)) {
+          return formData.material_item_id && formData.material_name
+        }
+        return true // Diğer kategoriler için malzeme seçimi opsiyonel
       case 5:
+        return formData.material_name && formData.unit && formData.quantity
+      case 6:
+        return formData.purpose
+      case 7:
+        return true // Teknik özellikler opsiyonel
+      case 8:
         return isFormValid()
       default:
         return false
@@ -244,11 +337,20 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const isFormValid = () => {
-    return (formData.construction_site || userSite) && 
-           formData.material_name && 
-           formData.unit && 
-           formData.quantity && 
-           formData.purpose
+    const baseValid = (formData.construction_site || userSite) && 
+                     formData.category_id &&
+                     formData.material_name && 
+                     formData.unit && 
+                     formData.quantity && 
+                     formData.purpose
+    
+    // Desteklenen kategoriler için alt kategori zorunlu
+    const supportedCategories = ['İş Araçları', 'Mimari Malzemeler (İnce İşler)', 'Kaba İnşaat Malzemeleri', 'Mobilyasyon, Demobilizasyon', 'Mekanik Malzemeler', 'Elektrik Malzemeler', 'Temizlik Malzemeleri', 'İş Güvenliği']
+    if (supportedCategories.includes(formData.category_name)) {
+      return baseValid && formData.subcategory_id
+    }
+    
+    return baseValid
   }
 
   const nextStep = () => {
@@ -285,7 +387,12 @@ export default function CreatePurchaseRequestPage() {
         purpose: formData.purpose,
         site_id: formData.construction_site_id || userSite?.id,
         site_name: formData.construction_site || userSite?.name,
-        brand: formData.brand
+        brand: formData.brand,
+        category_id: formData.category_id,
+        category_name: formData.category_name,
+        subcategory_id: formData.subcategory_id,
+        subcategory_name: formData.subcategory_name,
+        material_item_id: formData.material_item_id
       })
 
       if (!result.success) {
@@ -398,8 +505,296 @@ export default function CreatePurchaseRequestPage() {
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
+                <Grid3X3 className="w-4 lg:w-5 h-4 lg:h-5 text-purple-600" />
+                Malzeme Sınıfı
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 lg:space-y-4">
+              {categories.length === 0 ? (
+                <div className="text-center py-8">
+                  <Grid3X3 className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                  <p className="text-gray-600">Kategoriler yükleniyor...</p>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Eğer kategoriler görünmüyorsa, sayfayı yenileyin veya konsolu kontrol edin
+                  </p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                  {categories.map((category) => {
+                  const IconComponent = {
+                    'Wrench': Wrench,
+                    'Ruler': Ruler,
+                    'Truck': Truck,
+                    'Package2': Package2,
+                    'Settings': Settings,
+                    'Zap': Zap,
+                    'Sparkles': Sparkles
+                  }[category.icon] || Package
+
+                  return (
+                    <button
+                      key={category.id}
+                      type="button"
+                      onClick={async () => {
+                        handleInputChange('category_id', category.id)
+                        handleInputChange('category_name', category.name)
+                        
+                        // Alt kategorileri olan kategoriler için alt kategori seçimini göster
+                        const categoriesWithSubcategories = [
+                          'İş Araçları', 
+                          'Mimari Malzemeler (İnce İşler)',
+                          'Kaba İnşaat Malzemeleri',
+                          'Mobilyasyon, Demobilizasyon',
+                          'Mekanik Malzemeler',
+                          'Elektrik Malzemeler',
+                          'Temizlik Malzemeleri',
+                          'İş Güvenliği'
+                        ]
+                        
+                        if (categoriesWithSubcategories.includes(category.name)) {
+                          await fetchSubcategories(category.id)
+                        } else {
+                          // Diğer kategoriler için alt kategori seçimini atla
+                          setSubcategories([])
+                          setTimeout(() => {
+                            setCurrentStep(4) // Doğrudan malzeme detaylarına geç
+                          }, 300)
+                          return
+                        }
+                        
+                        // Otomatik olarak bir sonraki adıma geç
+                        setTimeout(() => {
+                          setCurrentStep(3)
+                        }, 300)
+                      }}
+                      className={`
+                        aspect-square p-4 lg:p-6 rounded-xl lg:rounded-2xl transition-all duration-200 text-left border flex flex-col justify-center
+                        ${formData.category_id === category.id 
+                          ? 'border-gray-800 bg-white/40 shadow-lg scale-105' 
+                          : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
+                        }
+                      `}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div 
+                          className="p-2 lg:p-3 rounded-lg flex-shrink-0"
+                          style={{ backgroundColor: category.color + '20' }}
+                        >
+                          <IconComponent 
+                            className="w-6 lg:w-8 h-6 lg:h-8" 
+                            style={{ color: category.color }}
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="font-semibold text-gray-900 text-sm lg:text-base leading-tight mb-1">
+                            {category.name}
+                          </h3>
+                          <p className="text-gray-600 text-xs lg:text-sm leading-relaxed">
+                            {category.description}
+                          </p>
+                        </div>
+                      </div>
+                      
+                      {formData.category_id === category.id && (
+                        <div className="mt-3 flex items-center gap-2 text-green-600">
+                          <CheckCircle2 className="w-4 h-4" />
+                          <span className="text-sm font-medium">Seçildi</span>
+                        </div>
+                      )}
+                    </button>
+                  )
+                })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 3:
+        return (
+          <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
+            <CardHeader className="pb-3 lg:pb-4">
+              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
+                <List className="w-4 lg:w-5 h-4 lg:h-5 text-blue-600" />
+                Alt Kategori Seçimi
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 lg:space-y-4">
+              {['İş Araçları', 'Mimari Malzemeler (İnce İşler)', 'Kaba İnşaat Malzemeleri', 'Mobilyasyon, Demobilizasyon', 'Mekanik Malzemeler', 'Elektrik Malzemeler', 'Temizlik Malzemeleri', 'İş Güvenliği'].includes(formData.category_name) ? (
+                subcategories.length > 0 ? (
+                  <div className="grid grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 lg:gap-4">
+                    {subcategories.map((subcategory) => {
+                      const IconComponent = {
+                        'Truck': Truck,
+                        'Settings': Settings,
+                        'Zap': Zap,
+                        'Wrench': Wrench,
+                        'Ruler': Ruler,
+                        'Package': Package,
+                        'Shield': Shield,
+                        'Palette': Palette
+                      }[subcategory.icon] || Package
+
+                      return (
+                        <button
+                          key={subcategory.id}
+                          type="button"
+                          onClick={async () => {
+                            handleInputChange('subcategory_id', subcategory.id)
+                            handleInputChange('subcategory_name', subcategory.name)
+                            
+                            // Alt kategoriye özel malzeme öğelerini çek
+                            await fetchMaterialItems(subcategory.id)
+                            
+                            // Otomatik olarak bir sonraki adıma geç
+                            setTimeout(() => {
+                              setCurrentStep(4)
+                            }, 300)
+                          }}
+                          className={`
+                            aspect-square p-4 lg:p-5 rounded-xl lg:rounded-2xl transition-all duration-200 text-left border flex flex-col justify-center
+                            ${formData.subcategory_id === subcategory.id 
+                              ? 'border-blue-600 bg-blue-50/60 shadow-lg scale-105' 
+                              : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
+                            }
+                          `}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div 
+                              className="p-2 lg:p-3 rounded-lg flex-shrink-0"
+                              style={{ backgroundColor: subcategory.color + '20' }}
+                            >
+                              <IconComponent 
+                                className="w-5 lg:w-6 h-5 lg:h-6" 
+                                style={{ color: subcategory.color }}
+                              />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h3 className="font-semibold text-gray-900 text-sm lg:text-base leading-tight mb-1">
+                                {subcategory.name}
+                              </h3>
+                              <p className="text-gray-600 text-xs lg:text-sm leading-relaxed">
+                                {subcategory.description}
+                              </p>
+                            </div>
+                          </div>
+                          
+                          {formData.subcategory_id === subcategory.id && (
+                            <div className="mt-3 flex items-center gap-2 text-blue-600">
+                              <CheckCircle2 className="w-4 h-4" />
+                              <span className="text-sm font-medium">Seçildi</span>
+                            </div>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <List className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-600">Alt kategoriler yükleniyor...</p>
+                  </div>
+                )
+              ) : (
+                <div className="text-center py-8">
+                  <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
+                  <p className="text-gray-600">Bu kategori için alt kategori seçimi gerekmiyor.</p>
+                  <p className="text-sm text-gray-500 mt-1">Doğrudan malzeme detaylarına geçebilirsiniz.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 4:
+        return (
+          <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
+            <CardHeader className="pb-3 lg:pb-4">
+              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
                 <Package className="w-4 lg:w-5 h-4 lg:h-5 text-green-600" />
-                Malzeme Bilgileri
+                Malzeme Seçimi
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 lg:space-y-4">
+              {['İş Araçları', 'Mimari Malzemeler (İnce İşler)', 'Kaba İnşaat Malzemeleri', 'Mobilyasyon, Demobilizasyon', 'Mekanik Malzemeler', 'Elektrik Malzemeler', 'Temizlik Malzemeleri', 'İş Güvenliği'].includes(formData.category_name) && formData.subcategory_name ? (
+                materialItems.length > 0 ? (
+                  <div className="space-y-3">
+                    <div className="mb-4">
+                      <p className="text-sm text-gray-600">
+                        <span className="font-medium">{formData.subcategory_name}</span> kategorisinden malzeme seçiniz:
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-2 lg:grid-cols-1 gap-3">
+                      {materialItems.map((item) => (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            handleInputChange('material_item_id', item.id)
+                            handleInputChange('material_name', item.name)
+                            handleInputChange('material_description', item.description || '')
+                            handleInputChange('unit', item.unit || 'adet')
+                            
+                            // Otomatik olarak bir sonraki adıma geç
+                            setTimeout(() => {
+                              setCurrentStep(5)
+                            }, 300)
+                          }}
+                          className={`
+                            aspect-square p-4 lg:p-5 rounded-xl transition-all duration-200 text-left border flex flex-col justify-center
+                            ${formData.material_item_id === item.id 
+                              ? 'border-green-600 bg-green-50/60 shadow-lg scale-105' 
+                              : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
+                            }
+                          `}
+                        >
+                          <div className="flex flex-col items-center justify-center text-center h-full">
+                            <div className="p-2 bg-green-100 rounded-lg mb-2">
+                              <Package className="w-5 h-5 text-green-600" />
+                            </div>
+                            <h3 className="font-semibold text-gray-900 text-xs lg:text-sm leading-tight mb-1">
+                              {item.name}
+                            </h3>
+                            {item.description && (
+                              <p className="text-gray-600 text-xs leading-tight">
+                                {item.description}
+                              </p>
+                            )}
+                            
+                            {formData.material_item_id === item.id && (
+                              <div className="mt-2">
+                                <CheckCircle2 className="w-4 h-4 text-green-500 mx-auto" />
+                              </div>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
+                    <p className="text-gray-600">Malzemeler yükleniyor...</p>
+                  </div>
+                )
+              ) : (
+                <div className="text-center py-8">
+                  <CheckCircle2 className="w-12 h-12 mx-auto text-green-500 mb-3" />
+                  <p className="text-gray-600">Bu kategori için önceden tanımlı malzemeler bulunmuyor.</p>
+                  <p className="text-sm text-gray-500 mt-1">Doğrudan malzeme detaylarına geçebilirsiniz.</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )
+
+      case 5:
+        return (
+          <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
+            <CardHeader className="pb-3 lg:pb-4">
+              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
+                <FileText className="w-4 lg:w-5 h-4 lg:h-5 text-orange-600" />
+                Malzeme Detayları
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4 lg:space-y-6">
@@ -542,7 +937,7 @@ export default function CreatePurchaseRequestPage() {
           </Card>
         )
 
-      case 3:
+      case 6:
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
             <CardHeader className="pb-3 lg:pb-4">
@@ -582,7 +977,7 @@ export default function CreatePurchaseRequestPage() {
           </Card>
         )
 
-      case 4:
+      case 7:
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
             <CardHeader className="pb-3 lg:pb-4">
@@ -607,7 +1002,7 @@ export default function CreatePurchaseRequestPage() {
           </Card>
         )
 
-      case 5:
+      case 8:
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 backdrop-blur-lg ">
             <CardHeader className="pb-3 lg:pb-4">
@@ -622,6 +1017,16 @@ export default function CreatePurchaseRequestPage() {
                   <Label className="text-xs lg:text-sm font-medium text-gray-600">Şantiye</Label>
                   <p className="text-base lg:text-lg font-semibold text-gray-900">{userSite?.name || formData.construction_site}</p>
                 </div>
+                <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
+                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Kategori</Label>
+                  <p className="text-base lg:text-lg font-semibold text-gray-900">{formData.category_name}</p>
+                </div>
+                {formData.subcategory_name && (
+                  <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
+                    <Label className="text-xs lg:text-sm font-medium text-gray-600">Alt Kategori</Label>
+                    <p className="text-base lg:text-lg font-semibold text-gray-900">{formData.subcategory_name}</p>
+                  </div>
+                )}
                 <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
                   <Label className="text-xs lg:text-sm font-medium text-gray-600">Malzeme</Label>
                   <p className="text-base lg:text-lg font-semibold text-gray-900">{formData.material_name}</p>

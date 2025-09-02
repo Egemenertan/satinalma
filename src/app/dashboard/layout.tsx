@@ -1,9 +1,7 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState } from 'react'
 import Sidebar from '@/components/Sidebar'
-import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Menu, X } from 'lucide-react'
 
@@ -12,66 +10,8 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [isLoading, setIsLoading] = useState(true)
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
-  const router = useRouter()
-
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
-  const checkAuth = async () => {
-    try {
-      console.log('Dashboard layout: Checking auth...')
-      const { data: { user }, error } = await supabase.auth.getUser()
-      
-      console.log('Dashboard layout - User:', user)
-      console.log('Dashboard layout - Error:', error)
-      
-      if (error || !user) {
-        console.log('Dashboard layout: No user found, redirecting to login')
-        router.push('/auth/login')
-        setIsLoading(false)
-        return
-      }
-
-      console.log('Dashboard layout: User authenticated')
-      setIsAuthenticated(true)
-      setIsLoading(false)
-    } catch (error) {
-      console.error('Dashboard layout: Auth check failed:', error)
-      router.push('/auth/login')
-      setIsLoading(false)
-    }
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen ">
-        <div className="text-center space-y-4">
-          <img 
-            src="/d.png" 
-            alt="Logo" 
-            className="mx-auto w-16 h-16 object-contain filter brightness-0 animate-pulse"
-          />
-          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto"></div>
-          <p className="mt-6 text-gray-600 font-medium">Oturum kontrol ediliyor...</p>
-        </div>
-      </div>
-    )
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex items-center justify-center min-h-screen bg-white">
-        <div className="text-center">
-          <p className="text-gray-600 font-medium">Yönlendiriliyor...</p>
-        </div>
-      </div>
-    )
-  }
 
 
 

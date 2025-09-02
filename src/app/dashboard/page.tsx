@@ -20,7 +20,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true)
@@ -35,6 +35,7 @@ export default function Dashboard() {
     monthlyRequests: 0
   })
   const [recentRequests, setRecentRequests] = useState<any[]>([])
+  const supabase = createClient()
 
   useEffect(() => {
     fetchDashboardData()
@@ -44,25 +45,42 @@ export default function Dashboard() {
     try {
       setLoading(true)
       
-      // Talepler verilerini çek
+      console.log('🔍 Dashboard: Fetching data...')
+      
+      // Auth durumunu kontrol et
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log('🔍 Dashboard: Current user:', user?.id)
+      
+      // Talepler verilerini çek - önce sadece temel alanlar
       const { data: requestsData, error: requestsError } = await supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          purchase_request_items(*),
-          profiles!purchase_requests_requested_by_fkey(full_name),
-          sites(name)
-        `)
+        .select('id, title, status, urgency_level, created_at, requested_by, total_amount, site_id, department, profiles(full_name), sites(name), purchase_request_items(id)')
         .order('created_at', { ascending: false })
 
-      if (requestsError) throw requestsError
+      console.log('📊 Dashboard: Requests query result:', { 
+        count: requestsData?.length, 
+        error: requestsError 
+      })
+
+      if (requestsError) {
+        console.error('Dashboard requests error:', requestsError)
+        throw requestsError
+      }
 
       // Şantiye verilerini çek
       const { data: sitesData, error: sitesError } = await supabase
         .from('sites')
         .select('*')
 
-      if (sitesError) throw sitesError
+      console.log('🏗️ Dashboard: Sites query result:', { 
+        count: sitesData?.length, 
+        error: sitesError 
+      })
+
+      if (sitesError) {
+        console.error('Dashboard sites error:', sitesError)
+        throw sitesError
+      }
 
       // İstatistikleri hesapla
       const requests = requestsData || []
@@ -103,9 +121,19 @@ export default function Dashboard() {
 
       // Son 5 talebi al
       setRecentRequests(requests.slice(0, 5))
+      
+      console.log('✅ Dashboard: Data processed successfully', {
+        totalRequests,
+        pendingRequests,
+        approvedRequests,
+        urgentRequests,
+        totalSites: sites.length,
+        activeSites,
+        recentRequestsCount: requests.slice(0, 5).length
+      })
 
     } catch (error) {
-      console.error('Dashboard verileri yüklenirken hata:', error)
+      console.error('❌ Dashboard verileri yüklenirken hata:', error)
     } finally {
       setLoading(false)
     }
