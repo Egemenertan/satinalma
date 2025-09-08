@@ -56,6 +56,7 @@ interface PurchaseRequest {
   subcategory_name?: string
   material_class?: string
   material_group?: string
+  image_urls?: string[]
   purchase_request_items: Array<{
     id: string
     item_name: string
@@ -134,6 +135,14 @@ export default function OffersPage() {
   
   // Teklif formu açık/kapalı state'i
   const [isOfferFormOpen, setIsOfferFormOpen] = useState(false)
+  
+  // Resim modal state'leri
+  const [selectedImageModal, setSelectedImageModal] = useState<{
+    url: string;
+    alt: string;
+    index: number;
+    total: number;
+  } | null>(null)
 
   // Teklif girilmeye başlandığında formu otomatik aç
   useEffect(() => {
@@ -394,27 +403,37 @@ export default function OffersPage() {
     }
   }, [])
 
-  // ESC tuşu ile modal kapatma
+  // ESC tuşu ile modal kapatma ve keyboard navigation
   useEffect(() => {
-    const handleEscape = (e: KeyboardEvent) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isApprovalModalOpen) {
+        if (selectedImageModal) {
+          closeImageModal()
+        } else if (isApprovalModalOpen) {
           closeApprovalModal()
         } else if (isModalOpen) {
           closeOfferModal()
         } else if (isAssignSupplierModalOpen) {
           setIsAssignSupplierModalOpen(false)
         }
+      } else if (selectedImageModal) {
+        if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          navigateImage('prev')
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          navigateImage('next')
+        }
       }
     }
 
-    document.addEventListener('keydown', handleEscape)
-    return () => document.removeEventListener('keydown', handleEscape)
-  }, [isModalOpen, isApprovalModalOpen, isAssignSupplierModalOpen])
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [isModalOpen, isApprovalModalOpen, isAssignSupplierModalOpen, selectedImageModal])
 
   // Modal açıldığında body scroll'unu engelle
   useEffect(() => {
-    if (isModalOpen || isApprovalModalOpen) {
+    if (isModalOpen || isApprovalModalOpen || selectedImageModal) {
       // Modal açıldığında scroll'u engelle
       document.body.style.overflow = 'hidden'
     } else {
@@ -426,7 +445,7 @@ export default function OffersPage() {
     return () => {
       document.body.style.overflow = 'unset'
     }
-  }, [isModalOpen, isApprovalModalOpen])
+  }, [isModalOpen, isApprovalModalOpen, selectedImageModal])
 
   const fetchRequestData = async () => {
     try {
@@ -661,6 +680,30 @@ export default function OffersPage() {
     setOfferToApprove(null)
     setIsApprovalModalOpen(false)
     setApprovalReason('')
+  }
+
+  // Resim modal fonksiyonları
+  const openImageModal = (url: string, alt: string, index: number, total: number) => {
+    setSelectedImageModal({ url, alt, index, total })
+  }
+
+  const closeImageModal = () => {
+    setSelectedImageModal(null)
+  }
+
+  const navigateImage = (direction: 'prev' | 'next') => {
+    if (!selectedImageModal || !request?.image_urls) return
+    
+    const newIndex = direction === 'next' 
+      ? (selectedImageModal.index + 1) % request.image_urls.length
+      : (selectedImageModal.index - 1 + request.image_urls.length) % request.image_urls.length
+    
+    setSelectedImageModal({
+      ...selectedImageModal,
+      url: request.image_urls[newIndex],
+      index: newIndex,
+      alt: `Malzeme resmi ${newIndex + 1}`
+    })
   }
 
   const isValidOffer = (offer: Offer) => {
@@ -1143,9 +1186,11 @@ export default function OffersPage() {
                     {item.brand && (
                       <div>
                         <p className="text-sm font-medium text-gray-500 mb-2">Marka</p>
-                        <Badge variant="secondary" className="bg-gray-100 text-gray-700">
-                          {item.brand}
-                        </Badge>
+                        <div className="flex items-center gap-3">
+                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
+                            {item.brand}
+                          </Badge>
+                        </div>
                       </div>
                     )}
                     
@@ -1166,6 +1211,44 @@ export default function OffersPage() {
                         <p className="text-sm text-gray-700 leading-relaxed">{item.specifications}</p>
                       </div>
                     )}
+
+                    {/* Malzeme Resimleri */}
+                    {request?.image_urls && request.image_urls.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-500 mb-3">Malzeme Resimleri ({request.image_urls.length})</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {request.image_urls.map((url, index) => (
+                            <div 
+                              key={index} 
+                              className="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
+                              onClick={() => openImageModal(url, `Malzeme resmi ${index + 1}`, index, request.image_urls!.length)}
+                            >
+                              <img
+                                src={url}
+                                alt={`Malzeme resmi ${index + 1}`}
+                                className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                onError={(e) => {
+                                  console.error('❌ Purchase request image failed to load:', url)
+                                  const target = e.target as HTMLImageElement;
+                                  target.style.display = 'none';
+                                  if (target.parentElement) {
+                                    target.parentElement.innerHTML = `
+                                      <div class="w-full h-full flex flex-col items-center justify-center bg-gray-100">
+                                        <div class="w-8 h-8 text-gray-400 mb-2">📷</div>
+                                        <span class="text-xs text-gray-500 font-medium">Resim yüklenemedi</span>
+                                      </div>
+                                    `;
+                                  }
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Resimleri büyütmek için tıklayın
+                        </p>
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ) : (
@@ -1178,6 +1261,31 @@ export default function OffersPage() {
                       </div>
                       <h3 className="text-lg font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
                       <p className="text-sm text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
+                      
+                      {/* Resimler varsa ürün bilgisi olmasa da göster */}
+                      {request?.image_urls && request.image_urls.length > 0 && (
+                        <div className="mt-6">
+                          <p className="text-sm font-medium text-gray-600 mb-3">Malzeme Resimleri ({request.image_urls.length})</p>
+                          <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto">
+                            {request.image_urls.map((url, index) => (
+                              <div 
+                                key={index} 
+                                className="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
+                                onClick={() => openImageModal(url, `Malzeme resmi ${index + 1}`, index, request.image_urls!.length)}
+                              >
+                                <img
+                                  src={url}
+                                  alt={`Malzeme resmi ${index + 1}`}
+                                  className="w-full h-full object-cover hover:scale-105 transition-transform duration-200"
+                                />
+                              </div>
+                            ))}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-2">
+                            Resimleri büyütmek için tıklayın
+                          </p>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -2562,6 +2670,86 @@ export default function OffersPage() {
         itemUnit={request?.purchase_request_items?.[0]?.unit}
         onSuccess={checkItemInSupplierMaterials}
       />
+
+      {/* Resim Modal */}
+      {selectedImageModal && (
+        <div className="fixed inset-0 bg-black/90 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+          {/* Modal Overlay - Click to close */}
+          <div 
+            className="absolute inset-0 cursor-pointer"
+            onClick={closeImageModal}
+          />
+          
+          {/* Modal Content */}
+          <div className="relative max-w-7xl max-h-[90vh] w-full h-full flex items-center justify-center">
+            {/* Close Button */}
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={closeImageModal}
+              className="absolute top-4 right-4 z-10 h-12 w-12 bg-black/50 hover:bg-black/70 text-white border-0 rounded-full"
+            >
+              <X className="h-6 w-6" />
+            </Button>
+
+            {/* Image Counter */}
+            <div className="absolute top-4 left-4 z-10 bg-black/50 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-medium">
+              {selectedImageModal.index + 1} / {selectedImageModal.total}
+            </div>
+
+            {/* Previous Button */}
+            {selectedImageModal.total > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateImage('prev')}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-10 h-12 w-12 bg-black/50 hover:bg-black/70 text-white border-0 rounded-full"
+              >
+                <ArrowLeft className="h-6 w-6" />
+              </Button>
+            )}
+
+            {/* Next Button */}
+            {selectedImageModal.total > 1 && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigateImage('next')}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-10 h-12 w-12 bg-black/50 hover:bg-black/70 text-white border-0 rounded-full"
+              >
+                <ArrowLeft className="h-6 w-6 rotate-180" />
+              </Button>
+            )}
+
+            {/* Image */}
+            <div className="relative w-full h-full flex items-center justify-center">
+              <img
+                src={selectedImageModal.url}
+                alt={selectedImageModal.alt}
+                className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+                onError={(e) => {
+                  console.error('❌ Modal image failed to load:', selectedImageModal.url)
+                }}
+              />
+            </div>
+
+            {/* Image Title */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 bg-black/50 backdrop-blur-sm text-white px-6 py-3 rounded-full text-sm font-medium">
+              {selectedImageModal.alt}
+            </div>
+          </div>
+
+          {/* Keyboard Instructions */}
+          {selectedImageModal.total > 1 && (
+            <div className="absolute bottom-4 right-4 z-10 bg-black/50 backdrop-blur-sm text-white px-4 py-2 rounded-lg text-xs">
+              <div className="flex items-center gap-4">
+                <span>← → Gezinmek için</span>
+                <span>ESC Kapatmak için</span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }

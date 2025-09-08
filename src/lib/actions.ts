@@ -48,6 +48,7 @@ export async function createPurchaseRequest(data: {
   material_class?: string
   material_group?: string
   material_item_name?: string
+  image_urls?: string[]
 }) {
   try {
     // Gerçek kullanıcıyı al
@@ -73,7 +74,8 @@ export async function createPurchaseRequest(data: {
       site_name: data.site_name || null,
       material_class: data.material_class || null,
       material_group: data.material_group || null,
-      material_item_name: data.material_item_name || null
+      material_item_name: data.material_item_name || null,
+      image_urls: data.image_urls || null
     }
     
     // Purchase request oluştur

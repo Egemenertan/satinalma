@@ -1022,6 +1022,46 @@ export default function CreatePurchaseRequestPage() {
     }
   }
 
+  // Resimleri storage'a yükle
+  const uploadImagesToStorage = async (): Promise<string[]> => {
+    if (uploadedImages.length === 0) return []
+    
+    const uploadedUrls: string[] = []
+    
+    for (let i = 0; i < uploadedImages.length; i++) {
+      const file = uploadedImages[i]
+      const fileExt = file.name.split('.').pop()
+      const uniqueId = Math.random().toString(36).substring(2, 15)
+      const fileName = `purchase_requests/images/${Date.now()}_${uniqueId}.${fileExt}`
+      
+      try {
+        console.log('📤 Uploading image:', { fileName, fileSize: file.size, fileType: file.type })
+        
+        const { data, error } = await supabase.storage
+          .from('satinalma')
+          .upload(fileName, file)
+
+        if (error) {
+          console.error('❌ Storage upload error:', error)
+          throw error
+        }
+
+        const { data: urlData } = supabase.storage
+          .from('satinalma')
+          .getPublicUrl(fileName)
+
+        console.log('🔗 Generated URL:', urlData.publicUrl)
+        uploadedUrls.push(urlData.publicUrl)
+      } catch (error) {
+        console.error('❌ Resim yükleme hatası:', error)
+        throw new Error(`Resim yüklenirken hata oluştu: ${error}`)
+      }
+    }
+    
+    console.log('✅ Image upload completed. URLs:', uploadedUrls)
+    return uploadedUrls
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     
@@ -1033,6 +1073,13 @@ export default function CreatePurchaseRequestPage() {
     setLoading(true)
     
     try {
+      // Önce resimleri upload et
+      let imageUrls: string[] = []
+      if (uploadedImages.length > 0) {
+        showToast('Resimler yükleniyor...', 'info')
+        imageUrls = await uploadImagesToStorage()
+      }
+
       // Server action'ı kullan
       const { createPurchaseRequest } = await import('@/lib/actions')
       
@@ -1047,7 +1094,8 @@ export default function CreatePurchaseRequestPage() {
         brand: formData.brand,
         material_class: formData.material_class,
         material_group: formData.material_group,
-        material_item_name: formData.material_item_name
+        material_item_name: formData.material_item_name,
+        image_urls: imageUrls // Resim URL'lerini ekle
       })
 
       if (!result.success) {
@@ -1062,7 +1110,11 @@ export default function CreatePurchaseRequestPage() {
       
     } catch (error) {
       console.error('Talep oluşturma hatası:', error)
-      showToast('Talep oluşturulurken bir hata oluştu.', 'error')
+      if (error instanceof Error && error.message.includes('Resim yüklenirken')) {
+        showToast(error.message, 'error')
+      } else {
+        showToast('Talep oluşturulurken bir hata oluştu.', 'error')
+      }
     } finally {
       setLoading(false)
     }

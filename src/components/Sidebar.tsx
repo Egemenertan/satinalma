@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { getAccessibleMenuItems } from '@/lib/roles'
+import { getAccessibleMenuItems, getRoleLabel } from '@/lib/roles'
 import {
   LayoutDashboard,
   FileText,
@@ -130,6 +130,8 @@ export default function Sidebar({
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
   const [userRole, setUserRole] = useState<string>('user')
+  const [userEmail, setUserEmail] = useState<string>('')
+  const [userName, setUserName] = useState<string>('')
   
   // External prop varsa onu kullan, yoksa internal state kullan
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
@@ -150,26 +152,39 @@ export default function Sidebar({
     }
   )
 
-  // Kullanıcı rolünü çek
+  // Kullanıcı bilgilerini çek
   useEffect(() => {
-    const fetchUserRole = async () => {
+    const fetchUserData = async () => {
       const supabase = createClient()
       const { data: { user } } = await supabase.auth.getUser()
       
       if (user) {
+        // Email adresini set et
+        setUserEmail(user.email || '')
+        
+        // Profile bilgilerini çek
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, full_name')
           .eq('id', user.id)
           .single()
         
         if (profile?.role) {
           setUserRole(profile.role)
         }
+        
+        // İsim bilgisini set et - önce full_name, yoksa email'den al
+        if (profile?.full_name) {
+          setUserName(profile.full_name)
+        } else if (user.email) {
+          // Email'den isim çıkar (@ işaretinden öncesini al)
+          const nameFromEmail = user.email.split('@')[0]
+          setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1))
+        }
       }
     }
     
-    fetchUserRole()
+    fetchUserData()
   }, [])
 
   // Mobile responsive kontrol
@@ -405,26 +420,42 @@ export default function Sidebar({
           {isCollapsed && !isMobileOpen ? (
             <div className="flex justify-center">
               <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                <span className="text-xs font-medium text-white">EY</span>
+                <span className="text-xs font-medium text-white">
+                  {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                </span>
               </div>
             </div>
           ) : (
-            <div className="flex items-center space-x-3">
-              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                <span className="text-xs font-medium text-white">EY</span>
+            <div className="flex flex-col space-y-2">
+              <div className="flex items-center space-x-3">
+                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                  <span className="text-xs font-medium text-white">
+                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 truncate">
+                    {userName || 'Kullanıcı'}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {userEmail}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-gray-900 truncate">Egemen</div>
-                <div className="text-xs text-gray-500 truncate">egemen@example.com</div>
+              {/* Rol Bilgisi */}
+              <div className="pl-11">
+                <div className="text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded-md inline-block">
+                  {getRoleLabel(userRole as any)}
+                </div>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                onClick={handleLogout}
-              >
-                <LogOut className="h-4 w-4" />
-              </Button>
             </div>
           )}
         </div>

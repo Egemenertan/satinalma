@@ -10,6 +10,7 @@ interface ToastProps {
   type: 'success' | 'error' | 'info'
   duration?: number
   onClose?: () => void
+  index?: number
 }
 
 interface ToastContextValue {
@@ -70,14 +71,15 @@ function ToastContainer({
   if (typeof window === 'undefined') return null
 
   return createPortal(
-    <div className="fixed inset-0 z-50 pointer-events-none">
-      <div className="flex flex-col items-center justify-center min-h-screen p-4">
-        {toasts.map((toast) => (
+    <div className="fixed top-4 right-4 z-50 pointer-events-none">
+      <div className="flex flex-col gap-3">
+        {toasts.map((toast, index) => (
           <Toast
             key={toast.id}
             message={toast.message}
             type={toast.type}
             onClose={() => onRemove(toast.id)}
+            index={index}
           />
         ))}
       </div>
@@ -86,13 +88,13 @@ function ToastContainer({
   )
 }
 
-function Toast({ message, type, onClose }: ToastProps) {
+function Toast({ message, type, onClose, index = 0 }: ToastProps) {
   const [isVisible, setIsVisible] = React.useState(false)
 
   React.useEffect(() => {
-    // Animate in
-    setTimeout(() => setIsVisible(true), 10)
-  }, [])
+    // Animate in with staggered delay
+    setTimeout(() => setIsVisible(true), 50 + (index * 100))
+  }, [index])
 
   const handleClose = () => {
     setIsVisible(false)
@@ -102,68 +104,64 @@ function Toast({ message, type, onClose }: ToastProps) {
   const getIcon = () => {
     switch (type) {
       case 'success':
-        return <CheckCircle className="w-8 h-8 text-green-600" />
+        return <CheckCircle className="w-4 h-4 text-green-600" />
       case 'error':
-        return <AlertCircle className="w-8 h-8 text-red-600" />
+        return <AlertCircle className="w-4 h-4 text-red-600" />
       case 'info':
-        return <AlertCircle className="w-8 h-8 text-blue-600" />
+        return <AlertCircle className="w-4 h-4 text-blue-600" />
     }
   }
 
   const getStyles = () => {
-    const baseStyles = "bg-white border shadow-2xl backdrop-blur-lg"
     switch (type) {
       case 'success':
-        return `${baseStyles} border-green-100 shadow-green-500/20`
+        return "bg-white border border-green-200 shadow-lg shadow-green-500/10"
       case 'error':
-        return `${baseStyles} border-red-100 shadow-red-500/20`
+        return "bg-white border border-red-200 shadow-lg shadow-red-500/10"
       case 'info':
-        return `${baseStyles} border-blue-100 shadow-blue-500/20`
+        return "bg-white border border-blue-200 shadow-lg shadow-blue-500/10"
     }
   }
 
   return (
     <div 
       className={cn(
-        "pointer-events-auto transition-all duration-300 ease-out transform mb-4",
-        "w-80 h-80 mx-auto", // Kare boyut
+        "pointer-events-auto transition-all duration-300 ease-out transform",
+        "min-w-80 max-w-96", // Yatay dikdörtgen boyut
         isVisible 
-          ? "translate-y-0 opacity-100 scale-100" 
-          : "translate-y-4 opacity-0 scale-90"
+          ? "translate-x-0 opacity-100 scale-100" 
+          : "translate-x-full opacity-0 scale-95"
       )}
     >
       <div className={cn(
-        "w-full h-full rounded-3xl relative flex flex-col items-center justify-center text-center p-8",
+        "rounded-lg relative flex items-center p-4 gap-3",
         getStyles()
       )}>
-        {/* Close button */}
-        <button
-          onClick={handleClose}
-          className="absolute top-6 right-6 p-2 rounded-full hover:bg-gray-100/50 transition-colors"
-        >
-          <X className="w-5 h-5 text-gray-400" />
-        </button>
-
-        {/* Content - Dikey düzen */}
-        <div className="flex flex-col items-center justify-center space-y-6">
-          {/* İkon - Büyük */}
-          <div className="flex-shrink-0">
-            <div className={cn(
-              "w-16 h-16 rounded-full backdrop-blur-sm flex items-center justify-center",
-              type === 'success' ? 'bg-green-50' :
-              type === 'error' ? 'bg-red-50' : 'bg-blue-50'
-            )}>
-              {getIcon()}
-            </div>
-          </div>
-          
-          {/* Mesaj */}
-          <div className="max-w-64">
-            <p className="text-gray-900 font-medium text-lg leading-relaxed">
-              {message}
-            </p>
+        {/* İkon - Küçük ve sol tarafta */}
+        <div className="flex-shrink-0">
+          <div className={cn(
+            "w-8 h-8 rounded-full flex items-center justify-center",
+            type === 'success' ? 'bg-green-50' :
+            type === 'error' ? 'bg-red-50' : 'bg-blue-50'
+          )}>
+            {getIcon()}
           </div>
         </div>
+        
+        {/* Mesaj - Yatay düzen */}
+        <div className="flex-1 min-w-0">
+          <p className="text-gray-900 font-medium text-sm leading-relaxed">
+            {message}
+          </p>
+        </div>
+
+        {/* Close button - Sağ tarafta küçük */}
+        <button
+          onClick={handleClose}
+          className="flex-shrink-0 p-1 rounded-full hover:bg-gray-100 transition-colors"
+        >
+          <X className="w-4 h-4 text-gray-400" />
+        </button>
       </div>
     </div>
   )
