@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -13,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
+import { invalidateSuppliersCache } from '@/lib/cache'
 
 import { 
   Plus,
@@ -66,51 +68,78 @@ interface SupplierPerformance {
   average_delivery_time: number
 }
 
+// Suppliers fetcher fonksiyonu
+const fetchSuppliers = async (searchTerm?: string) => {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+  
+  let query = supabase
+    .from('suppliers')
+    .select('*')
+
+  if (searchTerm) {
+    query = query.or(`
+      name.ilike.%${searchTerm}%,
+      code.ilike.%${searchTerm}%,
+      contact_person.ilike.%${searchTerm}%
+    `)
+  }
+
+  const { data, error } = await query.order('name')
+
+  if (error) throw error
+  return data || []
+}
+
 export default function SupplierManagement() {
   const router = useRouter()
   const { showToast } = useToast()
   const supabase = createClient()
-  const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [showEditDialog, setShowEditDialog] = useState(false)
-  const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
     search: ''
   })
 
-  useEffect(() => {
-    fetchSuppliers()
-  }, [filters])
+  // SWR cache key'ini search filter'ına göre oluştur
+  const cacheKey = filters.search ? `suppliers_list_${filters.search}` : 'suppliers_list'
 
-  const fetchSuppliers = async () => {
-    setLoading(true)
-    try {
-      let query = supabase
-        .from('suppliers')
-        .select('*')
-
-      if (filters.search) {
-        query = query.or(`
-          name.ilike.%${filters.search}%,
-          code.ilike.%${filters.search}%,
-          contact_person.ilike.%${filters.search}%
-        `)
-      }
-
-      const { data, error } = await query.order('name')
-
-      if (error) throw error
-      setSuppliers(data || [])
-    } catch (error: any) {
-      console.error('Tedarikçiler yüklenirken hata:', error)
-      console.error('Error details:', {
-        message: error?.message,
-        code: error?.code,
-        details: error?.details
-      })
-    } finally {
-      setLoading(false)
+  // SWR ile cache'li suppliers verisi
+  const { data: suppliers, error: suppliersError, isLoading: loading, mutate: mutateSuppliers } = useSWR(
+    cacheKey,
+    () => fetchSuppliers(filters.search),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60000, // 1 dakika cache
+      errorRetryCount: 3,
+      fallbackData: []
     }
-  }
+  )
+
+  // Real-time updates için subscription
+  useEffect(() => {
+    const subscription = supabase
+      .channel('suppliers_updates')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'suppliers' 
+        }, 
+        () => {
+          console.log('📡 Suppliers update triggered')
+          invalidateSuppliersCache()
+          mutateSuppliers() // Bu specific component için de mutate
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const getRatingStars = (rating: number) => {
     return Array.from({ length: 5 }, (_, i) => (
@@ -197,7 +226,8 @@ export default function SupplierManagement() {
           rating: '0',
           is_approved: true
         })
-        fetchSuppliers()
+        invalidateSuppliersCache()
+        mutateSuppliers()
       } catch (error: any) {
         console.error('Tedarikçi ekleme hatası:', error)
         console.error('Error details:', {

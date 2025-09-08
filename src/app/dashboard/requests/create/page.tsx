@@ -1086,7 +1086,7 @@ export default function CreatePurchaseRequestPage() {
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Malzeme ara... (örn: boru kangal, 240 amp, 2*40 rcd, elektrik kablosu)"
-                className="flex-1 h-10 lg:h-12 rounded-xl lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                className="flex-1 h-10 lg:h-12 rounded-xl lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
               />
               {isSearching && (
                 <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
@@ -1606,7 +1606,7 @@ export default function CreatePurchaseRequestPage() {
                     value={formData.material_name}
                     onChange={(e) => handleInputChange('material_name', e.target.value)}
                     placeholder="Malzeme adını giriniz..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
                 
@@ -1619,7 +1619,7 @@ export default function CreatePurchaseRequestPage() {
                     value={formData.brand}
                     onChange={(e) => handleInputChange('brand', e.target.value)}
                     placeholder="Marka/üretici..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
               </div>
@@ -1636,7 +1636,7 @@ export default function CreatePurchaseRequestPage() {
                     value={formData.quantity}
                     onChange={(e) => handleInputChange('quantity', e.target.value)}
                     placeholder="0"
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
                 
@@ -1649,7 +1649,7 @@ export default function CreatePurchaseRequestPage() {
                     value={formData.unit}
                     onChange={(e) => handleInputChange('unit', e.target.value)}
                     placeholder="kg, m³, adet, m²..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
               </div>
@@ -1754,7 +1754,7 @@ export default function CreatePurchaseRequestPage() {
                   value={formData.purpose}
                   onChange={(e) => handleInputChange('purpose', e.target.value)}
                   placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
-                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                 />
               </div>
 
@@ -1767,7 +1767,7 @@ export default function CreatePurchaseRequestPage() {
                   type="date"
                   value={formData.required_date}
                   onChange={(e) => handleInputChange('required_date', e.target.value)}
-                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   min={new Date().toISOString().split('T')[0]}
                 />
               </div>
@@ -1793,7 +1793,7 @@ export default function CreatePurchaseRequestPage() {
                     value={formData.specifications}
                     onChange={(e) => handleInputChange('specifications', e.target.value)}
                     placeholder="Teknik özellikler, kalite standartları, özel notlar..."
-                    className="min-h-[100px] lg:min-h-[120px] resize-none rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-sm lg:text-base"
+                    className="min-h-[100px] lg:min-h-[120px] resize-none rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
               </div>
             </CardContent>
@@ -1940,7 +1940,7 @@ export default function CreatePurchaseRequestPage() {
                 value={createMaterialData.class} 
                 onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, class: value }))}
               >
-                <SelectTrigger className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50">
+                <SelectTrigger className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 text-base">
                   <SelectValue placeholder="Sınıf seçin..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
@@ -1971,7 +1971,7 @@ export default function CreatePurchaseRequestPage() {
                 onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, group: value }))}
                 disabled={!createMaterialData.class}
               >
-                <SelectTrigger className={`w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 ${
+                <SelectTrigger className={`w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 text-base ${
                   !createMaterialData.class 
                     ? 'opacity-50 cursor-not-allowed' 
                     : 'hover:bg-white/70'
@@ -2021,7 +2021,7 @@ export default function CreatePurchaseRequestPage() {
                 value={createMaterialData.item_name}
                 onChange={(e) => setCreateMaterialData(prev => ({ ...prev, item_name: e.target.value }))}
                 placeholder="Malzeme adını girin..."
-                className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 placeholder:text-gray-500"
+                className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 placeholder:text-gray-500 text-base"
               />
             </div>
           </div>

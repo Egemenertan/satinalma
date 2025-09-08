@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
+import { invalidateSitesCache } from '@/lib/cache'
 import { 
   Building2, 
   Plus, 
@@ -49,190 +51,237 @@ interface Site {
   }>
 }
 
-export default function SitesPage() {
-  const [sites, setSites] = useState<Site[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchTerm, setSearchTerm] = useState('')
-
-  const router = useRouter()
+// Sites with stats fetcher fonksiyonu
+const fetchSitesWithStats = async () => {
   const supabase = createClient()
+  
+  console.log('🔍 Fetching sites...')
+  
+  // Auth durumunu kontrol et
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  console.log('👤 Auth user:', user)
+  console.log('🔐 Auth error:', authError)
+  
+  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+    
+  // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
+  const sitesResult = await supabase
+    .from('sites')
+    .select('id, name, created_at, updated_at, approved_expenses, total_budget')
+    .order('name')
 
-  useEffect(() => {
-    fetchSitesWithStats()
-  }, [])
+  console.log('📊 Sites result:', sitesResult)
+  console.log('📊 Sites error details:', sitesResult.error)
 
-  const fetchSitesWithStats = async () => {
-    setLoading(true)
-    try {
-            console.log('🔍 Fetching sites...')
-      
-      // Auth durumunu kontrol et
-      const { data: { user }, error: authError } = await supabase.auth.getUser()
-      console.log('👤 Auth user:', user)
-      console.log('🔐 Auth error:', authError)
-        
-        // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
-        const sitesResult = await supabase
-          .from('sites')
-          .select('id, name, created_at, updated_at, approved_expenses, total_budget')
-          .order('name')
-
-        console.log('📊 Sites result:', sitesResult)
-        console.log('📊 Sites error details:', sitesResult.error)
-
-      if (sitesResult.error) {
-        console.error('Sites fetch error:', sitesResult.error)
-        setSites([])
-        return
-      }
-
-      const allSitesData = sitesResult.data || []
-      console.log('📋 All sites data:', allSitesData)
-
-      if (allSitesData.length === 0) {
-        console.log('⚠️ No sites found')
-        setSites([])
-        return
-      }
-
-      // Her site için istatistikleri hesapla
-      const sitesWithStats = await Promise.all(
-        allSitesData.map(async (site) => {
-          try {
-            // Purchase requests'leri çek (site_id için)
-            const requestsResult = await supabase
-              .from('purchase_requests')
-              .select(`
-                id,
-                status,
-                created_at,
-                total_amount,
-                purchase_request_items(
-                  quantity,
-                  unit,
-                  total_price
-                ),
-                profiles!purchase_requests_requested_by_fkey(
-                  full_name
-                )
-              `)
-              .eq('site_id', site.id)
-
-            const allRequests = requestsResult.data || []
-            
-            console.log(`📋 Requests for site ${site.name}:`, allRequests.length)
-            
-            // İstatistikleri hesapla
-            const totalRequests = allRequests.length
-            const pendingRequests = allRequests.filter(r => r.status === 'pending').length
-            const approvedRequests = allRequests.filter(r => r.status === 'approved').length
-            
-            // Toplam miktar hesaplama (gerçek total_amount değerlerini kullan)
-            const totalAmount = allRequests.reduce((sum, req) => {
-              return sum + (parseFloat(req.total_amount) || 0)
-            }, 0)
-
-            // Son talep edenler
-            const requesterNames: string[] = []
-            allRequests.slice(0, 5).forEach(req => {
-              const profile = req.profiles as any
-              if (profile?.full_name) {
-                requesterNames.push(profile.full_name)
-              }
-            })
-            
-            const uniqueRequesters = Array.from(new Set(requesterNames))
-            const recentRequesters = uniqueRequesters.slice(0, 3)
-
-            // Son talep tarihi
-            const lastRequestDate = allRequests.length > 0 
-              ? allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
-              : undefined
-
-            // Onaylanan teklifleri çek
-            let approvedOffers: any[] = []
-            try {
-              const { data: offersData, error: offersError } = await supabase
-                .from('offers')
-                .select(`
-                  id,
-                  supplier_name,
-                  total_price,
-                  currency,
-                  delivery_days,
-                  selected_at,
-                  purchase_requests!inner(
-                    title,
-                    status
-                  )
-                `)
-                .eq('site_id', site.id)
-                .eq('is_selected', true)
-                .eq('purchase_requests.status', 'approved')
-                .order('selected_at', { ascending: false })
-                .limit(10)
-
-              if (!offersError && offersData) {
-                approvedOffers = offersData.map(offer => {
-                  const purchaseRequest = offer.purchase_requests as any
-                  return {
-                    id: offer.id,
-                    supplier_name: offer.supplier_name,
-                    total_price: offer.total_price,
-                    currency: offer.currency,
-                    delivery_days: offer.delivery_days,
-                    request_title: purchaseRequest?.title || 'Bilinmeyen Talep',
-                    selected_at: offer.selected_at
-                  }
-                })
-              }
-            } catch (error) {
-              console.error('Error fetching approved offers for site', site.id, error)
-            }
-
-            return {
-              ...site,
-              total_requests: totalRequests,
-              total_amount: totalAmount,
-              pending_requests: pendingRequests,
-              approved_requests: approvedRequests,
-              recent_requesters: recentRequesters,
-              last_request_date: lastRequestDate,
-              approved_offers: approvedOffers
-            }
-          } catch (error) {
-            console.error('Error processing site', site.id, error)
-            return {
-              ...site,
-              total_requests: 0,
-              total_amount: 0,
-              pending_requests: 0,
-              approved_requests: 0,
-              recent_requesters: [],
-              last_request_date: undefined,
-              approved_offers: []
-            }
-          }
-        })
-      )
-
-      setSites(sitesWithStats)
-    } catch (error) {
-      console.error('Sites fetch error:', error)
-    } finally {
-      setLoading(false)
-    }
+  if (sitesResult.error) {
+    console.error('Sites fetch error:', sitesResult.error)
+    throw new Error(sitesResult.error.message)
   }
 
-  const filteredSites = sites.filter(site =>
+  const allSitesData = sitesResult.data || []
+  console.log('📋 All sites data:', allSitesData)
+
+  if (allSitesData.length === 0) {
+    console.log('⚠️ No sites found')
+    return []
+  }
+
+  // Her site için istatistikleri hesapla
+  const sitesWithStats = await Promise.all(
+    allSitesData.map(async (site) => {
+      try {
+        // Purchase requests'leri çek (site_id için)
+        const requestsResult = await supabase
+          .from('purchase_requests')
+          .select(`
+            id,
+            status,
+            created_at,
+            total_amount,
+            purchase_request_items(
+              quantity,
+              unit,
+              total_price
+            ),
+            profiles!purchase_requests_requested_by_fkey(
+              full_name
+            )
+          `)
+          .eq('site_id', site.id)
+
+        const allRequests = requestsResult.data || []
+        
+        console.log(`📋 Requests for site ${site.name}:`, allRequests.length)
+        
+        // İstatistikleri hesapla
+        const totalRequests = allRequests.length
+        const pendingRequests = allRequests.filter(r => r.status === 'pending').length
+        const approvedRequests = allRequests.filter(r => r.status === 'approved').length
+        
+        // Toplam miktar hesaplama (gerçek total_amount değerlerini kullan)
+        const totalAmount = allRequests.reduce((sum, req) => {
+          return sum + (parseFloat(req.total_amount) || 0)
+        }, 0)
+
+        // Son talep edenler
+        const requesterNames: string[] = []
+        allRequests.slice(0, 5).forEach(req => {
+          const profile = req.profiles as any
+          if (profile?.full_name) {
+            requesterNames.push(profile.full_name)
+          }
+        })
+        
+        const uniqueRequesters = Array.from(new Set(requesterNames))
+        const recentRequesters = uniqueRequesters.slice(0, 3)
+
+        // Son talep tarihi
+        const lastRequestDate = allRequests.length > 0 
+          ? allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
+          : undefined
+
+        // Onaylanan teklifleri çek
+        let approvedOffers: any[] = []
+        try {
+          const { data: offersData, error: offersError } = await supabase
+            .from('offers')
+            .select(`
+              id,
+              supplier_name,
+              total_price,
+              currency,
+              delivery_days,
+              selected_at,
+              purchase_requests!inner(
+                title,
+                status
+              )
+            `)
+            .eq('site_id', site.id)
+            .eq('is_selected', true)
+            .eq('purchase_requests.status', 'approved')
+            .order('selected_at', { ascending: false })
+            .limit(10)
+
+          if (!offersError && offersData) {
+            approvedOffers = offersData.map(offer => {
+              const purchaseRequest = offer.purchase_requests as any
+              return {
+                id: offer.id,
+                supplier_name: offer.supplier_name,
+                total_price: offer.total_price,
+                currency: offer.currency,
+                delivery_days: offer.delivery_days,
+                request_title: purchaseRequest?.title || 'Bilinmeyen Talep',
+                selected_at: offer.selected_at
+              }
+            })
+          }
+        } catch (error) {
+          console.error('Error fetching approved offers for site', site.id, error)
+        }
+
+        return {
+          ...site,
+          total_requests: totalRequests,
+          total_amount: totalAmount,
+          pending_requests: pendingRequests,
+          approved_requests: approvedRequests,
+          recent_requesters: recentRequesters,
+          last_request_date: lastRequestDate,
+          approved_offers: approvedOffers
+        }
+      } catch (error) {
+        console.error('Error processing site', site.id, error)
+        return {
+          ...site,
+          total_requests: 0,
+          total_amount: 0,
+          pending_requests: 0,
+          approved_requests: 0,
+          recent_requesters: [],
+          last_request_date: undefined,
+          approved_offers: []
+        }
+      }
+    })
+  )
+
+  return sitesWithStats
+}
+
+export default function SitesPage() {
+  const [searchTerm, setSearchTerm] = useState('')
+  const router = useRouter()
+
+  // SWR ile cache'li sites verisi
+  const { data: sites, error: sitesError, isLoading: loading } = useSWR(
+    'sites_with_stats',
+    fetchSitesWithStats,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 120000, // 2 dakika cache
+      errorRetryCount: 3,
+      fallbackData: []
+    }
+  )
+
+  // Real-time updates için subscription
+  useEffect(() => {
+    const supabase = createClient()
+    
+    const subscription = supabase
+      .channel('sites_updates')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'sites' 
+        }, 
+        () => {
+          console.log('📡 Sites update triggered')
+          invalidateSitesCache()
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'purchase_requests' 
+        }, 
+        () => {
+          console.log('📡 Purchase requests update for sites triggered')
+          invalidateSitesCache()
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'offers' 
+        }, 
+        () => {
+          console.log('📡 Offers update for sites triggered')
+          invalidateSitesCache()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  const filteredSites = (sites || []).filter(site =>
     site.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
-    total: sites.length,
-    totalRequests: sites.reduce((sum, s) => sum + s.total_requests, 0),
-    totalAmount: sites.reduce((sum, s) => sum + s.total_amount, 0),
-    activeSites: sites.filter(s => s.total_requests > 0).length
+    total: (sites || []).length,
+    totalRequests: (sites || []).reduce((sum, s) => sum + s.total_requests, 0),
+    totalAmount: (sites || []).reduce((sum, s) => sum + s.total_amount, 0),
+    activeSites: (sites || []).filter(s => s.total_requests > 0).length
   }
 
   const formatCurrency = (amount: number) => {

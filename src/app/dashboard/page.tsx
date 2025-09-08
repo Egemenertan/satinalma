@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { 
   TrendingUp, 
   TrendingDown,
@@ -16,6 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
+import { invalidateDashboardCache } from '@/lib/cache'
 
 interface DashboardStats {
   totalRequests: number
@@ -43,155 +45,243 @@ interface RecentRequest {
   site_name?: string
 }
 
-export default function Dashboard() {
-  const [loading, setLoading] = useState(true)
-  const [stats, setStats] = useState<DashboardStats>({
-    totalRequests: 0,
-    requestGrowth: 0,
-    totalSuppliers: 0,
-    supplierGrowth: 0,
-    totalSites: 0,
-    siteGrowth: 0,
-    totalAmount: 0,
-    amountGrowth: 0
-  })
-  
-  const [dailyData, setDailyData] = useState<DailyRequestData[]>([])
-  const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([])
+// Dashboard stats fetcher fonksiyonu
+const fetchDashboardStats = async () => {
   const supabase = createClient()
+  
+  // Kullanıcı rolünü ve site bilgisini çek
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+  
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, site_id')
+    .eq('id', user.id)
+    .single()
+  
+  // RLS politikaları otomatik filtreleme yapacak, normal sorgular yeterli
+  const [requestsResult, suppliersResult, sitesResult] = await Promise.all([
+    supabase.from('purchase_requests').select('*'),
+    supabase.from('suppliers').select('*'),
+    supabase.from('sites').select('*')
+  ])
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
+  if (requestsResult.error) throw requestsResult.error
+  if (suppliersResult.error) throw suppliersResult.error
+  if (sitesResult.error) throw sitesResult.error
 
-  const fetchDashboardData = async () => {
-    try {
-      setLoading(true)
-      
-      // Kullanıcı rolünü ve site bilgisini çek
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
-      
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role, site_id')
-        .eq('id', user.id)
-        .single()
-      
-      // RLS politikaları otomatik filtreleme yapacak, normal sorgular yeterli
-      const [requestsResult, suppliersResult, sitesResult] = await Promise.all([
-        supabase.from('purchase_requests').select('*'),
-        supabase.from('suppliers').select('*'),
-        supabase.from('sites').select('*')
-      ])
+  const requests = requestsResult.data || []
+  const suppliers = suppliersResult.data || []
+  const sites = sitesResult.data || []
 
-      if (requestsResult.error) throw requestsResult.error
-      if (suppliersResult.error) throw suppliersResult.error
-      if (sitesResult.error) throw sitesResult.error
+  // Temel istatistikler
+  const totalRequests = requests.length
+  const totalSuppliers = suppliers.length
+  const totalSites = sites.length
+  const totalAmount = requests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
 
-      const requests = requestsResult.data || []
-      const suppliers = suppliersResult.data || []
-      const sites = sitesResult.data || []
+  // Büyüme hesaplamaları (geçen ay vs bu ay)
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
+  const currentYear = now.getFullYear()
+  const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
 
-      // Temel istatistikler
-      const totalRequests = requests.length
-      const totalSuppliers = suppliers.length
-      const totalSites = sites.length
-      const totalAmount = requests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+  const currentMonthRequests = requests.filter(r => {
+    const date = new Date(r.created_at)
+    return date.getMonth() === currentMonth && date.getFullYear() === currentYear
+  })
 
-      // Büyüme hesaplamaları (geçen ay vs bu ay)
-      const now = new Date()
-      const currentMonth = now.getMonth()
-      const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
-      const currentYear = now.getFullYear()
-      const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
+  const lastMonthRequests = requests.filter(r => {
+    const date = new Date(r.created_at)
+    return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear
+  })
 
-      const currentMonthRequests = requests.filter(r => {
-        const date = new Date(r.created_at)
-        return date.getMonth() === currentMonth && date.getFullYear() === currentYear
-      })
+  const requestGrowth = lastMonthRequests.length > 0 
+    ? ((currentMonthRequests.length - lastMonthRequests.length) / lastMonthRequests.length) * 100 
+    : 0
 
-      const lastMonthRequests = requests.filter(r => {
-        const date = new Date(r.created_at)
-        return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear
-      })
+  const currentMonthAmount = currentMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+  const lastMonthAmount = lastMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+  
+  const amountGrowth = lastMonthAmount > 0 
+    ? ((currentMonthAmount - lastMonthAmount) / lastMonthAmount) * 100 
+    : 0
 
-      const requestGrowth = lastMonthRequests.length > 0 
-        ? ((currentMonthRequests.length - lastMonthRequests.length) / lastMonthRequests.length) * 100 
-        : 0
-
-      const currentMonthAmount = currentMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
-      const lastMonthAmount = lastMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
-      
-      const amountGrowth = lastMonthAmount > 0 
-        ? ((currentMonthAmount - lastMonthAmount) / lastMonthAmount) * 100 
-        : 0
-
-      setStats({
-        totalRequests,
-        requestGrowth: Math.round(requestGrowth * 10) / 10,
-        totalSuppliers,
-        supplierGrowth: 5.2, // Mock değer - suppliers için tarih bilgisi yok
-        totalSites,
-        siteGrowth: 2.1, // Mock değer - sites için tarih bilgisi yok
-        totalAmount,
-        amountGrowth: Math.round(amountGrowth * 10) / 10
-      })
-
-      // Son 30 günlük günlük veri hazırla
-      const dailyRequestData: DailyRequestData[] = []
-      for (let i = 29; i >= 0; i--) {
-        const date = new Date()
-        date.setDate(date.getDate() - i)
-        const dateStr = date.toISOString().split('T')[0]
-        
-        const dayRequests = requests.filter(r => {
-          const reqDate = new Date(r.created_at)
-          return reqDate.toISOString().split('T')[0] === dateStr
-        })
-        
-        const dayAmount = dayRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
-        
-        dailyRequestData.push({
-          date: date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
-          requests: dayRequests.length,
-          amount: dayAmount
-        })
-      }
-      
-      setDailyData(dailyRequestData)
-
-      // Son talepleri çek - RLS politikaları otomatik filtreleme yapacak
-      const { data: recentRequestsData } = await supabase
-        .from('purchase_requests')
-        .select(`
-          id,
-          title,
-          status,
-          created_at,
-          total_amount,
-          sites(name)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      const formattedRecentRequests = (recentRequestsData || []).map(req => ({
-        id: req.id,
-        title: req.title,
-        status: req.status,
-        created_at: req.created_at,
-        total_amount: parseFloat(req.total_amount) || 0,
-        site_name: (req.sites as any)?.name || 'Bilinmeyen'
-      }))
-
-      setRecentRequests(formattedRecentRequests)
-
-    } catch (error) {
-      console.error('Dashboard verileri yüklenirken hata:', error)
-    } finally {
-      setLoading(false)
-    }
+  return {
+    totalRequests,
+    requestGrowth: Math.round(requestGrowth * 10) / 10,
+    totalSuppliers,
+    supplierGrowth: 5.2, // Mock değer - suppliers için tarih bilgisi yok
+    totalSites,
+    siteGrowth: 2.1, // Mock değer - sites için tarih bilgisi yok
+    totalAmount,
+    amountGrowth: Math.round(amountGrowth * 10) / 10
   }
+}
+
+// Daily data fetcher fonksiyonu
+const fetchDailyData = async () => {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+  
+  const { data: requests } = await supabase.from('purchase_requests').select('*')
+  
+  if (!requests) return []
+
+  // Son 30 günlük günlük veri hazırla
+  const dailyRequestData: DailyRequestData[] = []
+  for (let i = 29; i >= 0; i--) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    const dateStr = date.toISOString().split('T')[0]
+    
+    const dayRequests = requests.filter(r => {
+      const reqDate = new Date(r.created_at)
+      return reqDate.toISOString().split('T')[0] === dateStr
+    })
+    
+    const dayAmount = dayRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+    
+    dailyRequestData.push({
+      date: date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
+      requests: dayRequests.length,
+      amount: dayAmount
+    })
+  }
+  
+  return dailyRequestData
+}
+
+// Recent requests fetcher fonksiyonu
+const fetchRecentRequests = async () => {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+
+  // Son talepleri çek - RLS politikaları otomatik filtreleme yapacak
+  const { data: recentRequestsData } = await supabase
+    .from('purchase_requests')
+    .select(`
+      id,
+      title,
+      status,
+      created_at,
+      total_amount,
+      sites(name)
+    `)
+    .order('created_at', { ascending: false })
+    .limit(10)
+
+  if (!recentRequestsData) return []
+
+  return recentRequestsData.map(req => ({
+    id: req.id,
+    title: req.title,
+    status: req.status,
+    created_at: req.created_at,
+    total_amount: parseFloat(req.total_amount) || 0,
+    site_name: (req.sites as any)?.name || 'Bilinmeyen'
+  }))
+}
+
+export default function Dashboard() {
+  // SWR ile cache'li veriler
+  const { data: stats, error: statsError } = useSWR(
+    'dashboard_stats',
+    fetchDashboardStats,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60000, // 1 dakika cache
+      errorRetryCount: 3,
+      fallbackData: {
+        totalRequests: 0,
+        requestGrowth: 0,
+        totalSuppliers: 0,
+        supplierGrowth: 0,
+        totalSites: 0,
+        siteGrowth: 0,
+        totalAmount: 0,
+        amountGrowth: 0
+      }
+    }
+  )
+
+  const { data: dailyData, error: dailyError } = useSWR(
+    'daily_request_data',
+    fetchDailyData,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 300000, // 5 dakika cache
+      errorRetryCount: 3,
+      fallbackData: []
+    }
+  )
+
+  const { data: recentRequests, error: recentError } = useSWR(
+    'recent_requests',
+    fetchRecentRequests,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 30000, // 30 saniye cache
+      errorRetryCount: 3,
+      fallbackData: []
+    }
+  )
+
+  const loading = !stats || !dailyData || !recentRequests
+
+  // Real-time updates için subscription
+  useEffect(() => {
+    const supabase = createClient()
+    
+    const subscription = supabase
+      .channel('dashboard_updates')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'purchase_requests' 
+        }, 
+        () => {
+          console.log('📡 Dashboard update triggered')
+          invalidateDashboardCache()
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'suppliers' 
+        }, 
+        () => {
+          console.log('📡 Suppliers update triggered')
+          invalidateDashboardCache()
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'sites' 
+        }, 
+        () => {
+          console.log('📡 Sites update triggered')
+          invalidateDashboardCache()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const formatCurrency = (amount: number) => {
     if (amount >= 1000000) {
@@ -211,8 +301,8 @@ export default function Dashboard() {
     return `${sign}${growth.toFixed(1)}%`
   }
 
-  const maxRequests = Math.max(...dailyData.map(d => d.requests), 1)
-  const maxAmount = Math.max(...dailyData.map(d => d.amount), 1)
+  const maxRequests = Math.max(...(dailyData || []).map(d => d.requests), 1)
+  const maxAmount = Math.max(...(dailyData || []).map(d => d.amount), 1)
 
   const getStatusText = (status: string) => {
     switch (status) {
@@ -381,7 +471,7 @@ export default function Dashboard() {
                 <rect width="100%" height="100%" fill="url(#grid)" />
                 
                 {/* Request count area (blue) */}
-                {dailyData.length > 0 && (
+                {dailyData && dailyData.length > 0 && (
                   <path
                     d={`M 50 ${250 - (dailyData[0].requests / maxRequests) * 200} ${dailyData.map((d, i) => 
                       `L ${50 + (i * 25)} ${250 - (d.requests / maxRequests) * 200}`
@@ -392,7 +482,7 @@ export default function Dashboard() {
                 )}
                 
                 {/* Amount area (orange) */}
-                {dailyData.length > 0 && (
+                {dailyData && dailyData.length > 0 && (
                   <path
                     d={`M 50 ${250 - (dailyData[0].amount / maxAmount) * 200} ${dailyData.map((d, i) => 
                       `L ${50 + (i * 25)} ${250 - (d.amount / maxAmount) * 200}`
@@ -415,7 +505,7 @@ export default function Dashboard() {
                 </defs>
                 
                 {/* X-axis labels - show every 5th day */}
-                {dailyData.map((d, i) => {
+                {dailyData && dailyData.map((d, i) => {
                   if (i % 5 === 0 || i === dailyData.length - 1) {
                     return (
                       <text
@@ -499,7 +589,7 @@ export default function Dashboard() {
                 
                 {/* Table Rows */}
                 <div className="space-y-4 pt-4">
-                  {recentRequests.slice(0, 5).map((request, index) => (
+                  {recentRequests && recentRequests.slice(0, 5).map((request, index) => (
                     <div key={request.id} className="grid grid-cols-6 gap-4 items-center py-3 hover:bg-gray-50 rounded-lg px-2">
                       <div className="flex items-center">
                         <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
@@ -521,7 +611,7 @@ export default function Dashboard() {
                     </div>
                   ))}
                   
-                  {recentRequests.length === 0 && (
+                  {(!recentRequests || recentRequests.length === 0) && (
                     <div className="text-center py-8 text-gray-500">
                       <p>Henüz talep bulunmuyor</p>
                     </div>

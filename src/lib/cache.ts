@@ -19,6 +19,28 @@ export const invalidatePurchaseRequestsCache = () => {
   console.log('🔄 Purchase requests cache invalidated')
 }
 
+// Dashboard cache'leri
+export const invalidateDashboardCache = () => {
+  mutate('dashboard_stats', undefined, { revalidate: true })
+  mutate('daily_request_data', undefined, { revalidate: true })
+  mutate('recent_requests', undefined, { revalidate: true })
+  console.log('🔄 Dashboard cache invalidated')
+}
+
+// Sites cache'leri
+export const invalidateSitesCache = () => {
+  mutate('sites_with_stats', undefined, { revalidate: true })
+  mutate('sites_stats', undefined, { revalidate: true })
+  console.log('🔄 Sites cache invalidated')
+}
+
+// Suppliers cache'leri
+export const invalidateSuppliersCache = () => {
+  mutate('suppliers_list', undefined, { revalidate: true })
+  mutate('suppliers_stats', undefined, { revalidate: true })
+  console.log('🔄 Suppliers cache invalidated')
+}
+
 // Sadece stats cache'ini temizle
 export const invalidateStatsCache = () => {
   mutate('purchase_requests_stats', undefined, { revalidate: true })
@@ -50,4 +72,25 @@ export const refreshPurchaseRequestsData = () => {
 
 export const refreshStatsData = () => {
   invalidateStatsCache()
+}
+
+export const refreshDashboardData = () => {
+  invalidateDashboardCache()
+}
+
+export const refreshSitesData = () => {
+  invalidateSitesCache()
+}
+
+export const refreshSuppliersData = () => {
+  invalidateSuppliersCache()
+}
+
+// Global cache invalidation - tüm sayfalardaki cache'leri temizle
+export const invalidateAllPagesCache = () => {
+  invalidatePurchaseRequestsCache()
+  invalidateDashboardCache()
+  invalidateSitesCache()
+  invalidateSuppliersCache()
+  console.log('🔄 All pages cache invalidated')
 }
