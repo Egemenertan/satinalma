@@ -138,17 +138,7 @@ export default function SiteDetailPage({ params }: { params: { slug: string } })
       console.log('📋 Site ID için talepleri çekiliyor:', site.id)
       const { data: purchaseRequestsData, error: requestsError } = await supabase
         .from('purchase_requests')
-        .select(`
-          id,
-          title,
-          request_number,
-          status,
-          created_at,
-          total_amount,
-          currency,
-          urgency_level,
-          requested_by
-        `)
+        .select('id, title, request_number, status, created_at, total_amount, currency, urgency_level, requested_by')
         .eq('site_id', site.id)
 
       if (requestsError) {
@@ -190,16 +180,7 @@ export default function SiteDetailPage({ params }: { params: { slug: string } })
       console.log('🎯 Site ID için teklifler aranıyor:', site.id)
       const { data: offersData, error: offersError } = await supabase
         .from('offers')
-        .select(`
-          id,
-          supplier_name,
-          total_price,
-          currency,
-          delivery_days,
-          created_at,
-          offer_date,
-          purchase_request_id
-        `)
+        .select('id, supplier_name, total_price, currency, delivery_days, created_at, offer_date, purchase_request_id')
         .eq('site_id', site.id)
         .eq('is_selected', true)
         .order('created_at', { ascending: false })

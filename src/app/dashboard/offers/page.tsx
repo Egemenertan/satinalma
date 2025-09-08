@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import OfferManagement from '@/components/OfferManagement'
 import { TrendingUp, FileText, Users, Target } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 
 export default function OffersPage() {
+  const supabase = createClient()
   const [stats, setStats] = useState({
     totalOffers: 0,
     pendingRequests: 0,

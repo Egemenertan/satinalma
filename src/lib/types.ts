@@ -6,20 +6,15 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
-// Kullanıcı rolleri - mevcut ve yeni roller
+// Kullanıcı rolleri - güncel sistem
 export type UserRole = 
-  | 'engineer' 
-  | 'site_supervisor' 
-  | 'procurement_specialist' 
-  | 'finance_manager' 
-  | 'project_manager' 
-  | 'general_manager'
-  | 'chief'
-  | 'approver'
-  | 'muhendis'
-  | 'proje_sorumlusu'
-  | 'satin_alma_sorumlusu'
+  | 'user'
+  | 'manager'
   | 'admin'
+  | 'site_personnel' // Şantiye personeli - sadece requests sayfasına erişim
+  | 'site_manager' // Şantiye yöneticisi - dashboard ve requests sayfalarına erişim
+  | 'warehouse_manager' // Depo yöneticisi - site_manager ile aynı yetkiler
+  | 'purchasing_officer' // Satın alma sorumlusu - site_manager ile aynı yetkiler
 
 export interface Database {
   public: {

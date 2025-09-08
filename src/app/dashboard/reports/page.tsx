@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import { 
   BarChart3, 
   TrendingUp, 
@@ -23,6 +23,7 @@ import {
 } from 'lucide-react'
 
 export default function ReportsPage() {
+  const supabase = createClient()
   const [dateRange, setDateRange] = useState('last_30_days')
   const [selectedSite, setSelectedSite] = useState('all')
   const [reportData, setReportData] = useState({

@@ -8,11 +8,10 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 
 import { 
@@ -32,7 +31,6 @@ import {
   XCircle,
   AlertTriangle,
   Search,
-  Filter,
   BarChart3,
   Users,
   Package,
@@ -71,13 +69,12 @@ interface SupplierPerformance {
 export default function SupplierManagement() {
   const router = useRouter()
   const { showToast } = useToast()
+  const supabase = createClient()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [showEditDialog, setShowEditDialog] = useState(false)
   const [loading, setLoading] = useState(true)
   const [filters, setFilters] = useState({
-    search: '',
-    status: 'all',
-    rating: 'all'
+    search: ''
   })
 
   useEffect(() => {
@@ -97,15 +94,6 @@ export default function SupplierManagement() {
           code.ilike.%${filters.search}%,
           contact_person.ilike.%${filters.search}%
         `)
-      }
-
-      if (filters.status !== 'all') {
-        query = query.eq('is_approved', filters.status === 'approved')
-      }
-
-      if (filters.rating !== 'all') {
-        const rating = parseInt(filters.rating)
-        query = query.gte('rating', rating).lt('rating', rating + 1)
       }
 
       const { data, error } = await query.order('name')
@@ -460,7 +448,7 @@ export default function SupplierManagement() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Başlık ve Filtreler */}
       <div className="flex items-center justify-between">
         <div>
@@ -470,117 +458,27 @@ export default function SupplierManagement() {
         <AddSupplierDialog />
       </div>
 
-      {/* Filtreler */}
-      <Card>
-        <CardContent className="p-4">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Tedarikçi ara..."
-                value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-10"
-              />
-            </div>
 
-            <Select 
-              value={filters.status} 
-              onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Durum" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Durumlar</SelectItem>
-                <SelectItem value="approved">Onaylı</SelectItem>
-                <SelectItem value="pending">Beklemede</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select 
-              value={filters.rating} 
-              onValueChange={(value) => setFilters(prev => ({ ...prev, rating: value }))}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Puan" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">Tüm Puanlar</SelectItem>
-                <SelectItem value="4">4+ Yıldız</SelectItem>
-                <SelectItem value="3">3+ Yıldız</SelectItem>
-                <SelectItem value="2">2+ Yıldız</SelectItem>
-                <SelectItem value="1">1+ Yıldız</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button 
-              variant="outline" 
-              onClick={() => setFilters({ search: '', status: 'all', rating: 'all' })}
-              className="flex items-center gap-2"
-            >
-              <Filter className="w-4 h-4" />
-              Temizle
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* İstatistikler */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Building className="w-4 h-4 text-blue-600" />
-              <div>
-                <div className="text-2xl font-normal">{suppliers.length}</div>
-                <div className="text-sm text-gray-600">Toplam Tedarikçi</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <CheckCircle className="w-4 h-4 text-green-600" />
-              <div>
-                <div className="text-2xl font-normal text-green-600">
-                  {suppliers.filter(s => s.is_approved).length}
-                </div>
-                <div className="text-sm text-gray-600">Onaylı Tedarikçi</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Star className="w-4 h-4 text-yellow-600" />
-              <div>
-                <div className="text-2xl font-normal text-yellow-600">
-                  {suppliers.filter(s => s.rating >= 4).length}
-                </div>
-                <div className="text-sm text-gray-600">4+ Yıldız</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-4 h-4 text-orange-600" />
-              <div>
-                <div className="text-2xl font-normal text-orange-600">
-                  {suppliers.filter(s => !s.is_approved).length}
-                </div>
-                <div className="text-sm text-gray-600">Onay Bekleyen</div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      {/* Arama Çubuğu */}
+      <div className="flex items-center gap-4 mb-6">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+          <Input
+            placeholder="Tedarikçi ara..."
+            value={filters.search}
+            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+            className="pl-10 h-12 text-base"
+          />
+        </div>
+        {filters.search && (
+          <Button 
+            variant="outline" 
+            onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
+            className="h-12"
+          >
+            Temizle
+          </Button>
+        )}
       </div>
 
       {/* Tedarikçiler Listesi */}

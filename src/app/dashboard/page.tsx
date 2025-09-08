@@ -3,57 +3,61 @@
 import { useState, useEffect } from 'react'
 import { 
   TrendingUp, 
-  Package, 
-  Clock, 
-  Building2, 
-  Calendar,
-  BarChart3,
-  FileText,
-  AlertCircle,
-  CheckCircle,
+  TrendingDown,
   Users,
+  Target,
   DollarSign,
-  ShoppingCart,
-  Truck,
-  Target
+  BarChart3,
+  MoreHorizontal,
+  Plus
 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Button } from '@/components/ui/button'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 
 interface DashboardStats {
   totalRequests: number
-  pendingRequests: number
-  approvedRequests: number
-  rejectedRequests: number
-  totalSites: number
+  requestGrowth: number
   totalSuppliers: number
-  totalOrders: number
-  monthlyGrowth: number
-  avgOrderValue: number
-  activeProjects: number
+  supplierGrowth: number
+  totalSites: number
+  siteGrowth: number
+  totalAmount: number
+  amountGrowth: number
+}
+
+interface DailyRequestData {
+  date: string
+  requests: number
+  amount: number
+}
+
+interface RecentRequest {
+  id: string
+  title: string
+  status: string
+  created_at: string
+  total_amount: number
+  site_name?: string
 }
 
 export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState<DashboardStats>({
     totalRequests: 0,
-    pendingRequests: 0,
-    approvedRequests: 0,
-    rejectedRequests: 0,
-    totalSites: 0,
+    requestGrowth: 0,
     totalSuppliers: 0,
-    totalOrders: 0,
-    monthlyGrowth: 0,
-    avgOrderValue: 0,
-    activeProjects: 0
+    supplierGrowth: 0,
+    totalSites: 0,
+    siteGrowth: 0,
+    totalAmount: 0,
+    amountGrowth: 0
   })
   
-  const [chartData, setChartData] = useState({
-    requestsByMonth: [] as Array<{ month: string; requests: number }>,
-    statusDistribution: [] as Array<{ status: string; count: number; percentage: number }>,
-    topSites: [] as Array<{ name: string; requests: number; amount: number }>
-  })
-
+  const [dailyData, setDailyData] = useState<DailyRequestData[]>([])
+  const [recentRequests, setRecentRequests] = useState<RecentRequest[]>([])
   const supabase = createClient()
 
   useEffect(() => {
@@ -64,136 +68,129 @@ export default function Dashboard() {
     try {
       setLoading(true)
       
-      // Paralel veri çekme işlemleri
-      const [requestsResult, sitesResult, suppliersResult, ordersResult] = await Promise.all([
+      // Kullanıcı rolünü ve site bilgisini çek
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role, site_id')
+        .eq('id', user.id)
+        .single()
+      
+      // RLS politikaları otomatik filtreleme yapacak, normal sorgular yeterli
+      const [requestsResult, suppliersResult, sitesResult] = await Promise.all([
         supabase.from('purchase_requests').select('*'),
-        supabase.from('sites').select('*'),
         supabase.from('suppliers').select('*'),
-        supabase.from('orders').select('*')
+        supabase.from('sites').select('*')
       ])
 
-      // Hata kontrolü
       if (requestsResult.error) throw requestsResult.error
-      if (sitesResult.error) throw sitesResult.error
       if (suppliersResult.error) throw suppliersResult.error
-      if (ordersResult.error) throw ordersResult.error
+      if (sitesResult.error) throw sitesResult.error
 
       const requests = requestsResult.data || []
-      const sites = sitesResult.data || []
       const suppliers = suppliersResult.data || []
-      const orders = ordersResult.data || []
+      const sites = sitesResult.data || []
 
       // Temel istatistikler
       const totalRequests = requests.length
-      const pendingRequests = requests.filter(r => r.status === 'pending').length
-      const approvedRequests = requests.filter(r => r.status === 'approved').length
-      const rejectedRequests = requests.filter(r => r.status === 'rejected').length
+      const totalSuppliers = suppliers.length
+      const totalSites = sites.length
+      const totalAmount = requests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
 
-      // Aylık büyüme hesaplama
-      const currentMonth = new Date().getMonth()
+      // Büyüme hesaplamaları (geçen ay vs bu ay)
+      const now = new Date()
+      const currentMonth = now.getMonth()
       const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
-      const currentYear = new Date().getFullYear()
+      const currentYear = now.getFullYear()
       const lastMonthYear = currentMonth === 0 ? currentYear - 1 : currentYear
 
       const currentMonthRequests = requests.filter(r => {
         const date = new Date(r.created_at)
         return date.getMonth() === currentMonth && date.getFullYear() === currentYear
-      }).length
+      })
 
       const lastMonthRequests = requests.filter(r => {
         const date = new Date(r.created_at)
         return date.getMonth() === lastMonth && date.getFullYear() === lastMonthYear
-      }).length
+      })
 
-      const monthlyGrowth = lastMonthRequests > 0 
-        ? ((currentMonthRequests - lastMonthRequests) / lastMonthRequests) * 100 
+      const requestGrowth = lastMonthRequests.length > 0 
+        ? ((currentMonthRequests.length - lastMonthRequests.length) / lastMonthRequests.length) * 100 
         : 0
 
-      // Ortalama sipariş değeri
-      const totalOrderValue = orders.reduce((sum, order) => sum + (order.amount || 0), 0)
-      const avgOrderValue = orders.length > 0 ? totalOrderValue / orders.length : 0
-
-      // Aktif projeler (bu ay talep alan siteler)
-      const activeProjects = new Set(
-        requests
-          .filter(r => {
-            const date = new Date(r.created_at)
-            return date.getMonth() === currentMonth && date.getFullYear() === currentYear
-          })
-          .map(r => r.site_id)
-          .filter(Boolean)
-      ).size
+      const currentMonthAmount = currentMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+      const lastMonthAmount = lastMonthRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+      
+      const amountGrowth = lastMonthAmount > 0 
+        ? ((currentMonthAmount - lastMonthAmount) / lastMonthAmount) * 100 
+        : 0
 
       setStats({
         totalRequests,
-        pendingRequests,
-        approvedRequests,
-        rejectedRequests,
-        totalSites: sites.length,
-        totalSuppliers: suppliers.length,
-        totalOrders: orders.length,
-        monthlyGrowth,
-        avgOrderValue,
-        activeProjects
+        requestGrowth: Math.round(requestGrowth * 10) / 10,
+        totalSuppliers,
+        supplierGrowth: 5.2, // Mock değer - suppliers için tarih bilgisi yok
+        totalSites,
+        siteGrowth: 2.1, // Mock değer - sites için tarih bilgisi yok
+        totalAmount,
+        amountGrowth: Math.round(amountGrowth * 10) / 10
       })
 
-      // Grafik verileri hazırla
-      prepareChartData(requests, sites)
+      // Son 30 günlük günlük veri hazırla
+      const dailyRequestData: DailyRequestData[] = []
+      for (let i = 29; i >= 0; i--) {
+        const date = new Date()
+        date.setDate(date.getDate() - i)
+        const dateStr = date.toISOString().split('T')[0]
+        
+        const dayRequests = requests.filter(r => {
+          const reqDate = new Date(r.created_at)
+          return reqDate.toISOString().split('T')[0] === dateStr
+        })
+        
+        const dayAmount = dayRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
+        
+        dailyRequestData.push({
+          date: date.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' }),
+          requests: dayRequests.length,
+          amount: dayAmount
+        })
+      }
+      
+      setDailyData(dailyRequestData)
+
+      // Son talepleri çek - RLS politikaları otomatik filtreleme yapacak
+      const { data: recentRequestsData } = await supabase
+        .from('purchase_requests')
+        .select(`
+          id,
+          title,
+          status,
+          created_at,
+          total_amount,
+          sites(name)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(10)
+
+      const formattedRecentRequests = (recentRequestsData || []).map(req => ({
+        id: req.id,
+        title: req.title,
+        status: req.status,
+        created_at: req.created_at,
+        total_amount: parseFloat(req.total_amount) || 0,
+        site_name: (req.sites as any)?.name || 'Bilinmeyen'
+      }))
+
+      setRecentRequests(formattedRecentRequests)
 
     } catch (error) {
       console.error('Dashboard verileri yüklenirken hata:', error)
     } finally {
       setLoading(false)
     }
-  }
-
-  const prepareChartData = (requests: any[], sites: any[]) => {
-    // Son 6 ayın talepler verisi
-    const months = []
-    const now = new Date()
-    for (let i = 5; i >= 0; i--) {
-      const date = new Date(now.getFullYear(), now.getMonth() - i, 1)
-      const monthName = date.toLocaleDateString('tr-TR', { month: 'short' })
-      const requestCount = requests.filter(r => {
-        const requestDate = new Date(r.created_at)
-        return requestDate.getMonth() === date.getMonth() && 
-               requestDate.getFullYear() === date.getFullYear()
-      }).length
-      
-      months.push({ month: monthName, requests: requestCount })
-    }
-
-    // Durum dağılımı
-    const statusCounts = {
-      pending: requests.filter(r => r.status === 'pending').length,
-      approved: requests.filter(r => r.status === 'approved').length,
-      rejected: requests.filter(r => r.status === 'rejected').length
-    }
-
-    const total = Object.values(statusCounts).reduce((a, b) => a + b, 0)
-    const statusDistribution = Object.entries(statusCounts).map(([status, count]) => ({
-      status: status === 'pending' ? 'Beklemede' : 
-              status === 'approved' ? 'Onaylandı' : 'Reddedildi',
-      count,
-      percentage: total > 0 ? Math.round((count / total) * 100) : 0
-    }))
-
-    // En çok talep alan siteler
-    const siteRequestCounts = sites.map(site => {
-      const siteRequests = requests.filter(r => r.site_id === site.id)
-      const totalAmount = siteRequests.reduce((sum, req) => sum + (parseFloat(req.total_amount) || 0), 0)
-      return {
-        name: site.name,
-        requests: siteRequests.length,
-        amount: totalAmount
-      }
-    }).sort((a, b) => b.requests - a.requests).slice(0, 5)
-
-    setChartData({
-      requestsByMonth: months,
-      statusDistribution,
-      topSites: siteRequestCounts
-    })
   }
 
   const formatCurrency = (amount: number) => {
@@ -205,9 +202,34 @@ export default function Dashboard() {
     return `₺${amount.toLocaleString('tr-TR', { maximumFractionDigits: 0 })}`
   }
 
+  const formatNumber = (num: number) => {
+    return num.toLocaleString('tr-TR')
+  }
+
   const formatGrowth = (growth: number) => {
     const sign = growth > 0 ? '+' : ''
     return `${sign}${growth.toFixed(1)}%`
+  }
+
+  const maxRequests = Math.max(...dailyData.map(d => d.requests), 1)
+  const maxAmount = Math.max(...dailyData.map(d => d.amount), 1)
+
+  const getStatusText = (status: string) => {
+    switch (status) {
+      case 'pending': return 'Beklemede'
+      case 'approved': return 'Onaylandı'
+      case 'rejected': return 'Reddedildi'
+      default: return status
+    }
+  }
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'pending': return 'text-yellow-600'
+      case 'approved': return 'text-green-600'
+      case 'rejected': return 'text-red-600'
+      default: return 'text-gray-600'
+    }
   }
 
   if (loading) {
@@ -217,270 +239,334 @@ export default function Dashboard() {
           <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
             <div className="animate-spin rounded-full h-10 w-10 border-3 border-white border-t-transparent"></div>
           </div>
-          <p className="text-gray-600 font-light text-lg">Dashboard yükleniyor...</p>
+          <p className="text-gray-600 font-light text-lg">Loading dashboard...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen p-6 space-y-8">
-      {/* Header */}
-      <div className="max-w-7xl mx-auto">
-        <div className="text-left mb-8">
-          <h1 className="text-5xl font-light text-gray-900 mb-2">Dashboard</h1>
-          <p className="text-gray-600 text-xl font-light">Satın alma sistemi genel görünümü</p>
+    <div className="space-y-8">
+      {/* Top Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        {/* Total Requests */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Talep</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{formatNumber(stats.totalRequests)}</span>
+                  <div className={`flex items-center text-sm ${
+                    stats.requestGrowth >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {stats.requestGrowth >= 0 ? (
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                    )}
+                    <span>{formatGrowth(stats.requestGrowth)}</span>
+        </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {stats.requestGrowth >= 0 ? 'Artış trendi' : 'Azalış trendi'} bu ay
+                </p>
+                <p className="text-xs text-gray-400">Tüm satın alma talepleri</p>
+              </div>
+              </div>
+            </CardContent>
+          </Card>
+
+        {/* Total Suppliers */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Tedarikçi</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{formatNumber(stats.totalSuppliers)}</span>
+                  <div className="flex items-center text-green-600 text-sm">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    <span>+{stats.supplierGrowth}%</span>
+                </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Kayıtlı tedarikçi sayısı</p>
+                <p className="text-xs text-gray-400">Aktif ve pasif dahil</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+        {/* Total Sites */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Şantiye</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{formatNumber(stats.totalSites)}</span>
+                  <div className="flex items-center text-green-600 text-sm">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    <span>+{stats.siteGrowth}%</span>
+                </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Kayıtlı şantiye sayısı</p>
+                <p className="text-xs text-gray-400">Aktif lokasyonlar</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+        {/* Total Amount */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Tutar</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalAmount)}</span>
+                  <div className={`flex items-center text-sm ${
+                    stats.amountGrowth >= 0 ? 'text-green-600' : 'text-red-600'
+                  }`}>
+                    {stats.amountGrowth >= 0 ? (
+                      <TrendingUp className="h-3 w-3 mr-1" />
+                    ) : (
+                      <TrendingDown className="h-3 w-3 mr-1" />
+                    )}
+                    <span>{formatGrowth(stats.amountGrowth)}</span>
+                </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {stats.amountGrowth >= 0 ? 'Artış' : 'Azalış'} bu ay
+                </p>
+                <p className="text-xs text-gray-400">Tüm taleplerin toplam tutarı</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Ana İstatistik Kartları */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          
-          {/* Toplam Talepler */}
-          <Card className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition-all duration-300 border-0">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-black rounded-2xl">
-                  <FileText className="h-6 w-6 text-white" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.totalRequests}</div>
-                  <p className="text-sm text-gray-500">Toplam Talep</p>
-                </div>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div className="h-2 bg-black rounded-full" style={{ width: '100%' }}></div>
-              </div>
+      {/* Chart Section */}
+      <Card className="bg-white border-0 shadow-sm">
+        <CardHeader className="pb-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-lg font-semibold text-gray-900">Günlük Talep Trendi</CardTitle>
+              <p className="text-sm text-gray-500">Son 30 günlük talep sayıları ve tutarları</p>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
+                Son 3 ay
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-900 bg-gray-100">
+                Son 30 gün
+              </Button>
+              <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
+                Son 7 gün
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="h-80 w-full relative">
+            {/* Chart Area */}
+            <div className="absolute inset-0">
+              <svg className="w-full h-full" viewBox="0 0 800 300">
+                {/* Grid lines */}
+                <defs>
+                  <pattern id="grid" width="40" height="30" patternUnits="userSpaceOnUse">
+                    <path d="M 40 0 L 0 0 0 30" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
+                  </pattern>
+                </defs>
+                <rect width="100%" height="100%" fill="url(#grid)" />
+                
+                {/* Request count area (blue) */}
+                {dailyData.length > 0 && (
+                  <path
+                    d={`M 50 ${250 - (dailyData[0].requests / maxRequests) * 200} ${dailyData.map((d, i) => 
+                      `L ${50 + (i * 25)} ${250 - (d.requests / maxRequests) * 200}`
+                    ).join(' ')} L ${50 + (dailyData.length - 1) * 25} 250 L 50 250 Z`}
+                    fill="url(#blueGradient)"
+                    opacity="0.6"
+                  />
+                )}
+                
+                {/* Amount area (orange) */}
+                {dailyData.length > 0 && (
+                  <path
+                    d={`M 50 ${250 - (dailyData[0].amount / maxAmount) * 200} ${dailyData.map((d, i) => 
+                      `L ${50 + (i * 25)} ${250 - (d.amount / maxAmount) * 200}`
+                    ).join(' ')} L ${50 + (dailyData.length - 1) * 25} 250 L 50 250 Z`}
+                    fill="url(#orangeGradient)"
+                    opacity="0.8"
+                  />
+                )}
+                
+                {/* Define gradients */}
+                <defs>
+                  <linearGradient id="blueGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#3b82f6" stopOpacity="0.1" />
+                  </linearGradient>
+                  <linearGradient id="orangeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                    <stop offset="0%" stopColor="#f59e0b" stopOpacity="0.8" />
+                    <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.1" />
+                  </linearGradient>
+                </defs>
+                
+                {/* X-axis labels - show every 5th day */}
+                {dailyData.map((d, i) => {
+                  if (i % 5 === 0 || i === dailyData.length - 1) {
+                    return (
+                      <text
+                        key={i}
+                        x={50 + (i * 25)}
+                        y={280}
+                        textAnchor="middle"
+                        className="text-xs fill-gray-500"
+                      >
+                        {d.date}
+                      </text>
+                    )
+                  }
+                  return null
+                })}
+              </svg>
+            </div>
+          </div>
             </CardContent>
           </Card>
 
-          {/* Bekleyen Talepler */}
-          <Card className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition-all duration-300 border-0">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-yellow-500 rounded-2xl">
-                  <Clock className="h-6 w-6 text-white" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.pendingRequests}</div>
-                  <p className="text-sm text-gray-500">Beklemede</p>
-                </div>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div className="h-2 bg-yellow-500 rounded-full" 
-                     style={{ width: `${stats.totalRequests > 0 ? (stats.pendingRequests / stats.totalRequests) * 100 : 0}%` }}>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Onaylanan Talepler */}
-          <Card className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition-all duration-300 border-0">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className="p-3 bg-green-500 rounded-2xl">
-                  <CheckCircle className="h-6 w-6 text-white" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{stats.approvedRequests}</div>
-                  <p className="text-sm text-gray-500">Onaylandı</p>
-                </div>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div className="h-2 bg-green-500 rounded-full" 
-                     style={{ width: `${stats.totalRequests > 0 ? (stats.approvedRequests / stats.totalRequests) * 100 : 0}%` }}>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Aylık Büyüme */}
-          <Card className="rounded-3xl bg-white shadow-lg hover:shadow-xl transition-all duration-300 border-0">
-            <CardContent className="p-8">
-              <div className="flex items-center justify-between mb-4">
-                <div className={`p-3 rounded-2xl ${stats.monthlyGrowth >= 0 ? 'bg-green-500' : 'bg-red-500'}`}>
-                  <TrendingUp className="h-6 w-6 text-white" />
-                </div>
-                <div className="text-right">
-                  <div className="text-3xl font-bold text-gray-900">{formatGrowth(stats.monthlyGrowth)}</div>
-                  <p className="text-sm text-gray-500">Aylık Büyüme</p>
-                </div>
-              </div>
-              <div className="h-2 bg-gray-100 rounded-full">
-                <div className={`h-2 rounded-full ${stats.monthlyGrowth >= 0 ? 'bg-green-500' : 'bg-red-500'}`}
-                     style={{ width: `${Math.min(Math.abs(stats.monthlyGrowth), 100)}%` }}>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-        </div>
-
-        {/* İkinci Sıra İstatistikler */}
-        <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-          
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <Building2 className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-2xl font-bold text-gray-900">{stats.totalSites}</div>
-              <p className="text-sm text-gray-500">Şantiye</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <Users className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-2xl font-bold text-gray-900">{stats.totalSuppliers}</div>
-              <p className="text-sm text-gray-500">Tedarikçi</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <ShoppingCart className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-2xl font-bold text-gray-900">{stats.totalOrders}</div>
-              <p className="text-sm text-gray-500">Sipariş</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <Target className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-2xl font-bold text-gray-900">{stats.activeProjects}</div>
-              <p className="text-sm text-gray-500">Aktif Proje</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <DollarSign className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-xl font-bold text-gray-900">{formatCurrency(stats.avgOrderValue)}</div>
-              <p className="text-sm text-gray-500">Ort. Sipariş</p>
-            </CardContent>
-          </Card>
-
-          <Card className="rounded-2xl bg-white shadow-md hover:shadow-lg transition-all duration-300 border-0">
-            <CardContent className="p-6 text-center">
-              <AlertCircle className="h-8 w-8 mx-auto mb-3 text-gray-600" />
-              <div className="text-2xl font-bold text-gray-900">{stats.rejectedRequests}</div>
-              <p className="text-sm text-gray-500">Reddedilen</p>
-            </CardContent>
-          </Card>
-
-        </div>
-
-        {/* Grafik Bölümleri */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-          
-          {/* Aylık Talep Trendi */}
-          <Card className="rounded-3xl bg-white shadow-lg border-0">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                <BarChart3 className="h-5 w-5" />
-                Son 6 Ay Talep Trendi
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                {chartData.requestsByMonth.length > 0 ? (
-                  <div className="space-y-4">
-                    {chartData.requestsByMonth.map((item, index) => (
-                      <div key={index} className="flex items-center gap-4">
-                        <div className="w-12 text-sm font-medium text-gray-600">{item.month}</div>
-                        <div className="flex-1">
+      {/* Tabs Section */}
+      <Card className="bg-white border-0 shadow-sm">
+        <CardContent className="p-0">
+          <Tabs defaultValue="outline" className="w-full">
+            <div className="border-b border-gray-200">
+              <div className="flex items-center justify-between px-6 py-4">
+                <TabsList className="bg-transparent h-auto p-0 space-x-8">
+                  <TabsTrigger 
+                    value="outline" 
+                    className="bg-transparent border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-transparent rounded-none px-0 pb-2 text-gray-600 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                  >
+                    Son Talepler
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="performance" 
+                    className="bg-transparent border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-transparent rounded-none px-0 pb-2 text-gray-600 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                  >
+                    <span>Performans</span>
+                    <Badge variant="secondary" className="ml-2 bg-gray-100 text-gray-600 text-xs">Bu Ay</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="personnel" 
+                    className="bg-transparent border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-transparent rounded-none px-0 pb-2 text-gray-600 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                  >
+                    <span>Şantiyeler</span>
+                    <Badge variant="secondary" className="ml-2 bg-gray-100 text-gray-600 text-xs">{stats.totalSites}</Badge>
+                  </TabsTrigger>
+                  <TabsTrigger 
+                    value="documents" 
+                    className="bg-transparent border-b-2 border-transparent data-[state=active]:border-gray-900 data-[state=active]:bg-transparent rounded-none px-0 pb-2 text-gray-600 data-[state=active]:text-gray-900 data-[state=active]:shadow-none"
+                  >
+                    Tedarikçiler
+                  </TabsTrigger>
+                </TabsList>
+                
                           <div className="flex items-center gap-2">
-                            <div className="flex-1 h-8 bg-gray-100 rounded-full overflow-hidden">
-                              <div 
-                                className="h-full bg-gradient-to-r from-black to-gray-600 rounded-full transition-all duration-500"
-                                style={{ 
-                                  width: `${Math.max((item.requests / Math.max(...chartData.requestsByMonth.map(m => m.requests))) * 100, 5)}%` 
-                                }}
-                              ></div>
+                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
+                    <BarChart3 className="h-4 w-4 mr-1" />
+                    Rapor Al
+                  </Button>
+                  <Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-700">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Yeni Talep
+                  </Button>
                             </div>
-                            <div className="text-sm font-semibold text-gray-900 w-8">{item.requests}</div>
                           </div>
                         </div>
+            
+            <TabsContent value="outline" className="mt-0">
+              <div className="p-6">
+                {/* Table Header */}
+                <div className="grid grid-cols-6 gap-4 pb-4 text-sm font-medium text-gray-500 border-b border-gray-200">
+                  <div></div>
+                  <div>Talep Başlığı</div>
+                  <div>Şantiye</div>
+                  <div>Durum</div>
+                  <div>Tutar</div>
+                  <div>Tarih</div>
+                </div>
+                
+                {/* Table Rows */}
+                <div className="space-y-4 pt-4">
+                  {recentRequests.slice(0, 5).map((request, index) => (
+                    <div key={request.id} className="grid grid-cols-6 gap-4 items-center py-3 hover:bg-gray-50 rounded-lg px-2">
+                      <div className="flex items-center">
+                        <div className="w-2 h-2 bg-blue-500 rounded-full mr-3"></div>
                       </div>
-                    ))}
+                      <div className="font-medium text-gray-900 truncate">{request.title}</div>
+                      <div className="text-gray-600 truncate">{request.site_name}</div>
+                      <div className={`text-sm font-medium ${getStatusColor(request.status)}`}>
+                        {getStatusText(request.status)}
                   </div>
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-gray-500">Veri bulunmuyor</p>
-                  </div>
-                )}
+                      <div className="text-gray-900 font-medium">{formatCurrency(request.total_amount)}</div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-gray-600 text-sm">
+                          {new Date(request.created_at).toLocaleDateString('tr-TR')}
+                        </span>
+                        <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Durum Dağılımı */}
-          <Card className="rounded-3xl bg-white shadow-lg border-0">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-                <Target className="h-5 w-5" />
-                Talep Durumu Dağılımı
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-6">
-                {chartData.statusDistribution.map((item, index) => (
-                  <div key={index} className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-gray-700">{item.status}</span>
-                      <span className="text-sm font-bold text-gray-900">{item.count} ({item.percentage}%)</span>
                     </div>
-                    <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
-                      <div 
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          item.status === 'Beklemede' ? 'bg-yellow-500' :
-                          item.status === 'Onaylandı' ? 'bg-green-500' : 'bg-red-500'
-                        }`}
-                        style={{ width: `${item.percentage}%` }}
-                      ></div>
+                  ))}
+                  
+                  {recentRequests.length === 0 && (
+                    <div className="text-center py-8 text-gray-500">
+                      <p>Henüz talep bulunmuyor</p>
                     </div>
+                  )}
                   </div>
-                ))}
               </div>
-            </CardContent>
-          </Card>
-
+            </TabsContent>
+            
+            <TabsContent value="performance" className="mt-0">
+              <div className="p-6">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-2xl font-bold text-green-600">{stats.totalRequests}</div>
+                    <div className="text-sm text-gray-600 mt-1">Toplam Talep</div>
         </div>
-
-        {/* En Aktif Şantiyeler */}
-        <Card className="rounded-3xl bg-white shadow-lg border-0">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-xl font-semibold text-gray-900 flex items-center gap-2">
-              <Building2 className="h-5 w-5" />
-              En Aktif Şantiyeler
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {chartData.topSites.length > 0 ? (
-              <div className="space-y-4">
-                {chartData.topSites.map((site, index) => (
-                  <div key={index} className="flex items-center gap-4 p-4 bg-gray-50 rounded-2xl">
-                    <div className="w-10 h-10 bg-black text-white rounded-xl flex items-center justify-center font-bold">
-                      {index + 1}
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-2xl font-bold text-blue-600">{formatCurrency(stats.totalAmount)}</div>
+                    <div className="text-sm text-gray-600 mt-1">Toplam Tutar</div>
                     </div>
-                    <div className="flex-1">
-                      <div className="font-semibold text-gray-900">{site.name}</div>
-                      <div className="text-sm text-gray-600">{site.requests} talep</div>
-                    </div>
-                    <div className="text-right">
-                      <div className="font-bold text-gray-900">{formatCurrency(site.amount)}</div>
-                      <div className="text-sm text-gray-500">Toplam tutar</div>
-                    </div>
+                  <div className="text-center p-4 bg-purple-50 rounded-lg">
+                    <div className="text-2xl font-bold text-purple-600">{stats.totalSuppliers}</div>
+                    <div className="text-sm text-gray-600 mt-1">Aktif Tedarikçi</div>
                   </div>
-                ))}
+                </div>
               </div>
-            ) : (
-              <div className="text-center py-12">
-                <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-300" />
-                <p className="text-gray-500">Henüz şantiye verisi bulunmuyor</p>
+            </TabsContent>
+            
+            <TabsContent value="personnel" className="mt-0">
+              <div className="p-6">
+                <div className="text-center py-8 text-gray-500">
+                  <p>Şantiye detayları burada görüntülenecek...</p>
+                </div>
               </div>
-            )}
+            </TabsContent>
+            
+            <TabsContent value="documents" className="mt-0">
+              <div className="p-6">
+                <div className="text-center py-8 text-gray-500">
+                  <p>Tedarikçi listesi burada görüntülenecek...</p>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
           </CardContent>
         </Card>
-
-      </div>
     </div>
   )
 }

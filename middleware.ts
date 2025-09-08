@@ -84,8 +84,29 @@ export async function middleware(request: NextRequest) {
       .eq('id', user.id)
       .single()
 
+    const userRole = userData?.role
+
     // Admin routes require admin role
-    if (request.nextUrl.pathname.startsWith('/admin') && userData?.role !== 'admin') {
+    if (request.nextUrl.pathname.startsWith('/admin') && userRole !== 'admin') {
+      return NextResponse.redirect(new URL('/dashboard', request.url))
+    }
+
+    // Site personnel can only access requests pages
+    if (userRole === 'site_personnel') {
+      const currentPath = request.nextUrl.pathname
+      console.log(`🔒 Site personnel accessing: ${currentPath}`)
+      
+      // Allow all requests-related paths
+      if (!currentPath.startsWith('/dashboard/requests')) {
+        console.log(`❌ Redirecting site personnel from ${currentPath} to /dashboard/requests`)
+        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
+      } else {
+        console.log(`✅ Site personnel allowed to access: ${currentPath}`)
+      }
+    }
+
+    // User role cannot access settings
+    if (userRole === 'user' && request.nextUrl.pathname.startsWith('/dashboard/settings')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
   }

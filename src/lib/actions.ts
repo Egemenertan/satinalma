@@ -45,11 +45,9 @@ export async function createPurchaseRequest(data: {
   site_id?: string
   site_name?: string
   brand?: string
-  category_id?: string
-  category_name?: string
-  subcategory_id?: string
-  subcategory_name?: string
-  material_item_id?: string
+  material_class?: string
+  material_group?: string
+  material_item_name?: string
 }) {
   try {
     // Gerçek kullanıcıyı al
@@ -73,10 +71,9 @@ export async function createPurchaseRequest(data: {
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
-      category_id: data.category_id || null,
-      category_name: data.category_name || null,
-      subcategory_id: data.subcategory_id || null,
-      subcategory_name: data.subcategory_name || null
+      material_class: data.material_class || null,
+      material_group: data.material_group || null,
+      material_item_name: data.material_item_name || null
     }
     
     // Purchase request oluştur
@@ -98,9 +95,7 @@ export async function createPurchaseRequest(data: {
       quantity: data.quantity,
       unit: data.unit,
       unit_price: 0,
-      specifications: data.purpose || 'Şantiye ihtiyacı',
-      brand: data.brand || null,
-      material_item_id: data.material_item_id || null
+      specifications: data.purpose || 'Şantiye ihtiyacı'
     }
     
     const { error: itemError } = await supabase
@@ -251,6 +246,83 @@ export async function addOffers(requestId: string, offers: Array<{
       errorMessage = error.message
     }
     
+    return { success: false, error: errorMessage }
+  }
+}
+
+export async function createMaterialItem(data: {
+  class: string
+  group: string
+  item_name: string
+}) {
+  try {
+    console.log('🔧 createMaterialItem server action başlatıldı')
+    console.log('📋 Received data:', data)
+    
+    // Gerçek kullanıcıyı al (authentication için)
+    console.log('👤 Kullanıcı doğrulanıyor...')
+    const user = await getAuthenticatedUser()
+    console.log('✅ Kullanıcı doğrulandı:', { id: user.id, role: user.role })
+    
+    // Şimdilik basit çözüm: existing check yap, yoksa manual SQL ile ekle
+    const supabase = createClient()
+    
+    // Önce kontrol et - bu malzeme zaten var mı?
+    console.log('🔍 Malzeme mevcut mu kontrol ediliyor...')
+    const { data: existingMaterial } = await supabase
+      .from('all_materials')
+      .select('*')
+      .eq('class', data.class)
+      .eq('group', data.group)
+      .eq('item_name', data.item_name)
+      .maybeSingle()
+    
+    if (existingMaterial) {
+      console.log('✅ Malzeme zaten mevcut:', existingMaterial)
+      return { success: true, data: existingMaterial }
+    }
+    
+    console.log('💾 Malzeme mevcut değil, ekleme deneniyor...')
+    
+    // Önce tüm mevcut malzemeleri alalım (debug için)
+    const { data: allMaterials, error: allError } = await supabase
+      .from('all_materials')
+      .select('id, class, group, item_name')
+      .limit(5)
+    
+    console.log('📊 Mevcut malzemeler (ilk 5):', allMaterials)
+    console.log('📊 Query error (if any):', allError)
+    
+    // Gerçek insert işlemini dene
+    console.log('💾 Gerçek insert işlemi deneniyor...')
+    const { data: newMaterial, error: insertError } = await supabase
+      .from('all_materials')
+      .insert([{
+        class: data.class,
+        group: data.group,
+        item_name: data.item_name
+      }])
+      .select()
+      .single()
+    
+    console.log('📥 Insert sonucu:', { newMaterial, insertError })
+    
+    if (insertError) {
+      console.error('❌ Insert hatası:', insertError)
+      throw new Error(`Malzeme ekleme hatası: ${insertError.message}`)
+    }
+    
+    console.log('✅ Malzeme başarıyla eklendi:', newMaterial)
+    return { success: true, data: newMaterial }
+  } catch (error) {
+    console.error('💥 createMaterialItem genel hatası:', error)
+    
+    let errorMessage = 'Malzeme öğesi oluşturulurken hata oluştu'
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    
+    console.error('📤 Error response:', { success: false, error: errorMessage })
     return { success: false, error: errorMessage }
   }
 }

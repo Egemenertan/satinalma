@@ -2,37 +2,23 @@ import { UserRole } from './types'
 
 // Rol etiketleri ve açıklamaları
 export const roleLabels: Record<UserRole, string> = {
-  // Mevcut roller
-  engineer: 'Şantiye Sorumlusu',
-  site_supervisor: 'Saha Süpervizörü',
-  procurement_specialist: 'Satın Alma Uzmanı',
-  finance_manager: 'Finans Yöneticisi',
-  project_manager: 'Proje Yöneticisi',
-  general_manager: 'Genel Müdür',
-  chief: 'Satın Alma Şefi',
-  approver: 'Onaylayıcı',
-  // Yeni roller
-  muhendis: 'Mühendis',
-  proje_sorumlusu: 'Proje Sorumlusu',
-  satin_alma_sorumlusu: 'Satın Alma Sorumlusu',
-  admin: 'Admin'
+  user: 'Kullanıcı',
+  manager: 'Yönetici', 
+  admin: 'Admin',
+  site_personnel: 'Şantiye Personeli',
+  site_manager: 'Şantiye Yöneticisi',
+  warehouse_manager: 'Depo Yöneticisi',
+  purchasing_officer: 'Satın Alma Sorumlusu'
 }
 
 export const roleDescriptions: Record<UserRole, string> = {
-  // Mevcut roller
-  engineer: 'Talep oluşturma ve takip',
-  site_supervisor: 'Saha kontrolü ve denetim',
-  procurement_specialist: 'Satın alma süreçleri',
-  finance_manager: 'Mali işler ve bütçe',
-  project_manager: 'Proje planlama ve yönetim',
-  general_manager: 'Genel yönetim ve koordinasyon',
-  chief: 'Teklif yönetimi ve sipariş',
-  approver: 'Onay/red kararları',
-  // Yeni roller
-  muhendis: 'Teknik değerlendirme ve analiz',
-  proje_sorumlusu: 'Proje takibi ve koordinasyon',
-  satin_alma_sorumlusu: 'Satın alma operasyonları',
-  admin: 'Sistem yönetimi ve kullanıcı kontrolü'
+  user: 'Temel kullanıcı yetkileri',
+  manager: 'Yönetici yetkileri ve onay süreçleri',
+  admin: 'Sistem yönetimi ve kullanıcı kontrolü',
+  site_personnel: 'Sadece talep görüntüleme yetkisi',
+  site_manager: 'Dashboard ve talep yönetimi yetkisi',
+  warehouse_manager: 'Dashboard ve talep yönetimi yetkisi',
+  purchasing_officer: 'Dashboard ve talep yönetimi yetkisi'
 }
 
 // Rol doğrulama
@@ -59,12 +45,82 @@ export const getAllRoles = (): Array<{ value: UserRole; label: string; descripti
   }))
 }
 
-// Rol gruplama (gelecekte kullanım için)
+// Rol gruplama ve yetkilendirme
 export const roleGroups = {
-  legacy: ['engineer', 'chief', 'approver', 'site_supervisor', 'procurement_specialist', 'finance_manager', 'project_manager', 'general_manager'] as UserRole[],
-  new: ['muhendis', 'proje_sorumlusu', 'satin_alma_sorumlusu', 'admin'] as UserRole[]
+  full_access: ['admin', 'manager'] as UserRole[], // Tüm sayfalara erişim
+  basic_access: ['user'] as UserRole[], // Normal kullanıcı erişimi
+  limited_access: ['site_personnel'] as UserRole[], // Sadece requests sayfası
+  site_management: ['site_manager', 'warehouse_manager'] as UserRole[], // Dashboard ve requests sayfaları
+  purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, suppliers, sites sayfaları
 }
 
-// NOT: Şu anda tüm roller aynı yetkilere sahiptir
-// Bu dosya gelecekteki rol tabanlı yetkilendirme için hazırlık amaçlıdır
-// Hiçbir rol kısıtlaması veya ayrıcalığı uygulanmamaktadır
+// Rol bazlı sayfa erişim kontrolleri
+export const canAccessPage = (userRole: UserRole, page: string): boolean => {
+  // Admin ve manager her yere erişebilir
+  if (roleGroups.full_access.includes(userRole)) {
+    return true
+  }
+  
+  // Site yöneticisi ve depo yöneticisi sadece dashboard ve requests sayfalarına erişebilir
+  if (userRole === 'site_manager' || userRole === 'warehouse_manager') {
+    return page === 'dashboard' || 
+           page === '/dashboard' ||
+           page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/')
+  }
+  
+  // Purchasing officer dashboard, requests, suppliers ve sites sayfalarına erişebilir
+  if (userRole === 'purchasing_officer') {
+    return page === 'dashboard' || 
+           page === '/dashboard' ||
+           page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/') ||
+           page === 'suppliers' ||
+           page === '/dashboard/suppliers' ||
+           page.startsWith('/dashboard/suppliers/') ||
+           page === 'sites' ||
+           page === '/dashboard/sites' ||
+           page.startsWith('/dashboard/sites/')
+  }
+  
+  // Site personeli sadece requests sayfasına ve talep oluşturma sayfasına erişebilir
+  if (userRole === 'site_personnel') {
+    return page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/')
+  }
+  
+  // Normal kullanıcılar çoğu sayfaya erişebilir (settings hariç)
+  if (userRole === 'user') {
+    return page !== 'settings' && page !== '/dashboard/settings'
+  }
+  
+  return false
+}
+
+// Sidebar menü öğelerini filtreleme
+export const getAccessibleMenuItems = (userRole: UserRole) => {
+  if (userRole === 'site_manager' || userRole === 'warehouse_manager') {
+    return ['dashboard', 'requests'] // Sadece dashboard ve requests
+  }
+  
+  if (userRole === 'purchasing_officer') {
+    return ['dashboard', 'requests', 'suppliers', 'sites'] // Dashboard, requests, suppliers ve sites
+  }
+  
+  if (userRole === 'site_personnel') {
+    return ['requests'] // Sadece requests menüsü
+  }
+  
+  if (userRole === 'user') {
+    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports'] // Settings hariç
+  }
+  
+  // Admin ve manager tüm menülere erişebilir
+  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports', 'settings']
+}

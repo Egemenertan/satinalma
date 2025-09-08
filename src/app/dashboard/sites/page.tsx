@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import { 
   Building2, 
   Plus, 
@@ -55,6 +55,7 @@ export default function SitesPage() {
   const [searchTerm, setSearchTerm] = useState('')
 
   const router = useRouter()
+  const supabase = createClient()
 
   useEffect(() => {
     fetchSitesWithStats()
@@ -313,50 +314,82 @@ export default function SitesPage() {
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-white/80">Toplam Şantiye</CardTitle>
-            <Building2 className="h-4 w-4 text-white/70" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">{stats.total}</div>
-            <p className="text-xs text-white/70">Kayıtlı şantiye</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black/70">Aktif Şantiye</CardTitle>
-            <TrendingUp className="h-4 w-4 text-black/60" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-black">{stats.activeSites}</div>
-            <p className="text-xs text-black/70">Talep olan</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#000000' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-white/80">Toplam Talep</CardTitle>
-            <FileText className="h-4 w-4 text-white/70" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-white">{stats.totalRequests}</div>
-            <p className="text-xs text-white/70">Oluşturulan</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="rounded-2xl backdrop-blur-lg border border-white/30 shadow-xl" style={{ backgroundColor: '#EFE248' }}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-black/70">Toplam Tutar</CardTitle>
-            <DollarSign className="h-4 w-4 text-black/60" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-black">
-              {stats.totalAmount > 999999 ? `${(stats.totalAmount / 1000000).toFixed(1)}M` : 
-               stats.totalAmount > 999 ? `${(stats.totalAmount / 1000).toFixed(0)}K` : stats.totalAmount}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Şantiye</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{stats.total}</span>
+                  <div className="flex items-center text-blue-600 text-sm">
+                    <Building2 className="h-3 w-3 mr-1" />
+                    <span>Aktif</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Kayıtlı şantiye sayısı</p>
+                <p className="text-xs text-gray-400">Sistemde tanımlı lokasyonlar</p>
+              </div>
             </div>
-            <p className="text-xs text-black/70">Tahmini değer</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Aktif Şantiye</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{stats.activeSites}</span>
+                  <div className="flex items-center text-green-600 text-sm">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    <span>Faaliyet</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Talep olan şantiyeler</p>
+                <p className="text-xs text-gray-400">Aktif satın alma süreci</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Talep</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">{stats.totalRequests}</span>
+                  <div className="flex items-center text-purple-600 text-sm">
+                    <FileText className="h-3 w-3 mr-1" />
+                    <span>Kayıt</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Oluşturulan talepler</p>
+                <p className="text-xs text-gray-400">Tüm şantiyelerdeki toplam</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card className="bg-white border-0 shadow-sm">
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-gray-600 mb-1">Toplam Tutar</p>
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl font-bold text-gray-900">
+                    {stats.totalAmount > 999999 ? `${(stats.totalAmount / 1000000).toFixed(1)}M` : 
+                     stats.totalAmount > 999 ? `${(stats.totalAmount / 1000).toFixed(0)}K` : stats.totalAmount}
+                  </span>
+                  <div className="flex items-center text-green-600 text-sm">
+                    <DollarSign className="h-3 w-3 mr-1" />
+                    <span>TL</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Tahmini toplam değer</p>
+                <p className="text-xs text-gray-400">Tüm taleplerin bütçesi</p>
+              </div>
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -384,7 +417,7 @@ export default function SitesPage() {
           {filteredSites.map((site) => (
             <Card 
               key={site.id} 
-              className="rounded-2xl bg-white/60 backdrop-blur-sm shadow-sm hover:shadow-lg transition-all duration-200 cursor-pointer"
+              className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
               onClick={() => handleSiteClick(site)}
             >
               <CardHeader className="pb-4">

@@ -61,6 +61,7 @@ export default function AssignSupplierModal({
   // Modal açıldığında tedarikçileri yükle ve search'i temizle
   useEffect(() => {
     if (isOpen) {
+      console.log('🚀 Modal açıldı, tedarikçiler yüklenecek...')
       fetchAllSuppliers()
       setSearchQuery('') // Search'i temizle
     }
@@ -109,6 +110,43 @@ export default function AssignSupplierModal({
       setLoadingSuppliers(true)
       console.log('🔍 Tüm tedarikçiler yükleniyor...')
       
+      // Supabase bağlantısını test et
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      console.log('🔐 Mevcut kullanıcı:', user?.email || 'Bulunamadı', userError ? `Hata: ${userError.message}` : '✅')
+      
+      // Basit bir test sorgusu
+      console.log('🔍 Basit test sorgusu yapılıyor...')
+      const { count, error: countError } = await supabase
+        .from('suppliers')
+        .select('*', { count: 'exact', head: true })
+      
+      console.log('📊 Suppliers tablosu count:', count, countError ? `Hata: ${countError.message}` : '✅')
+      
+      // İlk olarak tüm tedarikçileri çekelim (debugging için)
+      console.log('🔍 Tüm tedarikçiler çekiliyor...')
+      const { data: allSuppliersDebug, error: debugError } = await supabase
+        .from('suppliers')
+        .select('id, name, is_approved')
+      
+      console.log('🔍 Debug sorgu sonucu:', {
+        data: allSuppliersDebug,
+        error: debugError,
+        count: allSuppliersDebug?.length || 0
+      })
+      
+      if (debugError) {
+        console.error('❌ Debug sorgu hatası:', {
+          message: debugError.message,
+          details: debugError.details,
+          hint: debugError.hint,
+          code: debugError.code
+        })
+      }
+      
+      console.log('🔍 Debug - Onaylı tedarikçiler:', allSuppliersDebug?.filter(s => s.is_approved === true) || [])
+      
+      // Ana sorguyu çalıştır
+      console.log('🔍 Ana sorgu çalıştırılıyor...')
       const { data: suppliers, error } = await supabase
         .from('suppliers')
         .select(`
@@ -121,21 +159,48 @@ export default function AssignSupplierModal({
           is_approved,
           rating
         `)
-        .eq('is_approved', true) // Sadece onaylı tedarikçiler
+        .or('is_approved.eq.true,is_approved.is.null') // Onaylı veya null olanlar
         .order('name')
 
       if (error) {
-        console.error('❌ Tedarikçiler yüklenirken hata:', error)
+        console.error('❌ Ana sorgu hatası:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code
+        })
         throw error
       }
 
-      console.log('✅ Tedarikçiler yüklendi:', suppliers?.length || 0)
-      setAllSuppliers(suppliers || [])
+      console.log('✅ Ana sorgu başarılı. Tedarikçi sayısı:', suppliers?.length || 0)
+      console.log('📋 Tedarikçi detayları:', suppliers?.map(s => ({
+        id: s.id,
+        name: s.name,
+        is_approved: s.is_approved,
+        contact_person: s.contact_person
+      })) || [])
       
-    } catch (error) {
-      console.error('Error fetching suppliers:', error)
-      showToast('Tedarikçiler yüklenirken bir hata oluştu.', 'error')
+      // Rating null ise 0 yap
+      const processedSuppliers = (suppliers || []).map(supplier => ({
+        ...supplier,
+        rating: supplier.rating || 0
+      }))
+      
+      console.log('✅ İşlenmiş tedarikçiler state\'e set ediliyor:', processedSuppliers.length)
+      setAllSuppliers(processedSuppliers)
+      
+    } catch (error: any) {
+      console.error('❌ fetchAllSuppliers genel hatası:', {
+        error,
+        type: typeof error,
+        message: error?.message || 'Bilinmeyen hata',
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      })
+      showToast(`Tedarikçiler yüklenirken bir hata oluştu: ${error?.message || 'Bilinmeyen hata'}`, 'error')
     } finally {
+      console.log('🏁 fetchAllSuppliers tamamlandı')
       setLoadingSuppliers(false)
     }
   }
@@ -283,6 +348,7 @@ export default function AssignSupplierModal({
                   <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
                 </div>
                 <p className="text-gray-600 font-medium">Tedarikçiler yükleniyor...</p>
+                <p className="text-gray-400 text-sm mt-2">Bu işlem birkaç saniye sürebilir</p>
               </div>
             </div>
           ) : allSuppliers.length === 0 ? (
@@ -452,7 +518,14 @@ export default function AssignSupplierModal({
               Kapat
             </Button>
             <Button
-              onClick={() => router.push('/dashboard/suppliers/create')}
+              onClick={() => {
+                // Malzeme bilgisini URL parametresi olarak ekle
+                const params = new URLSearchParams({
+                  preselectedItem: itemName,
+                  unit: itemUnit
+                })
+                router.push(`/dashboard/suppliers/create?${params.toString()}`)
+              }}
               className="px-6 bg-gray-900 hover:bg-black text-white"
             >
               <Plus className="h-4 w-4 mr-2" />

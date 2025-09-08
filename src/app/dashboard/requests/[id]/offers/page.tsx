@@ -54,6 +54,8 @@ interface PurchaseRequest {
   construction_site_id?: string
   category_name?: string
   subcategory_name?: string
+  material_class?: string
+  material_group?: string
   purchase_request_items: Array<{
     id: string
     item_name: string
@@ -91,6 +93,8 @@ export default function OffersPage() {
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
   const [existingOffers, setExistingOffers] = useState<any[]>([])
   const [hasOrder, setHasOrder] = useState<boolean>(false)
+  const [userRole, setUserRole] = useState<string>('user')
+  const [siteManagerApproving, setSiteManagerApproving] = useState<boolean>(false)
   const [supplierMaterialInfo, setSupplierMaterialInfo] = useState<{
     isRegistered: boolean;
     suppliers: Array<{
@@ -147,12 +151,33 @@ export default function OffersPage() {
 
   useEffect(() => {
     if (requestId) {
+      fetchUserRole()
       fetchRequestData()
       fetchExistingOffers()
       checkItemInSupplierMaterials()
       fetchOrderDetails()
     }
   }, [requestId])
+
+  const fetchUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.role) {
+          setUserRole(profile.role)
+          console.log('👤 User role in offers page:', profile.role)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching user role:', error)
+    }
+  }
 
   const fetchOrderDetails = async () => {
     try {
@@ -238,55 +263,124 @@ export default function OffersPage() {
 
   const checkItemInSupplierMaterials = async () => {
     try {
+      console.log('🔍 Tedarikçi malzeme kontrolü başlatılıyor...')
+      
       // Önce talep edilen ürünün adını alalım
-      const { data: requestData } = await supabase
+      const { data: requestData, error: requestError } = await supabase
         .from('purchase_requests')
         .select('purchase_request_items(item_name)')
         .eq('id', requestId)
         .single()
 
+      if (requestError) {
+        console.error('❌ Purchase request data alınamadı:', requestError)
+        throw requestError
+      }
+
+      console.log('📋 Purchase request data:', requestData)
+
       if (requestData?.purchase_request_items?.[0]?.item_name) {
         const itemName = requestData.purchase_request_items[0].item_name
+        console.log('🔍 Aranan ürün adı:', itemName)
         
-        // Bu ürünün hangi tedarikçilere kayıtlı olduğunu bulalım
-        const { data: supplierMaterials, error: materialsError } = await supabase
+        // Önce supplier_materials tablosu var mı kontrol edelim
+        console.log('🔍 Supplier_materials tablosunu kontrol ediliyor...')
+        
+        // Yeni şema ile kontrol et (material_item field'ı ile)
+        const { data: supplierMaterialsNew, error: materialsErrorNew } = await supabase
           .from('supplier_materials')
           .select(`
             id,
             supplier_id,
-            material_item:material_items!inner(
-              id,
-              name
-            )
+            material_item
           `)
-          .eq('material_items.name', itemName)
+          .eq('material_item', itemName)
 
-        if (materialsError) throw materialsError
+        console.log('🔍 Yeni şema sorgusu sonucu:', { 
+          data: supplierMaterialsNew, 
+          error: materialsErrorNew 
+        })
 
-        if (supplierMaterials && supplierMaterials.length > 0) {
+        if (materialsErrorNew) {
+          console.log('⚠️ Yeni şema başarısız, eski şema deneniyor...')
+          
+          // Eski şema ile kontrol et (material_items join ile)
+          const { data: supplierMaterials, error: materialsError } = await supabase
+            .from('supplier_materials')
+            .select(`
+              id,
+              supplier_id,
+              material_item_id
+            `)
+            .limit(1) // Sadece tablo var mı test et
+
+          console.log('🔍 Eski şema test sorgusu:', { 
+            data: supplierMaterials, 
+            error: materialsError 
+          })
+
+          if (materialsError) {
+            console.error('❌ Supplier_materials tablosuna erişim hatası:', materialsError)
+            // Hata olsa bile devam et, bu tablonun olmama ihtimali var
+            setSupplierMaterialInfo({
+              isRegistered: false,
+              suppliers: []
+            })
+            return
+          }
+        }
+
+        // Eğer yeni şema çalışıyorsa
+        if (!materialsErrorNew && supplierMaterialsNew && supplierMaterialsNew.length > 0) {
+          console.log('✅ Yeni şema ile ürün bulundu:', supplierMaterialsNew)
+          
           // Tedarikçi bilgilerini alalım
-          const supplierIds = supplierMaterials.map(sm => sm.supplier_id)
+          const supplierIds = supplierMaterialsNew.map(sm => sm.supplier_id)
           const { data: suppliers, error: suppliersError } = await supabase
             .from('suppliers')
             .select('id, name, contact_person, phone, email')
             .in('id', supplierIds)
 
-          if (suppliersError) throw suppliersError
+          if (suppliersError) {
+            console.error('❌ Tedarikçi bilgileri alınamadı:', suppliersError)
+            throw suppliersError
+          }
+
+          console.log('✅ Tedarikçi bilgileri alındı:', suppliers)
 
           setSupplierMaterialInfo({
             isRegistered: true,
             suppliers: suppliers || []
           })
         } else {
+          console.log('ℹ️ Bu ürün için kayıtlı tedarikçi bulunamadı')
           setSupplierMaterialInfo({
             isRegistered: false,
             suppliers: []
           })
         }
+      } else {
+        console.log('⚠️ Purchase request items bulunamadı')
+        setSupplierMaterialInfo({
+          isRegistered: false,
+          suppliers: []
+        })
       }
-    } catch (error) {
-      console.error('Error checking supplier materials:', error)
+    } catch (error: any) {
+      console.error('❌ Error checking supplier materials:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      })
       showToast('Tedarikçi kontrolü yapılırken bir hata oluştu.', 'error')
+      
+      // Hata durumunda bile state'i set et
+      setSupplierMaterialInfo({
+        isRegistered: false,
+        suppliers: []
+      })
     }
   }
 
@@ -765,23 +859,58 @@ export default function OffersPage() {
     closeApprovalModal()
   }
 
+  const handleSiteManagerApproval = async () => {
+    try {
+      setSiteManagerApproving(true)
+      
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update({ 
+          status: 'şantiye şefi onayladı',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+      
+      if (error) throw error
+      
+      showToast('Talep başarıyla onaylandı!', 'success')
+      
+      // Sayfayı yenile
+      await fetchRequestData()
+      
+    } catch (error: any) {
+      console.error('❌ Site Manager Onay Hatası:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        requestId
+      })
+      showToast('Onaylama sırasında hata oluştu.', 'error')
+    } finally {
+      setSiteManagerApproving(false)
+    }
+  }
+
   const getUrgencyColor = (level: string) => {
     switch (level) {
-      case 'critical': return 'bg-gray-900 text-white'
-      case 'high': return 'bg-gray-800 text-white'
-      case 'normal': return 'bg-gray-700 text-white'
-      case 'low': return 'bg-gray-600 text-white'
-      default: return 'bg-gray-600 text-white'
+      case 'critical': return 'bg-red-100 text-red-700 border-red-200'
+      case 'high': return 'bg-orange-100 text-orange-700 border-orange-200'
+      case 'normal': return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'low': return 'bg-gray-100 text-gray-700 border-gray-200'
+      default: return 'bg-gray-100 text-gray-700 border-gray-200'
     }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-gray-700 text-white'
-      case 'awaiting_offers': return 'bg-gray-800 text-white'
-      case 'approved': return 'bg-gray-900 text-white'
-      case 'sipariş verildi': return 'bg-green-600 text-white'
-      default: return 'bg-gray-600 text-white'
+      case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
+      case 'şantiye şefi onayladı': return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'awaiting_offers': return 'bg-blue-100 text-blue-700 border-blue-200'
+      case 'approved': return 'bg-green-100 text-green-700 border-green-200'
+      case 'sipariş verildi': return 'bg-green-100 text-green-700 border-green-200'
+      default: return 'bg-gray-100 text-gray-700 border-gray-200'
     }
   }
 
@@ -822,271 +951,339 @@ export default function OffersPage() {
   const item = request.purchase_request_items?.[0]
 
   return (
-    <div className="min-h-screen">
-      {/* Apple-style Header */}
-      <div className=" backdrop-blur-xl sticky top-0 z-10 border-b border-gray-100/50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
+    <div className="min-h-screen bg-gray-50">
+      {/* Sade Header */}
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+          {/* Desktop Layout */}
+          <div className="hidden sm:flex items-center justify-between h-16">
             {/* Sol taraf - Geri butonu ve başlık */}
             <div className="flex items-center gap-4">
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={() => router.push('/dashboard/requests')}
-                className="flex items-center gap-2 hover:bg-gray-100/80 rounded-full px-3 h-9 transition-all duration-200"
+                className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-3 h-9"
               >
                 <ArrowLeft className="h-4 w-4" />
-                <span className="hidden sm:inline text-sm font-medium">Geri</span>
+                <span className="text-sm font-medium">Geri</span>
               </Button>
-              <div className="hidden sm:block w-px h-6 bg-gray-200"></div>
+              <div className="w-px h-6 bg-gray-200"></div>
               <div>
                 <h1 className="text-lg font-semibold text-gray-900">Teklif Girişi</h1>
-                <p className="text-sm text-gray-500 font-medium">{request.request_number}</p>
+                <p className="text-sm text-gray-500">{request.request_number}</p>
               </div>
             </div>
 
-            {/* Sağ taraf - Status badge'leri */}
+            {/* Sağ taraf - Status badge'leri ve Onay butonu */}
             <div className="flex items-center gap-3">
-              <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${getUrgencyColor(request.urgency_level)}`}>
+              <Badge className={`border ${getUrgencyColor(request.urgency_level)} text-xs px-2 py-1`}>
                 {request.urgency_level === 'critical' ? 'Kritik' : 
                  request.urgency_level === 'high' ? 'Yüksek' :
                  request.urgency_level === 'normal' ? 'Normal' : 'Düşük'}
-              </div>
-              <div className={`px-3 py-1.5 rounded-full text-xs font-medium ${getStatusColor(request.status)}`}>
+              </Badge>
+              <Badge className={`border ${getStatusColor(request.status)} text-xs px-2 py-1`}>
                 {request.status === 'pending' ? 'Beklemede' :
+                 request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
                  request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
                  request.status === 'sipariş verildi' ? 'Sipariş Verildi' : request.status}
+              </Badge>
+              
+              {/* Site Manager Onay Butonu */}
+              {userRole === 'site_manager' && request.status === 'pending' && (
+                <Button
+                  onClick={handleSiteManagerApproval}
+                  disabled={siteManagerApproving}
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                >
+                  {siteManagerApproving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Onaylanıyor...
+                    </>
+                  ) : (
+                    'Talebi Onayla'
+                  )}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="sm:hidden">
+            {/* Tek satır - Geri butonu, başlık ve onay butonu */}
+            <div className="flex items-center justify-between py-4">
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => router.push('/dashboard/requests')}
+                  className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-2 h-8"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  <span className="text-sm font-medium">Geri</span>
+                </Button>
+                <div>
+                  <h1 className="text-base font-semibold text-gray-900">Teklif Girişi</h1>
+                  <p className="text-xs text-gray-500">{request.request_number}</p>
+                </div>
               </div>
+              
+              {/* Site Manager Onay Butonu - Mobile */}
+              {userRole === 'site_manager' && request.status === 'pending' && (
+                <Button
+                  onClick={handleSiteManagerApproval}
+                  disabled={siteManagerApproving}
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-medium"
+                >
+                  {siteManagerApproving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                      Onaylanıyor...
+                    </>
+                  ) : (
+                    'Onayla'
+                  )}
+                </Button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
-      {/* Mobile Header - Hamburger hizasında */}
-      <div className="sm:hidden bg-white/80 backdrop-blur-xl border-b border-gray-100/50">
-        <div className="px-4 py-3">
-          <div className="flex items-center gap-3">
-            <div className="w-2 h-2 bg-gray-900 rounded-full"></div>
-            <h2 className="text-lg font-semibold text-gray-900">Teklif Detayı</h2>
-          </div>
-        </div>
-      </div>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-        <div className="space-y-6 lg:space-y-8">
+      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <div className="space-y-4 sm:space-y-8">
           
           {/* Şantiye Bilgisi - Sade */}
-          <div className="mb-6">
+          <div className="mb-4 sm:mb-8">
             {request.site_name ? (
-              <h2 className="text-6xl font-light text-gray-900">{request.site_name}</h2>
+              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.site_name}</h2>
             ) : request.sites ? (
-              <h2 className="text-6xl font-bold text-gray-900">{request.sites.name}</h2>
+              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.sites.name}</h2>
             ) : request.construction_sites ? (
-              <h2 className="text-3xl font-bold text-gray-900">{request.construction_sites.name}</h2>
+              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.construction_sites.name}</h2>
             ) : (
-              <h2 className="text-3xl font-bold text-gray-900">{request.department} Şantiyesi</h2>
+              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.department} Şantiyesi</h2>
             )}
           </div>
 
           {/* Talep Detayları ve Ürün Bilgileri Yan Yana */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-8 mb-4 sm:mb-8">
             
             {/* Sol Panel - Talep Detayları */}
-            <div className="rounded-2xl p-8 shadow-sm min-h-[300px] flex flex-col justify-between" style={{ backgroundColor: '#000000' }}>
-              <div className="mb-8">
-                <h3 className="text-3xl font-light text-white mb-2">Talep Detayları</h3>
-                <p className="text-base text-white/80">Temel bilgiler</p>
-              </div>
-              
-              <div className="space-y-8 flex-1">
+            <Card className="bg-white border-0 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-xl font-semibold text-gray-900">Talep Detayları</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-6">
                 <div>
-                  <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Başlık</p>
-                  <p className="text-2xl text-white font-medium leading-relaxed">{request.title}</p>
+                  <p className="text-sm font-medium text-gray-500 mb-2">Başlık</p>
+                  <p className="text-lg font-medium text-gray-900">{request.title}</p>
                 </div>
-                <div className="grid grid-cols-1 gap-6">
+                <div className="grid grid-cols-1 gap-4">
                   <div>
-                    <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Departman</p>
-                    <p className="text-xl text-white font-medium">{request.department}</p>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Departman</p>
+                    <p className="text-base text-gray-900">{request.department}</p>
                   </div>
                   <div>
-                    <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Talep Eden</p>
-                    <p className="text-xl text-white font-medium">{request.profiles?.full_name}</p>
+                    <p className="text-sm font-medium text-gray-500 mb-2">Talep Eden</p>
+                    <p className="text-base text-gray-900">{request.profiles?.full_name}</p>
                   </div>
                   {/* Kategori Bilgileri */}
                   {request.category_name && (
                     <div>
-                      <p className="text-base font-medium text-white/70 mb-3 uppercase tracking-wide">Malzeme Kategorisi</p>
-                      <p className="text-xl text-white font-medium">{request.category_name}</p>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Malzeme Kategorisi</p>
+                      <p className="text-base text-gray-900">{request.category_name}</p>
                       {request.subcategory_name && (
-                        <p className="text-lg text-white/70 mt-2">→ {request.subcategory_name}</p>
+                        <p className="text-sm text-gray-600 mt-1">→ {request.subcategory_name}</p>
                       )}
                     </div>
                   )}
+                  {/* Malzeme Sınıf ve Grup Bilgileri */}
+                  {(request.material_class || request.material_group) && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Malzeme Sınıflandırması</p>
+                      {request.material_class && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md font-medium">Sınıf</span>
+                          <p className="text-base text-gray-900">{request.material_class}</p>
+                        </div>
+                      )}
+                      {request.material_group && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-medium">Grup</span>
+                          <p className="text-base text-gray-900">{request.material_group}</p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {request.description && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
+                      <p className="text-sm text-gray-700 leading-relaxed">{request.description}</p>
+                    </div>
+                  )}
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
 
             {/* Sağ Panel - Ürün Bilgileri */}
             <div>
               {item ? (
-                <div className="rounded-2xl p-6 shadow-sm h-full" style={{ backgroundColor: '#EFE248' }}>
-                  <div className="mb-6">
-                    <h3 className="text-2xl font-light text-black">Ürün Bilgileri</h3>
-                    <p className="text-sm text-black/70">Detaylar ve özellikler</p>
-                  </div>
-                  
-                  <div className="space-y-4">
+                <Card className="bg-white border-0 shadow-sm h-full">
+                  <CardHeader>
+                    <CardTitle className="text-xl font-semibold text-gray-900">Ürün Bilgileri</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-6">
                     <div>
-                      <p className="text-sm font-medium text-black/60 mb-2 uppercase tracking-wide">Ürün Adı</p>
-                      <p className="text-lg text-black font-medium">{item.item_name}</p>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Ürün Adı</p>
+                      <p className="text-lg font-medium text-gray-900">{item.item_name}</p>
                     </div>
                     
                     {item.brand && (
                       <div>
-                        <p className="text-sm font-medium text-black/60 mb-2 uppercase tracking-wide">Marka</p>
-                        <div className="inline-block bg-black/10 px-3 py-1.5 rounded-lg">
-                          <p className="text-base text-black font-semibold">{item.brand}</p>
-                        </div>
-                      </div>
-                    )}
-                    
-                    {/* Özellikler - Request'ten gelen */}
-                    {request.description && (
-                      <div>
-                        <p className="text-sm font-medium text-black/60 mb-2 uppercase tracking-wide">Özellikler</p>
-                        <div className="bg-black/5 rounded-lg p-3">
-                          <p className="text-black/80 text-base leading-relaxed">{request.description}</p>
-                        </div>
+                        <p className="text-sm font-medium text-gray-500 mb-2">Marka</p>
+                        <Badge variant="secondary" className="bg-gray-100 text-gray-700">
+                          {item.brand}
+                        </Badge>
                       </div>
                     )}
                     
                     {/* Miktar Highlight */}
-                    <div className="bg-black/5 rounded-2xl p-4">
-                      <p className="text-sm font-medium text-black/70 mb-2 uppercase tracking-wide">Talep Edilen Miktar</p>
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-sm font-medium text-gray-500 mb-2">Talep Edilen Miktar</p>
                       <div className="flex items-center gap-3">
-                        <div className="text-2xl font-normal text-black">{item.quantity}</div>
-                        <div className="px-3 py-1 bg-black/10 rounded-full text-base font-medium text-black">
+                        <div className="text-2xl font-semibold text-gray-900">{item.quantity}</div>
+                        <Badge variant="outline" className="text-gray-600">
                           {item.unit}
-                        </div>
+                        </Badge>
                       </div>
                     </div>
                     
                     {item.specifications && (
                       <div>
-                        <p className="text-sm font-medium text-black/60 mb-2 uppercase tracking-wide">Açıklama</p>
-                        <p className="text-black/80 text-base leading-relaxed">{item.specifications}</p>
+                        <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
+                        <p className="text-sm text-gray-700 leading-relaxed">{item.specifications}</p>
                       </div>
                     )}
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               ) : (
                 /* Ürün Bilgileri Yok */
-                <div className="rounded-2xl p-6 shadow-sm bg-gray-100 h-full">
-                  <div className="text-center py-8">
-                    <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mx-auto mb-4">
-                      <Package className="w-8 h-8 text-gray-400" />
+                <Card className="bg-white border-0 shadow-sm h-full">
+                  <CardContent className="flex items-center justify-center h-64">
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <Package className="w-8 h-8 text-gray-400" />
+                      </div>
+                      <h3 className="text-lg font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
+                      <p className="text-sm text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
                     </div>
-                    <h3 className="text-lg font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
-                    <p className="text-sm text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
-                  </div>
-                </div>
+                  </CardContent>
+                </Card>
               )}
             </div>
           </div>
 
-          {/* Tedarikçi Atama Butonu - Tam Genişlik */}
-          {!supplierMaterialInfo.isRegistered && item && (
-            <div className="bg-white rounded-2xl p-6 shadow-sm border border-gray-200 w-full mb-6">
-              <div className="flex items-center justify-between w-full">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-yellow-100 rounded-xl flex items-center justify-center">
-                    <Building2 className="h-5 w-5 text-yellow-600" />
+          {/* Tedarikçi Atama Butonu - Site personeli ve site manager göremez */}
+          {userRole !== 'site_personnel' && userRole !== 'site_manager' && !supplierMaterialInfo.isRegistered && item && (
+            <Card className="bg-white border-0 shadow-sm">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between w-full">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
+                      <Building2 className="h-6 w-6 text-gray-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900">Tedarikçi Ataması</h3>
+                      <p className="text-sm text-gray-500">Bu ürünü bir tedarikçiye atayarak otomatik teklif alabilirsiniz</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-semibold text-gray-900">Tedarikçi Ataması</h3>
-                    <p className="text-sm text-gray-500">Bu ürünü bir tedarikçiye atayarak otomatik teklif alabilirsiniz</p>
-                  </div>
+                  
+                  <Button
+                    onClick={() => setIsAssignSupplierModalOpen(true)}
+                    className="bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-lg px-6 py-3"
+                  >
+                    <Building2 className="w-4 h-4 mr-2" />
+                    Tedarikçiye Ata
+                  </Button>
                 </div>
-                
-                <Button
-                  onClick={() => setIsAssignSupplierModalOpen(true)}
-                  className="bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-xl px-6 py-3 shadow-lg hover:shadow-xl transition-all duration-200"
-                >
-                  <Building2 className="w-4 h-4 mr-2" />
-                  Tedarikçiye Ata
-                </Button>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Mevcut Teklifler - Eğer varsa */}
           {existingOffers.length > 0 && (
-            <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="w-10 h-10 bg-gray-900/10 rounded-xl flex items-center justify-center">
-                  <Check className="h-5 w-5 text-gray-900" />
+            <Card className="bg-white border-0 shadow-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xl font-semibold text-gray-900">Mevcut Teklifler</CardTitle>
+                    <p className="text-sm text-gray-500 mt-1">{totalOffers}/3 teklif girildi</p>
+                  </div>
+                  <Badge variant="secondary" className="bg-gray-100 text-gray-700">
+                    {totalOffers} Teklif
+                  </Badge>
                 </div>
-                <div>
-                  <h3 className="text-lg font-semibold text-gray-900">Mevcut Teklifler</h3>
-                  <p className="text-sm text-gray-500">{totalOffers}/3 teklif girildi</p>
-                </div>
-              </div>
+              </CardHeader>
+              <CardContent className="pt-0">
               
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
                 {existingOffers.map((offer, index) => (
-                  <div key={offer.id} className={`bg-white rounded-2xl p-6 shadow-sm border transition-all duration-200 hover:shadow-md ${
+                  <Card key={offer.id} className={`bg-gray-50 border-0 shadow-sm hover:shadow-md transition-all duration-200 ${
                     offer.is_selected 
-                      ? 'border-green-200 ring-1 ring-green-100' 
-                      : 'border-gray-100'
+                      ? 'ring-2 ring-green-200 bg-green-50' 
+                      : ''
                   }`}>
-                    {/* Header */}
-                    <div className="flex justify-between items-start mb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-800">{index + 1}</span>
+                    <CardContent className="p-6">
+                      {/* Header */}
+                      <div className="flex justify-between items-start mb-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center shadow-sm">
+                            <span className="text-sm font-medium text-gray-700">{index + 1}</span>
+                          </div>
+                          <div>
+                            <h4 className="font-semibold text-gray-900 text-base">{offer.supplier_name}</h4>
+                            {offer.is_selected && (
+                              <Badge className="bg-green-100 text-green-700 text-xs mt-1 border-0">
+                                ✓ Seçildi
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <h4 className="font-semibold text-gray-900 text-base">{offer.supplier_name}</h4>
-                          {offer.is_selected && (
-                            <Badge className="bg-green-50 text-green-700 text-xs mt-1 border border-green-200">
-                              ✓ Seçildi
-                            </Badge>
-                          )}
-                        </div>
+                        <Badge variant="outline" className="bg-white border-gray-200 text-gray-600">
+                          {offer.delivery_days} gün
+                        </Badge>
                       </div>
-                      <div className="bg-yellow-100 px-3 py-1.5 rounded-lg">
-                        <span className="text-xs font-medium text-yellow-800">{offer.delivery_days} gün</span>
-                      </div>
-                    </div>
                     
                     {/* Fiyat Bilgileri */}
                     <div className="space-y-4">
-                      <div className="border-t-2 border-gray-200 pt-4">
-                        <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Birim Fiyat</div>
-                        <div className="text-lg font-bold text-gray-900">{getCurrencySymbol(offer.currency || 'TRY')}{Number(offer.unit_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
+                      <div className="bg-white rounded-lg p-4">
+                        <div className="text-sm font-medium text-gray-500 mb-1">Birim Fiyat</div>
+                        <div className="text-lg font-semibold text-gray-900">{getCurrencySymbol(offer.currency || 'TRY')}{Number(offer.unit_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
                       </div>
-                      <div>
-                        <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Toplam Tutar</div>
-                        <div className="text-xl font-bold text-gray-900">{getCurrencySymbol(offer.currency || 'TRY')}{Number(offer.total_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
+                      <div className="bg-white rounded-lg p-4">
+                        <div className="text-sm font-medium text-gray-500 mb-1">Toplam Tutar</div>
+                        <div className="text-xl font-semibold text-gray-900">{getCurrencySymbol(offer.currency || 'TRY')}{Number(offer.total_price).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</div>
                       </div>
                     </div>
                     
                     {offer.notes && (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <div className="text-xs font-medium text-gray-500 mb-2 uppercase tracking-wide">Notlar</div>
-                        <p className="text-gray-700 text-sm leading-relaxed">{offer.notes}</p>
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="text-sm font-medium text-gray-500 mb-2">Notlar</div>
+                        <p className="text-gray-700 text-sm leading-relaxed bg-white rounded-lg p-3">{offer.notes}</p>
                       </div>
                     )}
 
                     {/* Döküman Önizlemeleri */}
                     {offer.document_urls && offer.document_urls.length > 0 && (
-                      <div className="mt-4 pt-4 border-t border-gray-100">
-                        <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wide">Dökümanlar ({offer.document_urls.length})</div>
-                        <div className="grid grid-cols-3 gap-3">
+                      <div className="mt-4 pt-4 border-t border-gray-200">
+                        <div className="text-sm font-medium text-gray-500 mb-3">Dökümanlar ({offer.document_urls.length})</div>
+                        <div className="grid grid-cols-3 gap-2">
                           {offer.document_urls.slice(0, 3).map((url: string, docIndex: number) => (
                             <div 
                               key={docIndex} 
-                              className="aspect-square bg-gray-50 rounded-xl overflow-hidden cursor-pointer hover:shadow-lg hover:scale-105 transition-all duration-200 border border-gray-100"
+                              className="aspect-square bg-white rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
                               onClick={() => window.open(url, '_blank')}
                             >
                               {url.includes('.pdf') ? (
@@ -1104,7 +1301,6 @@ export default function OffersPage() {
                                   }}
                                   onError={(e) => {
                                     console.error('❌ Image failed to load:', url)
-                                    // Resim yüklenemezse placeholder göster
                                     const target = e.target as HTMLImageElement;
                                     target.style.display = 'none';
                                     target.parentElement!.innerHTML = `
@@ -1123,152 +1319,174 @@ export default function OffersPage() {
                     )}
                     
                     {/* Butonlar */}
-                    <div className="mt-6 pt-4 border-t border-gray-100 space-y-3">
+                    <div className="mt-6 pt-4 border-t border-gray-200 space-y-3">
                       {/* Teklifi İncele Butonu */}
                       <Button
                         onClick={() => openOfferModal(offer)}
                         variant="outline"
-                        className="w-full h-10 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-medium rounded-xl transition-all duration-200 hover:border-gray-300"
+                        className="w-full h-10 bg-white hover:bg-gray-50 border-gray-200 text-gray-700 font-medium rounded-lg"
                       >
                         <FileText className="h-4 w-4 mr-2" />
                         Teklifi İncele
                       </Button>
                       
-                      {/* Bunu Seç Butonu */}
-                      <Button
-                        onClick={() => openApprovalModal(offer)}
-                        disabled={approving === offer.id || request?.status === 'approved'}
-                        className={`w-full h-11 font-semibold rounded-xl transition-all duration-200 ${
-                          offer.is_selected 
-                            ? 'bg-green-600 hover:bg-green-700 text-white' 
-                            : 'bg-gray-900 hover:bg-black text-white'
-                        } disabled:opacity-50`}
-                      >
-                        {approving === offer.id ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Onaylanıyor...
-                          </>
-                        ) : request?.status === 'approved' ? (
-                          'Onaylandı'
-                        ) : offer.is_selected ? (
-                          '✓ Seçildi'
-                        ) : (
-                          'Bu Teklifi Onayla'
-                        )}
-                      </Button>
+                      {/* Bunu Seç Butonu - Site personeli ve site manager göremez */}
+                      {userRole !== 'site_personnel' && userRole !== 'site_manager' && (
+                        <Button
+                          onClick={() => openApprovalModal(offer)}
+                          disabled={approving === offer.id || request?.status === 'approved'}
+                          className={`w-full h-10 font-medium rounded-lg transition-all duration-200 ${
+                            offer.is_selected 
+                              ? 'bg-green-600 hover:bg-green-700 text-white' 
+                              : 'bg-gray-900 hover:bg-gray-800 text-white'
+                          } disabled:opacity-50`}
+                        >
+                          {approving === offer.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Onaylanıyor...
+                            </>
+                          ) : request?.status === 'approved' ? (
+                            'Onaylandı'
+                          ) : offer.is_selected ? (
+                            '✓ Seçildi'
+                          ) : (
+                            'Bu Teklifi Onayla'
+                          )}
+                        </Button>
+                      )}
                     </div>
-                  </div>
+                    </CardContent>
+                  </Card>
                 ))}
               </div>
               
               {totalOffers >= 3 && (
-                <div className="mt-6 bg-gradient-to-r from-gray-500/10 to-gray-600/10 rounded-2xl p-4 text-center">
+                <div className="mt-6 bg-gray-50 rounded-lg p-4 text-center border border-gray-200">
                   <div className="flex items-center justify-center gap-2">
                     <div className="w-2 h-2 bg-gray-900 rounded-full"></div>
-                    <p className="text-gray-800 font-semibold">3 teklif tamamlandı - Onay bekliyor</p>
+                    <p className="text-gray-700 font-medium">3 teklif tamamlandı - Onay bekliyor</p>
                   </div>
                 </div>
               )}
-            </div>
+              </CardContent>
+            </Card>
           )}
 
           {/* Alt Bölüm - Teklif Girişi */}
           <div>
             {hasOrder ? (
-              <div className="bg-white rounded-2xl p-8 border border-gray-200/50">
-                <div className="text-left">
-                  <div className="flex items-center gap-3 mb-6">
-                    <div className="w-10 h-10 bg-green-100 rounded-xl flex items-center justify-center">
+              <Card className="bg-white border-0 shadow-sm">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
                       <Check className="h-6 w-6 text-green-600" />
                     </div>
                     <div>
-                      <h3 className="text-2xl font-semibold text-gray-900">Sipariş Detayları</h3>
-                      <p className="text-gray-600">Bu talep için sipariş oluşturuldu</p>
+                      <CardTitle className="text-xl font-semibold text-gray-900">Sipariş Detayları</CardTitle>
+                      <p className="text-sm text-gray-600 mt-1">Bu talep için sipariş oluşturuldu</p>
                     </div>
                   </div>
-                </div>
+                </CardHeader>
+                <CardContent>
 
                 {/* Sipariş Detayları */}
                 <div className="space-y-6">
-                  {/* Tedarikçi Bilgileri */}
-                  <div className="bg-white rounded-xl p-6 shadow-sm border border-gray-200">
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h4 className="text-lg font-semibold text-gray-900">{selectedSupplier?.name}</h4>
-                        <p className="text-sm text-gray-600 mt-1">{selectedSupplier?.contact_person}</p>
-                      </div>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push(`/dashboard/suppliers/${selectedSupplier?.id}`)}
-                        className="text-gray-700 border-gray-200 hover:bg-gray-50"
-                      >
-                        Tedarikçi Detayları
-                      </Button>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Phone className="w-4 h-4" />
-                        <span>{selectedSupplier?.phone}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-sm text-gray-600">
-                        <Mail className="w-4 h-4" />
-                        <span>{selectedSupplier?.email}</span>
+                  {/* Site personnel için sadece teslimat tarihi */}
+                  {userRole === 'site_personnel' ? (
+                    <div className="bg-white rounded-lg p-6 border border-gray-200">
+                      <h4 className="text-lg font-semibold text-gray-900 mb-4">Teslimat Bilgisi</h4>
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                        <p className="text-sm font-medium text-blue-700 mb-1">Teslimat Tarihi</p>
+                        <p className="text-xl font-semibold text-blue-900">
+                          {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
+                        </p>
                       </div>
                     </div>
-                  </div>
-
-                  {/* Sipariş Bilgileri */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-600 mb-1">Teslimat Tarihi</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-600 mb-1">Sipariş Tutarı</p>
-                      <p className="text-lg font-semibold text-gray-900">
-                        {getCurrencySymbol(orderDetails.currency)}
-                        {parseFloat(orderDetails.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                      </p>
-                    </div>
-                    <div className="bg-gray-50 rounded-xl p-4">
-                      <p className="text-sm font-medium text-gray-600 mb-1">Durum</p>
-                      <Badge className="bg-green-100 text-green-800 border-green-200">
-                        Sipariş Verildi
-                      </Badge>
-                    </div>
-                  </div>
-
-                  {/* Dökümanlar */}
-                  {orderDetails.documentPreviewUrls.length > 0 && (
-                    <div>
-                      <h4 className="text-sm font-medium text-gray-700 mb-3">Sipariş Dökümanları</h4>
-                      <div className="grid grid-cols-4 gap-4">
-                        {orderDetails.documentPreviewUrls.map((url, index) => (
-                          <div key={index} className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
-                            {orderDetails.documents[index]?.type.includes('pdf') ? (
-                              <div className="w-full h-full flex flex-col items-center justify-center">
-                                <FileText className="w-8 h-8 text-gray-500" />
-                                <span className="text-xs text-gray-600 mt-2">PDF Döküman</span>
-                              </div>
-                            ) : (
-                              <img
-                                src={url}
-                                alt={`Döküman ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                            )}
+                  ) : (
+                    /* Diğer roller için tam sipariş detayları */
+                    <>
+                      {/* Tedarikçi Bilgileri */}
+                      <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
+                        <div className="flex items-start justify-between mb-4">
+                          <div>
+                            <h4 className="text-lg font-semibold text-gray-900">{selectedSupplier?.name}</h4>
+                            <p className="text-sm text-gray-600 mt-1">{selectedSupplier?.contact_person}</p>
                           </div>
-                        ))}
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/dashboard/suppliers/${selectedSupplier?.id}`)}
+                            className="text-gray-700 border-gray-200 hover:bg-gray-100"
+                          >
+                            Tedarikçi Detayları
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Phone className="w-4 h-4" />
+                            <span>{selectedSupplier?.phone}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="w-4 h-4" />
+                            <span>{selectedSupplier?.email}</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
+
+                      {/* Sipariş Bilgileri */}
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Teslimat Tarihi</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
+                          </p>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Sipariş Tutarı</p>
+                          <p className="text-lg font-semibold text-gray-900">
+                            {getCurrencySymbol(orderDetails.currency)}
+                            {parseFloat(orderDetails.amount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          </p>
+                        </div>
+                        <div className="bg-white rounded-lg p-4 border border-gray-200">
+                          <p className="text-sm font-medium text-gray-500 mb-1">Durum</p>
+                          <Badge className="bg-green-100 text-green-700 border-0">
+                            Sipariş Verildi
+                          </Badge>
+                        </div>
+                      </div>
+
+                      {/* Dökümanlar */}
+                      {orderDetails.documentPreviewUrls.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-medium text-gray-700 mb-3">Sipariş Dökümanları</h4>
+                          <div className="grid grid-cols-4 gap-4">
+                            {orderDetails.documentPreviewUrls.map((url, index) => (
+                              <div key={index} className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                                {orderDetails.documents[index]?.type.includes('pdf') ? (
+                                  <div className="w-full h-full flex flex-col items-center justify-center">
+                                    <FileText className="w-8 h-8 text-gray-500" />
+                                    <span className="text-xs text-gray-600 mt-2">PDF Döküman</span>
+                                  </div>
+                                ) : (
+                                  <img
+                                    src={url}
+                                    alt={`Döküman ${index + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
-              </div>
-            ) : supplierMaterialInfo.isRegistered ? (
+                </CardContent>
+              </Card>
+            ) : userRole !== 'site_personnel' && userRole !== 'site_manager' && supplierMaterialInfo.isRegistered ? (
               <div className="bg-white rounded-2xl p-8 border border-gray-200/50">
                 <div className="text-left">
                   <h3 className="text-2xl font-semibold text-gray-900 mb-2">
@@ -1312,10 +1530,10 @@ export default function OffersPage() {
                           <span>{supplier.email}</span>
                         </div>
                       </div>
-                      <div className="absolute bottom-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+                      <div className="mt-4 pt-4 border-t border-gray-200">
                         <Button
                           size="sm"
-                          className="bg-gray-900 hover:bg-black text-white shadow-lg"
+                          className="w-full bg-gray-900 hover:bg-black text-white shadow-lg rounded-lg h-10 font-medium"
                           onClick={() => {
                             setSelectedSupplier(supplier)
                             setIsCreateOrderModalOpen(true)
@@ -1337,7 +1555,7 @@ export default function OffersPage() {
                   </Button>
                 </div>
               </div>
-            ) : (
+            ) : userRole !== 'site_personnel' && userRole !== 'site_manager' ? (
               <div className="bg-gradient-to-br from-white/80 to-gray-50/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200/50">
                 {/* Clickable Header */}
                 <div 
@@ -1437,7 +1655,7 @@ export default function OffersPage() {
                             <SelectTrigger className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-0 shadow-sm focus:ring-2 focus:ring-gray-500/20 transition-all duration-200 flex items-center">
                               <SelectValue placeholder="TRY" />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                               {CURRENCIES.map((currency) => (
                                 <SelectItem key={currency.value} value={currency.value}>
                                   <div className="flex items-center gap-2">
@@ -1657,6 +1875,45 @@ export default function OffersPage() {
                 </div>
                 )}
               </div>
+            ) : userRole === 'site_manager' ? (
+              // Site manager için özel bilgilendirme mesajı
+              <Card className="bg-white border-0 shadow-sm">
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Package className="w-8 h-8 text-blue-600" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Teklif Sürecini Takip Edin</h3>
+                    <p className="text-gray-600 mb-4">
+                      Site manager olarak mevcut teklifleri görüntüleyebilir ve süreci takip edebilirsiniz. 
+                      Teklif girişi ve onaylama yetkileriniz bulunmamaktadır.
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 rounded-lg">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      <span className="text-sm text-blue-700 font-medium">Takip modunda</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : (
+              // Site personeli için bilgilendirme mesajı
+              <Card className="bg-white border-0 shadow-sm">
+                <CardContent className="p-8">
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                      <Package className="w-8 h-8 text-gray-400" />
+                    </div>
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">Talep Takibi</h3>
+                    <p className="text-gray-600 mb-4">
+                      Bu talep için teklif süreci devam ediyor. Sipariş oluşturulduğunda detayları burada görüntüleyebileceksiniz.
+                    </p>
+                    <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-lg">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-pulse"></div>
+                      <span className="text-sm text-gray-600">Süreç devam ediyor</span>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
         </div>
@@ -1743,7 +2000,7 @@ export default function OffersPage() {
                     <SelectTrigger className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200">
                       <SelectValue placeholder="TRY" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-white border border-gray-200 shadow-lg rounded-xl">
                       {CURRENCIES.map((currency) => (
                         <SelectItem key={currency.value} value={currency.value}>
                           <div className="flex items-center gap-2">
@@ -2159,7 +2416,7 @@ export default function OffersPage() {
                   >
                     Kapat
                   </Button>
-                  {!selectedOffer.is_selected && request?.status !== 'approved' && (
+                  {userRole !== 'site_personnel' && userRole !== 'site_manager' && !selectedOffer.is_selected && request?.status !== 'approved' && (
                     <Button
                       onClick={() => {
                         closeOfferModal()

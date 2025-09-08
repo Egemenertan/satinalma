@@ -3,30 +3,65 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
+import { getAccessibleMenuItems } from '@/lib/roles'
 import {
   LayoutDashboard,
-  Package,
   FileText,
   Users,
   Building2,
-  TrendingUp,
   Settings,
   ChevronDown,
   ChevronRight,
   LogOut,
   Menu,
   X,
-  ShoppingCart,
-  Truck,
-  CreditCard,
-  BarChart3,
-  UserCheck,
+  MoreHorizontal,
   ChevronLeft
 } from 'lucide-react'
+
+// Bekleyen talep sayısını getiren fetcher (rol bazlı)
+const fetchPendingRequestsCount = async () => {
+  const supabase = createClient()
+  
+  // Kullanıcı bilgilerini çek
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    return 0
+  }
+
+  // Kullanıcı rolünü çek
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  let query = supabase
+    .from('purchase_requests')
+    .select('id', { count: 'exact', head: true })
+
+  // Purchasing officer için sadece "şantiye şefi onayladı" durumundaki talepleri say
+  if (profile?.role === 'purchasing_officer') {
+    query = query.eq('status', 'şantiye şefi onayladı')
+  } else {
+    // Diğer roller için pending durumundaki talepleri say
+    query = query.eq('status', 'pending')
+  }
+  
+  const { count, error } = await query
+  
+  if (error) {
+    console.error('Bekleyen talep sayısı alınırken hata:', error)
+    return 0
+  }
+  
+  return count || 0
+}
 
 interface NavItem {
   title: string
@@ -36,33 +71,47 @@ interface NavItem {
   children?: NavItem[]
 }
 
-const navigation: NavItem[] = [
-  {
-    title: 'Dashboard',
-    href: '/dashboard',
-    icon: LayoutDashboard
-  },
-  {
-    title: 'Talepler',
-    href: '/dashboard/requests',
-    icon: FileText
-  },
-  {
-    title: 'Tedarikçiler',
-    href: '/dashboard/suppliers',
-    icon: Users
-  },
-  {
-    title: 'Şantiyeler',
-    href: '/dashboard/sites',
-    icon: Building2
-  },
-  {
-    title: 'Ayarlar',
-    href: '/dashboard/settings',
-    icon: Settings
-  }
-]
+// Navigation - pendingCount ve userRole'u prop olarak alacak fonksiyon
+const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
+  const allMenuItems = [
+    {
+      id: 'dashboard',
+      title: 'Dashboard',
+      href: '/dashboard',
+      icon: LayoutDashboard
+    },
+    {
+      id: 'requests',
+      title: 'Talepler',
+      href: '/dashboard/requests',
+      icon: FileText,
+      badge: pendingCount > 0 ? pendingCount.toString() : undefined
+    },
+    {
+      id: 'sites',
+      title: 'Şantiyeler',
+      href: '/dashboard/sites',
+      icon: Building2
+    },
+    {
+      id: 'suppliers',
+      title: 'Tedarikçiler',
+      href: '/dashboard/suppliers',
+      icon: Users
+    },
+    {
+      id: 'settings',
+      title: 'Ayarlar',
+      href: '/dashboard/settings',
+      icon: Settings
+    }
+  ]
+
+  // Kullanıcı rolüne göre erişilebilir menü öğelerini filtrele
+  const accessibleMenuIds = getAccessibleMenuItems(userRole as any)
+  
+  return allMenuItems.filter(item => accessibleMenuIds.includes(item.id))
+}
 
 interface SidebarProps {
   className?: string
@@ -80,12 +129,48 @@ export default function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(false)
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
+  const [userRole, setUserRole] = useState<string>('user')
   
   // External prop varsa onu kullan, yoksa internal state kullan
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
   const setIsMobileOpen = externalSetIsMobileOpen || setInternalIsMobileOpen
   const pathname = usePathname()
   const router = useRouter()
+
+  // Bekleyen talep sayısını SWR ile çek - user role ile key oluştur
+  const { data: pendingCount, mutate: refreshPendingCount } = useSWR(
+    userRole ? `pending_requests_count_${userRole}` : null,
+    fetchPendingRequestsCount,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 30000, // 30 saniye cache
+      errorRetryCount: 2,
+      fallbackData: 0
+    }
+  )
+
+  // Kullanıcı rolünü çek
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.role) {
+          setUserRole(profile.role)
+        }
+      }
+    }
+    
+    fetchUserRole()
+  }, [])
 
   // Mobile responsive kontrol
   useEffect(() => {
@@ -99,6 +184,31 @@ export default function Sidebar({
     return () => window.removeEventListener('resize', handleResize)
   }, [])
 
+  // Real-time updates için subscription
+  useEffect(() => {
+    const supabase = createClient()
+    
+    const subscription = supabase
+      .channel('pending_requests_notifications')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'purchase_requests' 
+        }, 
+        (payload) => {
+          console.log('📡 Sidebar notification update:', payload)
+          // Bekleyen talep sayısını yenile
+          refreshPendingCount()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [refreshPendingCount])
+
   const handleToggleCollapse = () => {
     const newCollapsed = !isCollapsed
     setIsCollapsed(newCollapsed)
@@ -109,6 +219,8 @@ export default function Sidebar({
     setIsMobileOpen(!isMobileOpen)
   }
 
+  const supabase = createClient()
+  
   const handleLogout = async () => {
     try {
       await supabase.auth.signOut()
@@ -142,30 +254,27 @@ export default function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-300 text-gray-300 text-sm font-light mb-1",
-              isCollapsed ? "px-2 justify-center w-full" : "px-4",
-              level > 0 && "ml-4 w-[calc(100%-1rem)]",
-              active && "bg-white/20 text-white font-medium"
+              "w-full h-10 transition-colors",
+              isCollapsed ? "justify-center px-0" : "justify-start px-2",
+              "text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md",
+              active && "bg-gray-100 text-gray-900"
             )}
             onClick={() => toggleExpanded(item.title)}
           >
-            <item.icon className={cn("h-4 w-4 shrink-0", !isCollapsed && "mr-3")} />
+            <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
             {(!isCollapsed || isMobileOpen) && (
               <>
-                <span className="flex-1 text-left font-light">{item.title}</span>
-                {/* Chevron'u sadece desktop'ta göster */}
-                <div className="hidden lg:block">
-                  {isExpanded ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                </div>
+                <span className="flex-1 text-left text-sm">{item.title}</span>
+                {isExpanded ? (
+                  <ChevronDown className="h-4 w-4" />
+                ) : (
+                  <ChevronRight className="h-4 w-4" />
+                )}
               </>
             )}
           </Button>
           {isExpanded && (!isCollapsed || isMobileOpen) && (
-            <div className="space-y-1">
+            <div className="ml-4 space-y-1">
               {item.children?.map((child) => (
                 <NavItemComponent key={child.title} item={child} level={level + 1} />
               ))}
@@ -180,24 +289,27 @@ export default function Sidebar({
         <Button
           variant="ghost"
           className={cn(
-            "w-full justify-start h-12 transition-all duration-200 rounded-xl bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-300 text-gray-300 text-sm font-light mb-1",
-            isCollapsed ? "px-2 justify-center w-12" : "px-4",
-            level > 0 && "ml-4 w-[calc(100%-1rem)]",
-            active && "bg-white/20 text-white font-medium"
+            "w-full h-10 transition-colors",
+            isCollapsed ? "justify-center px-0" : "justify-start px-2",
+            "text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md",
+            active && "bg-gray-100 text-gray-900"
           )}
           onClick={() => {
-            // Mobilde sidebar'ı kapat
             if (isMobileOpen) {
               setIsMobileOpen(false)
             }
           }}
+          title={isCollapsed ? item.title : undefined}
         >
-          <item.icon className={cn("h-4 w-4 shrink-0", !isCollapsed && "mr-3")} />
+          <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
           {(!isCollapsed || isMobileOpen) && (
             <>
-              <span className="flex-1 text-left font-extralight">{item.title}</span>
+              <span className="text-sm">{item.title}</span>
               {item.badge && (
-                <Badge variant="secondary" className="h-5 text-xs bg-white/20 text-white rounded-full border-0">
+                <Badge 
+                  variant="secondary" 
+                  className="ml-auto h-5 px-2 text-xs bg-red-500 text-white hover:bg-red-600 border-0"
+                >
                   {item.badge}
                 </Badge>
               )}
@@ -210,7 +322,6 @@ export default function Sidebar({
 
   return (
     <>
-
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div 
@@ -221,83 +332,95 @@ export default function Sidebar({
 
       {/* Sidebar */}
       <div className={cn(
-        "fixed top-4 bottom-4 z-50 flex flex-col transition-all duration-300",
-        "bg-black backdrop-blur-xl border border-gray-800/50 rounded-2xl shadow-2xl",
+        "fixed top-0 bottom-0 z-50 flex flex-col transition-all duration-300",
+        "bg-white",
         // Desktop
-        "hidden lg:flex",
-        isCollapsed ? "w-16 left-4" : "w-64 left-4",
-        // Mobile
-        "lg:flex",
-        isMobileOpen ? "flex right-4 left-4 w-auto" : "hidden",
+        "hidden lg:flex lg:left-0 lg:border-r border-gray-200",
+        isCollapsed ? "w-16" : "w-64",
+        // Mobile - sağ kenardan aç
+        isMobileOpen ? "flex w-64 right-0 border-l" : "hidden lg:flex",
         className
       )}>
-        {/* Logo and Toggle */}
+        {/* Header with Logo */}
         <div className={cn(
-          "px-4 pt-6 pb-4 flex items-center",
-          isCollapsed ? "justify-center" : "justify-between"
+          "flex items-center border-b border-gray-100",
+          // Mobile: sadece kapatma butonu sağda
+          isMobileOpen ? "justify-end px-6 py-5" : 
+          // Desktop: logo ve toggle buton
+          isCollapsed ? "justify-center px-4 py-5" : "justify-between px-6 py-5"
         )}>
-          {(!isCollapsed || isMobileOpen) && (
-            <div className="flex items-center pl-4">
+          {/* Logo - sadece desktop'ta göster */}
+          {!isMobileOpen && !isCollapsed && (
+            <div className="flex items-center space-x-2">
               <img 
                 src="/d.png" 
                 alt="Logo" 
-                className="h-8 w-auto"
+                className="h-8 w-auto filter brightness-0"
               />
             </div>
           )}
           
-          {/* Desktop: Collapse Toggle with Earth Image, Mobile: Close Button */}
+          {/* Desktop: Collapse Toggle, Mobile: Close Button */}
           <Button
             variant="ghost"
             size="sm"
             onClick={isMobileOpen ? () => setIsMobileOpen(false) : handleToggleCollapse}
-            className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10  hover:scale-150 text-gray-400 transition-all duration-200"
+            className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100 text-gray-600 transition-all duration-200"
           >
             {isMobileOpen ? (
               <X className="h-4 w-4" />
             ) : isCollapsed ? (
-              <img 
-                src={`${supabase.storage.from('satinalma').getPublicUrl('earth.png').data.publicUrl}`}
-                alt="Earth"
-                className="h-7 w-7 object-contain"
-              />
-            ) : (
               <Menu className="h-4 w-4" />
+            ) : (
+              <ChevronLeft className="h-4 w-4" />
             )}
           </Button>
         </div>
 
+        {/* Quick Create - only show when not collapsed */}
+        {(!isCollapsed || isMobileOpen) && (
+          <div className="px-4 py-3">
+            <Button className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
+              
+              Hızlı Talep
+            </Button>
+          </div>
+        )}
+
         {/* Navigation */}
         <nav className={cn(
-          "flex-1 py-4 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent",
+          "flex-1 py-2 space-y-1",
           isCollapsed ? "px-2" : "px-4"
         )}>
-          {navigation.map((item) => (
+          {getNavigation(pendingCount || 0, userRole).map((item) => (
             <NavItemComponent key={item.title} item={item} />
           ))}
         </nav>
 
         {/* User Profile */}
-        <div className="p-4">
+        <div className={cn(
+          "py-4 border-t border-gray-100",
+          isCollapsed ? "px-2" : "px-4"
+        )}>
           {isCollapsed && !isMobileOpen ? (
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="w-full h-10 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200" 
-              onClick={handleLogout}
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          ) : (
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gray-700 rounded-lg flex items-center justify-center">
+            <div className="flex justify-center">
+              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
                 <span className="text-xs font-medium text-white">EY</span>
               </div>
-             
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className="h-8 w-8 p-0 rounded-lg bg-transparent border border-transparent hover:bg-white/10 hover:border hover:border-white hover:text-gray-400 text-gray-400 transition-all duration-200" 
+            </div>
+          ) : (
+            <div className="flex items-center space-x-3">
+              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
+                <span className="text-xs font-medium text-white">EY</span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-gray-900 truncate">Egemen</div>
+                <div className="text-xs text-gray-500 truncate">egemen@example.com</div>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
                 onClick={handleLogout}
               >
                 <LogOut className="h-4 w-4" />

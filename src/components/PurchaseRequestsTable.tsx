@@ -2,17 +2,17 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import useSWR, { mutate } from 'swr'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { createClient } from '@/lib/supabase/client'
+import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 
 import { 
   Search, 
-  Filter, 
-
   FileText, 
   Building2, 
   Calendar,
@@ -22,7 +22,6 @@ import {
   Package,
   TrendingUp,
   User,
-
   ArrowUpDown
 } from 'lucide-react'
 
@@ -35,7 +34,7 @@ interface PurchaseRequest {
   total_amount: number
   currency?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi'
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı'
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -68,10 +67,100 @@ interface Filters {
   sortOrder: 'asc' | 'desc'
 }
 
+// SWR fetcher fonksiyonu
+const fetcherWithAuth = async (url: string) => {
+  const supabase = createClient()
+  
+  // Kullanıcı bilgilerini çek
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error('Kullanıcı oturumu bulunamadı')
+  }
+
+  // Kullanıcı rolünü çek
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  return { user, profile, supabase }
+}
+
+// Purchase requests fetcher
+const fetchPurchaseRequests = async (key: string) => {
+  const [_, currentPage, pageSize] = key.split('/')
+  const page = parseInt(currentPage)
+  const size = parseInt(pageSize)
+  
+  const { user, profile, supabase } = await fetcherWithAuth('auth')
+  
+  let countQuery = supabase
+    .from('purchase_requests')
+    .select('id', { count: 'exact', head: true })
+  
+  // Purchasing officer sadece onaylanmış ve sipariş verilmiş talepleri görebilir
+  if (profile?.role === 'purchasing_officer') {
+    countQuery = countQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
+  }
+  
+  // Önce toplam sayıyı al
+  const { count, error: countError } = await countQuery
+  
+  if (countError) {
+    throw new Error(countError.message)
+  }
+  
+  // Pagination ile veriyi çek
+  const from = (page - 1) * size
+  const to = from + size - 1
+  
+  let requestsQuery = supabase
+    .from('purchase_requests')
+    .select(`
+      id,
+      title,
+      status,
+      urgency_level,
+      created_at,
+      requested_by,
+      total_amount,
+      department,
+      orders!left (
+        id
+      )
+    `)
+    .range(from, to)
+    .order('created_at', { ascending: false })
+  
+  // Purchasing officer sadece onaylanmış ve sipariş verilmiş talepleri görebilir
+  if (profile?.role === 'purchasing_officer') {
+    requestsQuery = requestsQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
+  }
+  
+  const { data: requests, error } = await requestsQuery
+  
+  if (error) {
+    throw new Error(error.message)
+  }
+
+  const formattedRequests = (requests || []).map(request => ({
+    ...request,
+    request_number: `REQ-${request.id.slice(0, 8)}`,
+    updated_at: request.created_at,
+    // Eğer orders varsa ve boş değilse status'u güncelle
+    status: request.orders && request.orders.length > 0 ? 'sipariş verildi' : request.status
+  })) as PurchaseRequest[]
+
+  return { requests: formattedRequests, totalCount: count || 0 }
+}
+
 export default function PurchaseRequestsTable() {
   const router = useRouter()
-  const [requests, setRequests] = useState<PurchaseRequest[]>([])
-  const [loading, setLoading] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [pageSize] = useState(20)
+  const [userRole, setUserRole] = useState<string>('')
+  const [approving, setApproving] = useState<string | null>(null)
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -81,106 +170,111 @@ export default function PurchaseRequestsTable() {
     sortOrder: 'desc'
   })
 
-
-  useEffect(() => {
-    fetchRequests()
-  }, [filters])
-
-  const fetchRequests = async () => {
-    setLoading(true)
-    try {
-      console.log('🔍 Fetching purchase requests...')
-      
-      // Doğrudan Supabase'den veri çek
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      
-      const { data: requests, error } = await supabase
-        .from('purchase_requests')
-        .select(`
-          id,
-          title,
-          status,
-          urgency_level,
-          created_at,
-          requested_by,
-          total_amount,
-          department,
-          orders!left (
-            id
-          )
-        `)
-        .order('created_at', { ascending: false })
-      
-      console.log('📊 Requests query result:', { requests: requests?.length, error })
-      
-      if (error) {
-        throw new Error(error.message)
-      }
-
-      let data = (requests || []).map(request => ({
-        ...request,
-        request_number: `REQ-${request.id.slice(0, 8)}`,
-        updated_at: request.created_at,
-        // Eğer orders varsa ve boş değilse status'u güncelle
-        status: request.orders && request.orders.length > 0 ? 'sipariş verildi' : request.status
-      })) as PurchaseRequest[]
-      console.log('✅ Requests fetched successfully:', data.length)
-
-      // Filtreleri uygula
-      if (filters.status !== 'all') {
-        data = data.filter((req: any) => req.status === filters.status)
-      }
-
-      if (filters.urgency !== 'all') {
-        data = data.filter((req: any) => req.urgency_level === filters.urgency)
-      }
-
-      if (filters.search) {
-        data = data.filter((req: any) => 
-          req.request_number?.toLowerCase().includes(filters.search.toLowerCase()) ||
-          req.title?.toLowerCase().includes(filters.search.toLowerCase()) ||
-          req.description?.toLowerCase().includes(filters.search.toLowerCase())
-        )
-      }
-
-      // Sıralama
-      data.sort((a: any, b: any) => {
-        const aVal = a[filters.sortBy] || ''
-        const bVal = b[filters.sortBy] || ''
-        
-        if (filters.sortOrder === 'asc') {
-          return aVal > bVal ? 1 : -1
-        } else {
-          return aVal < bVal ? 1 : -1
-        }
-      })
-
-      setRequests(data)
-    } catch (error) {
-      console.error('Talepler yüklenirken hata:', error)
-    } finally {
-      setLoading(false)
+  // SWR ile cache'li veri çekme
+  const { data, error, isLoading, mutate: refreshData } = useSWR(
+    `purchase_requests/${currentPage}/${pageSize}`,
+    fetchPurchaseRequests,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60000, // 1 dakika cache
+      errorRetryCount: 3,
+      errorRetryInterval: 5000,
     }
-  }
+  )
+
+  const requests = data?.requests || []
+  const totalCount = data?.totalCount || 0
+
+  // Kullanıcı rolünü çek
+  useEffect(() => {
+    const fetchUserRole = async () => {
+      const supabase = createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.role) {
+          setUserRole(profile.role)
+        }
+      }
+    }
+    
+    fetchUserRole()
+  }, [])
+
+  // Real-time updates için subscription
+  useEffect(() => {
+    const supabase = createClient()
+    
+    // Purchase requests tablosundaki değişiklikleri dinle
+    const subscription = supabase
+      .channel('purchase_requests_changes')
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'purchase_requests' 
+        }, 
+        (payload) => {
+          console.log('📡 Real-time update received:', payload)
+          // Global cache invalidation kullan
+          invalidatePurchaseRequestsCache()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      subscription.unsubscribe()
+    }
+  }, [refreshData])
+
+  // Filter uygulaması
+  const filteredRequests = requests.filter((req: any) => {
+    if (filters.status !== 'all' && req.status !== filters.status) return false
+    if (filters.urgency !== 'all' && req.urgency_level !== filters.urgency) return false
+    if (filters.search) {
+      const searchTerm = filters.search.toLowerCase()
+      return (
+        req.request_number?.toLowerCase().includes(searchTerm) ||
+        req.title?.toLowerCase().includes(searchTerm) ||
+        req.description?.toLowerCase().includes(searchTerm)
+      )
+    }
+    return true
+  }).sort((a: any, b: any) => {
+    const aVal = a[filters.sortBy] || ''
+    const bVal = b[filters.sortBy] || ''
+    
+    if (filters.sortOrder === 'asc') {
+      return aVal > bVal ? 1 : -1
+    } else {
+      return aVal < bVal ? 1 : -1
+    }
+  })
 
 
 
   const getStatusBadge = (status: string) => {
     const statusConfig = {
-      draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-800 border-gray-200' },
-      pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-yellow-200' },
-      awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-black text-white border-black' },
-      approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-green-200' },
-      rejected: { label: 'Reddedildi', className: 'bg-black text-white border-black' },
-      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-gray-200' },
-      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-600 text-white border-green-700' }
+      draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-700 border-0' },
+      pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
+      'şantiye şefi onayladı': { label: 'Şantiye Şefi Onayladı', className: 'bg-blue-100 text-blue-800 border-0' },
+      awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
+      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
+      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
+      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' }
     }
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
 
     return (
-      <Badge variant="outline" className={`${config.className} rounded-2xl`}>
+      <Badge variant="outline" className={`${config.className} rounded-full text-xs font-medium px-2 py-1`}>
         {config.label}
       </Badge>
     )
@@ -190,22 +284,22 @@ export default function PurchaseRequestsTable() {
     const urgencyConfig = {
       critical: { 
         label: 'Kritik', 
-        className: 'bg-black text-white border-black',
+        className: 'bg-red-100 text-red-800 border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       high: { 
         label: 'Yüksek', 
-        className: 'bg-black text-white border-black',
+        className: 'bg-orange-100 text-orange-800 border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       normal: { 
         label: 'Normal', 
-        className: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+        className: 'bg-blue-100 text-blue-800 border-0',
         icon: <Clock className="w-3 h-3" />
       },
       low: { 
         label: 'Düşük', 
-        className: 'bg-green-100 text-green-800 border-green-200',
+        className: 'bg-green-100 text-green-800 border-0',
         icon: <Target className="w-3 h-3" />
       }
     }
@@ -213,7 +307,7 @@ export default function PurchaseRequestsTable() {
     const config = urgencyConfig[urgency as keyof typeof urgencyConfig] || urgencyConfig.normal
 
     return (
-      <Badge variant="outline" className={`${config.className} rounded-2xl flex items-center gap-1`}>
+      <Badge variant="outline" className={`${config.className} rounded-full text-xs font-medium px-2 py-1 flex items-center gap-1`}>
         {config.icon}
         {config.label}
       </Badge>
@@ -244,152 +338,165 @@ export default function PurchaseRequestsTable() {
 
   const handleRequestClick = (request: PurchaseRequest) => {
     // Pending, awaiting_offers ve sipariş verildi status'undaki taleplere gidilebilir
-    if (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') {
+    if (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'şantiye şefi onayladı' || request.status === 'sipariş verildi') {
       router.push(`/dashboard/requests/${request.id}/offers`)
+    }
+  }
+
+  const handleSiteManagerApproval = async (requestId: string, e: React.MouseEvent) => {
+    e.stopPropagation() // Tıklamanın satır tıklamasına etki etmesini engelle
+    
+    try {
+      setApproving(requestId)
+      const supabase = createClient()
+      
+      const { error } = await supabase
+        .from('purchase_requests')
+        .update({ 
+          status: 'şantiye şefi onayladı',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', requestId)
+      
+      if (error) throw error
+      
+      // Verileri yenile
+      refreshData()
+      invalidatePurchaseRequestsCache()
+      
+    } catch (error: any) {
+      console.error('❌ Site Manager Onay Hatası:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        requestId
+      })
+      
+      // Hata durumunda kullanıcıyı bilgilendir (console'da detay var)
+    } finally {
+      setApproving(null)
     }
   }
 
 
 
   return (
-    <Card className="rounded-2xl bg-transparent border-0 shadow-none">
-      
-      
-      <CardContent className="p-4 sm:p-6">
-        {/* Filtreler */}
-        <div className="mb-8 space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <Card className="bg-transparent border-transparent shadow-none">
+      <CardContent className="p-0">
+        {/* Search Bar */}
+        <div className="mb-6 px-4">
+          <div className="w-full sm:max-w-md">
             <div className="relative">
               <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
               <Input
                 placeholder="Talep ara..."
                 value={filters.search}
                 onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-10 rounded-xl bg-white border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                className="pl-10 h-10 rounded-lg border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
               />
             </div>
-
-            <Select 
-              value={filters.status} 
-              onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}
-            >
-              <SelectTrigger className="rounded-2xl border-gray-200 focus:border-blue-500 focus:ring-blue-500">
-                <SelectValue placeholder="Durum" />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl">
-                <SelectItem value="all">Tüm Durumlar</SelectItem>
-                <SelectItem value="draft">Taslak</SelectItem>
-                <SelectItem value="pending">Beklemede</SelectItem>
-                <SelectItem value="awaiting_offers">Onay Bekliyor</SelectItem>
-                <SelectItem value="approved">Onaylandı</SelectItem>
-                <SelectItem value="sipariş verildi">Sipariş Verildi</SelectItem>
-                <SelectItem value="rejected">Reddedildi</SelectItem>
-                <SelectItem value="cancelled">İptal Edildi</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select 
-              value={filters.urgency} 
-              onValueChange={(value) => setFilters(prev => ({ ...prev, urgency: value }))}
-            >
-              <SelectTrigger className="rounded-2xl border-gray-200 focus:border-blue-500 focus:ring-blue-500">
-                <SelectValue placeholder="Aciliyet" />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl">
-                <SelectItem value="all">Tüm Aciliyet</SelectItem>
-                <SelectItem value="critical">Kritik</SelectItem>
-                <SelectItem value="high">Yüksek</SelectItem>
-                <SelectItem value="normal">Normal</SelectItem>
-                <SelectItem value="low">Düşük</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Button 
-              variant="outline" 
-              onClick={() => setFilters({
-                search: '',
-                status: 'all',
-                urgency: 'all',
-                sortBy: 'created_at',
-                sortOrder: 'desc'
-              })}
-              className="flex items-center gap-2 rounded-2xl border-gray-200 hover:bg-gray-50"
-            >
-              <Filter className="w-4 h-4" />
-              Temizle
-            </Button>
           </div>
         </div>
 
         {/* Tablo */}
-        <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-          <Table>
+        <div className="rounded-lg border-0 overflow-hidden overflow-x-auto">
+          <Table className="min-w-full">
             <TableHeader>
-              <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 border-0 hover:bg-gray-100">
-                <TableHead className="py-4 text-gray-700">Durum</TableHead>
-                <TableHead className="py-4">
+              <TableRow className="bg-gray-50 border-b border-gray-200 hover:bg-gray-50">
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('title')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
+                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
                   >
                     Başlık
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
-                <TableHead className="py-4 text-gray-700">Departman</TableHead>
-                <TableHead className="py-4 text-gray-700">Öğeler</TableHead>
-                <TableHead className="py-4 text-gray-700">Toplam Tutar</TableHead>
-                <TableHead className="py-4 text-gray-700">Aciliyet</TableHead>
-                <TableHead className="py-4">
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Departman</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Öğeler</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Toplam Tutar</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Aciliyet</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('created_at')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
+                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
                   >
                     Tarih
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
-
-                <TableHead className="w-[120px] py-4">
+                <TableHead className="w-[120px] py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('request_number')}
-                    className="h-8 p-0 flex items-center gap-1 font-medium text-gray-700 hover:text-black hover:bg-gray-100 rounded-2xl"
+                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
                   >
                     Talep No
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
+                {userRole === 'site_manager' && (
+                  <TableHead className="w-[120px] py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    İşlemler
+                  </TableHead>
+                )}
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {isLoading ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={8} className="text-center py-12">
+                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12">
                     <div className="flex items-center justify-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="text-gray-600">Yükleniyor...</span>
                     </div>
                   </TableCell>
                 </TableRow>
-              ) : requests.length === 0 ? (
+              ) : error ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={9} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12 text-red-500">
+                    <div className="flex flex-col items-center gap-2">
+                      <AlertTriangle className="w-8 h-8 text-red-300" />
+                      <span>Veriler yüklenirken hata oluştu</span>
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => refreshData()}
+                        className="mt-2"
+                      >
+                        Tekrar Dene
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ) : filteredRequests.length === 0 ? (
+                <TableRow className="border-0">
+                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Package className="w-8 h-8 text-gray-300" />
-                      <span>Henüz talep bulunamadı</span>
+                      <span>
+                        {filters.search || filters.status !== 'all' || filters.urgency !== 'all' 
+                          ? 'Filtre kriterlerinize uygun talep bulunamadı' 
+                          : 'Henüz talep bulunamadı'
+                        }
+                      </span>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                requests.map((request, index) => (
+                filteredRequests.map((request, index) => (
                   <TableRow 
                     key={request.id}
-                    className={`border-0 hover:bg-yellow-50/50 transition-colors duration-200 ${
-                      (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') ? 'cursor-pointer' : ''
-                    } ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'}`}
+                    className={`border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer ${
+                      (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') 
+                        ? 'hover:bg-blue-50' 
+                        : 'cursor-default'
+                    }`}
                     onClick={() => handleRequestClick(request)}
                   >
                     <TableCell className="py-4">
@@ -398,10 +505,18 @@ export default function PurchaseRequestsTable() {
 
                     <TableCell className="py-4">
                       <div className="max-w-xs">
-                        <div className="font-semibold text-gray-800 mb-1">{request.title}</div>
+                        <div className="font-semibold text-gray-800 mb-1">
+                          {request.title && request.title.length > 30 
+                            ? `${request.title.substring(0, 30)}...` 
+                            : request.title
+                          }
+                        </div>
                         {request.description && (
                           <div className="text-sm text-gray-600 line-clamp-2">
-                            {request.description}
+                            {request.description.length > 50 
+                              ? `${request.description.substring(0, 50)}...` 
+                              : request.description
+                            }
                           </div>
                         )}
                       </div>
@@ -482,6 +597,34 @@ export default function PurchaseRequestsTable() {
                         <span className="font-semibold text-gray-800">{request.request_number}</span>
                       </div>
                     </TableCell>
+                    
+                    {userRole === 'site_manager' && (
+                      <TableCell className="py-4">
+                        {request.status === 'pending' ? (
+                          <Button
+                            size="sm"
+                            onClick={(e) => handleSiteManagerApproval(request.id, e)}
+                            disabled={approving === request.id}
+                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-8 rounded-lg"
+                          >
+                            {approving === request.id ? (
+                              <>
+                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                                Onaylanıyor...
+                              </>
+                            ) : (
+                              'Talebi Onayla'
+                            )}
+                          </Button>
+                        ) : request.status === 'şantiye şefi onayladı' ? (
+                          <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+                            ✓ Onaylandı
+                          </Badge>
+                        ) : (
+                          <span className="text-xs text-gray-400">-</span>
+                        )}
+                      </TableCell>
+                    )}
                   </TableRow>
                 ))
               )}
@@ -489,6 +632,73 @@ export default function PurchaseRequestsTable() {
           </Table>
         </div>
 
+        {/* Pagination */}
+        {totalCount > pageSize && (
+          <div className="mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="text-sm text-gray-600 order-2 sm:order-1">
+              {filteredRequests.length} / {totalCount} kayıt - Sayfa {currentPage} / {Math.ceil(totalCount / pageSize)}
+            </div>
+            <div className="flex items-center gap-2 order-1 sm:order-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                disabled={currentPage === 1}
+                className="rounded-xl"
+              >
+                Önceki
+              </Button>
+              
+              {/* Sayfa numaraları */}
+              <div className="flex items-center gap-1">
+                {Array.from({ length: Math.min(5, Math.ceil(totalCount / pageSize)) }, (_, i) => {
+                  const pageNum = i + 1
+                  const totalPages = Math.ceil(totalCount / pageSize)
+                  
+                  // Akıllı sayfa gösterimi
+                  let showPage = false
+                  if (totalPages <= 5) {
+                    showPage = true
+                  } else if (currentPage <= 3) {
+                    showPage = pageNum <= 5
+                  } else if (currentPage >= totalPages - 2) {
+                    showPage = pageNum > totalPages - 5
+                  } else {
+                    showPage = Math.abs(pageNum - currentPage) <= 2
+                  }
+                  
+                  if (!showPage) return null
+                  
+                  return (
+                    <Button
+                      key={pageNum}
+                      variant={currentPage === pageNum ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setCurrentPage(pageNum)}
+                      className={`w-8 h-8 p-0 rounded-xl ${
+                        currentPage === pageNum 
+                          ? 'bg-black text-white' 
+                          : 'border-gray-200 hover:bg-gray-50'
+                      }`}
+                    >
+                      {pageNum}
+                    </Button>
+                  )
+                })}
+              </div>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCurrentPage(prev => Math.min(Math.ceil(totalCount / pageSize), prev + 1))}
+                disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                className="rounded-xl"
+              >
+                Sonraki
+              </Button>
+            </div>
+          </div>
+        )}
         
       </CardContent>
     </Card>

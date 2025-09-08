@@ -17,7 +17,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [role, setRole] = useState<UserRole>('engineer')
+  const [role, setRole] = useState<UserRole>('user')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -182,15 +182,12 @@ export default function SignupPage() {
                     <SelectValue placeholder="Rolünüzü seçin" />
                   </SelectTrigger>
                   <SelectContent className="rounded-2xl">
-                    <SelectItem value="engineer">Şantiye Sorumlusu</SelectItem>
-                    <SelectItem value="site_supervisor">Saha Süpervizörü</SelectItem>
-                    <SelectItem value="procurement_specialist">Satın Alma Uzmanı</SelectItem>
-                    <SelectItem value="finance_manager">Finans Yöneticisi</SelectItem>
-                    <SelectItem value="project_manager">Proje Yöneticisi</SelectItem>
-                    <SelectItem value="general_manager">Genel Müdür</SelectItem>
-                    <SelectItem value="muhendis">Mühendis</SelectItem>
-                    <SelectItem value="proje_sorumlusu">Proje Sorumlusu</SelectItem>
-                    <SelectItem value="satin_alma_sorumlusu">Satın Alma Sorumlusu</SelectItem>
+                    <SelectItem value="user">Kullanıcı</SelectItem>
+                    <SelectItem value="site_personnel">Şantiye Personeli</SelectItem>
+                    <SelectItem value="site_manager">Şantiye Yöneticisi</SelectItem>
+                    <SelectItem value="warehouse_manager">Depo Yöneticisi</SelectItem>
+                    <SelectItem value="purchasing_officer">Satın Alma Sorumlusu</SelectItem>
+                    <SelectItem value="manager">Yönetici</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>
                 </Select>

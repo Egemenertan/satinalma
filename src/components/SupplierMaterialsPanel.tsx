@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Badge } from '@/components/ui/badge'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 import { 
   X, 
@@ -95,6 +95,7 @@ interface SupplierMaterialsPanelProps {
 type Step = 'category' | 'subcategory' | 'items' | 'details'
 
 export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: SupplierMaterialsPanelProps) {
+  const supabase = createClient()
   const [currentStep, setCurrentStep] = useState<Step>('category')
   const [categories, setCategories] = useState<MaterialCategory[]>([])
   const [subcategories, setSubcategories] = useState<MaterialSubcategory[]>([])

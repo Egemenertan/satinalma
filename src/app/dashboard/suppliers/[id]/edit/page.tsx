@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowLeft, Building2, Mail, Phone, MapPin, Hash, Plus, X } from 'lucide-react'
+import { ArrowLeft, Building2, Mail, Phone, MapPin, Hash, Plus, X, Save, Package } from 'lucide-react'
 
 // Material interfaces for all_materials table
 interface MaterialClass {
@@ -34,12 +34,45 @@ interface SelectedMaterial {
   display: string
 }
 
-export default function CreateSupplierPage() {
+interface Supplier {
+  id: string
+  name: string
+  contact_person: string
+  email: string
+  phone: string
+  address: string
+  tax_number: string
+  payment_terms: number
+  rating: number
+  is_approved: boolean
+  created_at: string
+  updated_at: string
+}
+
+interface SupplierMaterial {
+  id: string
+  supplier_id: string
+  material_class: string
+  material_group: string
+  material_item: string
+  price_range_min?: number
+  price_range_max?: number
+  currency?: string
+  delivery_time_days?: number
+  minimum_order_quantity?: number
+  is_preferred?: boolean
+  notes?: string
+  created_at: string
+  updated_at: string
+}
+
+export default function EditSupplierPage({ params }: { params: { id: string } }) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const { showToast } = useToast()
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
+  const [loadingSupplier, setLoadingSupplier] = useState(true)
   
   // Material selection states
   const [materialClasses, setMaterialClasses] = useState<string[]>([])
@@ -50,9 +83,9 @@ export default function CreateSupplierPage() {
   const [selectedItem, setSelectedItem] = useState<string>('')
   const [selectedItems, setSelectedItems] = useState<string[]>([])
   const [selectedMaterials, setSelectedMaterials] = useState<SelectedMaterial[]>([])
+  const [existingMaterials, setExistingMaterials] = useState<SupplierMaterial[]>([])
   
-  // Otomatik seçim kontrolü için - useRef kullanarak çift çalışmayı engelle
-  const autoSelectionProcessed = useRef(false)
+  const [supplier, setSupplier] = useState<Supplier | null>(null)
   
   const [formData, setFormData] = useState<{
     company_name: string;
@@ -78,75 +111,94 @@ export default function CreateSupplierPage() {
   }
 
   useEffect(() => {
-    fetchMaterialClasses()
-  }, [])
-
-  // URL'den gelen önceden seçili malzeme için otomatik seçim
-  useEffect(() => {
-    const preselectedItem = searchParams.get('preselectedItem')
-    
-    if (preselectedItem && !autoSelectionProcessed.current && materialClasses.length > 0) {
-      console.log('🎯 Önceden seçili malzeme bulundu:', preselectedItem)
-      autoSelectionProcessed.current = true // İşlemi sadece bir kez yap
-      findAndSelectMaterial(preselectedItem)
+    const loadData = async () => {
+      await Promise.all([
+        fetchSupplierDetails(),
+        fetchMaterialClasses()
+      ])
     }
-  }, [materialClasses, searchParams]) // dependencies'i geri ekledik ama useRef sayesinde çift çalışmayacak
+    loadData()
+  }, [params.id])
 
-  // Malzemeyi bulup otomatik seç
-  const findAndSelectMaterial = async (itemName: string) => {
+  const fetchSupplierDetails = async () => {
     try {
-      console.log('🔍 Malzeme aranıyor:', itemName)
+      setLoadingSupplier(true)
       
-      // all_materials tablosunda bu item_name'i ara
-      const { data: materialData, error } = await supabase
-        .from('all_materials')
-        .select('class, group, item_name')
-        .ilike('item_name', itemName) // Case-insensitive search
-        .limit(1)
+      // Tedarikçi bilgilerini çek
+      const { data: supplierData, error: supplierError } = await supabase
+        .from('suppliers')
+        .select(`
+          id,
+          name,
+          contact_person,
+          email,
+          phone,
+          address,
+          tax_number,
+          payment_terms,
+          rating,
+          is_approved,
+          created_at,
+          updated_at
+        `)
+        .eq('id', params.id)
         .single()
 
-      if (error || !materialData) {
-        console.log('⚠️ Malzeme all_materials tablosunda bulunamadı:', itemName)
-        // Malzeme bulunamadıysa kullanıcıyı bilgilendir (sadece bir kez)
-        showToast(`"${itemName}" malzemesi için otomatik kategori seçimi yapılamadı. Manuel olarak seçebilirsiniz.`, 'info')
-        return
+      if (supplierError) {
+        console.error('Tedarikçi bilgileri çekilirken hata:', supplierError)
+        throw new Error(`Tedarikçi bilgileri alınamadı: ${supplierError.message}`)
       }
 
-      console.log('✅ Malzeme bulundu:', materialData)
-
-      // Önce class'ı seç
-      setSelectedClass(materialData.class)
+      console.log('Tedarikçi bilgileri:', supplierData)
+      setSupplier(supplierData)
       
-      // Groups'ları yükle
-      await fetchMaterialGroups(materialData.class)
-      
-      // Biraz bekle groups yüklensin
-      setTimeout(async () => {
-        // Group'u seç
-        setSelectedGroup(materialData.group)
-        
-        // Items'ları yükle
-        await fetchMaterialItems(materialData.class, materialData.group)
-        
-        // Biraz daha bekle items yüklensin
-        setTimeout(() => {
-          // Item'ı seç
-          setSelectedItems([materialData.item_name])
-          
-          console.log('🎯 Malzeme otomatik olarak seçildi:', {
-            class: materialData.class,
-            group: materialData.group,
-            item: materialData.item_name
-          })
-          
-          // Bilgilendirme mesajı - sadece işlem tamamlandığında göster
-          showToast(`"${itemName}" malzemesi otomatik olarak seçildi.`, 'success')
-        }, 500)
-      }, 500)
+      // Form data'yı doldur
+      setFormData({
+        company_name: supplierData.name || '',
+        contact_name: supplierData.contact_person || '',
+        email: supplierData.email || '',
+        phone: supplierData.phone || '',
+        tax_number: supplierData.tax_number || '',
+        address: supplierData.address || '',
+        description: ''
+      })
 
-    } catch (error) {
-      console.error('❌ Malzeme arama hatası:', error)
-      showToast(`Malzeme aranırken bir hata oluştu.`, 'error')
+      // Mevcut malzemeleri çek
+      const { data: materialsData, error: materialsError } = await supabase
+        .from('supplier_materials')
+        .select(`
+          id,
+          supplier_id,
+          material_class,
+          material_group,
+          material_item,
+          price_range_min,
+          price_range_max,
+          currency,
+          delivery_time_days,
+          minimum_order_quantity,
+          is_preferred,
+          notes,
+          created_at,
+          updated_at
+        `)
+        .eq('supplier_id', params.id)
+        .order('created_at', { ascending: false })
+
+      if (materialsError) {
+        console.error('Tedarikçi malzemeleri çekilirken hata:', materialsError)
+        setExistingMaterials([])
+      } else {
+        console.log('Mevcut malzemeler:', materialsData)
+        setExistingMaterials(materialsData || [])
+      }
+
+    } catch (error: any) {
+      console.error('Tedarikçi detayları yüklenirken hata:', error)
+      showToast(error.message || 'Tedarikçi detayları yüklenirken bir hata oluştu.', 'error')
+      router.push('/dashboard/suppliers')
+    } finally {
+      setLoadingSupplier(false)
     }
   }
 
@@ -261,36 +313,70 @@ export default function CreateSupplierPage() {
   }
 
   // Add selected materials
-  const addMaterials = () => {
+  const addMaterials = async () => {
     if (selectedClass && selectedGroup && selectedItems.length > 0) {
-      const newMaterials: SelectedMaterial[] = selectedItems.map(item => ({
-        id: `${Date.now()}-${item}`,
-        class: selectedClass,
-        group: selectedGroup,
-        item: item,
-        display: `${selectedClass} > ${selectedGroup} > ${item}`
-      }))
-      
-      // Filter out already existing materials
-      const existingCombinations = selectedMaterials.map(m => `${m.class}-${m.group}-${m.item}`)
-      const uniqueNewMaterials = newMaterials.filter(newMat => 
-        !existingCombinations.includes(`${newMat.class}-${newMat.group}-${newMat.item}`)
-      )
-      
-      if (uniqueNewMaterials.length > 0) {
-        setSelectedMaterials([...selectedMaterials, ...uniqueNewMaterials])
+      try {
+        // Önce mevcut malzemeleri kontrol et
+        const existingCombinations = existingMaterials.map(m => `${m.material_class}-${m.material_group}-${m.material_item}`)
+        
+        const newMaterialsToAdd = selectedItems.filter(item => 
+          !existingCombinations.includes(`${selectedClass}-${selectedGroup}-${item}`)
+        )
+        
+        if (newMaterialsToAdd.length === 0) {
+          showToast("Seçilen malzemeler zaten eklenmiş.", "error")
+          return
+        }
+
+        // Veritabanına ekle
+        const materialsToInsert = newMaterialsToAdd.map(item => ({
+          supplier_id: params.id,
+          material_class: selectedClass,
+          material_group: selectedGroup,
+          material_item: item,
+          created_at: new Date().toISOString()
+        }))
+
+        const { error } = await supabase
+          .from('supplier_materials')
+          .insert(materialsToInsert)
+
+        if (error) throw error
+
+        showToast(`${newMaterialsToAdd.length} malzeme başarıyla eklendi.`, "success")
+        
+        // Mevcut malzemeleri yeniden yükle
+        await fetchSupplierDetails()
+        
         // Reset item selection but keep class and group
         setSelectedItems([])
-        showToast(`${uniqueNewMaterials.length} malzeme eklendi.`, "success")
-      } else {
-        showToast("Seçilen malzemeler zaten eklenmiş.", "error")
+        
+      } catch (error) {
+        console.error('Malzeme eklenirken hata:', error)
+        showToast("Malzeme eklenirken bir hata oluştu.", "error")
       }
     }
   }
 
-  // Remove material
-  const removeMaterial = (id: string) => {
-    setSelectedMaterials(selectedMaterials.filter(m => m.id !== id))
+  // Remove existing material
+  const removeExistingMaterial = async (materialId: string) => {
+    try {
+      const { error } = await supabase
+        .from('supplier_materials')
+        .delete()
+        .eq('id', materialId)
+
+      if (error) throw error
+
+      showToast("Malzeme başarıyla kaldırıldı.", "success")
+      
+      // Mevcut malzemeleri yeniden yükle
+      await fetchSupplierDetails()
+      
+    } catch (error) {
+      console.error('Malzeme kaldırılırken hata:', error)
+      showToast("Malzeme kaldırılırken bir hata oluştu.", "error")
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -305,94 +391,92 @@ export default function CreateSupplierPage() {
 
       // Eğer materyal seçimi yapılmış ama henüz eklenmemişse, otomatik olarak ekle
       if (selectedClass && selectedGroup && selectedItems.length > 0) {
-        const newMaterials: SelectedMaterial[] = selectedItems.map(item => ({
-          id: `${Date.now()}-${item}`,
-          class: selectedClass,
-          group: selectedGroup,
-          item: item,
-          display: `${selectedClass} > ${selectedGroup} > ${item}`
-        }))
-        
-        // Mevcut malzemelerle çakışan olanları filtrele
-        const existingCombinations = selectedMaterials.map(m => `${m.class}-${m.group}-${m.item}`)
-        const uniqueNewMaterials = newMaterials.filter(newMat => 
-          !existingCombinations.includes(`${newMat.class}-${newMat.group}-${newMat.item}`)
-        )
-        
-        if (uniqueNewMaterials.length > 0) {
-          setSelectedMaterials(prev => [...prev, ...uniqueNewMaterials])
-          console.log(`${uniqueNewMaterials.length} malzeme otomatik olarak eklendi`)
+        try {
+          // Önce mevcut malzemeleri kontrol et
+          const existingCombinations = existingMaterials.map(m => `${m.material_class}-${m.material_group}-${m.material_item}`)
+          
+          const newMaterialsToAdd = selectedItems.filter(item => 
+            !existingCombinations.includes(`${selectedClass}-${selectedGroup}-${item}`)
+          )
+          
+          if (newMaterialsToAdd.length > 0) {
+            // Veritabanına ekle
+            const materialsToInsert = newMaterialsToAdd.map(item => ({
+              supplier_id: params.id,
+              material_class: selectedClass,
+              material_group: selectedGroup,
+              material_item: item,
+              created_at: new Date().toISOString()
+            }))
+
+            const { error: materialsError } = await supabase
+              .from('supplier_materials')
+              .insert(materialsToInsert)
+
+            if (materialsError) {
+              console.warn('Malzeme otomatik ekleme uyarısı:', materialsError)
+            } else {
+              console.log(`${newMaterialsToAdd.length} malzeme otomatik olarak eklendi`)
+            }
+          }
+        } catch (materialError) {
+          console.warn('Malzeme otomatik ekleme sırasında hata:', materialError)
+          // Malzeme ekleme hatası ana işlemi durdurmaz
         }
       }
 
-      // Tedarikçi verilerini hazırla
-      const supplierDataToInsert = {
+      // Tedarikçi bilgilerini güncelle
+      const supplierDataToUpdate = {
         name: formData.company_name,
         contact_person: formData.contact_name,
         email: formData.email,
         phone: formData.phone,
         tax_number: formData.tax_number,
         address: formData.address,
-        is_approved: false,
-        rating: 0,
-        code: `SUP${Date.now()}`, // Generate a simple code
-        created_at: new Date().toISOString()
+        updated_at: new Date().toISOString()
       }
 
-      console.log('Eklenecek tedarikçi verileri:', supplierDataToInsert)
+      console.log('Güncellenecek tedarikçi verileri:', supplierDataToUpdate)
 
-      // Önce tedarikçiyi oluştur
-      const { data: supplierData, error: supplierError } = await supabase
+      const { error: supplierError } = await supabase
         .from('suppliers')
-        .insert([supplierDataToInsert])
-        .select()
+        .update(supplierDataToUpdate)
+        .eq('id', params.id)
 
       if (supplierError) {
-        console.error('Tedarikçi oluşturma hatası:', supplierError)
-        throw new Error(`Tedarikçi oluşturulamadı: ${supplierError.message}`)
+        console.error('Tedarikçi güncelleme hatası:', supplierError)
+        throw new Error(`Tedarikçi güncellenemedi: ${supplierError.message}`)
       }
 
-      if (!supplierData || supplierData.length === 0) {
-        throw new Error('Tedarikçi oluşturuldu fakat veri dönmedi')
-      }
-
-      console.log('Oluşturulan tedarikçi:', supplierData[0])
-
-      // Güncellenmiş selectedMaterials listesini kullanarak malzemeleri tedarikçi ile ilişkilendir
-      const finalSelectedMaterials = [...selectedMaterials]
-      
-      if (finalSelectedMaterials.length > 0) {
-        const supplierMaterials = finalSelectedMaterials.map(material => ({
-          supplier_id: supplierData[0].id,
-          material_class: material.class,
-          material_group: material.group,
-          material_item: material.item,
-          created_at: new Date().toISOString()
-        }))
-
-        console.log('Eklenecek malzeme ilişkileri:', supplierMaterials)
-
-        // Note: This assumes supplier_materials table supports these columns
-        // If not, we may need to create a different approach
-        const { error: materialsError } = await supabase
-          .from('supplier_materials')
-          .insert(supplierMaterials)
-
-        if (materialsError) {
-          console.warn('Malzeme ilişkilendirme uyarısı:', materialsError)
-          // Don't fail the entire operation for this
-        }
-      }
-
-      showToast("Tedarikçi başarıyla oluşturuldu.", "success")
-      router.push('/dashboard/suppliers')
+      showToast("Tedarikçi başarıyla güncellendi.", "success")
+      router.push(`/dashboard/suppliers/${params.id}`)
       router.refresh()
     } catch (error: any) {
-      console.error('Tedarikçi oluşturulurken hata:', error)
-      showToast(error.message || "Tedarikçi oluşturulurken bir hata oluştu.", "error")
+      console.error('Tedarikçi güncellenirken hata:', error)
+      showToast(error.message || "Tedarikçi güncellenirken bir hata oluştu.", "error")
     } finally {
       setLoading(false)
     }
+  }
+
+  if (loadingSupplier) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+      </div>
+    )
+  }
+
+  if (!supplier) {
+    return (
+      <div className="p-6">
+        <div className="text-center py-12">
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Tedarikçi Bulunamadı</h2>
+          <p className="text-gray-600 mb-4">İstediğiniz tedarikçi bilgilerine ulaşılamadı.</p>
+          <Button onClick={() => router.back()}>Geri Dön</Button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -400,14 +484,10 @@ export default function CreateSupplierPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-normal text-gray-900">Yeni Tedarikçi Oluştur</h1>
-          {searchParams.get('preselectedItem') ? (
-            <p className="text-gray-600 mt-2">
-              "<span className="font-medium text-gray-800">{searchParams.get('preselectedItem')}</span>" malzemesi için yeni tedarikçi oluşturun
-            </p>
-          ) : (
-            <p className="text-gray-600 mt-2">Yeni bir tedarikçi kaydı oluşturun ve malzeme kategorilerini atayın</p>
-          )}
+          <h1 className="text-3xl font-normal text-gray-900">Tedarikçi Düzenle</h1>
+          <p className="text-gray-600 mt-2">
+            <span className="font-medium text-gray-800">{supplier.name}</span> tedarikçisinin bilgilerini düzenleyin
+          </p>
         </div>
         <Button
           variant="outline"
@@ -427,7 +507,7 @@ export default function CreateSupplierPage() {
               <Building2 className="h-5 w-5 text-gray-600" />
               <span>Tedarikçi Bilgileri</span>
             </CardTitle>
-            <p className="text-sm text-gray-500 mt-1">Tedarikçi firma bilgilerini girin</p>
+            <p className="text-sm text-gray-500 mt-1">Tedarikçi firma bilgilerini düzenleyin</p>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -446,10 +526,10 @@ export default function CreateSupplierPage() {
                 />
               </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="contact_name" className="text-sm font-medium text-gray-700">
-                    İletişim Kişisi *
-                  </Label>
+              <div className="space-y-2">
+                <Label htmlFor="contact_name" className="text-sm font-medium text-gray-700">
+                  İletişim Kişisi *
+                </Label>
                 <Input
                   id="contact_name"
                   name="contact_name"
@@ -459,56 +539,56 @@ export default function CreateSupplierPage() {
                   className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
                   required
                 />
-                </div>
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="email" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
-                    <Mail className="h-4 w-4" />
-                    <span>E-posta *</span>
-                  </Label>
-                  <Input
-                    id="email"
-                    name="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={handleChange}
-                    placeholder="email@example.com"
-                    className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
-                    required
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="email" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
+                  <Mail className="h-4 w-4" />
+                  <span>E-posta *</span>
+                </Label>
+                <Input
+                  id="email"
+                  name="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="email@example.com"
+                  className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
+                  required
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="phone" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
-                    <Phone className="h-4 w-4" />
-                    <span>Telefon *</span>
-                  </Label>
-                  <Input
-                    id="phone"
-                    name="phone"
-                    value={formData.phone}
-                    onChange={handleChange}
-                    placeholder="+90 (5xx) xxx xx xx"
-                    className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
-                    required
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="phone" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
+                  <Phone className="h-4 w-4" />
+                  <span>Telefon *</span>
+                </Label>
+                <Input
+                  id="phone"
+                  name="phone"
+                  value={formData.phone}
+                  onChange={handleChange}
+                  placeholder="+90 (5xx) xxx xx xx"
+                  className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
+                  required
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="tax_number" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
-                    <Hash className="h-4 w-4" />
-                    <span>Vergi Numarası *</span>
-                  </Label>
-                  <Input
-                    id="tax_number"
-                    name="tax_number"
-                    value={formData.tax_number}
-                    onChange={handleChange}
-                    placeholder="Vergi numarası"
-                    className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
-                    required
-                  />
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="tax_number" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
+                  <Hash className="h-4 w-4" />
+                  <span>Vergi Numarası *</span>
+                </Label>
+                <Input
+                  id="tax_number"
+                  name="tax_number"
+                  value={formData.tax_number}
+                  onChange={handleChange}
+                  placeholder="Vergi numarası"
+                  className="h-10 border-gray-200 focus:border-gray-400 focus:ring-gray-400"
+                  required
+                />
+              </div>
 
               <div className="space-y-2 md:col-span-2">
                 <Label htmlFor="address" className="text-sm font-medium text-gray-700 flex items-center space-x-1">
@@ -529,31 +609,57 @@ export default function CreateSupplierPage() {
           </CardContent>
         </Card>
 
-        {/* Malzeme Seçimi */}
+        {/* Mevcut Malzemeler */}
         <Card className="bg-white border-0 shadow-sm">
           <CardHeader className="pb-6">
-            <CardTitle className="text-lg font-semibold text-gray-900">Malzeme Kategorileri</CardTitle>
-            {searchParams.get('preselectedItem') ? (
-              <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                <p className="text-sm text-blue-700">
-                  🎯 "<span className="font-medium">{searchParams.get('preselectedItem')}</span>" malzemesi otomatik olarak seçilmiştir. 
-                  İsterseniz başka malzeme kategorileri de ekleyebilirsiniz.
-                </p>
+            <CardTitle className="text-lg font-semibold text-gray-900">Mevcut Malzemeler</CardTitle>
+            <p className="text-sm text-gray-500 mt-1">
+              Tedarikçinin mevcut malzeme kategorileri ({existingMaterials.length} adet)
+            </p>
+          </CardHeader>
+          <CardContent className="pt-0">
+            {existingMaterials.length === 0 ? (
+              <div className="text-center py-8 text-gray-500">
+                <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                <p>Henüz malzeme eklenmemiş</p>
               </div>
             ) : (
-              <p className="text-sm text-gray-500 mt-1">Tedarikçinin sağladığı malzeme kategorilerini seçin</p>
+              <div className="grid gap-3 max-h-60 overflow-y-auto">
+                {existingMaterials.map((material) => (
+                  <div
+                    key={material.id}
+                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center space-x-3">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                      <span className="text-sm text-gray-900 font-medium">
+                        {material.material_class} → {material.material_group} → {material.material_item}
+                      </span>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => removeExistingMaterial(material.id)}
+                      className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+              </div>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Yeni Malzeme Ekleme */}
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader className="pb-6">
+            <CardTitle className="text-lg font-semibold text-gray-900">Yeni Malzeme Ekle</CardTitle>
+            <p className="text-sm text-gray-500 mt-1">Tedarikçiye yeni malzeme kategorileri ekleyin</p>
           </CardHeader>
           <CardContent className="pt-0 space-y-6">
-            {/* Material Selection Section */}
             <div className="bg-gray-50 rounded-lg p-6 space-y-6">
-              <div className="flex items-center justify-between">
-                <h3 className="text-md font-medium text-gray-900">Malzeme Ekle</h3>
-                <Badge variant="secondary" className="bg-gray-100 text-gray-600">
-                  {selectedMaterials.length} seçildi
-                </Badge>
-              </div>
-              
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                 <div className="space-y-2">
                   <Label className="text-sm font-medium text-gray-700">Malzeme Sınıfı</Label>
@@ -674,40 +780,6 @@ export default function CreateSupplierPage() {
                 </Button>
               </div>
             </div>
-
-            {/* Selected Materials */}
-            {selectedMaterials.length > 0 && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <Label className="text-sm font-medium text-gray-700">Seçilen Malzemeler</Label>
-                  <Badge variant="outline" className="text-xs">
-                    {selectedMaterials.length} kategori
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-1 gap-3 max-h-60 overflow-y-auto">
-                  {selectedMaterials.map((material) => (
-                    <div
-                      key={material.id}
-                      className="flex items-center justify-between p-4 bg-white rounded-lg border border-gray-200 hover:border-gray-300 transition-colors"
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-                        <span className="text-sm text-gray-900 font-medium">{material.display}</span>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => removeMaterial(material.id)}
-                        className="h-8 w-8 p-0 text-gray-400 hover:text-red-500 hover:bg-red-50"
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </CardContent>
         </Card>
 
@@ -726,7 +798,7 @@ export default function CreateSupplierPage() {
 
           <div className="flex items-center space-x-3">
             <span className="text-sm text-gray-500">
-              {selectedMaterials.length > 0 ? `${selectedMaterials.length} malzeme kategorisi seçildi` : 'Malzeme kategorisi opsiyoneldir'}
+              {existingMaterials.length > 0 ? `${existingMaterials.length} malzeme kategorisi mevcut` : 'Henüz malzeme yok'}
             </span>
             <Button
               type="submit"
@@ -738,7 +810,8 @@ export default function CreateSupplierPage() {
               }`}
             >
               {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}
-              <span>{loading ? 'Kaydediliyor...' : 'Tedarikçi Oluştur'}</span>
+              <Save className="h-4 w-4" />
+              <span>{loading ? 'Kaydediliyor...' : 'Değişiklikleri Kaydet'}</span>
             </Button>
           </div>
         </div>
