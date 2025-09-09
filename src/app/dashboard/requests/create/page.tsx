@@ -1581,6 +1581,35 @@ export default function CreatePurchaseRequestPage() {
                     </p>
                   </div>
                   <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1 lg:gap-3">
+                    {/* Yeni Malzeme Oluştur Butonu */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCreateMaterialData(prev => ({
+                          ...prev,
+                          class: formData.material_class,
+                          group: formData.material_group,
+                          item_name: ''
+                        }))
+                        setShowCreateMaterialModal(true)
+                      }}
+                      className="aspect-square p-1 lg:p-4 rounded-lg transition-all duration-200 text-center border border-dashed border-blue-300 bg-blue-50/40 hover:bg-blue-50/60 hover:border-blue-400 flex flex-col justify-center items-center"
+                    >
+                      <div className="flex flex-col items-center justify-center text-center h-full">
+                        <div className="p-2 bg-blue-100/60 rounded-lg mb-2">
+                          <Package className="w-4 h-4 text-blue-600" />
+                        </div>
+                        <div className="flex flex-col justify-center items-center text-center">
+                          <h3 className="font-semibold text-blue-700 text-xs leading-tight mb-1 line-clamp-3">
+                            Yeni Malzeme Oluştur
+                          </h3>
+                          <p className="text-blue-600 text-xs leading-tight line-clamp-2">
+                            Bulamadınız mı?
+                          </p>
+                        </div>
+                      </div>
+                    </button>
+
                     {materialItems.map((item) => (
                       <button
                         key={item.id}
@@ -1971,9 +2000,7 @@ export default function CreatePurchaseRequestPage() {
         <div className="relative z-10">
           <DialogHeader className="pb-6">
             <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-              <div className="p-2 bg-white/30 backdrop-blur-sm rounded-xl border border-white/40">
-                <Package className="w-6 h-6 text-gray-700" />
-              </div>
+              
               Yeni Malzeme Öğesi Oluştur
             </DialogTitle>
             <p className="text-sm text-gray-600 mt-2">
@@ -1993,7 +2020,7 @@ export default function CreatePurchaseRequestPage() {
                 onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, class: value }))}
               >
                 <SelectTrigger className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 text-base">
-                  <SelectValue placeholder="Sınıf seçin..." />
+                  <SelectValue placeholder="Sınıf seçin veya yeni sınıf adı yazın..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
                   {materialClasses.map((cls) => (
@@ -2010,6 +2037,20 @@ export default function CreatePurchaseRequestPage() {
                   ))}
                 </SelectContent>
               </Select>
+              
+              {/* Manuel Sınıf Girişi */}
+              <div className="text-xs text-gray-600 bg-blue-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Grid3X3 className="w-3 h-3 text-blue-600" />
+                  <span className="font-medium text-blue-700">Yeni sınıf oluştur</span>
+                </div>
+                <Input
+                  value={createMaterialData.class}
+                  onChange={(e) => setCreateMaterialData(prev => ({ ...prev, class: e.target.value }))}
+                  placeholder="Yeni sınıf adı yazın..."
+                  className="h-8 text-xs bg-white/60 border-blue-200"
+                />
+              </div>
             </div>
 
             {/* Group Selection */}
@@ -2028,7 +2069,7 @@ export default function CreatePurchaseRequestPage() {
                     ? 'opacity-50 cursor-not-allowed' 
                     : 'hover:bg-white/70'
                 }`}>
-                  <SelectValue placeholder="Grup seçin..." />
+                  <SelectValue placeholder="Grup seçin veya yeni grup adı yazın..." />
                 </SelectTrigger>
                 <SelectContent className="bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
                   {materialGroups.length === 0 ? (
@@ -2051,6 +2092,21 @@ export default function CreatePurchaseRequestPage() {
                   )}
                 </SelectContent>
               </Select>
+              
+              {/* Manuel Grup Girişi */}
+              <div className="text-xs text-gray-600 bg-blue-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="w-3 h-3 text-blue-600" />
+                  <span className="font-medium text-blue-700">Yeni grup oluştur</span>
+                </div>
+                <Input
+                  value={createMaterialData.group}
+                  onChange={(e) => setCreateMaterialData(prev => ({ ...prev, group: e.target.value }))}
+                  placeholder="Yeni grup adı yazın..."
+                  className="h-8 text-xs bg-white/60 border-blue-200"
+                />
+              </div>
+              
               {!createMaterialData.class ? (
                 <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-200/50">
                   <Settings className="w-3 h-3" />
@@ -2058,7 +2114,7 @@ export default function CreatePurchaseRequestPage() {
                 </div>
               ) : (
                 <div className="text-xs text-gray-500">
-                  {materialGroups.length} grup mevcut
+                  {materialGroups.length} mevcut grup veya yeni grup oluşturabilirsiniz
                 </div>
               )}
             </div>
@@ -2099,7 +2155,7 @@ export default function CreatePurchaseRequestPage() {
                 </>
               ) : (
                 <>
-                  <Package className="w-4 h-4 mr-2" />
+                  
                   Oluştur
                 </>
               )}
