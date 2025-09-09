@@ -196,7 +196,7 @@ export default function SignupPage() {
               {/* Submit Button */}
               <Button 
                 type="submit" 
-                className="w-full h-12 text-base font-semibold bg-black hover:bg-black/90 rounded-2xl" 
+                className="w-full text-white h-12 text-base font-semibold bg-black hover:bg-black/90 rounded-2xl" 
                 disabled={loading}
               >
                 {loading ? (

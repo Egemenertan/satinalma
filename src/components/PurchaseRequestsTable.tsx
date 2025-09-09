@@ -30,9 +30,9 @@ interface PurchaseRequest {
   request_number: string
   title: string
   description?: string
-  department: string
-  total_amount: number
-  currency?: string
+  site_name: string
+  site_id: string
+  material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
   status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı'
   requested_by: string
@@ -44,18 +44,8 @@ interface PurchaseRequest {
   created_at: string
   updated_at: string
   // Relations
-  profiles?: {
-    full_name: string
-    email: string
-    department: string
-  }
-  purchase_request_items?: Array<{
-    id: string
-    item_name: string
-    quantity: number
-    unit: string
-    unit_price: number
-    total_price: number
+  sites?: Array<{
+    name: string
   }>
 }
 
@@ -124,8 +114,12 @@ const fetchPurchaseRequests = async (key: string) => {
       urgency_level,
       created_at,
       requested_by,
-      total_amount,
-      department,
+      material_class,
+      site_name,
+      site_id,
+      sites:site_id (
+        name
+      ),
       orders!left (
         id
       )
@@ -324,10 +318,6 @@ export default function PurchaseRequestsTable() {
     })
   }
 
-  const formatCurrency = (amount: number) => {
-    return `₺${amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-  }
-
   const handleSort = (field: string) => {
     setFilters(prev => ({
       ...prev,
@@ -416,9 +406,8 @@ export default function PurchaseRequestsTable() {
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Departman</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Öğeler</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Toplam Tutar</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Şantiye</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Malzeme Sınıfı</TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Aciliyet</TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
@@ -529,11 +518,11 @@ export default function PurchaseRequestsTable() {
                         </div>
                         <div>
                           <div className="font-medium text-sm text-gray-800">
-                            {request.department}
+                            {request.sites?.[0]?.name || request.site_name || 'Şantiye Atanmamış'}
                           </div>
-                          {request.profiles?.department && (
+                          {request.site_id && (
                             <div className="text-xs text-gray-500">
-                              {request.profiles.department}
+                              ID: {request.site_id.slice(0, 8)}
                             </div>
                           )}
                         </div>
@@ -542,28 +531,13 @@ export default function PurchaseRequestsTable() {
                     
                     <TableCell className="py-4">
                       <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-green-100 rounded-2xl">
-                          <Package className="w-3 h-3 text-green-600" />
+                        <div className="p-1.5 bg-purple-100 rounded-2xl">
+                          <Package className="w-3 h-3 text-purple-600" />
                         </div>
                         <span className="font-medium text-gray-800">
-                          {request.purchase_request_items?.length || 0} öğe
+                          {request.material_class || 'Sınıf Belirtilmemiş'}
                         </span>
                       </div>
-                    </TableCell>
-                    
-                    <TableCell className="py-4">
-                      {request.total_amount ? (
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 bg-green-100 rounded-2xl">
-                            <TrendingUp className="w-3 h-3 text-green-600" />
-                          </div>
-                          <span className="font-semibold text-green-700">
-                            {formatCurrency(request.total_amount)}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
                     </TableCell>
                     
                     <TableCell className="py-4">
@@ -577,12 +551,6 @@ export default function PurchaseRequestsTable() {
                         </div>
                         <div className="text-sm">
                           <div className="font-medium text-gray-800">{formatDate(request.created_at)}</div>
-                          {request.profiles?.full_name && (
-                            <div className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                              <User className="w-2 h-2" />
-                              {request.profiles.full_name}
-                            </div>
-                          )}
                         </div>
                       </div>
                     </TableCell>

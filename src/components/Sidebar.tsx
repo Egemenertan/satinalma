@@ -395,7 +395,16 @@ export default function Sidebar({
         {/* Quick Create - only show when not collapsed */}
         {(!isCollapsed || isMobileOpen) && (
           <div className="px-4 py-3">
-            <Button className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-lg">
+            <Button 
+              onClick={() => {
+                router.push('/dashboard/requests/create')
+                // Mobile'da sidebar'ı kapat
+                if (isMobileOpen) {
+                  setIsMobileOpen(false)
+                }
+              }}
+              className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-md"
+            >
               
               Hızlı Talep
             </Button>

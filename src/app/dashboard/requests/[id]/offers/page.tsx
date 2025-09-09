@@ -466,7 +466,7 @@ export default function OffersPage() {
       if (!error && data) {
         const { data: items, error: itemsError } = await supabase
           .from('purchase_request_items')
-          .select('*')
+          .select('id, item_name, description, quantity, unit, specifications, brand')
           .eq('purchase_request_id', requestId)
         
         if (!itemsError && items) {
