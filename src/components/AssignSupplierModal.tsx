@@ -40,6 +40,8 @@ interface AssignSupplierModalProps {
   onClose: () => void
   itemName: string
   itemUnit?: string
+  materialClass?: string
+  materialGroup?: string
   onSuccess?: () => void
 }
 
@@ -48,6 +50,8 @@ export default function AssignSupplierModal({
   onClose,
   itemName,
   itemUnit = 'adet',
+  materialClass,
+  materialGroup,
   onSuccess
 }: AssignSupplierModalProps) {
   const router = useRouter()
@@ -145,7 +149,7 @@ export default function AssignSupplierModal({
       
       console.log('🔍 Debug - Onaylı tedarikçiler:', allSuppliersDebug?.filter(s => s.is_approved === true) || [])
       
-      // Ana sorguyu çalıştır
+      // Ana sorguyu çalıştır - TÜM tedarikçileri getir
       console.log('🔍 Ana sorgu çalıştırılıyor...')
       const { data: suppliers, error } = await supabase
         .from('suppliers')
@@ -159,7 +163,6 @@ export default function AssignSupplierModal({
           is_approved,
           rating
         `)
-        .or('is_approved.eq.true,is_approved.is.null') // Onaylı veya null olanlar
         .order('name')
 
       if (error) {
@@ -187,6 +190,14 @@ export default function AssignSupplierModal({
       }))
       
       console.log('✅ İşlenmiş tedarikçiler state\'e set ediliyor:', processedSuppliers.length)
+      console.log('📋 State\'e kaydedilecek tedarikçiler:', processedSuppliers.map(s => ({
+        id: s.id,
+        name: s.name,
+        is_approved: s.is_approved,
+        contact_person: s.contact_person,
+        email: s.email,
+        phone: s.phone
+      })))
       setAllSuppliers(processedSuppliers)
       
     } catch (error: any) {
@@ -211,72 +222,39 @@ export default function AssignSupplierModal({
       return
     }
 
+    // material_class ve material_group kontrol et
+    if (!materialClass || !materialGroup) {
+      showToast('Malzeme sınıf ve grup bilgisi eksik. Bu ürün atanamaz.', 'error')
+      console.error('❌ Material class/group eksik:', { materialClass, materialGroup, itemName })
+      return
+    }
+
     try {
       setAssigningSupplier(true)
       console.log('🔄 Ürün tedarikçiye atanıyor...', { 
         supplierId, 
         supplierName,
-        itemName 
+        itemName,
+        materialClass,
+        materialGroup
       })
 
-      // Önce bu ürün için material_item var mı kontrol et
-      let { data: materialItem, error: itemError } = await supabase
-        .from('material_items')
-        .select('id')
-        .ilike('name', itemName) // Case-insensitive arama
-        .single()
-
-      // Eğer material_item yoksa oluştur
-      if (itemError || !materialItem) {
-        console.log('📦 Material item bulunamadı, yeni oluşturuluyor...', itemName)
-        
-        // Varsayılan kategori ve alt kategori ID'lerini al
-        const { data: defaultCategory } = await supabase
-          .from('material_categories')
-          .select('id')
-          .limit(1)
-          .single()
-
-        if (defaultCategory) {
-          const { data: defaultSubcategory } = await supabase
-            .from('material_subcategories')
-            .select('id')
-            .eq('category_id', defaultCategory.id)
-            .limit(1)
-            .single()
-
-          if (defaultSubcategory) {
-            const { data: newMaterialItem, error: createError } = await supabase
-              .from('material_items')
-              .insert({
-                name: itemName,
-                unit: itemUnit,
-                subcategory_id: defaultSubcategory.id
-              })
-              .select('id')
-              .single()
-
-            if (createError) {
-              console.error('❌ Material item oluşturma hatası:', createError)
-              throw new Error(`Material item oluşturulamadı: ${createError.message}`)
-            }
-
-            materialItem = newMaterialItem
-            console.log('✅ Yeni material item oluşturuldu:', materialItem)
-          }
-        }
-      }
-
-      if (!materialItem) {
-        throw new Error('Material item oluşturulamadı veya bulunamadı')
-      }
+      console.log('📦 Tedarikçi-malzeme ataması yapılıyor:', {
+        supplierId,
+        supplierName,
+        itemName,
+        materialClass,
+        materialGroup
+      })
 
       // Önce bu tedarikçi-ürün ilişkisi zaten var mı kontrol et
       const { data: existingAssignment } = await supabase
         .from('supplier_materials')
         .select('id')
         .eq('supplier_id', supplierId)
-        .eq('material_item_id', materialItem.id)
+        .eq('material_class', materialClass)
+        .eq('material_group', materialGroup)
+        .eq('material_item', itemName)
         .single()
 
       if (existingAssignment) {
@@ -286,12 +264,18 @@ export default function AssignSupplierModal({
       }
 
       // Yeni atama oluştur
+      const insertData = {
+        supplier_id: supplierId,
+        material_class: materialClass,
+        material_group: materialGroup,
+        material_item: itemName
+      }
+
+      console.log('💾 Insert verisi:', insertData)
+
       const { error: assignError } = await supabase
         .from('supplier_materials')
-        .insert({
-          supplier_id: supplierId,
-          material_item_id: materialItem.id
-        })
+        .insert(insertData)
 
       if (assignError) {
         console.error('❌ Tedarikçi atama hatası:', assignError)
@@ -319,16 +303,21 @@ export default function AssignSupplierModal({
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
+      <div className="bg-white rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden">
         {/* Modal Header */}
         <div className="sticky top-0 bg-white border-b border-gray-200 p-6 rounded-t-2xl">
           <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-2xl font-bold text-gray-900">Tedarikçiye Ürün Ata</h2>
-              <p className="text-gray-500 mt-1">
-                "{itemName}" ürününü bir tedarikçiye atayın
-              </p>
-            </div>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">Tedarikçiye Ürün Ata</h2>
+                <p className="text-gray-500 mt-1">
+                  "{itemName}" ürününü bir tedarikçiye atayın
+                </p>
+                {(!materialClass || !materialGroup) && (
+                  <p className="text-red-600 text-sm mt-2 bg-red-50 px-3 py-2 rounded-lg">
+                    ⚠️ Bu ürün için malzeme sınıf/grup bilgisi eksik. Atama yapılamayacak.
+                  </p>
+                )}
+              </div>
             <Button
               variant="ghost"
               onClick={onClose}
@@ -414,93 +403,259 @@ export default function AssignSupplierModal({
                   </Button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredSuppliers.map((supplier) => (
-                  <div 
-                    key={supplier.id}
-                    className="bg-white rounded-xl p-6 border border-gray-200 hover:border-gray-300 hover:shadow-md transition-all duration-200 relative group"
-                  >
-                    {/* Tedarikçi Bilgileri */}
-                    <div className="mb-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 text-lg mb-1">
-                            {supplier.name}
-                          </h4>
-                          <p className="text-sm text-gray-600">
-                            {supplier.contact_person}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1 bg-yellow-50 px-2 py-1 rounded-lg">
-                          <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
-                          <span className="text-xs font-medium text-yellow-700">
-                            {supplier.rating}/5
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Phone className="w-4 h-4" />
-                          <span>{supplier.phone}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Mail className="w-4 h-4" />
-                          <span className="truncate">{supplier.email}</span>
-                        </div>
-                        <div className="flex items-start gap-2 text-sm text-gray-600">
-                          <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                          <span className="line-clamp-2">{supplier.address}</span>
-                        </div>
+                <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                  {/* Desktop Table View */}
+                  <div className="hidden lg:block">
+                    {/* Tablo Header */}
+                    <div className="bg-gray-50 px-6 py-4 border-b border-gray-200">
+                      <div className="grid grid-cols-12 gap-4 text-sm font-medium text-gray-700">
+                        <div className="col-span-3">Tedarikçi</div>
+                        <div className="col-span-2">İletişim</div>
+                        <div className="col-span-3">Email</div>
+                        <div className="col-span-2">Durum</div>
+                        <div className="col-span-2 text-center">İşlemler</div>
                       </div>
                     </div>
+                    
+                    {/* Tablo Body */}
+                    <div className="divide-y divide-gray-200">
+                      {filteredSuppliers.map((supplier, index) => (
+                        <div 
+                          key={supplier.id}
+                          className={`px-6 py-4 hover:bg-gray-50 transition-colors duration-200 ${
+                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          }`}
+                        >
+                          <div className="grid grid-cols-12 gap-4 items-center">
+                            {/* Tedarikçi Bilgileri */}
+                            <div className="col-span-3">
+                              <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
+                                  <Building2 className="w-5 h-5 text-white" />
+                                </div>
+                                <div>
+                                  <h4 className="font-semibold text-gray-900 text-sm">
+                                    {supplier.name}
+                                  </h4>
+                                  <p className="text-xs text-gray-600">
+                                    {supplier.contact_person}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
 
-                    {/* Durum Badge */}
-                    <div className="mb-4">
-                      <Badge className="bg-green-50 text-green-700 border-green-200">
-                        <CheckCircle className="w-3 h-3 mr-1" />
-                        Onaylı Tedarikçi
-                      </Badge>
-                    </div>
+                            {/* İletişim */}
+                            <div className="col-span-2">
+                              <div className="space-y-1">
+                                <div className="flex items-center gap-1 text-xs text-gray-600">
+                                  <Phone className="w-3 h-3" />
+                                  <span className="truncate">{supplier.phone}</span>
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Star className="w-3 h-3 fill-yellow-400 text-yellow-400" />
+                                  <span className="text-xs text-gray-600">
+                                    {supplier.rating}/5
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
 
-                    {/* Aksiyon Butonları */}
-                    <div className="space-y-3">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
-                        className="w-full text-gray-700 border-gray-200 hover:bg-gray-50"
-                      >
-                        <FileText className="w-4 h-4 mr-2" />
-                        Detayları Gör
-                      </Button>
-                      
-                      <Button
-                        onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
-                        disabled={assigningSupplier}
-                        className="w-full bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg h-10 disabled:opacity-50"
-                      >
-                        {assigningSupplier ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Atanıyor...
-                          </>
-                        ) : (
-                          <>
-                            <Package className="w-4 h-4 mr-2" />
-                            Bu Tedarikçiye Ata
-                          </>
-                        )}
-                      </Button>
+                            {/* Email */}
+                            <div className="col-span-3">
+                              <div className="flex items-center gap-2 text-sm text-gray-600">
+                                <Mail className="w-4 h-4 flex-shrink-0" />
+                                <span className="truncate">{supplier.email}</span>
+                              </div>
+                            </div>
+
+                            {/* Durum */}
+                            <div className="col-span-2">
+                              <Badge className={`text-xs ${
+                                supplier.is_approved 
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                              }`}>
+                                <CheckCircle className="w-3 h-3 mr-1" />
+                                {supplier.is_approved ? 'Onaylı' : 'Beklemede'}
+                              </Badge>
+                            </div>
+
+                            {/* İşlemler */}
+                            <div className="col-span-2">
+                              <div className="flex items-center justify-center gap-2">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                                  className="h-8 px-3 text-xs border-gray-200 hover:bg-gray-50"
+                                >
+                                  <FileText className="w-3 h-3 mr-1" />
+                                  Detay
+                                </Button>
+                                
+                                <Button
+                                  onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
+                                  disabled={assigningSupplier}
+                                  size="sm"
+                                  className="h-8 px-3 text-xs bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50"
+                                >
+                                  {assigningSupplier ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                      Atanıyor
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Package className="w-3 h-3 mr-1" />
+                                      Ata
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
                     </div>
                   </div>
-                  ))}
+
+                  {/* Mobile Card View */}
+                  <div className="lg:hidden divide-y divide-gray-200">
+                    {filteredSuppliers.map((supplier, index) => (
+                      <div 
+                        key={supplier.id}
+                        className="p-4 hover:bg-gray-50 transition-colors duration-200"
+                      >
+                        {/* Header */}
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
+                              <Building2 className="w-6 h-6 text-white" />
+                            </div>
+                            <div>
+                              <h4 className="font-semibold text-gray-900 text-base">
+                                {supplier.name}
+                              </h4>
+                              <p className="text-sm text-gray-600">
+                                {supplier.contact_person}
+                              </p>
+                            </div>
+                          </div>
+                          <Badge className={`text-xs ${
+                            supplier.is_approved 
+                              ? 'bg-green-50 text-green-700 border-green-200'
+                              : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                          }`}>
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            {supplier.is_approved ? 'Onaylı' : 'Beklemede'}
+                          </Badge>
+                        </div>
+
+                        {/* Details */}
+                        <div className="space-y-2 mb-4">
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Phone className="w-4 h-4" />
+                            <span>{supplier.phone}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Mail className="w-4 h-4" />
+                            <span className="truncate">{supplier.email}</span>
+                          </div>
+                          <div className="flex items-center gap-2 text-sm text-gray-600">
+                            <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
+                            <span>{supplier.rating}/5 değerlendirme</span>
+                          </div>
+                        </div>
+
+                        {/* Actions */}
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                            className="flex-1 h-9 text-sm border-gray-200 hover:bg-gray-50"
+                          >
+                            <FileText className="w-4 h-4 mr-2" />
+                            Detayları Gör
+                          </Button>
+                          
+                          <Button
+                            onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
+                            disabled={assigningSupplier}
+                            size="sm"
+                            className="flex-1 h-9 text-sm bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50"
+                          >
+                            {assigningSupplier ? (
+                              <>
+                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                Atanıyor...
+                              </>
+                            ) : (
+                              <>
+                                <Package className="w-4 h-4 mr-2" />
+                                Bu Tedarikçiye Ata
+                              </>
+                            )}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Tablo Footer - Toplam Sayı */}
+                  <div className="bg-gray-50 px-4 lg:px-6 py-3 border-t border-gray-200">
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                      <p className="text-sm text-gray-600">
+                        Toplam {filteredSuppliers.length} tedarikçi 
+                        {searchQuery && ` (${allSuppliers.length} tedarikçi arasından filtrelendi)`}
+                      </p>
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                          <span className="text-xs text-gray-500">Onaylı: {filteredSuppliers.filter(s => s.is_approved).length}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                          <span className="text-xs text-gray-500">Beklemede: {filteredSuppliers.filter(s => !s.is_approved).length}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
               {/* Alt Bilgi */}
-              <div className="mt-8 bg-blue-50 rounded-xl p-4">
-               
+              {/* Debug Bilgileri */}
+              <div className="mt-6 bg-gray-50 rounded-xl p-4">
+                <h4 className="text-sm font-medium text-gray-800 mb-3">Malzeme Bilgileri</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">Sınıf:</span>
+                    <p className="font-medium text-gray-900">{materialClass || 'Belirtilmemiş'}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Grup:</span>
+                    <p className="font-medium text-gray-900">{materialGroup || 'Belirtilmemiş'}</p>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">Ürün:</span>
+                    <p className="font-medium text-gray-900">{itemName}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Alt Bilgi */}
+              <div className="mt-4 bg-blue-50 rounded-xl p-4">
+                <div className="flex items-start gap-3">
+                  <AlertCircle className="h-5 w-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <h4 className="text-sm font-medium text-blue-800 mb-1">Tedarikçi Ataması Hakkında</h4>
+                    <p className="text-sm text-blue-700">
+                      Bir ürünü tedarikçiye atadığınızda, gelecekte bu ürün için otomatik teklif alabilirsiniz. 
+                      Tedarikçi ataması yapılan ürünler için manuel teklif girişi yapılamaz.
+                    </p>
+                  </div>
+                </div>
               </div>
             </div>
           )}

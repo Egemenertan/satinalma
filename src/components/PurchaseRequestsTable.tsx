@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 
@@ -34,7 +35,7 @@ interface PurchaseRequest {
   site_id: string
   material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı'
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı'
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -43,16 +44,21 @@ interface PurchaseRequest {
   supplier_id?: string
   created_at: string
   updated_at: string
+  sent_quantity?: number
   // Relations
   sites?: Array<{
     name: string
+  }>
+  purchase_request_items?: Array<{
+    quantity: number
+    unit: string
+    item_name?: string
   }>
 }
 
 interface Filters {
   search: string
   status: string
-  urgency: string
   sortBy: string
   sortOrder: 'asc' | 'desc'
 }
@@ -70,7 +76,7 @@ const fetcherWithAuth = async (url: string) => {
   // Kullanıcı rolünü çek
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, site_id')
     .eq('id', user.id)
     .single()
 
@@ -93,6 +99,9 @@ const fetchPurchaseRequests = async (key: string) => {
   if (profile?.role === 'purchasing_officer') {
     countQuery = countQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
   }
+  
+  // Santiye depo tüm talepleri görebilir
+  // Bu role için özel filtreleme yok
   
   // Önce toplam sayıyı al
   const { count, error: countError } = await countQuery
@@ -117,8 +126,14 @@ const fetchPurchaseRequests = async (key: string) => {
       material_class,
       site_name,
       site_id,
+      sent_quantity,
       sites:site_id (
         name
+      ),
+      purchase_request_items (
+        quantity,
+        unit,
+        item_name
       ),
       orders!left (
         id
@@ -132,10 +147,20 @@ const fetchPurchaseRequests = async (key: string) => {
     requestsQuery = requestsQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
   }
   
+  // Santiye depo tüm talepleri görebilir  
+  // Bu role için özel filtreleme yok
+  
   const { data: requests, error } = await requestsQuery
   
   if (error) {
-    throw new Error(error.message)
+    console.error('Purchase requests fetch error:', {
+      error,
+      message: error?.message,
+      details: error?.details,
+      hint: error?.hint,
+      code: error?.code
+    })
+    throw new Error('Satın alma talepleri yüklenirken hata oluştu')
   }
 
   const formattedRequests = (requests || []).map(request => ({
@@ -155,11 +180,11 @@ export default function PurchaseRequestsTable() {
   const [pageSize] = useState(20)
   const [userRole, setUserRole] = useState<string>('')
   const [approving, setApproving] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<string>('approval_pending')
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
     status: 'all',
-    urgency: 'all',
     sortBy: 'created_at',
     sortOrder: 'desc'
   })
@@ -188,7 +213,7 @@ export default function PurchaseRequestsTable() {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, site_id')
           .eq('id', user.id)
           .single()
         
@@ -229,8 +254,14 @@ export default function PurchaseRequestsTable() {
 
   // Filter uygulaması
   const filteredRequests = requests.filter((req: any) => {
+    // Site manager için tab bazlı filtreleme
+    if (userRole === 'site_manager' && activeTab === 'approval_pending') {
+      if (req.status !== 'kısmen gönderildi' && req.status !== 'depoda mevcut değil') {
+        return false
+      }
+    }
+    
     if (filters.status !== 'all' && req.status !== filters.status) return false
-    if (filters.urgency !== 'all' && req.urgency_level !== filters.urgency) return false
     if (filters.search) {
       const searchTerm = filters.search.toLowerCase()
       return (
@@ -262,7 +293,12 @@ export default function PurchaseRequestsTable() {
       approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
-      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' }
+      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
+      'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
+      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
+      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
+      'eksik onaylandı': { label: 'Eksik Onaylandı', className: 'bg-blue-100 text-blue-800 border-0' },
+      'alternatif onaylandı': { label: 'Alternatif Onaylandı', className: 'bg-purple-100 text-purple-800 border-0' }
     }
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
@@ -327,8 +363,8 @@ export default function PurchaseRequestsTable() {
   }
 
   const handleRequestClick = (request: PurchaseRequest) => {
-    // Pending, awaiting_offers ve sipariş verildi status'undaki taleplere gidilebilir
-    if (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'şantiye şefi onayladı' || request.status === 'sipariş verildi') {
+    // Tüm status'lardaki taleplere gidilebilir (draft hariç)
+    if (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') {
       router.push(`/dashboard/requests/${request.id}/offers`)
     }
   }
@@ -375,18 +411,43 @@ export default function PurchaseRequestsTable() {
   return (
     <Card className="bg-transparent border-transparent shadow-none">
       <CardContent className="p-0">
-        {/* Search Bar */}
+        {/* Search Bar ve Tab Menu */}
         <div className="mb-6 px-4">
-          <div className="w-full sm:max-w-md">
-            <div className="relative">
-              <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-              <Input
-                placeholder="Talep ara..."
-                value={filters.search}
-                onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                className="pl-10 h-10 rounded-lg border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
-              />
+          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
+            {/* Search Bar */}
+            <div className="w-full sm:max-w-md order-1 sm:order-2">
+              <div className="relative">
+                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
+                <Input
+                  placeholder="Talep ara..."
+                  value={filters.search}
+                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
+                  className="pl-10 h-10 rounded-lg border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
+                />
+              </div>
             </div>
+            
+            {/* Tab Menu - Sadece site manager için */}
+            {userRole === 'site_manager' && (
+              <div className="order-2 sm:order-1">
+                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
+                  <TabsList className="grid grid-cols-2 h-9 bg-transparent p-0 rounded-none">
+                    <TabsTrigger 
+                      value="approval_pending" 
+                      className="text-xs border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent data-[state=active]:text-black rounded-none px-4 py-2"
+                    >
+                      Onay Bekleyenler
+                    </TabsTrigger>
+                    <TabsTrigger 
+                      value="all" 
+                      className="text-xs border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent data-[state=active]:text-black rounded-none px-4 py-2"
+                    >
+                      Tümü
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+            )}
           </div>
         </div>
 
@@ -408,7 +469,7 @@ export default function PurchaseRequestsTable() {
                 </TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Şantiye</TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Malzeme Sınıfı</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Aciliyet</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Talep Edilen Miktar</TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
                     variant="ghost" 
@@ -439,7 +500,7 @@ export default function PurchaseRequestsTable() {
             <TableBody>
               {isLoading ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12">
+                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12">
                     <div className="flex items-center justify-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="text-gray-600">Yükleniyor...</span>
@@ -448,7 +509,7 @@ export default function PurchaseRequestsTable() {
                 </TableRow>
               ) : error ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12 text-red-500">
+                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12 text-red-500">
                     <div className="flex flex-col items-center gap-2">
                       <AlertTriangle className="w-8 h-8 text-red-300" />
                       <span>Veriler yüklenirken hata oluştu</span>
@@ -465,11 +526,11 @@ export default function PurchaseRequestsTable() {
                 </TableRow>
               ) : filteredRequests.length === 0 ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 9 : 8} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Package className="w-8 h-8 text-gray-300" />
                       <span>
-                        {filters.search || filters.status !== 'all' || filters.urgency !== 'all' 
+                        {filters.search || filters.status !== 'all' 
                           ? 'Filtre kriterlerinize uygun talep bulunamadı' 
                           : 'Henüz talep bulunamadı'
                         }
@@ -541,7 +602,20 @@ export default function PurchaseRequestsTable() {
                     </TableCell>
                     
                     <TableCell className="py-4">
-                      {getUrgencyBadge(request.urgency_level)}
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 bg-blue-100 rounded-2xl">
+                          <Package className="w-3 h-3 text-blue-600" />
+                        </div>
+                        <div className="text-sm">
+                          {request.purchase_request_items?.[0] ? (
+                            <div className="font-medium text-gray-800">
+                              {request.purchase_request_items[0].quantity} {request.purchase_request_items[0].unit}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">Miktar belirtilmemiş</span>
+                          )}
+                        </div>
+                      </div>
                     </TableCell>
                     
                     <TableCell className="py-4">
@@ -568,7 +642,7 @@ export default function PurchaseRequestsTable() {
                     
                     {userRole === 'site_manager' && (
                       <TableCell className="py-4">
-                        {request.status === 'pending' ? (
+                        {(request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') ? (
                           <Button
                             size="sm"
                             onClick={(e) => handleSiteManagerApproval(request.id, e)}
@@ -578,15 +652,27 @@ export default function PurchaseRequestsTable() {
                             {approving === request.id ? (
                               <>
                                 <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                Onaylanıyor...
+                                Talep Ediliyor...
                               </>
                             ) : (
-                              'Talebi Onayla'
+                              'Talep Et'
                             )}
                           </Button>
                         ) : request.status === 'şantiye şefi onayladı' ? (
                           <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
                             ✓ Onaylandı
+                          </Badge>
+                        ) : request.status === 'gönderildi' ? (
+                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
+                            ✓ Tamamlandı
+                          </Badge>
+                        ) : request.status === 'eksik onaylandı' ? (
+                          <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+                            ✓ Eksik Onaylandı
+                          </Badge>
+                        ) : request.status === 'alternatif onaylandı' ? (
+                          <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">
+                            ✓ Alternatif Onaylandı
                           </Badge>
                         ) : (
                           <span className="text-xs text-gray-400">-</span>

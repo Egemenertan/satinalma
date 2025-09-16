@@ -8,7 +8,8 @@ export const roleLabels: Record<UserRole, string> = {
   site_personnel: 'Şantiye Personeli',
   site_manager: 'Şantiye Yöneticisi',
   warehouse_manager: 'Depo Yöneticisi',
-  purchasing_officer: 'Satın Alma Sorumlusu'
+  purchasing_officer: 'Satın Alma Sorumlusu',
+  santiye_depo: 'Şantiye Depo'
 }
 
 export const roleDescriptions: Record<UserRole, string> = {
@@ -18,7 +19,8 @@ export const roleDescriptions: Record<UserRole, string> = {
   site_personnel: 'Sadece talep görüntüleme yetkisi',
   site_manager: 'Dashboard ve talep yönetimi yetkisi',
   warehouse_manager: 'Dashboard ve talep yönetimi yetkisi',
-  purchasing_officer: 'Dashboard ve talep yönetimi yetkisi'
+  purchasing_officer: 'Dashboard ve talep yönetimi yetkisi',
+  santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi'
 }
 
 // Rol doğrulama
@@ -49,7 +51,7 @@ export const getAllRoles = (): Array<{ value: UserRole; label: string; descripti
 export const roleGroups = {
   full_access: ['admin', 'manager'] as UserRole[], // Tüm sayfalara erişim
   basic_access: ['user'] as UserRole[], // Normal kullanıcı erişimi
-  limited_access: ['site_personnel'] as UserRole[], // Sadece requests sayfası
+  limited_access: ['site_personnel', 'santiye_depo'] as UserRole[], // Sadece requests sayfası
   site_management: ['site_manager', 'warehouse_manager'] as UserRole[], // Dashboard ve requests sayfaları
   purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, suppliers, sites sayfaları
 }
@@ -95,6 +97,13 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/requests/')
   }
   
+  // Santiye depo sadece requests sayfasına erişebilir (site personnel ile aynı)
+  if (userRole === 'santiye_depo') {
+    return page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page.startsWith('/dashboard/requests/')
+  }
+  
   // Normal kullanıcılar çoğu sayfaya erişebilir (settings hariç)
   if (userRole === 'user') {
     return page !== 'settings' && page !== '/dashboard/settings'
@@ -114,6 +123,10 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'site_personnel') {
+    return ['requests'] // Sadece requests menüsü
+  }
+  
+  if (userRole === 'santiye_depo') {
     return ['requests'] // Sadece requests menüsü
   }
   

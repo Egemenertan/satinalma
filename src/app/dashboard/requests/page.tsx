@@ -24,7 +24,7 @@ const fetchStats = async () => {
   // Kullanıcı rolünü çek
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, site_id')
     .eq('id', user.id)
     .single()
 
@@ -44,6 +44,9 @@ const fetchStats = async () => {
   if (profile?.role === 'site_personnel') {
     query = query.eq('requested_by', user.id)
   }
+  
+  // Santiye depo tüm talepleri görebilir (site personnel gibi sadece requests sayfasına erişim var)
+  // Bu role için özel filtreleme yok - tüm talepleri görebilir
   
   // Purchasing officer sadece şantiye şefi onayladığı ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {

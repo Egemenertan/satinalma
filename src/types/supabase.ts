@@ -175,6 +175,7 @@ export type Database = {
         | "site_manager"
         | "warehouse_manager"
         | "purchasing_officer"
+        | "santiye_depo"
     }
     CompositeTypes: {
       [_ in never]: never

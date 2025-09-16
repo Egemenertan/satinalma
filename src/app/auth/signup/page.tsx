@@ -187,6 +187,7 @@ export default function SignupPage() {
                     <SelectItem value="site_manager">Şantiye Yöneticisi</SelectItem>
                     <SelectItem value="warehouse_manager">Depo Yöneticisi</SelectItem>
                     <SelectItem value="purchasing_officer">Satın Alma Sorumlusu</SelectItem>
+                    <SelectItem value="santiye_depo">Şantiye Depo</SelectItem>
                     <SelectItem value="manager">Yönetici</SelectItem>
                     <SelectItem value="admin">Admin</SelectItem>
                   </SelectContent>

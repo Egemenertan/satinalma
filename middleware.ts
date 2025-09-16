@@ -105,6 +105,20 @@ export async function middleware(request: NextRequest) {
       }
     }
 
+    // Santiye depo can only access requests pages (same as site personnel)
+    if (userRole === 'santiye_depo') {
+      const currentPath = request.nextUrl.pathname
+      console.log(`🔒 Santiye depo accessing: ${currentPath}`)
+      
+      // Allow all requests-related paths
+      if (!currentPath.startsWith('/dashboard/requests')) {
+        console.log(`❌ Redirecting santiye depo from ${currentPath} to /dashboard/requests`)
+        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
+      } else {
+        console.log(`✅ Santiye depo allowed to access: ${currentPath}`)
+      }
+    }
+
     // User role cannot access settings
     if (userRole === 'user' && request.nextUrl.pathname.startsWith('/dashboard/settings')) {
       return NextResponse.redirect(new URL('/dashboard', request.url))

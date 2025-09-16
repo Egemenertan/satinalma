@@ -55,6 +55,8 @@ export default function DashboardLayout({
             router.push('/dashboard') // Site manager'ı dashboard'a yönlendir
           } else if (role === 'site_personnel') {
             router.push('/dashboard/requests') // Site personeli'ni taleplere yönlendir
+          } else if (role === 'santiye_depo') {
+            router.push('/dashboard/requests') // Santiye depo'yu taleplere yönlendir
           }
         }
         
