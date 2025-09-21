@@ -7,12 +7,13 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail, ChevronDown, ChevronUp } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail, ChevronDown, ChevronUp, Clock } from 'lucide-react'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Database } from '@/lib/types'
 import { useToast } from '@/components/ui/toast'
 import AssignSupplierModal from '@/components/AssignSupplierModal'
+import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 
 // Para birimi seçenekleri
 const CURRENCIES = [
@@ -147,8 +148,43 @@ export default function OffersPage() {
 
   // Santiye depo modal state'leri
   const [isSendModalOpen, setIsSendModalOpen] = useState(false)
-  const [sendQuantity, setSendQuantity] = useState('')
+  const [sendQuantities, setSendQuantities] = useState<{[key: string]: string}>({})
   const [sendingItem, setSendingItem] = useState(false)
+
+  // Teslimat onayı modal state'leri
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
+  const [currentOrder, setCurrentOrder] = useState<any>(null)
+
+  // Teslimat tarihi kontrolü
+  const isDeliveryDateReached = () => {
+    if (!currentOrder?.delivery_date) return false
+    const deliveryDate = new Date(currentOrder.delivery_date)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    deliveryDate.setHours(0, 0, 0, 0)
+    return today >= deliveryDate
+  }
+
+  // Teslimat onayı yapılabilir mi kontrolü
+  const canConfirmDelivery = () => {
+    return userRole === 'site_personnel' && 
+           currentOrder && 
+           currentOrder.status !== 'delivered' && 
+           isDeliveryDateReached()
+  }
+
+  // Teslimat onayı fonksiyonu
+  const handleDeliveryConfirmation = () => {
+    if (currentOrder) {
+      setIsDeliveryModalOpen(true)
+    }
+  }
+
+  // Teslimat onayı başarılı olduğunda
+  const handleDeliverySuccess = () => {
+    fetchOrderDetails() // Sipariş durumunu yenile
+    fetchRequestData() // Talep verilerini yenile
+  }
 
   // Teklif girilmeye başlandığında formu otomatik aç
   useEffect(() => {
@@ -261,6 +297,7 @@ export default function OffersPage() {
         // State'leri güncelle
         setHasOrder(true)
         setSelectedSupplier(order.supplier)
+        setCurrentOrder(order) // Teslimat onayı için order bilgisini sakla
         setOrderDetails({
           deliveryDate: order.delivery_date,
           amount: '', // Tutar field'ı kullanılmıyor artık
@@ -423,7 +460,7 @@ export default function OffersPage() {
           setIsAssignSupplierModalOpen(false)
         } else if (isSendModalOpen) {
           setIsSendModalOpen(false)
-          setSendQuantity('')
+          setSendQuantities({})
         }
       } else if (selectedImageModal) {
         if (e.key === 'ArrowLeft') {
@@ -464,10 +501,7 @@ export default function OffersPage() {
       // İlk olarak purchase request'i çek
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select(`
-          *,
-          profiles!purchase_requests_requested_by_fkey(full_name, email)
-        `)
+        .select('*')
         .eq('id', requestId)
         .single()
       
@@ -483,6 +517,22 @@ export default function OffersPage() {
         } else {
           console.error('❌ Items fetch error:', itemsError)
           data.purchase_request_items = []
+        }
+
+        // Talep eden kullanıcının bilgilerini ayrı olarak çek
+        if (data.requested_by) {
+          const { data: profileData, error: profileError } = await supabase
+            .from('profiles')
+            .select('full_name, email')
+            .eq('id', data.requested_by)
+            .single()
+
+          if (!profileError && profileData) {
+            data.profiles = profileData
+          } else {
+            console.error('❌ Profile fetch error:', profileError)
+            data.profiles = { full_name: 'Bilinmiyor', email: '' }
+          }
         }
       }
       
@@ -561,9 +611,10 @@ export default function OffersPage() {
     updated[index] = { ...updated[index], [field]: value }
 
     // Auto-calculate total price and delivery date
-    if (field === 'unit_price' && request?.purchase_request_items?.[0]) {
-      const quantity = request.purchase_request_items[0].quantity
-      updated[index].total_price = Number(value) * quantity
+    if (field === 'unit_price' && request?.purchase_request_items && request.purchase_request_items.length > 0) {
+      // Çoklu ürün varsa toplam miktarı hesapla
+      const totalQuantity = request.purchase_request_items.reduce((sum, item) => sum + item.quantity, 0)
+      updated[index].total_price = Number(value) * totalQuantity
     }
 
     if (field === 'delivery_days' && value) {
@@ -914,7 +965,7 @@ export default function OffersPage() {
   // Santiye depo fonksiyonları
   const handleSendItem = () => {
     setIsSendModalOpen(true)
-    setSendQuantity('')
+    setSendQuantities({})
   }
 
   const handleDepotNotAvailable = async () => {
@@ -940,46 +991,77 @@ export default function OffersPage() {
   }
 
   const confirmSendItem = async () => {
-    if (!sendQuantity.trim() || parseFloat(sendQuantity) <= 0) {
-      showToast('Lütfen geçerli bir miktar girin.', 'error')
-      return
-    }
-
-    const item = request?.purchase_request_items?.[0]
-    if (!item) {
+    const items = request?.purchase_request_items || []
+    if (items.length === 0) {
       showToast('Ürün bilgisi bulunamadı.', 'error')
       return
     }
 
-    const currentRequestedQuantity = item.quantity
-    const sentQuantity = parseFloat(sendQuantity)
+    // Tüm ürünler için gönderilecek miktarları kontrol et
+    const sendData: Array<{
+      item: any;
+      sentQuantity: number;
+      isFullyFulfilled: boolean;
+      remainingQuantity: number;
+    }> = []
 
-    if (sentQuantity > currentRequestedQuantity) {
-      showToast(`Gönderilen miktar talep edilen miktardan (${currentRequestedQuantity} ${item.unit}) fazla olamaz.`, 'error')
+    let hasValidQuantity = false
+
+    for (const item of items) {
+      const quantityStr = sendQuantities[item.id] || ''
+      const sentQuantity = parseFloat(quantityStr)
+
+      if (!quantityStr.trim() || sentQuantity <= 0) {
+        continue // Bu ürün için miktar girilmemiş, atla
+      }
+
+      hasValidQuantity = true
+
+      if (sentQuantity > item.quantity) {
+        showToast(`${item.item_name} için gönderilen miktar talep edilen miktardan (${item.quantity} ${item.unit}) fazla olamaz.`, 'error')
+        return
+      }
+
+      const isFullyFulfilled = sentQuantity >= item.quantity
+      const remainingQuantity = item.quantity - sentQuantity
+
+      sendData.push({
+        item,
+        sentQuantity,
+        isFullyFulfilled,
+        remainingQuantity
+      })
+    }
+
+    if (!hasValidQuantity) {
+      showToast('En az bir ürün için geçerli miktar girin.', 'error')
       return
     }
 
     try {
       setSendingItem(true)
       
-      const isFullyFulfilled = sentQuantity >= currentRequestedQuantity
-      const remainingQuantity = currentRequestedQuantity - sentQuantity
+      // Tüm ürünlerin gönderilip gönderilmediğini kontrol et
+      const allItemsFullyFulfilled = sendData.length === items.length && sendData.every(data => data.isFullyFulfilled)
+      const hasPartialFulfillment = sendData.some(data => !data.isFullyFulfilled) || sendData.length < items.length
       
-      // Veritabanında iki tabloyu güncellemek gerekiyor
-      // 1. Purchase request status'unu güncelle
-      const newStatus = isFullyFulfilled ? 'gönderildi' : 'kısmen gönderildi'
+      // Request status'unu belirle
+      const newStatus = allItemsFullyFulfilled ? 'gönderildi' : 'kısmen gönderildi'
+      
       console.log('🔄 Updating purchase request status:', {
         requestId,
         newStatus,
-        sentQuantity,
-        isFullyFulfilled
+        sendDataCount: sendData.length,
+        totalItems: items.length,
+        allItemsFullyFulfilled,
+        hasPartialFulfillment
       })
       
+      // 1. Purchase request status'unu güncelle
       const { error: requestError } = await supabase
         .from('purchase_requests')
         .update({ 
           status: newStatus,
-          sent_quantity: sentQuantity,
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
@@ -991,54 +1073,58 @@ export default function OffersPage() {
       
       console.log('✅ Purchase request updated successfully')
       
-      // 2. Kısmi gönderim ise, purchase_request_items tablosundaki quantity'yi güncelle
-      if (!isFullyFulfilled) {
-        console.log('🔄 Updating purchase request item quantity:', {
-          itemId: item.id,
-          requestId,
-          remainingQuantity,
-          originalQuantity: currentRequestedQuantity
-        })
-        
-        const { error: itemError } = await supabase
-          .from('purchase_request_items')
-          .update({ 
-            quantity: remainingQuantity
-            // updated_at sütunu olmayabilir, kaldıralım
+      // 2. Her ürün için purchase_request_items tablosunu güncelle
+      for (const data of sendData) {
+        if (!data.isFullyFulfilled) {
+          console.log('🔄 Updating purchase request item quantity:', {
+            itemId: data.item.id,
+            itemName: data.item.item_name,
+            remainingQuantity: data.remainingQuantity,
+            originalQuantity: data.item.quantity
           })
-          .eq('purchase_request_id', requestId)
-          .eq('id', item.id)
-        
-        if (itemError) {
-          console.error('❌ Item update error:', itemError)
-          throw itemError
+          
+          const { error: itemError } = await supabase
+            .from('purchase_request_items')
+            .update({ 
+              quantity: data.remainingQuantity
+            })
+            .eq('purchase_request_id', requestId)
+            .eq('id', data.item.id)
+          
+          if (itemError) {
+            console.error('❌ Item update error:', itemError)
+            throw itemError
+          }
+          
+          console.log('✅ Purchase request item updated successfully')
         }
-        
-        console.log('✅ Purchase request item updated successfully')
       }
       
+      // Başarı mesajı
+      const sentItems = sendData.map(data => 
+        `${data.item.item_name}: ${data.sentQuantity} ${data.item.unit}${!data.isFullyFulfilled ? ` (Kalan: ${data.remainingQuantity})` : ''}`
+      )
+      
       showToast(
-        isFullyFulfilled 
-          ? 'Talep tamamı gönderildi!' 
-          : `${sentQuantity} ${item.unit} gönderildi. Kalan talep: ${remainingQuantity} ${item.unit}`, 
+        allItemsFullyFulfilled 
+          ? 'Tüm malzemeler gönderildi!' 
+          : `Malzemeler gönderildi:\n${sentItems.join('\n')}`, 
         'success'
       )
       
       setIsSendModalOpen(false)
-      setSendQuantity('')
+      setSendQuantities({})
       await fetchRequestData()
       
     } catch (error: any) {
-      console.error('❌ Error sending item:', {
+      console.error('❌ Error sending items:', {
         error,
         message: error?.message,
         details: error?.details,
         hint: error?.hint,
         code: error?.code,
         requestId,
-        sentQuantity,
-        currentRequestedQuantity,
-        itemId: item.id
+        sendData
       })
       showToast(
         error?.message || 'Gönderim işlemi sırasında hata oluştu.',
@@ -1155,7 +1241,8 @@ export default function OffersPage() {
   }
 
   const totalOffers = existingOffers.length
-  const item = request.purchase_request_items?.[0]
+  const items = request?.purchase_request_items || []
+  const firstItem = items[0] // Backward compatibility için
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1341,49 +1428,84 @@ export default function OffersPage() {
 
             {/* Sağ Panel - Ürün Bilgileri */}
             <div>
-              {item ? (
+              {request?.purchase_request_items && request.purchase_request_items.length > 0 ? (
                 <Card className="bg-white border-0 shadow-sm h-full">
                   <CardHeader>
-                    <CardTitle className="text-xl font-semibold text-gray-900">Ürün Bilgileri</CardTitle>
+                    <CardTitle className="text-xl font-semibold text-gray-900">
+                      Ürün Bilgileri 
+                      {request.purchase_request_items.length > 1 && (
+                        <span className="text-sm font-normal text-gray-500 ml-2">
+                          ({request.purchase_request_items.length} ürün)
+                        </span>
+                      )}
+                    </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div>
-                      <p className="text-sm font-medium text-gray-500 mb-2">Ürün Adı</p>
-                      <p className="text-lg font-medium text-gray-900">{item.item_name}</p>
-                    </div>
-                    
-                    {item.brand && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-500 mb-2">Marka</p>
-                        <div className="flex items-center gap-3">
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
-                            {item.brand}
-                          </Badge>
+                    {/* Çoklu ürün varsa scroll edilebilir liste */}
+                    <div className={`space-y-6 ${request.purchase_request_items.length > 2 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
+                      {request.purchase_request_items.map((item, index) => (
+                        <div key={item.id} className="border-b border-gray-100 last:border-b-0 pb-6 last:pb-0">
+                          {/* Ürün başlığı (çoklu ürün varsa) */}
+                          {request.purchase_request_items.length > 1 && (
+                            <div className="flex items-center gap-2 mb-4">
+                              <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                {index + 1}
+                              </div>
+                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                                Ürün {index + 1}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="space-y-4">
+                            <div>
+                              <p className="text-sm font-medium text-gray-500 mb-2">Ürün Adı</p>
+                              <p className="text-lg font-medium text-gray-900">{item.item_name}</p>
+                            </div>
+                            
+                            {item.brand && (
+                              <div>
+                                <p className="text-sm font-medium text-gray-500 mb-2">Marka</p>
+                                <div className="flex items-center gap-3">
+                                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
+                                    {item.brand}
+                                  </Badge>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Miktar Highlight */}
+                            <div className="bg-gray-50 rounded-lg p-4">
+                              <p className="text-sm font-medium text-gray-500 mb-2">Talep Edilen Miktar</p>
+                              <div className="flex items-center gap-3">
+                                <div className="text-2xl font-semibold text-gray-900">{item.quantity}</div>
+                                <Badge variant="outline" className="text-gray-600">
+                                  {item.unit}
+                                </Badge>
+                              </div>
+                            </div>
+                            
+                            {item.specifications && (
+                              <div>
+                                <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
+                                <p className="text-sm text-gray-700 leading-relaxed">{item.specifications}</p>
+                              </div>
+                            )}
+
+                            {item.description && item.description !== item.specifications && (
+                              <div>
+                                <p className="text-sm font-medium text-gray-500 mb-2">Detay Açıklama</p>
+                                <p className="text-sm text-gray-700 leading-relaxed">{item.description}</p>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    )}
-                    
-                    {/* Miktar Highlight */}
-                    <div className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-sm font-medium text-gray-500 mb-2">Talep Edilen Miktar</p>
-                      <div className="flex items-center gap-3">
-                        <div className="text-2xl font-semibold text-gray-900">{item.quantity}</div>
-                        <Badge variant="outline" className="text-gray-600">
-                          {item.unit}
-                        </Badge>
-                      </div>
+                      ))}
                     </div>
-                    
-                    {item.specifications && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
-                        <p className="text-sm text-gray-700 leading-relaxed">{item.specifications}</p>
-                      </div>
-                    )}
 
                     {/* Malzeme Resimleri */}
                     {request?.image_urls && request.image_urls.length > 0 && (
-                      <div>
+                      <div className="border-t border-gray-100 pt-6">
                         <p className="text-sm font-medium text-gray-500 mb-3">Malzeme Resimleri ({request.image_urls.length})</p>
                         <div className="grid grid-cols-2 gap-3">
                           {request.image_urls.map((url, index) => (
@@ -1463,7 +1585,7 @@ export default function OffersPage() {
           </div>
 
           {/* Tedarikçi Atama Butonu - Site personeli, santiye depo ve site manager göremez */}
-          {userRole !== 'site_personnel' && userRole !== 'site_manager' && userRole !== 'santiye_depo' && !supplierMaterialInfo.isRegistered && item && (
+          {userRole !== 'site_personnel' && userRole !== 'site_manager' && userRole !== 'santiye_depo' && !supplierMaterialInfo.isRegistered && request?.purchase_request_items && request.purchase_request_items.length > 0 && (
             <Card className="bg-white border-0 shadow-sm">
               <CardContent className="p-6">
                 <div className="flex items-center justify-between w-full">
@@ -1669,16 +1791,57 @@ export default function OffersPage() {
 
                 {/* Sipariş Detayları */}
                 <div className="space-y-6">
-                  {/* Site personnel için sadece teslimat tarihi */}
+                  {/* Site personnel için teslimat tarihi ve onay butonu */}
                   {userRole === 'site_personnel' ? (
                     <div className="bg-white rounded-lg p-6 border border-gray-200">
                       <h4 className="text-lg font-semibold text-gray-900 mb-4">Teslimat Bilgisi</h4>
-                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
+                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-4">
                         <p className="text-sm font-medium text-blue-700 mb-1">Teslimat Tarihi</p>
                         <p className="text-xl font-semibold text-blue-900">
                           {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
                         </p>
+                        {currentOrder?.status === 'delivered' && (
+                          <div className="flex items-center gap-2 mt-2">
+                            <Check className="h-4 w-4 text-green-600" />
+                            <span className="text-sm text-green-600 font-medium">Teslimat Alındı</span>
+                          </div>
+                        )}
                       </div>
+                      
+                      {/* Teslimat onayı butonu */}
+                      {canConfirmDelivery() && (
+                        <div className="space-y-3">
+                          <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+                            <div className="flex items-center gap-2 mb-2">
+                              <Truck className="h-4 w-4 text-green-600" />
+                              <span className="text-sm font-medium text-green-700">Teslimat Zamanı Geldi!</span>
+                            </div>
+                            <p className="text-xs text-green-600">
+                              Malzeme teslimatını aldığınızda aşağıdaki butona tıklayarak irsaliye fotoğrafını yükleyebilirsiniz.
+                            </p>
+                          </div>
+                          <Button
+                            onClick={handleDeliveryConfirmation}
+                            className="w-full bg-green-600 hover:bg-green-700 text-white"
+                          >
+                            <Check className="h-4 w-4 mr-2" />
+                            Teslim Alındı
+                          </Button>
+                        </div>
+                      )}
+
+                      {/* Teslimat henüz gelmedi bilgisi */}
+                      {userRole === 'site_personnel' && currentOrder && !isDeliveryDateReached() && currentOrder.status !== 'delivered' && (
+                        <div className="bg-yellow-50 rounded-lg p-4 border border-yellow-200">
+                          <div className="flex items-center gap-2 mb-1">
+                            <Clock className="h-4 w-4 text-yellow-600" />
+                            <span className="text-sm font-medium text-yellow-700">Teslimat Bekleniyor</span>
+                          </div>
+                          <p className="text-xs text-yellow-600">
+                            Teslimat tarihi henüz gelmedi. Malzeme geldiğinde bu sayfadan teslimat onayı yapabilirsiniz.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : userRole === 'santiye_depo' ? (
                     /* Santiye depo için özel alan */
@@ -2806,8 +2969,8 @@ export default function OffersPage() {
       <AssignSupplierModal
         isOpen={isAssignSupplierModalOpen}
         onClose={() => setIsAssignSupplierModalOpen(false)}
-        itemName={request?.purchase_request_items?.[0]?.item_name || ''}
-        itemUnit={request?.purchase_request_items?.[0]?.unit}
+        itemName={firstItem?.item_name || ''}
+        itemUnit={firstItem?.unit}
         materialClass={request?.material_class || undefined}
         materialGroup={request?.material_group || undefined}
         onSuccess={checkItemInSupplierMaterials}
@@ -2894,21 +3057,23 @@ export default function OffersPage() {
       )}
 
       {/* Santiye Depo - Gönder Modal */}
-      {isSendModalOpen && request?.purchase_request_items?.[0] && (
+      {isSendModalOpen && items.length > 0 && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full">
+          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
             {/* Modal Header */}
-            <div className="p-6 border-b border-gray-200">
+            <div className="sticky top-0 bg-white p-6 border-b border-gray-200 rounded-t-2xl">
               <div className="flex items-center justify-between">
                 <div>
                   <h2 className="text-xl font-bold text-gray-900">Malzeme Gönder</h2>
-                  <p className="text-gray-500 text-sm mt-1">{request.purchase_request_items[0].item_name}</p>
+                  <p className="text-gray-500 text-sm mt-1">
+                    {items.length > 1 ? `${items.length} farklı malzeme` : items[0].item_name}
+                  </p>
                 </div>
                 <Button
                   variant="ghost"
                   onClick={() => {
                     setIsSendModalOpen(false)
-                    setSendQuantity('')
+                    setSendQuantities({})
                   }}
                   className="w-8 h-8 p-0 rounded-full hover:bg-gray-100"
                 >
@@ -2919,90 +3084,142 @@ export default function OffersPage() {
 
             {/* Modal Content */}
             <div className="p-6 space-y-6">
-              {/* Talep Bilgileri */}
-              <div className="bg-gray-50 rounded-xl p-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Talep Edilen:</span>
-                    <p className="font-bold text-gray-900 text-lg">
-                      {request.purchase_request_items[0].quantity} {request.purchase_request_items[0].unit}
-                    </p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Ürün:</span>
-                    <p className="font-semibold text-gray-900">
-                      {request.purchase_request_items[0].item_name}
-                    </p>
-                  </div>
-                </div>
-              </div>
+              {/* Çoklu ürün listesi */}
+              <div className="space-y-6">
+                {items.map((item, index) => {
+                  const currentQuantity = sendQuantities[item.id] || ''
+                  const numericQuantity = parseFloat(currentQuantity)
+                  const hasValidQuantity = currentQuantity.trim() !== '' && numericQuantity > 0
+                  const isFullyFulfilled = hasValidQuantity && numericQuantity >= item.quantity
 
-              {/* Gönderilecek Miktar */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-3">
-                  Gönderilecek Miktar *
-                </label>
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="col-span-2">
-                    <Input
-                      type="number"
-                      step="0.01"
-                      min="0.01"
-                      max={request.purchase_request_items[0].quantity}
-                      value={sendQuantity}
-                      onChange={(e) => setSendQuantity(e.target.value)}
-                      placeholder="0.00"
-                      className="h-12 bg-white rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500/20 focus:border-green-400"
-                    />
-                  </div>
-                  <div>
-                    <div className="h-12 bg-gray-50 rounded-xl flex items-center justify-center border border-gray-200">
-                      <span className="text-gray-700 font-medium">
-                        {request.purchase_request_items[0].unit}
-                      </span>
+                  return (
+                    <div key={item.id} className="border border-gray-200 rounded-xl p-6 bg-gray-50">
+                      {/* Ürün başlığı */}
+                      {items.length > 1 && (
+                        <div className="flex items-center gap-2 mb-4">
+                          <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                            {index + 1}
+                          </div>
+                          <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                            Malzeme {index + 1}
+                          </span>
+                        </div>
+                      )}
+
+                      {/* Talep Bilgileri */}
+                      <div className="bg-white rounded-lg p-4 mb-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                          <div>
+                            <span className="text-gray-600">Talep Edilen:</span>
+                            <p className="font-bold text-gray-900 text-lg">
+                              {item.quantity} {item.unit}
+                            </p>
+                          </div>
+                          <div>
+                            <span className="text-gray-600">Ürün:</span>
+                            <p className="font-semibold text-gray-900">
+                              {item.item_name}
+                            </p>
+                          </div>
+                        </div>
+                        {item.specifications && (
+                          <div className="mt-3 pt-3 border-t border-gray-100">
+                            <span className="text-gray-600 text-xs">Açıklama:</span>
+                            <p className="text-sm text-gray-700 mt-1">{item.specifications}</p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Gönderilecek Miktar */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-3">
+                          Gönderilecek Miktar {items.length === 1 ? '*' : '(İsteğe bağlı)'}
+                        </label>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="col-span-2">
+                            <Input
+                              type="number"
+                              step="0.01"
+                              min="0.01"
+                              max={item.quantity}
+                              value={currentQuantity}
+                              onChange={(e) => setSendQuantities(prev => ({
+                                ...prev,
+                                [item.id]: e.target.value
+                              }))}
+                              placeholder="0.00"
+                              className="h-12 bg-white rounded-xl border border-gray-200 focus:ring-2 focus:ring-green-500/20 focus:border-green-400"
+                            />
+                          </div>
+                          <div>
+                            <div className="h-12 bg-gray-100 rounded-xl flex items-center justify-center border border-gray-200">
+                              <span className="text-gray-700 font-medium">
+                                {item.unit}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Maksimum: {item.quantity} {item.unit}
+                        </p>
+                      </div>
+
+                      {/* Gönderim Durumu Bilgisi */}
+                      {hasValidQuantity && (
+                        <div className={`mt-4 rounded-xl p-4 ${
+                          isFullyFulfilled
+                            ? 'bg-green-50 border border-green-200' 
+                            : 'bg-yellow-50 border border-yellow-200'
+                        }`}>
+                          <div className="flex items-center gap-2">
+                            {isFullyFulfilled ? (
+                              <>
+                                <Check className="h-5 w-5 text-green-600" />
+                                <span className="text-sm font-medium text-green-800">
+                                  Bu malzeme tamamen karşılanacak
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="h-5 w-5 text-yellow-600" />
+                                <span className="text-sm font-medium text-yellow-800">
+                                  Kısmi gönderim - Kalan: {(item.quantity - numericQuantity).toFixed(2)} {item.unit}
+                                </span>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">
-                  Maksimum: {request.purchase_request_items[0].quantity} {request.purchase_request_items[0].unit}
-                </p>
+                  )
+                })}
               </div>
 
-              {/* Gönderim Durumu Bilgisi */}
-              {sendQuantity && parseFloat(sendQuantity) > 0 && (
-                <div className={`rounded-xl p-4 ${
-                  parseFloat(sendQuantity) >= request.purchase_request_items[0].quantity 
-                    ? 'bg-green-50 border border-green-200' 
-                    : 'bg-yellow-50 border border-yellow-200'
-                }`}>
-                  <div className="flex items-center gap-2">
-                    {parseFloat(sendQuantity) >= request.purchase_request_items[0].quantity ? (
-                      <>
-                        <Check className="h-5 w-5 text-green-600" />
-                        <span className="text-sm font-medium text-green-800">
-                          Talep tamamen karşılanacak
-                        </span>
-                      </>
-                    ) : (
-                      <>
-                        <AlertCircle className="h-5 w-5 text-yellow-600" />
-                        <span className="text-sm font-medium text-yellow-800">
-                          Kısmi gönderim - Kalan talep: {(request.purchase_request_items[0].quantity - parseFloat(sendQuantity)).toFixed(2)} {request.purchase_request_items[0].unit}
-                        </span>
-                      </>
-                    )}
-                  </div>
+              {/* Genel Durum Özeti */}
+              <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
+                <div className="flex items-center gap-2 mb-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">Gönderim Özeti</span>
                 </div>
-              )}
+                <div className="text-sm text-blue-700">
+                  {Object.values(sendQuantities).filter(q => q.trim() !== '' && parseFloat(q) > 0).length === 0 ? (
+                    'Henüz hiçbir malzeme için miktar girilmedi'
+                  ) : items.length === 1 ? (
+                    'Tek malzeme gönderimi'
+                  ) : (
+                    `${Object.values(sendQuantities).filter(q => q.trim() !== '' && parseFloat(q) > 0).length} / ${items.length} malzeme için miktar girildi`
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-6 border-t border-gray-200 flex gap-3">
+            <div className="sticky bottom-0 bg-white p-6 border-t border-gray-200 flex gap-3 rounded-b-2xl">
               <Button
                 variant="outline"
                 onClick={() => {
                   setIsSendModalOpen(false)
-                  setSendQuantity('')
+                  setSendQuantities({})
                 }}
                 disabled={sendingItem}
                 className="flex-1 h-11 rounded-xl"
@@ -3011,7 +3228,7 @@ export default function OffersPage() {
               </Button>
               <Button
                 onClick={confirmSendItem}
-                disabled={!sendQuantity.trim() || parseFloat(sendQuantity) <= 0 || sendingItem}
+                disabled={Object.values(sendQuantities).every(q => !q.trim() || parseFloat(q) <= 0) || sendingItem}
                 className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium disabled:opacity-50"
               >
                 {sendingItem ? (
@@ -3022,13 +3239,25 @@ export default function OffersPage() {
                 ) : (
                   <>
                     <Package className="h-4 w-4 mr-2" />
-                    Gönder
+                    Malzemeleri Gönder
                   </>
                 )}
               </Button>
             </div>
           </div>
         </div>
+      )}
+
+      {/* Teslimat Onayı Modalı */}
+      {currentOrder && (
+        <DeliveryConfirmationModal
+          isOpen={isDeliveryModalOpen}
+          onClose={() => setIsDeliveryModalOpen(false)}
+          orderId={currentOrder.id}
+          requestId={requestId}
+          deliveryDate={currentOrder.delivery_date}
+          onSuccess={handleDeliverySuccess}
+        />
       )}
     </div>
   )

@@ -23,8 +23,11 @@ import {
   Package,
   TrendingUp,
   User,
-  ArrowUpDown
+  ArrowUpDown,
+  Check,
+  Truck
 } from 'lucide-react'
+import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 
 interface PurchaseRequest {
   id: string
@@ -35,7 +38,7 @@ interface PurchaseRequest {
   site_id: string
   material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı'
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı' | 'teslim alındı' | 'delivered'
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -53,6 +56,12 @@ interface PurchaseRequest {
     quantity: number
     unit: string
     item_name?: string
+  }>
+  orders?: Array<{
+    id: string
+    delivery_date: string
+    status: string
+    delivered_at?: string
   }>
 }
 
@@ -136,7 +145,10 @@ const fetchPurchaseRequests = async (key: string) => {
         item_name
       ),
       orders!left (
-        id
+        id,
+        delivery_date,
+        status,
+        delivered_at
       )
     `)
     .range(from, to)
@@ -163,13 +175,26 @@ const fetchPurchaseRequests = async (key: string) => {
     throw new Error('Satın alma talepleri yüklenirken hata oluştu')
   }
 
-  const formattedRequests = (requests || []).map(request => ({
-    ...request,
-    request_number: `REQ-${request.id.slice(0, 8)}`,
-    updated_at: request.created_at,
-    // Eğer orders varsa ve boş değilse status'u güncelle
-    status: request.orders && request.orders.length > 0 ? 'sipariş verildi' : request.status
-  })) as PurchaseRequest[]
+  const formattedRequests = (requests || []).map(request => {
+    let finalStatus = request.status
+    
+    // Order durumuna göre status'u güncelle
+    if (request.orders && request.orders.length > 0) {
+      const order = request.orders[0]
+      if (order.status === 'delivered') {
+        finalStatus = 'teslim alındı'
+      } else {
+        finalStatus = 'sipariş verildi'
+      }
+    }
+    
+    return {
+      ...request,
+      request_number: `REQ-${request.id.slice(0, 8)}`,
+      updated_at: request.created_at,
+      status: finalStatus
+    }
+  }) as PurchaseRequest[]
 
   return { requests: formattedRequests, totalCount: count || 0 }
 }
@@ -181,6 +206,10 @@ export default function PurchaseRequestsTable() {
   const [userRole, setUserRole] = useState<string>('')
   const [approving, setApproving] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('approval_pending')
+  
+  // Delivery confirmation modal state
+  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
+  const [selectedRequestForDelivery, setSelectedRequestForDelivery] = useState<any>(null)
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -298,7 +327,9 @@ export default function PurchaseRequestsTable() {
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
       'eksik onaylandı': { label: 'Eksik Onaylandı', className: 'bg-blue-100 text-blue-800 border-0' },
-      'alternatif onaylandı': { label: 'Alternatif Onaylandı', className: 'bg-purple-100 text-purple-800 border-0' }
+      'alternatif onaylandı': { label: 'Alternatif Onaylandı', className: 'bg-purple-100 text-purple-800 border-0' },
+      'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
+      'delivered': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' }
     }
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
@@ -367,6 +398,36 @@ export default function PurchaseRequestsTable() {
     if (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') {
       router.push(`/dashboard/requests/${request.id}/offers`)
     }
+  }
+
+  // Delivery confirmation functions
+  const isDeliveryDateReached = (order: any) => {
+    if (!order?.delivery_date) return false
+    const deliveryDate = new Date(order.delivery_date)
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    deliveryDate.setHours(0, 0, 0, 0)
+    return today >= deliveryDate
+  }
+
+  const canConfirmDelivery = (request: any) => {
+    return userRole === 'site_personnel' && 
+           request.orders && 
+           request.orders.length > 0 && 
+           request.orders[0].status !== 'delivered' && 
+           isDeliveryDateReached(request.orders[0])
+  }
+
+  const handleDeliveryConfirmation = (request: any, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedRequestForDelivery(request)
+    setIsDeliveryModalOpen(true)
+  }
+
+  const handleDeliverySuccess = () => {
+    refreshData()
+    invalidatePurchaseRequestsCache()
+    setSelectedRequestForDelivery(null)
   }
 
   const handleSiteManagerApproval = async (requestId: string, e: React.MouseEvent) => {
@@ -490,7 +551,7 @@ export default function PurchaseRequestsTable() {
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
-                {userRole === 'site_manager' && (
+                {(userRole === 'site_manager' || userRole === 'site_personnel') && (
                   <TableHead className="w-[120px] py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                     İşlemler
                   </TableHead>
@@ -500,7 +561,7 @@ export default function PurchaseRequestsTable() {
             <TableBody>
               {isLoading ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12">
+                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 8 : 7} className="text-center py-12">
                     <div className="flex items-center justify-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="text-gray-600">Yükleniyor...</span>
@@ -542,9 +603,9 @@ export default function PurchaseRequestsTable() {
                 filteredRequests.map((request, index) => (
                   <TableRow 
                     key={request.id}
-                    className={`border-b border-gray-200 hover:bg-gray-50 transition-colors cursor-pointer ${
-                      (request.status === 'pending' || request.status === 'awaiting_offers' || request.status === 'sipariş verildi') 
-                        ? 'hover:bg-blue-50' 
+                    className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
+                      (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') 
+                        ? 'cursor-pointer hover:bg-blue-50' 
                         : 'cursor-default'
                     }`}
                     onClick={() => handleRequestClick(request)}
@@ -640,43 +701,72 @@ export default function PurchaseRequestsTable() {
                       </div>
                     </TableCell>
                     
-                    {userRole === 'site_manager' && (
+                    {(userRole === 'site_manager' || userRole === 'site_personnel') && (
                       <TableCell className="py-4">
-                        {(request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') ? (
-                          <Button
-                            size="sm"
-                            onClick={(e) => handleSiteManagerApproval(request.id, e)}
-                            disabled={approving === request.id}
-                            className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-8 rounded-lg"
-                          >
-                            {approving === request.id ? (
-                              <>
-                                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                Talep Ediliyor...
-                              </>
-                            ) : (
-                              'Talep Et'
-                            )}
-                          </Button>
-                        ) : request.status === 'şantiye şefi onayladı' ? (
-                          <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                            ✓ Onaylandı
-                          </Badge>
-                        ) : request.status === 'gönderildi' ? (
-                          <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
-                            ✓ Tamamlandı
-                          </Badge>
-                        ) : request.status === 'eksik onaylandı' ? (
-                          <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                            ✓ Eksik Onaylandı
-                          </Badge>
-                        ) : request.status === 'alternatif onaylandı' ? (
-                          <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">
-                            ✓ Alternatif Onaylandı
-                          </Badge>
-                        ) : (
-                          <span className="text-xs text-gray-400">-</span>
-                        )}
+                        {userRole === 'site_manager' ? (
+                          // Site Manager Actions
+                          (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') ? (
+                            <Button
+                              size="sm"
+                              onClick={(e) => handleSiteManagerApproval(request.id, e)}
+                              disabled={approving === request.id}
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-8 rounded-lg"
+                            >
+                              {approving === request.id ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
+                                  Talep Ediliyor...
+                                </>
+                              ) : (
+                                'Talep Et'
+                              )}
+                            </Button>
+                          ) : request.status === 'şantiye şefi onayladı' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+                              ✓ Onaylandı
+                            </Badge>
+                          ) : request.status === 'gönderildi' ? (
+                            <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
+                              ✓ Tamamlandı
+                            </Badge>
+                          ) : request.status === 'eksik onaylandı' ? (
+                            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
+                              ✓ Eksik Onaylandı
+                            </Badge>
+                          ) : request.status === 'alternatif onaylandı' ? (
+                            <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">
+                              ✓ Alternatif Onaylandı
+                            </Badge>
+                          ) : request.status === 'teslim alındı' ? (
+                            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
+                              ✓ Teslim Alındı
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )
+                        ) : userRole === 'site_personnel' ? (
+                          // Site Personnel Actions (Delivery Confirmation)
+                          canConfirmDelivery(request) ? (
+                            <Button
+                              size="sm"
+                              onClick={(e) => handleDeliveryConfirmation(request, e)}
+                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-8 rounded-lg flex items-center gap-1"
+                            >
+                              <Check className="h-3 w-3" />
+                              Teslim Al
+                            </Button>
+                          ) : request.status === 'teslim alındı' ? (
+                            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
+                              ✓ Teslim Alındı
+                            </Badge>
+                          ) : request.status === 'sipariş verildi' && request.orders?.[0] && !isDeliveryDateReached(request.orders[0]) ? (
+                            <Badge className="bg-yellow-100 text-yellow-700 border-0 text-xs">
+                              Teslimat Bekliyor
+                            </Badge>
+                          ) : (
+                            <span className="text-xs text-gray-400">-</span>
+                          )
+                        ) : null}
                       </TableCell>
                     )}
                   </TableRow>
@@ -752,9 +842,24 @@ export default function PurchaseRequestsTable() {
               </Button>
             </div>
           </div>
-        )}
+        )        }
         
       </CardContent>
+
+      {/* Delivery Confirmation Modal */}
+      {selectedRequestForDelivery && selectedRequestForDelivery.orders?.[0] && (
+        <DeliveryConfirmationModal
+          isOpen={isDeliveryModalOpen}
+          onClose={() => {
+            setIsDeliveryModalOpen(false)
+            setSelectedRequestForDelivery(null)
+          }}
+          orderId={selectedRequestForDelivery.orders[0].id}
+          requestId={selectedRequestForDelivery.id}
+          deliveryDate={selectedRequestForDelivery.orders[0].delivery_date}
+          onSuccess={handleDeliverySuccess}
+        />
+      )}
     </Card>
   )
 }

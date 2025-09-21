@@ -9,6 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Switch } from '@/components/ui/switch'
 import { createClient } from '@/lib/supabase/client'
+import { PushNotificationSetup } from '@/components/PushNotificationSetup'
+import { DesktopNotificationTest } from '@/components/DesktopNotificationTest'
+import { EmailNotificationTest } from '@/components/EmailNotificationTest'
 import { 
   Settings, 
   User, 
@@ -53,8 +56,8 @@ export default function SettingsPage() {
     emailNotifications: true,
     pushNotifications: true,
     urgentOnly: false,
-    dailyDigest: true,
-    weeklyReport: true
+    dailyDigest: false,
+    weeklyReport: false
   })
 
   useEffect(() => {
@@ -85,6 +88,15 @@ export default function SettingsPage() {
           currentPassword: '',
           newPassword: '',
           confirmPassword: ''
+        })
+        
+        // Load notification settings
+        setNotificationSettings({
+          emailNotifications: profile.email_notifications ?? true,
+          pushNotifications: true, // This comes from push subscription
+          urgentOnly: profile.urgent_only ?? false,
+          dailyDigest: profile.daily_digest ?? false,
+          weeklyReport: profile.weekly_report ?? false
         })
       }
     } catch (error) {
@@ -146,6 +158,31 @@ export default function SettingsPage() {
     } catch (error) {
       console.error('Şifre değiştirilirken hata:', error)
       alert('Şifre değiştirilirken bir hata oluştu.')
+    }
+  }
+
+  const handleSaveNotificationSettings = async () => {
+    setSaveLoading(true)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          email_notifications: notificationSettings.emailNotifications,
+          urgent_only: notificationSettings.urgentOnly,
+          daily_digest: notificationSettings.dailyDigest,
+          weekly_report: notificationSettings.weeklyReport
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      alert('Bildirim ayarları başarıyla güncellendi!')
+      await loadUserData()
+    } catch (error) {
+      console.error('Bildirim ayarları güncellenirken hata:', error)
+      alert('Bildirim ayarları güncellenirken bir hata oluştu.')
+    } finally {
+      setSaveLoading(false)
     }
   }
 
@@ -441,12 +478,29 @@ export default function SettingsPage() {
                 </div>
               </div>
 
-              <Button className="w-full">
+              <Button 
+                onClick={handleSaveNotificationSettings} 
+                disabled={saveLoading}
+                className="w-full"
+              >
                 <Save className="w-4 h-4 mr-2" />
-                Bildirim Ayarlarını Kaydet
+                {saveLoading ? 'Kaydediliyor...' : 'Bildirim Ayarlarını Kaydet'}
               </Button>
             </CardContent>
           </Card>
+
+          {/* Notification Tests and Setup */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="flex justify-center">
+              <PushNotificationSetup />
+            </div>
+            <div className="flex justify-center">
+              <DesktopNotificationTest />
+            </div>
+            <div className="flex justify-center">
+              <EmailNotificationTest />
+            </div>
+          </div>
         </TabsContent>
 
         {/* System Settings */}

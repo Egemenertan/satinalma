@@ -3,6 +3,7 @@
 import { createClient } from './supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { NotificationService } from './notifications'
 
 
 
@@ -94,7 +95,7 @@ export async function createPurchaseRequest(data: {
       purchase_request_id: purchaseRequest.id,
       item_name: data.material,
       description: data.description,
-      quantity: data.quantity,
+      quantity: Math.round(data.quantity), // Veritabanı integer beklediği için yuvarla
       unit: data.unit,
       unit_price: 0,
       specifications: data.purpose || 'Şantiye ihtiyacı'
@@ -119,6 +120,21 @@ export async function createPurchaseRequest(data: {
     await supabase
       .from('approval_history')
       .insert(historyData)
+
+    // Push notification + E-posta gönder - yeni talep oluşturuldu
+    try {
+      await NotificationService.notifyNewPurchaseRequest(
+        purchaseRequest.id,
+        requestData.title,
+        requestNumber,
+        user.full_name || user.email || 'Bilinmeyen Kullanıcı',
+        data.site_id || undefined,
+        data.site_name || undefined
+      )
+    } catch (notificationError) {
+      console.error('Failed to send notifications:', notificationError)
+      // Notification hatası talebin oluşturulmasını engellemez
+    }
 
     revalidatePath('/dashboard/requests')
     return { success: true, data: purchaseRequest }
@@ -325,6 +341,147 @@ export async function createMaterialItem(data: {
     }
     
     console.error('📤 Error response:', { success: false, error: errorMessage })
+    return { success: false, error: errorMessage }
+  }
+}
+
+export async function createMultiMaterialPurchaseRequest(data: {
+  materials: Array<{
+    material_name: string
+    quantity: number
+    unit: string
+    brand?: string
+    material_class?: string
+    material_group?: string
+    material_item_name?: string
+    image_urls?: string[]
+  }>
+  purpose?: string
+  site_id?: string
+  site_name?: string
+  specifications?: string
+  required_date?: string
+}) {
+  try {
+    console.log('🚀 createMultiMaterialPurchaseRequest başlatıldı:', data)
+    
+    // Gerçek kullanıcıyı al
+    const user = await getAuthenticatedUser()
+    console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
+    
+    const supabase = createClient()
+    
+    // Tarih ve request number oluştur
+    const now = new Date()
+    const requestNumber = `REQ-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
+    
+    // Malzeme isimlerinden bir başlık oluştur
+    const title = data.materials.length > 1 
+      ? `Çoklu Malzeme Talebi (${data.materials.length} adet)`
+      : data.materials[0]?.material_name || 'Malzeme Talebi'
+    
+    // Açıklamayı oluştur
+    const description = data.materials.length > 1
+      ? `Çoklu malzeme talebi: ${data.materials.map(m => `${m.material_name} (${m.quantity} ${m.unit})`).join(', ')}`
+      : `${data.materials[0]?.material_name} - ${data.materials[0]?.quantity} ${data.materials[0]?.unit}`
+    
+    // Purchase request data hazırla
+    const requestData = {
+      request_number: requestNumber,
+      title,
+      description,
+      department: user.department || 'Genel',
+      total_amount: 0,
+      currency: 'TRY',
+      urgency_level: 'normal' as const,
+      status: 'pending' as const,
+      requested_by: user.id,
+      site_id: data.site_id || null,
+      site_name: data.site_name || null,
+      image_urls: data.materials[0]?.image_urls || null // İlk malzemenin resimlerini kullan
+    }
+    
+    // Purchase request oluştur
+    console.log('💾 Purchase request data hazırlandı:', requestData)
+    
+    const { data: purchaseRequest, error: requestError } = await supabase
+      .from('purchase_requests')
+      .insert(requestData)
+      .select()
+      .single()
+
+    if (requestError) {
+      console.error('❌ Purchase request hatası:', requestError)
+      throw new Error(`Purchase request oluşturulamadı: ${requestError.message}`)
+    }
+    
+    console.log('✅ Purchase request oluşturuldu:', purchaseRequest)
+
+    // Her malzeme için purchase request item ekle
+    const itemsData = data.materials.map(material => ({
+      purchase_request_id: purchaseRequest.id,
+      item_name: material.material_name,
+      description: `${material.brand || ''} ${material.material_name}`.trim(),
+      quantity: Math.round(material.quantity), // Veritabanı integer beklediği için yuvarla
+      unit: material.unit,
+      unit_price: 0,
+      specifications: data.specifications || data.purpose || 'Şantiye ihtiyacı'
+    }))
+    
+    console.log('💾 Purchase request items data hazırlandı:', itemsData)
+    
+    const { error: itemsError } = await supabase
+      .from('purchase_request_items')
+      .insert(itemsData)
+
+    if (itemsError) {
+      console.error('❌ Purchase request items hatası:', itemsError)
+      throw new Error(`Purchase request items oluşturulamadı: ${itemsError.message}`)
+    }
+    
+    console.log('✅ Purchase request items oluşturuldu')
+
+    // Approval history kaydı ekle
+    const historyData = {
+      purchase_request_id: purchaseRequest.id,
+      action: 'submitted' as const,
+      performed_by: user.id,
+      comments: `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
+    }
+    
+    await supabase
+      .from('approval_history')
+      .insert(historyData)
+
+    // Push notification + E-posta gönder
+    try {
+      await NotificationService.notifyNewPurchaseRequest(
+        purchaseRequest.id,
+        title,
+        requestNumber,
+        user.full_name || user.email || 'Bilinmeyen Kullanıcı',
+        data.site_id || undefined,
+        data.site_name || undefined
+      )
+    } catch (notificationError) {
+      console.error('Failed to send notifications:', notificationError)
+      // Notification hatası talebin oluşturulmasını engellemez
+    }
+
+    revalidatePath('/dashboard/requests')
+    return { 
+      success: true, 
+      data: purchaseRequest,
+      message: `Çoklu malzeme talebi başarıyla oluşturuldu! ${data.materials.length} adet malzeme için talep numarası: ${requestNumber}`
+    }
+  } catch (error) {
+    console.error('Error creating multi-material purchase request:', error)
+    
+    let errorMessage = 'Çoklu malzeme talebi oluşturulurken hata oluştu'
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    
     return { success: false, error: errorMessage }
   }
 }

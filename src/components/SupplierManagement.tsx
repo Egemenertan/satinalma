@@ -243,10 +243,10 @@ export default function SupplierManagement() {
 
     return (
       <Button 
-        className="bg-black hover:bg-gray-800 text-white px-6 py-6 rounded-xl text-lg font-medium" 
+        className="bg-black hover:bg-gray-800 text-white px-6 py-6 rounded-md text-lg font-light" 
         onClick={() => router.push('/dashboard/suppliers/create')}
       >
-        <Plus className="w-5 h-5 mr-3" />
+        
         Yeni Tedarikçi
       </Button>
     )

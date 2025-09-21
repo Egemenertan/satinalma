@@ -6,9 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
 const supabase = createClient()
 import { useToast } from '@/components/ui/toast'
+import FullScreenImageViewer from '@/components/FullScreenImageViewer'
 import { 
   Building,
   Phone,
@@ -24,23 +29,42 @@ import {
   AlertTriangle,
   Package,
   Target,
-  ArrowLeft
+  ArrowLeft,
+  Image,
+  Eye,
+  Receipt,
+  Camera,
+  Upload,
+  X
 } from 'lucide-react'
 
 interface Order {
   id: string
   created_at: string
   updated_at: string
-  status: 'pending' | 'approved' | 'rejected' | 'completed'
+  status: 'pending' | 'approved' | 'rejected' | 'completed' | 'delivered'
   amount: number
   currency: string
   delivery_date: string
   supplier_id: string
   purchase_request_id: string
   document_urls: string[]
+  delivery_receipt_photos?: string[]
+  delivered_at?: string
+  delivery_notes?: string
   purchase_requests?: {
-    title: string
     request_number: string
+    title: string
+    material_item_name: string | null
+    total_amount: number
+    currency: string | null
+  }[]
+  invoices?: {
+    id: string
+    amount: number
+    currency: string
+    invoice_photos: string[]
+    created_at: string
   }[]
 }
 
@@ -86,6 +110,19 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<Order[]>([])
   const [loadingOrders, setLoadingOrders] = useState(false)
+  
+  // Image viewer state
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
+  const [selectedImages, setSelectedImages] = useState<string[]>([])
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
+  
+  // Invoice modal state
+  const [isInvoiceModalOpen, setIsInvoiceModalOpen] = useState(false)
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null)
+  const [invoiceAmount, setInvoiceAmount] = useState('')
+  const [invoiceCurrency, setInvoiceCurrency] = useState('TRY')
+  const [invoicePhotos, setInvoicePhotos] = useState<string[]>([])
+  const [isUploadingInvoice, setIsUploadingInvoice] = useState(false)
 
   useEffect(() => {
     let isActive = true
@@ -134,29 +171,63 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
           supplier_id,
           purchase_request_id,
           document_urls,
-          purchase_requests:purchase_requests!left (
-            title,
-            request_number
-          )
+          delivery_receipt_photos,
+          delivered_at,
+          delivery_notes
         `)
         .eq('supplier_id', params.id)
         .order('created_at', { ascending: false })
-
+      
       if (ordersError) {
-        console.error('❌ Sipariş yükleme hatası:', {
-          message: ordersError.message,
-          details: ordersError.details,
-          hint: ordersError.hint,
-          code: ordersError.code
-        })
+        console.error('❌ Sipariş yükleme hatası:')
+        console.error('Error message:', ordersError.message)
+        console.error('Error details:', ordersError.details)
+        console.error('Error hint:', ordersError.hint)
+        console.error('Error code:', ordersError.code)
+        console.error('Full error object:', ordersError)
         throw ordersError
       }
 
-      console.log('✅ Siparişler başarıyla yüklendi')
-      console.log('📦 Toplam sipariş sayısı:', ordersData?.length || 0)
-      console.log('📄 Sipariş verileri:', ordersData)
+      // Purchase request ve invoice verilerini ayrı olarak çek
+      const ordersWithPurchaseRequests = await Promise.all(
+        (ordersData || []).map(async (order) => {
+          const promises = []
+          
+          // Purchase request verisi çek
+          if (order.purchase_request_id) {
+            promises.push(
+              supabase
+                .from('purchase_requests')
+                .select('request_number, title, material_item_name, total_amount, currency')
+                .eq('id', order.purchase_request_id)
+                .single()
+            )
+          } else {
+            promises.push(Promise.resolve({ data: null }))
+          }
+          
+          // Invoice verilerini çek
+          promises.push(
+            supabase
+              .from('invoices')
+              .select('id, amount, currency, invoice_photos, created_at')
+              .eq('order_id', order.id)
+          )
+          
+          const [purchaseResult, invoiceResult] = await Promise.all(promises)
+          
+          return {
+            ...order,
+            purchase_requests: purchaseResult.data ? [purchaseResult.data] : [],
+            invoices: invoiceResult.data || []
+          }
+        })
+      )
       
-      setOrders(ordersData || [])
+      console.log('✅ Siparişler başarıyla yüklendi')
+      console.log('📦 Toplam sipariş sayısı:', ordersWithPurchaseRequests?.length || 0)
+      
+      setOrders(ordersWithPurchaseRequests || [])
     } catch (error) {
       console.error('Siparişler yüklenirken hata:', error)
       showToast('Siparişler yüklenirken bir hata oluştu.', 'error')
@@ -265,6 +336,128 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
     )
   }
 
+  const handleViewDeliveryPhotos = (photos: string[], index = 0) => {
+    setSelectedImages(photos)
+    setSelectedImageIndex(index)
+    setIsImageViewerOpen(true)
+  }
+
+  const handleOpenInvoiceModal = (orderId: string) => {
+    setSelectedOrderId(orderId)
+    setInvoiceAmount('')
+    setInvoicePhotos([])
+    setIsInvoiceModalOpen(true)
+  }
+
+  const handleCloseInvoiceModal = () => {
+    setIsInvoiceModalOpen(false)
+    setSelectedOrderId(null)
+    setInvoiceAmount('')
+    setInvoicePhotos([])
+  }
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = event.target.files
+    if (!files || files.length === 0) return
+
+    setIsUploadingInvoice(true)
+    
+    try {
+      // Geçici olarak base64 kullan (storage RLS sorunu çözülene kadar)
+      const filePromises = Array.from(files).map(async (file) => {
+        return new Promise<string>((resolve, reject) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve(reader.result as string)
+          reader.onerror = reject
+          reader.readAsDataURL(file)
+        })
+      })
+
+      const base64Files = await Promise.all(filePromises)
+      setInvoicePhotos(prev => [...prev, ...base64Files])
+      showToast('Fotoğraflar başarıyla yüklendi', 'success')
+      
+      console.log('Fotoğraflar base64 olarak yüklendi (storage RLS sorunu nedeniyle geçici çözüm)')
+    } catch (error: any) {
+      console.error('Upload error:', error)
+      showToast('Fotoğraf yükleme hatası: ' + error.message, 'error')
+    } finally {
+      setIsUploadingInvoice(false)
+    }
+  }
+
+  const handleCameraCapture = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      // Bu kısım daha kompleks, şimdilik file input'u kullanacağız
+      showToast('Kamera özelliği yakında eklenecek. Şimdilik dosya seçin.', 'info')
+    } catch (error) {
+      showToast('Kamera erişimi reddedildi', 'error')
+    }
+  }
+
+  const handleSubmitInvoice = async () => {
+    if (!selectedOrderId || !invoiceAmount || invoicePhotos.length === 0) {
+      showToast('Lütfen tüm alanları doldurun ve en az bir fotoğraf ekleyin', 'error')
+      return
+    }
+
+    setIsUploadingInvoice(true)
+    
+    try {
+      // Fatura verilerini veritabanına kaydet
+      const { data, error } = await supabase
+        .from('invoices')
+        .insert({
+          order_id: selectedOrderId,
+          amount: parseFloat(invoiceAmount),
+          currency: invoiceCurrency,
+          invoice_photos: invoicePhotos,
+          created_at: new Date().toISOString()
+        })
+
+      if (error) {
+        console.error('❌ Fatura kaydetme hatası:')
+        console.error('Error message:', error.message)
+        console.error('Error details:', error.details)
+        console.error('Error hint:', error.hint)
+        console.error('Error code:', error.code)
+        console.error('Full error object:', error)
+        throw error
+      }
+
+      console.log('✅ Fatura başarıyla kaydedildi:', data)
+      showToast('Fatura başarıyla eklendi', 'success')
+      handleCloseInvoiceModal()
+      
+      // Siparişleri yeniden yükle (faturanın gösterilmesi için)
+      await fetchSupplierOrders()
+    } catch (error: any) {
+      console.error('❌ Fatura ekleme hatası (catch):')
+      console.error('Error message:', error?.message)
+      console.error('Error details:', error?.details)
+      console.error('Error hint:', error?.hint)
+      console.error('Error code:', error?.code)
+      console.error('Full error object:', error)
+      
+      if (error.code === '42P01') {
+        showToast('Fatura tablosu bulunamadı. Lütfen sistem yöneticisine başvurun.', 'error')
+      } else if (error.code === '23503') {
+        showToast('Sipariş bulunamadı. Lütfen sayfayı yenileyip tekrar deneyin.', 'error')
+      } else if (error.code === '42501') {
+        showToast('Yetki hatası. Fatura ekleme yetkiniz bulunmuyor.', 'error')
+      } else {
+        showToast('Fatura ekleme hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
+      }
+    } finally {
+      setIsUploadingInvoice(false)
+    }
+  }
+
+  const removePhoto = (index: number) => {
+    setInvoicePhotos(prev => prev.filter((_, i) => i !== index))
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -287,92 +480,132 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   }
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button 
-            variant="outline" 
-            size="icon"
-            onClick={() => router.back()}
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </Button>
-          <div>
-            <h1 className="text-3xl font-normal text-gray-900">{supplier.name}</h1>
-            <p className="text-gray-600 mt-1">Tedarikçi Detayları</p>
+      <div className="bg-white border-b border-gray-200">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16">
+            <div className="flex items-center gap-4">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => router.back()}
+                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
+              >
+                <ArrowLeft className="w-4 h-4" />
+                Geri Dön
+              </Button>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Content */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Sol Panel - Temel Bilgiler */}
-        <div className="space-y-6">
-          <Card className="bg-white border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">Temel Bilgiler</CardTitle>
+      {/* Main Content */}
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Supplier Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-gray-900 mb-2">{supplier.name}</h1>
+          <p className="text-gray-600">Tedarikçi Detayları ve İşlem Geçmişi</p>
+        </div>
+
+        {/* Top Cards - Temel Bilgiler ve Durum */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Temel Bilgiler */}
+          <Card className="bg-white shadow-sm border-0">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                <Building className="w-5 h-5 text-gray-400" />
+                Temel Bilgiler
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center gap-2">
-                <Building className="w-4 h-4 text-gray-400" />
-                <span className="font-medium">{supplier.name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Mail className="w-4 h-4 text-gray-400" />
-                <span>{supplier.email}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Phone className="w-4 h-4 text-gray-400" />
-                <span>{supplier.phone}</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <MapPin className="w-4 h-4 text-gray-400 mt-1" />
-                <span>{supplier.address}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-gray-400" />
-                <span>Vergi No: {supplier.tax_number}</span>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <Mail className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">Email</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">{supplier.email}</span>
+                </div>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <Phone className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">Telefon</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">{supplier.phone}</span>
+                </div>
+                <div className="flex justify-between items-start py-2 border-b border-gray-100 last:border-b-0">
+                  <div className="flex items-center gap-3">
+                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
+                    <span className="text-sm text-gray-600">Adres</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900 text-right max-w-xs">{supplier.address}</span>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <div className="flex items-center gap-3">
+                    <FileText className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm text-gray-600">Vergi No</span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-900">{supplier.tax_number}</span>
+                </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="bg-white border-0 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg font-semibold">Durum</CardTitle>
+          {/* Durum ve Değerlendirme */}
+          <Card className="bg-white shadow-sm border-0">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
+                <Target className="w-5 h-5 text-gray-400" />
+                Durum ve Değerlendirme
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div>
-                <div className="text-sm text-gray-600 mb-2">Onay Durumu</div>
-                {getStatusBadge(supplier.is_approved)}
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-2">Değerlendirme</div>
-                <div className="flex items-center gap-2">
-                  {getRatingStars(supplier.rating)}
-                  <span className="text-sm font-medium">({supplier.rating}/5)</span>
+              <div className="grid grid-cols-1 gap-4">
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-600">Onay Durumu</span>
+                  {getStatusBadge(supplier.is_approved)}
                 </div>
-              </div>
-              <div>
-                <div className="text-sm text-gray-600 mb-2">Ödeme Vadesi</div>
-                <div className="flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-gray-400" />
-                  <span>{supplier.payment_terms} gün</span>
+                <div className="flex justify-between items-center py-2 border-b border-gray-100">
+                  <span className="text-sm text-gray-600">Değerlendirme</span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      {getRatingStars(supplier.rating)}
+                    </div>
+                    <span className="text-sm font-medium text-gray-900">({supplier.rating}/5)</span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center py-2">
+                  <span className="text-sm text-gray-600">Ödeme Vadesi</span>
+                  <div className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-gray-400" />
+                    <span className="text-sm font-medium text-gray-900">{supplier.payment_terms} gün</span>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Sağ Panel - Detaylar */}
-        <div className="md:col-span-2">
-          <Card className="bg-white border-0 shadow-sm">
-            <CardContent className="p-0">
-              <Tabs defaultValue="materials" className="w-full">
-                <TabsList className="w-full rounded-none border-b">
-                  <TabsTrigger value="materials" className="flex-1">Malzemeler</TabsTrigger>
-                  <TabsTrigger value="orders" className="flex-1">Siparişler</TabsTrigger>
-                </TabsList>
+        {/* Modern Tabs */}
+        <Card className="bg-white shadow-sm border-0">
+          <Tabs defaultValue="orders" className="w-full">
+            <div className="border-b border-gray-200">
+              <TabsList className="w-full bg-transparent h-auto p-0 rounded-none">
+                <TabsTrigger 
+                  value="orders" 
+                  className="flex-1 px-6 py-4 text-sm font-medium text-gray-600 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none"
+                >
+                  Siparişler
+                </TabsTrigger>
+                <TabsTrigger 
+                  value="materials" 
+                  className="flex-1 px-6 py-4 text-sm font-medium text-gray-600 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none"
+                >
+                  Malzemeler
+                </TabsTrigger>
+              </TabsList>
+            </div>
 
                 <TabsContent value="materials" className="p-6">
                   <div className="space-y-4">
@@ -460,84 +693,367 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                   </div>
                 </TabsContent>
 
-                <TabsContent value="orders" className="p-6">
+            <TabsContent value="orders" className="p-6">
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900">Sipariş Geçmişi</h3>
+                    <p className="text-sm text-gray-600 mt-1">Bu tedarikçi ile yapılmış tüm siparişler</p>
+                  </div>
+                </div>
+                
+                {loadingOrders ? (
+                  <div className="flex items-center justify-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+                  </div>
+                ) : orders.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">Henüz sipariş bulunmuyor</h4>
+                    <p className="text-gray-600">Bu tedarikçi ile henüz sipariş oluşturulmamış.</p>
+                  </div>
+                ) : (
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">Sipariş Geçmişi</h3>
-                    </div>
-                    
-                    {/* Debug bilgileri */}
-                    <div style={{ display: 'none' }}>
-                      {`🎯 Render - loadingOrders: ${loadingOrders}`}
-                      {`🎯 Render - orders: ${JSON.stringify(orders)}`}
-                    </div>
-                    
-                    {loadingOrders ? (
-                      <div className="flex items-center justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
-                      </div>
-                    ) : orders.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                        <p>Henüz sipariş bulunmuyor</p>
-                      </div>
-                    ) : (
-                      <div className="grid gap-4">
-                        {orders.map((order) => (
-                          <Card key={order.id}>
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div>
-                                  <h4 className="font-medium">
-                                    {order.purchase_requests?.[0]?.title || 'Sipariş #' + order.id.slice(0, 8)}
-                                  </h4>
-                                  <div className="text-sm text-gray-600 mt-1">
-                                    Talep No: {order.purchase_requests?.[0]?.request_number || '-'}
+                    {orders.map((order) => (
+                      <Card key={order.id} className="bg-white border border-gray-200 hover:shadow-md transition-shadow duration-200">
+                        <CardContent className="p-6">
+                          <div className="flex gap-6">
+                            {/* Sol Kısım - Ana Bilgiler */}
+                            <div className="flex-1 min-w-0">
+                              {/* Sipariş Başlığı */}
+                              <div className="mb-4">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex-1">
+                                    <h4 className="text-lg font-medium text-gray-900 mb-2">
+                                      {order.purchase_requests?.[0]?.title || `Sipariş #${order.id.slice(0, 8)}`}
+                                    </h4>
+                                    <div className="flex items-center gap-4 text-sm text-gray-600">
+                                      <span className="flex items-center gap-1">
+                                        <FileText className="w-4 h-4" />
+                                        Talep No: {order.purchase_requests?.[0]?.request_number || '-'}
+                                      </span>
+                                      <Badge className={
+                                        order.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' :
+                                        order.status === 'delivered' ? 'bg-green-100 text-green-800 border-green-200' :
+                                        order.status === 'approved' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                        order.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
+                                        'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                      }>
+                                        {order.status === 'completed' ? 'Tamamlandı' :
+                                         order.status === 'delivered' ? 'Teslim Edildi' :
+                                         order.status === 'approved' ? 'Onaylandı' :
+                                         order.status === 'rejected' ? 'Reddedildi' :
+                                         'Beklemede'}
+                                      </Badge>
+                                    </div>
                                   </div>
-                                  <div className="flex items-center gap-4 mt-2">
-                                    <div className="text-sm text-gray-500">
-                                      <Calendar className="w-4 h-4 inline mr-1" />
-                                      Oluşturulma: {new Date(order.created_at).toLocaleDateString('tr-TR')}
-                                    </div>
-                                    <div className="text-sm text-gray-500">
-                                      <Package className="w-4 h-4 inline mr-1" />
-                                      Teslimat: {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
-                                    </div>
-                                    <Badge className={
-                                      order.status === 'completed' ? 'bg-green-100 text-green-800' :
-                                      order.status === 'approved' ? 'bg-blue-100 text-blue-800' :
-                                      order.status === 'rejected' ? 'bg-red-100 text-red-800' :
-                                      'bg-yellow-100 text-yellow-800'
-                                    }>
-                                      {order.status === 'completed' ? 'Tamamlandı' :
-                                       order.status === 'approved' ? 'Onaylandı' :
-                                       order.status === 'rejected' ? 'Reddedildi' :
-                                       'Beklemede'}
-                                    </Badge>
+                                  
+                                  {/* Fatura Tutarı */}
+                                  <div className="text-right ml-4">
+                                    {(() => {
+                                      const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
+                                        ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
+                                        : 0
+                                      
+                                      if (totalInvoiceAmount > 0) {
+                                        return (
+                                          <div>
+                                            <div className="text-xl font-semibold text-green-700">
+                                              {new Intl.NumberFormat('tr-TR', { 
+                                                style: 'currency', 
+                                                currency: order.invoices![0].currency || 'TRY'
+                                              }).format(totalInvoiceAmount)}
+                                            </div>
+                                            <div className="text-xs text-gray-500 mt-1">Fatura Tutarı</div>
+                                          </div>
+                                        )
+                                      }
+                                      return null
+                                    })()}
                                   </div>
                                 </div>
-                                <div className="text-right">
-                                  <div className="font-medium text-lg">
-                                    {new Intl.NumberFormat('tr-TR', { 
-                                      style: 'currency', 
-                                      currency: order.currency || 'TRY'
-                                    }).format(order.amount)}
+
+                                {/* Tarih Bilgileri */}
+                                <div className="flex items-center gap-6 text-sm text-gray-600">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="w-4 h-4" />
+                                    <span>Oluşturulma: {new Date(order.created_at).toLocaleDateString('tr-TR')}</span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Package className="w-4 h-4" />
+                                    <span>Teslimat: {new Date(order.delivery_date).toLocaleDateString('tr-TR')}</span>
                                   </div>
                                 </div>
                               </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    )}
+
+                              {/* Fatura Butonu */}
+                              <div className="mt-4">
+                                {order.invoices && order.invoices.length > 0 ? (
+                                  <Button 
+                                    onClick={() => handleOpenInvoiceModal(order.id)}
+                                    className="bg-green-600 hover:bg-green-700 text-white"
+                                    size="sm"
+                                  >
+                                    <Receipt className="w-4 h-4 mr-2" />
+                                    Yeni Fatura Ekle
+                                  </Button>
+                                ) : (
+                                  <Button 
+                                    onClick={() => handleOpenInvoiceModal(order.id)}
+                                    className="bg-gray-900 hover:bg-gray-800 text-white"
+                                    size="sm"
+                                  >
+                                    <Receipt className="w-4 h-4 mr-2" />
+                                    Fatura Ekle
+                                  </Button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Sağ Kısım - Görseller */}
+                            <div className="w-80 flex flex-col gap-4">
+                              {/* İrsaliye Fotoğrafları */}
+                              {order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0 && (
+                                <div className="bg-gray-50 rounded-lg p-4">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Image className="w-4 h-4 text-gray-600" />
+                                    <span className="text-sm font-medium text-gray-700">İrsaliye</span>
+                                    <Badge variant="outline" className="text-xs">
+                                      {order.delivery_receipt_photos.length} fotoğraf
+                                    </Badge>
+                                  </div>
+                                  
+                                  <div className="grid grid-cols-3 gap-2">
+                                    {order.delivery_receipt_photos.slice(0, 6).map((photo, index) => (
+                                      <button
+                                        key={index}
+                                        onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
+                                        className="aspect-square rounded overflow-hidden border border-gray-200 hover:border-gray-300 transition-colors group"
+                                      >
+                                        <img
+                                          src={photo}
+                                          alt={`İrsaliye ${index + 1}`}
+                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                                        />
+                                      </button>
+                                    ))}
+                                    {order.delivery_receipt_photos.length > 6 && (
+                                      <button
+                                        onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, 6)}
+                                        className="aspect-square rounded border border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200"
+                                      >
+                                        <div className="text-center">
+                                          <div className="font-medium">+{order.delivery_receipt_photos.length - 6}</div>
+                                          <div>daha</div>
+                                        </div>
+                                      </button>
+                                    )}
+                                  </div>
+                                  
+                                  {order.delivered_at && (
+                                    <div className="text-xs text-gray-500 mt-3">
+                                      Teslim alındı: {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
+                                        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* Fatura Fotoğrafları */}
+                              {order.invoices && order.invoices.length > 0 && (
+                                <div className="bg-green-50 rounded-lg p-4">
+                                  <div className="flex items-center gap-2 mb-3">
+                                    <Receipt className="w-4 h-4 text-green-600" />
+                                    <span className="text-sm font-medium text-green-700">Faturalar</span>
+                                    <Badge variant="outline" className="text-xs border-green-200">
+                                      {order.invoices.length} fatura
+                                    </Badge>
+                                  </div>
+                                  
+                                  <div className="space-y-3">
+                                    {order.invoices.map((invoice, index) => (
+                                      <div key={invoice.id} className="border border-green-200 rounded p-2">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-xs font-medium text-green-800">
+                                            Fatura #{index + 1}
+                                          </span>
+                                          <span className="text-xs font-semibold text-green-800">
+                                            {new Intl.NumberFormat('tr-TR', { 
+                                              style: 'currency', 
+                                              currency: invoice.currency || 'TRY'
+                                            }).format(invoice.amount)}
+                                          </span>
+                                        </div>
+                                        
+                                        {invoice.invoice_photos && invoice.invoice_photos.length > 0 && (
+                                          <div className="grid grid-cols-3 gap-1">
+                                            {invoice.invoice_photos.slice(0, 3).map((photo, photoIndex) => (
+                                              <button
+                                                key={photoIndex}
+                                                onClick={() => handleViewDeliveryPhotos(invoice.invoice_photos, photoIndex)}
+                                                className="aspect-square rounded overflow-hidden border border-green-200 hover:border-green-300 transition-colors"
+                                              >
+                                                <img src={photo} alt={`Fatura ${photoIndex + 1}`} className="w-full h-full object-cover" />
+                                              </button>
+                                            ))}
+                                            {invoice.invoice_photos.length > 3 && (
+                                              <div className="aspect-square bg-green-100 rounded border border-green-200 flex items-center justify-center text-xs text-green-600">
+                                                +{invoice.invoice_photos.length - 3}
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
+                                        
+                                        <div className="text-xs text-green-600 mt-2">
+                                          {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
+                                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                          })}
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
                   </div>
-                </TabsContent>
-              </Tabs>
-            </CardContent>
-          </Card>
-        </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        </Card>
       </div>
 
+      {/* Full Screen Image Viewer */}
+      <FullScreenImageViewer
+        isOpen={isImageViewerOpen}
+        onClose={() => setIsImageViewerOpen(false)}
+        images={selectedImages}
+        initialIndex={selectedImageIndex}
+        title="İrsaliye Fotoğrafları"
+      />
+
+      {/* Invoice Modal */}
+      <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
+        <DialogContent className="max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Receipt className="w-5 h-5" />
+              Fatura Ekle
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            {/* Tutar Input */}
+            <div className="space-y-2">
+              <Label htmlFor="amount">Fatura Tutarı</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="amount"
+                  type="number"
+                  placeholder="0.00"
+                  value={invoiceAmount}
+                  onChange={(e) => setInvoiceAmount(e.target.value)}
+                  className="flex-1"
+                />
+                <Select value={invoiceCurrency} onValueChange={setInvoiceCurrency}>
+                  <SelectTrigger className="w-20">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="bg-white">
+                    <SelectItem value="TRY">TRY</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Fotoğraf Yükleme */}
+            <div className="space-y-2">
+              <Label>Fatura Fotoğrafları</Label>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => document.getElementById('invoice-file-input')?.click()}
+                  disabled={isUploadingInvoice}
+                >
+                  <Upload className="w-4 h-4 mr-2" />
+                  Dosya Seç
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCameraCapture}
+                  disabled={isUploadingInvoice}
+                >
+                  <Camera className="w-4 h-4" />
+                </Button>
+              </div>
+              
+              <input
+                id="invoice-file-input"
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={handleFileUpload}
+              />
+            </div>
+
+            {/* Yüklenen Fotoğrafları Göster */}
+            {invoicePhotos.length > 0 && (
+              <div className="space-y-2">
+                <Label>Yüklenen Fotoğraflar ({invoicePhotos.length})</Label>
+                <div className="grid grid-cols-3 gap-2">
+                  {invoicePhotos.map((photo, index) => (
+                    <div key={index} className="relative">
+                      <img
+                        src={photo}
+                        alt={`Fatura ${index + 1}`}
+                        className="w-full h-20 object-cover rounded border"
+                      />
+                      <button
+                        onClick={() => removePhoto(index)}
+                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Butonlar */}
+            <div className="flex gap-2 pt-4">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleCloseInvoiceModal}
+                className="flex-1"
+              >
+                İptal
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSubmitInvoice}
+                disabled={isUploadingInvoice || !invoiceAmount || invoicePhotos.length === 0}
+                className="flex-1 bg-black hover:bg-black text-white"
+              >
+                {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura Ekle'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

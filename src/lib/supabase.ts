@@ -82,7 +82,7 @@ export type Database = {
           total_amount: number
           currency?: string
           urgency_level?: 'low' | 'normal' | 'high' | 'critical'
-          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled'
+          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled' | 'delivered' | 'teslim alındı'
           requested_by: string
           approved_by?: string
           approved_at?: string
@@ -103,7 +103,7 @@ export type Database = {
           total_amount: number
           currency?: string
           urgency_level?: 'low' | 'normal' | 'high' | 'critical'
-          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled'
+          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled' | 'delivered' | 'teslim alındı'
           requested_by: string
           approved_by?: string
           approved_at?: string
@@ -124,7 +124,7 @@ export type Database = {
           total_amount?: number
           currency?: string
           urgency_level?: 'low' | 'normal' | 'high' | 'critical'
-          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled'
+          status?: 'draft' | 'pending' | 'awaiting_offers' | 'approved' | 'rejected' | 'cancelled' | 'delivered' | 'teslim alındı'
           requested_by?: string
           approved_by?: string
           approved_at?: string
@@ -213,7 +213,11 @@ export type Database = {
           amount: number
           currency: string
           document_urls: string[]
-          status: 'pending' | 'approved' | 'rejected' | 'completed'
+          status: 'pending' | 'approved' | 'rejected' | 'completed' | 'delivered'
+          delivery_receipt_photos?: string[]
+          delivered_at?: string
+          received_by?: string
+          delivery_notes?: string
           created_at: string
           updated_at: string
         }
@@ -225,7 +229,11 @@ export type Database = {
           amount: number
           currency: string
           document_urls?: string[]
-          status?: 'pending' | 'approved' | 'rejected' | 'completed'
+          status?: 'pending' | 'approved' | 'rejected' | 'completed' | 'delivered'
+          delivery_receipt_photos?: string[]
+          delivered_at?: string
+          received_by?: string
+          delivery_notes?: string
           created_at?: string
           updated_at?: string
         }
@@ -237,7 +245,11 @@ export type Database = {
           amount?: number
           currency?: string
           document_urls?: string[]
-          status?: 'pending' | 'approved' | 'rejected' | 'completed'
+          status?: 'pending' | 'approved' | 'rejected' | 'completed' | 'delivered'
+          delivery_receipt_photos?: string[]
+          delivered_at?: string
+          received_by?: string
+          delivery_notes?: string
           created_at?: string
           updated_at?: string
         }

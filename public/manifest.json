@@ -1,0 +1,49 @@
+{
+  "name": "Satın Alma Yönetim Sistemi",
+  "short_name": "Satın Alma",
+  "description": "Şantiye satın alma talepleri için modern yönetim sistemi",
+  "theme_color": "#000000",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "orientation": "portrait",
+  "scope": "/",
+  "start_url": "/",
+  "icons": [
+    {
+      "src": "/favicon-16x16.ico",
+      "sizes": "16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/favicon-32x32.ico",
+      "sizes": "32x32",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "/favicon.ico",
+      "sizes": "48x48",
+      "type": "image/x-icon"
+    }
+  ],
+  "categories": ["business", "productivity"],
+  "lang": "tr",
+  "dir": "ltr",
+  "prefer_related_applications": false,
+  "screenshots": [],
+  "shortcuts": [
+    {
+      "name": "Yeni Talep",
+      "short_name": "Talep",
+      "description": "Yeni satın alma talebi oluştur",
+      "url": "/dashboard/requests/create",
+      "icons": [{ "src": "/favicon-32x32.ico", "sizes": "32x32" }]
+    },
+    {
+      "name": "Talepler",
+      "short_name": "Talepler",
+      "description": "Tüm talepleri görüntüle",
+      "url": "/dashboard/requests",
+      "icons": [{ "src": "/favicon-32x32.ico", "sizes": "32x32" }]
+    }
+  ]
+}

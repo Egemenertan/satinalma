@@ -1,0 +1,8 @@
+# Notification sound placeholder
+# You can add actual notification sound files here:
+# - notification.mp3 (general notification)
+# - urgent.mp3 (urgent notifications)
+# - success.mp3 (success notifications)
+
+# For now, we'll use the default browser notification sound
+# and add audio API support in the service worker

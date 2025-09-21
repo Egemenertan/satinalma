@@ -132,7 +132,7 @@ export default function RequestsPage() {
           <div className="flex items-center gap-4">
             <Button 
               onClick={() => router.push('/dashboard/requests/create')}
-              className="px-8 py-5 rounded-md text-md  bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
+              className="px-8 py-5 rounded-md font-light text-md  bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
             >
               
               Yeni Talep Oluştur
