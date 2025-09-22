@@ -38,7 +38,7 @@ interface PurchaseRequest {
   site_id: string
   material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı' | 'teslim alındı' | 'delivered'
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'satın almaya gönderildi' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı' | 'teslim alındı' | 'delivered'
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -104,9 +104,9 @@ const fetchPurchaseRequests = async (key: string) => {
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
   
-  // Purchasing officer sadece onaylanmış ve sipariş verilmiş talepleri görebilir
+  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    countQuery = countQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
+    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
   }
   
   // Santiye depo tüm talepleri görebilir
@@ -154,9 +154,9 @@ const fetchPurchaseRequests = async (key: string) => {
     .range(from, to)
     .order('created_at', { ascending: false })
   
-  // Purchasing officer sadece onaylanmış ve sipariş verilmiş talepleri görebilir
+  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    requestsQuery = requestsQuery.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
+    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
   }
   
   // Santiye depo tüm talepleri görebilir  
@@ -223,9 +223,9 @@ export default function PurchaseRequestsTable() {
     `purchase_requests/${currentPage}/${pageSize}`,
     fetchPurchaseRequests,
     {
-      revalidateOnFocus: false,
+      revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 60000, // 1 dakika cache
+      dedupingInterval: 5000, // 5 saniye cache - daha hızlı güncelleme
       errorRetryCount: 3,
       errorRetryInterval: 5000,
     }
@@ -318,6 +318,7 @@ export default function PurchaseRequestsTable() {
       draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-700 border-0' },
       pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
       'şantiye şefi onayladı': { label: 'Şantiye Şefi Onayladı', className: 'bg-blue-100 text-blue-800 border-0' },
+      'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
       awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
       approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
@@ -435,21 +436,55 @@ export default function PurchaseRequestsTable() {
     
     try {
       setApproving(requestId)
+      
+      // Optimistic update - UI'ı hemen güncelle
+      const optimisticUpdate = data ? {
+        ...data,
+        requests: data.requests.map((req: any) => 
+          req.id === requestId 
+            ? { ...req, status: 'satın almaya gönderildi' }
+            : req
+        )
+      } : null
+      
+      if (optimisticUpdate) {
+        mutate(`purchase_requests/${currentPage}/${pageSize}`, optimisticUpdate, false)
+      }
+      
       const supabase = createClient()
       
-      const { error } = await supabase
+      const { data: updateResult, error } = await supabase
         .from('purchase_requests')
         .update({ 
-          status: 'şantiye şefi onayladı',
+          status: 'satın almaya gönderildi',
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
+        .select()
       
       if (error) throw error
       
-      // Verileri yenile
-      refreshData()
+      console.log('✅ Status updated successfully:', {
+        requestId,
+        newStatus: 'satın almaya gönderildi',
+        updateResult
+      })
+      
+      // Agresif cache temizleme ve veri yenileme
       invalidatePurchaseRequestsCache()
+      
+      // Tüm ilgili cache'leri manuel temizle
+      mutate('purchase_requests_stats')
+      mutate('pending_requests_count')
+      
+      // SWR cache'ini birden fazla kez yenile
+      setTimeout(() => {
+        refreshData()
+      }, 100)
+      
+      setTimeout(() => {
+        refreshData()
+      }, 300)
       
     } catch (error: any) {
       console.error('❌ Site Manager Onay Hatası:', {
@@ -721,9 +756,9 @@ export default function PurchaseRequestsTable() {
                                 'Talep Et'
                               )}
                             </Button>
-                          ) : request.status === 'şantiye şefi onayladı' ? (
+                          ) : request.status === 'satın almaya gönderildi' ? (
                             <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                              ✓ Onaylandı
+                              ✓ Satın Almaya Gönderildi
                             </Badge>
                           ) : request.status === 'gönderildi' ? (
                             <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">

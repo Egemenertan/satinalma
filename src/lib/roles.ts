@@ -73,7 +73,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/requests/')
   }
   
-  // Purchasing officer dashboard, requests, suppliers ve sites sayfalarına erişebilir
+  // Purchasing officer dashboard, requests, suppliers, sites ve reports sayfalarına erişebilir
   if (userRole === 'purchasing_officer') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
@@ -86,7 +86,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/suppliers/') ||
            page === 'sites' ||
            page === '/dashboard/sites' ||
-           page.startsWith('/dashboard/sites/')
+           page.startsWith('/dashboard/sites/') ||
+           page === 'reports' ||
+           page === '/dashboard/reports'
   }
   
   // Site personeli sadece requests sayfasına ve talep oluşturma sayfasına erişebilir
@@ -119,7 +121,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'suppliers', 'sites'] // Dashboard, requests, suppliers ve sites
+    return ['dashboard', 'requests', 'suppliers', 'sites', 'reports'] // Dashboard, requests, suppliers, sites ve reports
   }
   
   if (userRole === 'site_personnel') {
@@ -131,7 +133,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'user') {
-    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports'] // Settings hariç
+    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites'] // Settings ve reports hariç
   }
   
   // Admin ve manager tüm menülere erişebilir

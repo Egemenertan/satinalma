@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail, ChevronDown, ChevronUp, Clock } from 'lucide-react'
+import { ArrowLeft, Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, Camera, Upload, ImageIcon, Phone, Mail, ChevronDown, ChevronUp, Clock, CheckCircle } from 'lucide-react'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
 import { Database } from '@/lib/types'
@@ -111,6 +111,43 @@ export default function OffersPage() {
     isRegistered: false,
     suppliers: []
   })
+  
+  // Her malzeme için ayrı tedarikçi bilgileri
+  const [materialSuppliers, setMaterialSuppliers] = useState<{[itemId: string]: {
+    isRegistered: boolean;
+    suppliers: Array<{
+      id: string;
+      name: string;
+      contact_person: string;
+      phone: string;
+      email: string;
+    }>;
+  }}>({})
+  
+  // Malzeme bazlı sipariş bilgileri - malzeme ID + tedarikçi ID kombinasyonu
+  const [materialOrders, setMaterialOrders] = useState<{[key: string]: {
+    id: string;
+    delivery_date: string;
+    supplier_name: string;
+    created_at: string;
+    material_item_id: string;
+  }}>({})
+  
+  // Local olarak sipariş oluşturulan malzeme-tedarikçi kombinasyonları
+  const [localOrderTracking, setLocalOrderTracking] = useState<{[key: string]: {
+    supplier_id: string;
+    material_item_id: string;
+    delivery_date: string;
+    order_id: string;
+    supplier_name: string;
+  }}>({})
+  
+  // Malzeme bazlı tedarikçi atama modal state'leri
+  const [currentMaterialForAssignment, setCurrentMaterialForAssignment] = useState<{
+    id: string;
+    name: string;
+    unit?: string;
+  } | null>(null)
   const [newOffers, setNewOffers] = useState<Offer[]>([
     { supplier_name: '', unit_price: 0, total_price: 0, delivery_days: 0, delivery_date: '', notes: '', currency: 'TRY', documents: [], documentPreviewUrls: [] }
   ])
@@ -154,6 +191,7 @@ export default function OffersPage() {
   // Teslimat onayı modal state'leri
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
   const [currentOrder, setCurrentOrder] = useState<any>(null)
+  const [shipmentData, setShipmentData] = useState<{[key: string]: {total_shipped: number, shipments: any[]}}>({});
 
   // Teslimat tarihi kontrolü
   const isDeliveryDateReached = () => {
@@ -207,6 +245,9 @@ export default function OffersPage() {
       fetchExistingOffers()
       checkItemInSupplierMaterials()
       fetchOrderDetails()
+      fetchShipmentData()
+      fetchMaterialSuppliers()
+      fetchMaterialOrders()
     }
   }, [requestId])
 
@@ -227,6 +268,62 @@ export default function OffersPage() {
       }
     } catch (error) {
       console.error('Error fetching user role:', error)
+    }
+  }
+
+  const fetchShipmentData = async () => {
+    try {
+      const { data: shipments, error } = await supabase
+        .from('shipments')
+        .select('*')
+        .eq('purchase_request_id', requestId)
+        .order('shipped_at', { ascending: false })
+
+      if (error) {
+        console.error('Error fetching shipments:', error)
+        setShipmentData({})
+        return
+      }
+
+      // Profile bilgilerini ayrı çek
+      let shipmentsWithProfiles = shipments || []
+      
+      if (shipments && shipments.length > 0) {
+        const userIds = [...new Set(shipments.map(s => s.shipped_by))]
+        
+        const { data: profiles, error: profileError } = await supabase
+          .from('profiles')
+          .select('id, full_name')
+          .in('id', userIds)
+
+        if (!profileError && profiles) {
+          shipmentsWithProfiles = shipments.map(shipment => ({
+            ...shipment,
+            profiles: profiles.find(p => p.id === shipment.shipped_by) || null
+          }))
+        }
+      }
+
+      // Shipment verilerini item_id'ye göre grupla
+      const groupedShipments: {[key: string]: {total_shipped: number, shipments: any[]}} = {}
+      
+      shipmentsWithProfiles.forEach(shipment => {
+        const itemId = shipment.purchase_request_item_id
+        if (!groupedShipments[itemId]) {
+          groupedShipments[itemId] = {
+            total_shipped: 0,
+            shipments: []
+          }
+        }
+        groupedShipments[itemId].total_shipped += parseFloat(shipment.shipped_quantity)
+        groupedShipments[itemId].shipments.push(shipment)
+      })
+
+      setShipmentData(groupedShipments)
+      
+    } catch (error) {
+      console.error('Error fetching shipment data:', error)
+      setShipmentData({})
     }
   }
 
@@ -310,6 +407,165 @@ export default function OffersPage() {
       }
     } catch (error) {
       console.error('❌ Sipariş detayları alınırken hata:', error)
+    }
+  }
+
+  // Malzeme bazlı sipariş bilgilerini çek
+  const fetchMaterialOrders = async () => {
+    try {
+      console.log('🔍 Malzeme sipariş bilgileri alınıyor...')
+      
+      // Bu talep için oluşturulmuş siparişleri çek
+      const { data: orders, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          delivery_date,
+          created_at,
+          supplier:suppliers(
+            id,
+            name
+          )
+        `)
+        .eq('purchase_request_id', requestId)
+
+      if (error) {
+        console.error('❌ Sipariş bilgileri alınamadı:', error)
+        return
+      }
+
+      console.log('📦 Sipariş bilgileri:', orders)
+
+      if (orders && orders.length > 0) {
+        const ordersData: {[key: string]: {
+          id: string;
+          delivery_date: string;
+          supplier_name: string;
+          created_at: string;
+          material_item_id: string;
+        }} = {}
+
+        orders.forEach((order: any) => {
+          if (order.supplier && order.supplier.id) {
+            // Şimdilik sadece tedarikçi ID'si ile key oluştur
+            // Gelecekte orders tablosuna material_item_id kolonu eklenebilir
+            ordersData[order.supplier.id] = {
+              id: order.id,
+              delivery_date: order.delivery_date,
+              supplier_name: order.supplier.name,
+              created_at: order.created_at,
+              material_item_id: ''
+            }
+          }
+        })
+
+        setMaterialOrders(ordersData)
+        console.log('✅ Sipariş bilgileri state\'e kaydedildi:', ordersData)
+      } else {
+        setMaterialOrders({})
+        console.log('ℹ️ Bu talep için sipariş bulunamadı')
+      }
+    } catch (error) {
+      console.error('❌ Sipariş bilgileri alınırken hata:', error)
+      setMaterialOrders({})
+    }
+  }
+
+  // Her malzeme için tedarikçi kontrolü
+  const fetchMaterialSuppliers = async () => {
+    try {
+      console.log('🔍 Malzeme bazlı tedarikçi kontrolü başlatılıyor...')
+      
+      // Önce talep edilen ürünlerin listesini alalım
+      const { data: requestData, error: requestError } = await supabase
+        .from('purchase_requests')
+        .select('purchase_request_items(id, item_name)')
+        .eq('id', requestId)
+        .single()
+
+      if (requestError) {
+        console.error('❌ Purchase request data alınamadı:', requestError)
+        throw requestError
+      }
+
+      console.log('📋 Purchase request items:', requestData?.purchase_request_items)
+
+      if (requestData?.purchase_request_items && requestData.purchase_request_items.length > 0) {
+        const materialSuppliersData: {[itemId: string]: {
+          isRegistered: boolean;
+          suppliers: Array<{
+            id: string;
+            name: string;
+            contact_person: string;
+            phone: string;
+            email: string;
+          }>;
+        }} = {}
+
+        // Her malzeme için ayrı ayrı tedarikçi kontrolü yap
+        for (const item of requestData.purchase_request_items) {
+          console.log(`🔍 ${item.item_name} için tedarikçi kontrolü...`)
+          
+          try {
+            // Yeni şema ile kontrol et (material_item field'ı ile)
+            const { data: supplierMaterialsNew, error: materialsErrorNew } = await supabase
+              .from('supplier_materials')
+              .select(`
+                id,
+                supplier_id,
+                material_item
+              `)
+              .eq('material_item', item.item_name)
+
+            if (!materialsErrorNew && supplierMaterialsNew && supplierMaterialsNew.length > 0) {
+              console.log(`✅ ${item.item_name} için tedarikçi bulundu:`, supplierMaterialsNew.length)
+              
+              // Tedarikçi bilgilerini alalım
+              const supplierIds = supplierMaterialsNew.map(sm => sm.supplier_id)
+              const { data: suppliers, error: suppliersError } = await supabase
+                .from('suppliers')
+                .select('id, name, contact_person, phone, email')
+                .in('id', supplierIds)
+
+              if (!suppliersError && suppliers) {
+                materialSuppliersData[item.id] = {
+                  isRegistered: true,
+                  suppliers: suppliers
+                }
+              } else {
+                materialSuppliersData[item.id] = {
+                  isRegistered: false,
+                  suppliers: []
+                }
+              }
+            } else {
+              console.log(`ℹ️ ${item.item_name} için kayıtlı tedarikçi bulunamadı`)
+              materialSuppliersData[item.id] = {
+                isRegistered: false,
+                suppliers: []
+              }
+            }
+          } catch (itemError) {
+            console.error(`❌ ${item.item_name} için tedarikçi kontrolü hatası:`, itemError)
+            materialSuppliersData[item.id] = {
+              isRegistered: false,
+              suppliers: []
+            }
+          }
+        }
+
+        console.log('📊 Toplam malzeme tedarikçi verisi:', materialSuppliersData)
+        setMaterialSuppliers(materialSuppliersData)
+      }
+    } catch (error: any) {
+      console.error('❌ Malzeme tedarikçi kontrolü hatası:', {
+        error,
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code
+      })
+      showToast('Malzeme tedarikçi kontrolü yapılırken bir hata oluştu.', 'error')
     }
   }
 
@@ -1041,6 +1297,12 @@ export default function OffersPage() {
     try {
       setSendingItem(true)
       
+      // Kullanıcı bilgisini al
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        throw new Error('Kullanıcı bilgisi alınamadı')
+      }
+
       // Tüm ürünlerin gönderilip gönderilmediğini kontrol et
       const allItemsFullyFulfilled = sendData.length === items.length && sendData.every(data => data.isFullyFulfilled)
       const hasPartialFulfillment = sendData.some(data => !data.isFullyFulfilled) || sendData.length < items.length
@@ -1057,7 +1319,29 @@ export default function OffersPage() {
         hasPartialFulfillment
       })
       
-      // 1. Purchase request status'unu güncelle
+      // 1. Her gönderim için shipments tablosuna kayıt ekle
+      const shipmentInserts = sendData.map(data => ({
+        purchase_request_id: requestId,
+        purchase_request_item_id: data.item.id,
+        shipped_quantity: data.sentQuantity,
+        shipped_by: user.id,
+        notes: `${data.item.item_name} - ${data.sentQuantity} ${data.item.unit} gönderildi`
+      }))
+
+      console.log('📦 Inserting shipment records:', shipmentInserts)
+      
+      const { error: shipmentError } = await supabase
+        .from('shipments')
+        .insert(shipmentInserts)
+
+      if (shipmentError) {
+        console.error('❌ Shipment insert error:', shipmentError)
+        throw shipmentError
+      }
+
+      console.log('✅ Shipment records inserted successfully')
+      
+      // 2. Purchase request status'unu güncelle
       const { error: requestError } = await supabase
         .from('purchase_requests')
         .update({ 
@@ -1073,7 +1357,7 @@ export default function OffersPage() {
       
       console.log('✅ Purchase request updated successfully')
       
-      // 2. Her ürün için purchase_request_items tablosunu güncelle
+      // 3. Her ürün için purchase_request_items tablosunu güncelle
       for (const data of sendData) {
         if (!data.isFullyFulfilled) {
           console.log('🔄 Updating purchase request item quantity:', {
@@ -1115,6 +1399,7 @@ export default function OffersPage() {
       setIsSendModalOpen(false)
       setSendQuantities({})
       await fetchRequestData()
+      await fetchShipmentData()
       
     } catch (error: any) {
       console.error('❌ Error sending items:', {
@@ -1139,16 +1424,14 @@ export default function OffersPage() {
     try {
       setSiteManagerApproving(true)
       
-      // Mevcut status'a göre yeni status belirle
-      let newStatus = 'şantiye şefi onayladı'
-      let successMessage = 'Talep başarıyla onaylandı!'
+      // Tüm durumlar için "satın almaya gönderildi" status'u kullan
+      const newStatus = 'satın almaya gönderildi'
+      let successMessage = 'Talep başarıyla satın almaya gönderildi!'
       
       if (request?.status === 'kısmen gönderildi') {
-        newStatus = 'eksik onaylandı'
-        successMessage = 'Eksik malzeme talebi onaylandı!'
+        successMessage = 'Eksik malzeme talebi satın almaya gönderildi!'
       } else if (request?.status === 'depoda mevcut değil') {
-        newStatus = 'alternatif onaylandı'
-        successMessage = 'Alternatif çözüm onaylandı!'
+        successMessage = 'Alternatif çözüm satın almaya gönderildi!'
       }
       
       const { error } = await supabase
@@ -1427,91 +1710,122 @@ export default function OffersPage() {
             </Card>
 
             {/* Sağ Panel - Ürün Bilgileri */}
-            <div>
-              {request?.purchase_request_items && request.purchase_request_items.length > 0 ? (
-                <Card className="bg-white border-0 shadow-sm h-full">
-                  <CardHeader>
-                    <CardTitle className="text-xl font-semibold text-gray-900">
-                      Ürün Bilgileri 
-                      {request.purchase_request_items.length > 1 && (
-                        <span className="text-sm font-normal text-gray-500 ml-2">
-                          ({request.purchase_request_items.length} ürün)
-                        </span>
-                      )}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    {/* Çoklu ürün varsa scroll edilebilir liste */}
-                    <div className={`space-y-6 ${request.purchase_request_items.length > 2 ? 'max-h-96 overflow-y-auto pr-2' : ''}`}>
-                      {request.purchase_request_items.map((item, index) => (
-                        <div key={item.id} className="border-b border-gray-100 last:border-b-0 pb-6 last:pb-0">
-                          {/* Ürün başlığı (çoklu ürün varsa) */}
-                          {request.purchase_request_items.length > 1 && (
-                            <div className="flex items-center gap-2 mb-4">
-                              <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
-                                {index + 1}
+            <Card className="bg-white border-0 shadow-sm h-full">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-lg font-semibold text-gray-900">Ürün Bilgileri</CardTitle>
+                  {request?.purchase_request_items && request.purchase_request_items.length > 1 && (
+                    <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
+                      {request.purchase_request_items.length} ürün
+                    </Badge>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent className="pt-0">
+                {request?.purchase_request_items && request.purchase_request_items.length > 0 ? (
+                  <div className="max-h-80 overflow-y-auto pr-2 space-y-3">
+                    {/* Ürün Kartları */}
+                    {request.purchase_request_items.map((item, index) => {
+                      const itemShipments = shipmentData[item.id]
+                      const totalShipped = itemShipments?.total_shipped || 0
+                      
+                      // Orijinal talep edilen miktar - bu hiç değişmez
+                      const originalQuantity = item.quantity + totalShipped
+                      
+                      return (
+                        <div key={item.id} className="bg-gray-50 border border-gray-200 rounded-lg p-3 hover:bg-gray-100 transition-colors duration-200">
+                          {/* Ürün Header */}
+                          <div className="flex items-start justify-between mb-2">
+                            <div className="flex items-center gap-2">
+                              {request.purchase_request_items.length > 1 && (
+                                <div className="w-5 h-5 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                  {index + 1}
+                                </div>
+                              )}
+                              <div>
+                                <h4 className="text-sm font-semibold text-gray-900">{item.item_name}</h4>
+                                {item.brand && (
+                                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 mt-1 text-xs px-2 py-0.5">
+                                    {item.brand}
+                                  </Badge>
+                                )}
                               </div>
-                              <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                                Ürün {index + 1}
-                              </span>
+                            </div>
+                            
+                            {/* Miktar Badge - Her zaman orijinal talep miktarı */}
+                            <div className="text-right">
+                              <div className="text-lg font-bold text-gray-900">{originalQuantity}</div>
+                              <div className="text-xs text-gray-500">{item.unit}</div>
+                              {totalShipped > 0 && (
+                                <div className="text-xs text-gray-400 mt-1">
+                                  İlk talep
+                                </div>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Gönderim Durumu */}
+                          {totalShipped > 0 && (
+                            <div className="mb-3 p-2 bg-green-50 border border-green-200 rounded-md">
+                              <div className="flex items-center gap-2 mb-1">
+                                <Truck className="h-3 w-3 text-green-600" />
+                                <span className="text-xs font-medium text-green-700">Gönderim Durumu</span>
+                              </div>
+                              <div className="text-xs text-green-800">
+                                <div className="flex items-center justify-between">
+                                  <span>Gönderilen:</span>
+                                  <span className="font-semibold">{totalShipped.toFixed(2)} {item.unit}</span>
+                                </div>
+                                {itemShipments?.shipments && itemShipments.shipments.length > 0 && (
+                                  <div className="mt-1 pt-1 border-t border-green-200">
+                                    <div className="text-xs text-green-600">
+                                      Son gönderim: {new Date(itemShipments.shipments[0].shipped_at).toLocaleDateString('tr-TR')}
+                                      {itemShipments.shipments[0].profiles?.full_name && (
+                                        <span className="ml-1">- {itemShipments.shipments[0].profiles.full_name}</span>
+                                      )}
+                                    </div>
+                                    {itemShipments.shipments.length > 1 && (
+                                      <div className="text-xs text-green-600">
+                                        Toplam {itemShipments.shipments.length} gönderim
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           )}
 
-                          <div className="space-y-4">
-                            <div>
-                              <p className="text-sm font-medium text-gray-500 mb-2">Ürün Adı</p>
-                              <p className="text-lg font-medium text-gray-900">{item.item_name}</p>
-                            </div>
-                            
-                            {item.brand && (
-                              <div>
-                                <p className="text-sm font-medium text-gray-500 mb-2">Marka</p>
-                                <div className="flex items-center gap-3">
-                                  <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1">
-                                    {item.brand}
-                                  </Badge>
-                                </div>
-                              </div>
-                            )}
-                            
-                            {/* Miktar Highlight */}
-                            <div className="bg-gray-50 rounded-lg p-4">
-                              <p className="text-sm font-medium text-gray-500 mb-2">Talep Edilen Miktar</p>
-                              <div className="flex items-center gap-3">
-                                <div className="text-2xl font-semibold text-gray-900">{item.quantity}</div>
-                                <Badge variant="outline" className="text-gray-600">
-                                  {item.unit}
-                                </Badge>
-                              </div>
-                            </div>
-                            
+                          {/* Ürün Detayları */}
+                          <div className="space-y-2">
                             {item.specifications && (
                               <div>
-                                <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
-                                <p className="text-sm text-gray-700 leading-relaxed">{item.specifications}</p>
+                                <p className="text-xs font-medium text-gray-500 mb-1">Özellikler</p>
+                                <p className="text-xs text-gray-700 bg-white rounded p-2 border border-gray-100">{item.specifications}</p>
                               </div>
                             )}
 
                             {item.description && item.description !== item.specifications && (
                               <div>
-                                <p className="text-sm font-medium text-gray-500 mb-2">Detay Açıklama</p>
-                                <p className="text-sm text-gray-700 leading-relaxed">{item.description}</p>
+                                <p className="text-xs font-medium text-gray-500 mb-1">Açıklama</p>
+                                <p className="text-xs text-gray-700 bg-white rounded p-2 border border-gray-100">{item.description}</p>
                               </div>
                             )}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )
+                    })}
 
                     {/* Malzeme Resimleri */}
                     {request?.image_urls && request.image_urls.length > 0 && (
-                      <div className="border-t border-gray-100 pt-6">
-                        <p className="text-sm font-medium text-gray-500 mb-3">Malzeme Resimleri ({request.image_urls.length})</p>
-                        <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mt-3">
+                        <h4 className="text-sm font-semibold text-gray-900 mb-2">
+                          Malzeme Resimleri ({request.image_urls.length})
+                        </h4>
+                        <div className="grid grid-cols-3 gap-2">
                           {request.image_urls.map((url, index) => (
                             <div 
                               key={index} 
-                              className="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
+                              className="aspect-square bg-gray-100 rounded overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
                               onClick={() => openImageModal(url, `Malzeme resmi ${index + 1}`, index, request.image_urls!.length)}
                             >
                               <img
@@ -1525,8 +1839,8 @@ export default function OffersPage() {
                                   if (target.parentElement) {
                                     target.parentElement.innerHTML = `
                                       <div class="w-full h-full flex flex-col items-center justify-center bg-gray-100">
-                                        <div class="w-8 h-8 text-gray-400 mb-2">📷</div>
-                                        <span class="text-xs text-gray-500 font-medium">Resim yüklenemedi</span>
+                                        <div class="w-4 h-4 text-gray-400 mb-1">📷</div>
+                                        <span class="text-xs text-gray-500 font-medium">Resim</span>
                                       </div>
                                     `;
                                   }
@@ -1535,33 +1849,31 @@ export default function OffersPage() {
                             </div>
                           ))}
                         </div>
-                        <p className="text-xs text-gray-500 mt-2">
+                        <p className="text-xs text-gray-500 mt-2 text-center">
                           Resimleri büyütmek için tıklayın
                         </p>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-              ) : (
-                /* Ürün Bilgileri Yok */
-                <Card className="bg-white border-0 shadow-sm h-full">
-                  <CardContent className="flex items-center justify-center h-64">
+                  </div>
+                ) : (
+                  /* Ürün Bilgileri Yok */
+                  <div className="flex items-center justify-center h-48">
                     <div className="text-center">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <Package className="w-8 h-8 text-gray-400" />
+                      <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                        <Package className="w-6 h-6 text-gray-400" />
                       </div>
-                      <h3 className="text-lg font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
-                      <p className="text-sm text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
+                      <h3 className="text-sm font-medium text-gray-600 mb-2">Ürün Bilgisi Yok</h3>
+                      <p className="text-xs text-gray-500">Bu talep için ürün detayları bulunamadı.</p>
                       
                       {/* Resimler varsa ürün bilgisi olmasa da göster */}
                       {request?.image_urls && request.image_urls.length > 0 && (
-                        <div className="mt-6">
-                          <p className="text-sm font-medium text-gray-600 mb-3">Malzeme Resimleri ({request.image_urls.length})</p>
-                          <div className="grid grid-cols-2 gap-3 max-w-xs mx-auto">
+                        <div className="mt-4">
+                          <p className="text-xs font-medium text-gray-600 mb-2">Malzeme Resimleri ({request.image_urls.length})</p>
+                          <div className="grid grid-cols-2 gap-2 max-w-32 mx-auto">
                             {request.image_urls.map((url, index) => (
                               <div 
                                 key={index} 
-                                className="aspect-square bg-gray-100 rounded-lg overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
+                                className="aspect-square bg-gray-100 rounded overflow-hidden cursor-pointer hover:shadow-md transition-all duration-200 border border-gray-200"
                                 onClick={() => openImageModal(url, `Malzeme resmi ${index + 1}`, index, request.image_urls!.length)}
                               >
                                 <img
@@ -1578,34 +1890,242 @@ export default function OffersPage() {
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              )}
-            </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
-          {/* Tedarikçi Atama Butonu - Site personeli, santiye depo ve site manager göremez */}
-          {userRole !== 'site_personnel' && userRole !== 'site_manager' && userRole !== 'santiye_depo' && !supplierMaterialInfo.isRegistered && request?.purchase_request_items && request.purchase_request_items.length > 0 && (
+          {/* Malzeme Bazlı Tedarikçi/Sipariş Yönetimi */}
+          {request?.purchase_request_items && request.purchase_request_items.length > 0 && (
             <Card className="bg-white border-0 shadow-sm">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between w-full">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 bg-gray-100 rounded-lg flex items-center justify-center">
-                      <Building2 className="h-6 w-6 text-gray-600" />
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                    <Building2 className="h-6 w-6 text-blue-600" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl font-semibold text-gray-900">
+                      {userRole === 'site_personnel' || userRole === 'site_manager' ? 
+                        'Malzeme Sipariş Durumu' : 
+                        'Malzeme Tedarikçi Yönetimi'
+                      }
+                    </CardTitle>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {userRole === 'site_personnel' || userRole === 'site_manager' ? 
+                        'Malzemeler için sipariş durumu ve teslimat bilgileri' : 
+                        'Her malzeme için tedarikçi ataması ve sipariş yönetimi'
+                      }
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {request.purchase_request_items.map((item, index) => {
+                    const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
+                    
+                    return (
+                      <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                        {/* Malzeme Header */}
+                        <div className="flex items-start justify-between mb-4">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-2">
+                              {request.purchase_request_items.length > 1 && (
+                                <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                  {index + 1}
+                                </div>
+                              )}
+                              <h4 className="text-lg font-semibold text-gray-900">{item.item_name}</h4>
+                              {item.brand && (
+                                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
+                                  {item.brand}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-gray-600 space-y-1">
+                              <div className="flex items-center gap-4">
+                                <span>Miktar: <strong>{item.quantity} {item.unit}</strong></span>
+                                {item.specifications && (
+                                  <span className="text-xs text-gray-500">• {item.specifications}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          {/* Tedarikçi Durumu Badge */}
+                          <div className="text-right">
+                            {materialSupplier.isRegistered ? (
+                              <Badge className="bg-green-100 text-green-700 border-green-200">
+                                ✓ {materialSupplier.suppliers.length} Tedarikçi
+                              </Badge>
+                            ) : (
+                              <Badge variant="outline" className="bg-gray-50 text-gray-600 border-gray-300">
+                                Tedarikçi Yok
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Tedarikçi Listesi veya Sipariş Durumu */}
+                        {materialSupplier.isRegistered && materialSupplier.suppliers.length > 0 ? (
+                          <div className="space-y-3">
+                            <h5 className="text-sm font-medium text-gray-700">
+                              {userRole === 'site_personnel' || userRole === 'site_manager' ? 'Sipariş Durumu:' : 'Kayıtlı Tedarikçiler:'}
+                            </h5>
+                            <div className="grid gap-3">
+                              {materialSupplier.suppliers.map((supplier) => {
+                                // Önce local tracking'den kontrol et (daha güncel)
+                                const localTrackingKey = `${item.id}_${supplier.id}`
+                                const localOrder = localOrderTracking[localTrackingKey]
+                                
+                                // Sonra database'den gelen genel sipariş bilgisi
+                                const existingOrder = materialOrders[supplier.id]
+                                
+                                // Local tracking varsa onu kullan, yoksa database'den gelen bilgiyi kullan
+                                const orderToShow = localOrder ? {
+                                  id: localOrder.order_id,
+                                  delivery_date: localOrder.delivery_date,
+                                  supplier_name: localOrder.supplier_name,
+                                  created_at: new Date().toISOString(),
+                                  material_item_id: localOrder.material_item_id
+                                } : existingOrder
+                                
+                                return (
+                                  <div key={supplier.id} className="bg-white rounded-lg p-3 border border-gray-200">
+                                    <div className="flex items-center justify-between">
+                                      <div>
+                                        <h6 className="font-medium text-gray-900">{supplier.name}</h6>
+                                        <p className="text-xs text-gray-600">{supplier.contact_person}</p>
+                                        {(userRole !== 'site_personnel' && userRole !== 'site_manager') && (
+                                          <div className="flex items-center gap-4 mt-1">
+                                            <span className="text-xs text-gray-500">{supplier.phone}</span>
+                                            <span className="text-xs text-gray-500">{supplier.email}</span>
+                                          </div>
+                                        )}
+                                      </div>
+                                      <div className="flex gap-2">
+                                        {(userRole !== 'site_personnel' && userRole !== 'site_manager') && (
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                                            className="text-gray-700 border-gray-200 hover:bg-gray-50 text-xs"
+                                          >
+                                            Detay
+                                          </Button>
+                                        )}
+                                        {orderToShow ? (
+                                          <div className="bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                                            <div className="flex items-center gap-2 mb-1">
+                                              <Check className="h-3 w-3 text-green-600" />
+                                              <span className="text-xs font-medium text-green-800">Sipariş Verildi</span>
+                                              {localOrder && (
+                                                <span className="text-xs text-green-600">(Bu malzeme için)</span>
+                                              )}
+                                            </div>
+                                            <div className="text-xs text-green-700">
+                                              <div>Teslimat: {new Date(orderToShow.delivery_date).toLocaleDateString('tr-TR')}</div>
+                                              <div className="text-green-600 mt-1">
+                                                Sipariş ID: #{orderToShow.id.slice(-8)}
+                                              </div>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            {(userRole !== 'site_personnel' && userRole !== 'site_manager') ? (
+                                              <Button
+                                                size="sm"
+                                                onClick={() => {
+                                                  setSelectedSupplier(supplier)
+                                                  setCurrentMaterialForAssignment({
+                                                    id: item.id,
+                                                    name: item.item_name,
+                                                    unit: item.unit
+                                                  })
+                                                  setIsCreateOrderModalOpen(true)
+                                                }}
+                                                className="bg-green-600 hover:bg-green-700 text-white text-xs"
+                                              >
+                                                <Package className="h-3 w-3 mr-1" />
+                                                Sipariş Oluştur
+                                              </Button>
+                                            ) : (
+                                              <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+                                                <div className="flex items-center gap-2">
+                                                  <Clock className="h-3 w-3 text-gray-500" />
+                                                  <span className="text-xs font-medium text-gray-600">Sipariş Bekleniyor</span>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            {(userRole !== 'site_personnel' && userRole !== 'site_manager') ? (
+                              <div className="text-center py-4">
+                                <div className="mb-3">
+                                  <p className="text-sm text-gray-600 mb-2">Bu malzeme için henüz tedarikçi atanmamış</p>
+                                </div>
+                                <Button
+                                  onClick={() => {
+                                    setCurrentMaterialForAssignment({
+                                      id: item.id,
+                                      name: item.item_name,
+                                      unit: item.unit
+                                    })
+                                    setIsAssignSupplierModalOpen(true)
+                                  }}
+                                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                                >
+                                  <Building2 className="h-4 w-4 mr-2" />
+                                  Tedarikçi Ata
+                                </Button>
+                              </div>
+                            ) : (
+                              <div className="text-center py-6">
+                                <div className="w-12 h-12 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                                  <Package className="w-6 h-6 text-gray-400" />
+                                </div>
+                                <p className="text-sm text-gray-600 mb-2">Bu malzeme için henüz tedarikçi atanmamış</p>
+                                <p className="text-xs text-gray-500">Satın alma sorumlusu tarafından tedarikçi ataması yapılması bekleniyor</p>
+                              </div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+                
+                {/* Genel Bilgilendirme */}
+                <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex gap-3">
+                    <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-white text-xs">i</span>
                     </div>
                     <div>
-                      <h3 className="text-lg font-semibold text-gray-900">Tedarikçi Ataması</h3>
-                      <p className="text-sm text-gray-500">Bu ürünü bir tedarikçiye atayarak otomatik teklif alabilirsiniz</p>
+                      <h4 className="text-sm font-medium text-blue-800">
+                        {userRole === 'site_personnel' || userRole === 'site_manager' ? 
+                          'Sipariş Takip Sistemi' : 
+                          'Malzeme Tedarikçi Sistemi'
+                        }
+                      </h4>
+                      <p className="text-sm text-blue-700 mt-1">
+                        {userRole === 'site_personnel' || userRole === 'site_manager' ? 
+                          'Bu sayfada her malzeme için sipariş durumunu, tedarikçi bilgilerini ve teslimat tarihlerini takip edebilirsiniz.' :
+                          'Her malzeme için ayrı tedarikçi atayabilir ve direkt sipariş oluşturabilirsiniz. Tedarikçi atanmamış malzemeler için manuel teklif girişi yapılabilir.'
+                        }
+                      </p>
                     </div>
                   </div>
-                  
-                  <Button
-                    onClick={() => setIsAssignSupplierModalOpen(true)}
-                    className="bg-gray-900 hover:bg-gray-800 text-white font-medium rounded-lg px-6 py-3"
-                  >
-                    <Building2 className="w-4 h-4 mr-2" />
-                    Tedarikçiye Ata
-                  </Button>
                 </div>
               </CardContent>
             </Card>
@@ -1844,89 +2364,132 @@ export default function OffersPage() {
                       )}
                     </div>
                   ) : userRole === 'santiye_depo' ? (
-                    /* Santiye depo için özel alan */
+                    /* Santiye depo için malzeme listesi */
                     <div className="bg-white rounded-lg p-6 border border-gray-200">
                       <h4 className="text-lg font-semibold text-gray-900 mb-4">Depo İşlemleri</h4>
                       
-                      {/* Teslimat Tarihi */}
-                      <div className="bg-blue-50 rounded-lg p-4 border border-blue-200 mb-6">
-                        <p className="text-sm font-medium text-blue-700 mb-1">Teslimat Tarihi</p>
-                        <p className="text-xl font-semibold text-blue-900">
-                          {new Date(orderDetails.deliveryDate).toLocaleDateString('tr-TR')}
-                        </p>
-                      </div>
-
-                      {/* Talep Bilgileri */}
-                      {request?.purchase_request_items?.[0] && (
-                        <div className="space-y-4 mb-6">
-                          {/* Mevcut Talep Miktarı */}
-                          <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                            <p className="text-sm font-medium text-gray-600 mb-2">
-                              {request.status === 'kısmen gönderildi' ? 'Kalan Talep' : 'Talep Edilen Miktar'}
-                            </p>
-                            <div className="flex items-center gap-3">
-                              <span className="text-2xl font-bold text-gray-900">
-                                {request.purchase_request_items[0].quantity}
-                              </span>
-                              <span className="text-lg text-gray-600 bg-white px-3 py-1 rounded-md border">
-                                {request.purchase_request_items[0].unit}
-                              </span>
-                            </div>
-                            <p className="text-sm text-gray-500 mt-2">
-                              {request.purchase_request_items[0].item_name}
-                            </p>
-                          </div>
-
-                          {/* Gönderilen Miktar (eğer varsa) */}
-                          {request.sent_quantity && request.sent_quantity > 0 && (
-                            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                              <p className="text-sm font-medium text-green-700 mb-2">Daha Önce Gönderilen</p>
-                              <div className="flex items-center gap-3">
-                                <span className="text-xl font-bold text-green-800">
-                                  {request.sent_quantity}
-                                </span>
-                                <span className="text-lg text-green-600 bg-white px-3 py-1 rounded-md border border-green-200">
-                                  {request.purchase_request_items[0].unit}
-                                </span>
-                              </div>
-                              <p className="text-xs text-green-600 mt-2">
-                                Toplam gönderilmiş miktar
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Depo İşlem Butonları */}
-                      <div className="space-y-3">
-                        <h5 className="text-sm font-medium text-gray-700 mb-3">Talep Durumu</h5>
-                        
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                          {/* Gönder Butonu */}
-                          <Button
-                            onClick={handleSendItem}
-                            className="h-12 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
-                          >
-                            <Package className="h-5 w-5" />
-                            Gönder
-                          </Button>
+                      {/* Malzeme Satırları */}
+                      <div className="space-y-4">
+                        {request?.purchase_request_items?.map((item, index) => {
+                          const itemShipments = shipmentData[item.id]
+                          const totalShipped = itemShipments?.total_shipped || 0
+                          const currentQuantity = sendQuantities[item.id] || ''
                           
-                          {/* Depoda Yok Butonu */}
-                          <Button
-                            onClick={handleDepotNotAvailable}
-                            variant="outline"
-                            className="h-12 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 rounded-lg font-medium flex items-center justify-center gap-2"
-                          >
-                            <X className="h-5 w-5" />
-                            Depoda Yok
-                          </Button>
-                        </div>
-                        
-                        <div className="text-center pt-2">
-                          <p className="text-xs text-gray-500">
-                            Malzeme durumunu seçerek talebi işleme alın
-                          </p>
-                        </div>
+                          return (
+                            <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                              {/* Malzeme Bilgisi */}
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-2">
+                                    {request.purchase_request_items.length > 1 && (
+                                      <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                        {index + 1}
+                                      </div>
+                                    )}
+                                    <h5 className="text-sm font-semibold text-gray-900">{item.item_name}</h5>
+                                  </div>
+                                  <div className="text-sm text-gray-600 space-y-1">
+                                    {/* Orijinal talep edilen miktar - her zaman sabit */}
+                                    <div>
+                                      İlk Talep: <span className="font-medium">{(item.quantity + totalShipped).toFixed(2)} {item.unit}</span>
+                                    </div>
+                                    {/* Gönderilmiş miktar */}
+                                    {totalShipped > 0 && (
+                                      <div className="text-green-600">
+                                        Gönderilmiş: <span className="font-medium">{totalShipped.toFixed(2)} {item.unit}</span>
+                                      </div>
+                                    )}
+                                    {/* Kalan miktar */}
+                                    {item.quantity > 0 && (
+                                      <div className="text-orange-600">
+                                        Kalan: <span className="font-medium">{item.quantity} {item.unit}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Gönderim Kontrolü - Sadece işlem yapılmamışsa göster */}
+                              {(totalShipped === 0 && request.status !== 'depoda mevcut değil') ? (
+                                <div className="grid grid-cols-12 gap-3 items-center">
+                                  <div className="col-span-4">
+                                    <label className="block text-xs font-medium text-gray-600 mb-1">
+                                      Gönderilecek Miktar
+                                    </label>
+                                    <Input
+                                      type="number"
+                                      step="0.01"
+                                      min="0.01"
+                                      max={item.quantity}
+                                      value={currentQuantity}
+                                      onChange={(e) => setSendQuantities(prev => ({
+                                        ...prev,
+                                        [item.id]: e.target.value
+                                      }))}
+                                      placeholder="0.00"
+                                      className="h-10 bg-white"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">Max: {item.quantity}</p>
+                                  </div>
+                                  <div className="col-span-2 text-center">
+                                    <span className="text-sm font-medium text-gray-600">{item.unit}</span>
+                                  </div>
+                                  <div className="col-span-3">
+                                    <Button
+                                      onClick={async () => {
+                                        if (!currentQuantity.trim() || parseFloat(currentQuantity) <= 0) {
+                                          showToast('Geçerli bir miktar girin.', 'error')
+                                          return
+                                        }
+                                        
+                                        // Tek ürün için gönderim yap
+                                        const tempQuantities = { [item.id]: currentQuantity }
+                                        setSendQuantities(tempQuantities)
+                                        await confirmSendItem()
+                                      }}
+                                      disabled={!currentQuantity.trim() || parseFloat(currentQuantity) <= 0 || sendingItem}
+                                      className="w-full h-10 bg-green-600 hover:bg-green-700 text-white text-xs"
+                                    >
+                                      {sendingItem ? (
+                                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                      ) : (
+                                        <Package className="h-3 w-3 mr-1" />
+                                      )}
+                                      Gönder
+                                    </Button>
+                                  </div>
+                                  <div className="col-span-3">
+                                    <Button
+                                      onClick={handleDepotNotAvailable}
+                                      variant="outline"
+                                      className="w-full h-10 border-red-200 text-red-700 hover:bg-red-50 text-xs"
+                                    >
+                                      <X className="h-3 w-3 mr-1" />
+                                      Depoda Yok
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                /* İşlem Tamamlandı Mesajı */
+                                <div className="text-center py-4">
+                                  {totalShipped > 0 ? (
+                                    <div className="flex items-center justify-center gap-2 text-green-600">
+                                      <CheckCircle className="h-5 w-5" />
+                                      <span className="text-sm font-medium">
+                                        {item.quantity === 0 ? 'Bu malzeme tamamen gönderildi' : 'Bu malzeme için gönderim yapıldı'}
+                                      </span>
+                                    </div>
+                                  ) : (
+                                    <div className="flex items-center justify-center gap-2 text-red-600">
+                                      <X className="h-5 w-5" />
+                                      <span className="text-sm font-medium">Bu malzeme depoda mevcut değil</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   ) : (
@@ -1981,75 +2544,6 @@ export default function OffersPage() {
                 </div>
                 </CardContent>
               </Card>
-            ) : userRole !== 'site_personnel' && userRole !== 'site_manager' && userRole !== 'santiye_depo' && supplierMaterialInfo.isRegistered ? (
-              <div className="bg-white rounded-2xl p-8 border border-gray-200/50">
-                <div className="text-left">
-                  <h3 className="text-2xl font-semibold text-gray-900 mb-2">
-                    Kayıtlı Tedarikçiler
-                  </h3>
-                  <p className="text-gray-600 mb-6">
-                    Bu ürün için sistemde kayıtlı tedarikçiler bulunduğundan manuel teklif girişi yapılamaz. 
-                    Lütfen aşağıdaki tedarikçiler ile iletişime geçiniz.
-                  </p>
-                </div>
-
-                <div className="grid gap-4 mb-6">
-                  {supplierMaterialInfo.suppliers.map((supplier) => (
-                    <div 
-                      key={supplier.id} 
-                      className="bg-white rounded-xl p-4 shadow-sm border border-gray-200 relative group hover:border-gray-300 transition-all duration-200"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <h4 className="font-semibold text-gray-900">{supplier.name}</h4>
-                          <p className="text-sm text-gray-600 mt-1">{supplier.contact_person}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
-                            className="text-gray-700 border-gray-200 hover:bg-gray-50"
-                          >
-                            Detayları Gör
-                          </Button>
-                        </div>
-                      </div>
-                      <div className="mt-3 space-y-1">
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Phone className="w-4 h-4" />
-                          <span>{supplier.phone}</span>
-                        </div>
-                        <div className="flex items-center gap-2 text-sm text-gray-600">
-                          <Mail className="w-4 h-4" />
-                          <span>{supplier.email}</span>
-                        </div>
-                      </div>
-                      <div className="mt-4 pt-4 border-t border-gray-200">
-                        <Button
-                          size="sm"
-                          className="w-full bg-gray-900 hover:bg-black text-white shadow-lg rounded-lg h-10 font-medium"
-                          onClick={() => {
-                            setSelectedSupplier(supplier)
-                            setIsCreateOrderModalOpen(true)
-                          }}
-                        >
-                          Sipariş Oluştur
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex justify-center">
-                  <Button
-                    onClick={() => router.push('/dashboard/suppliers')}
-                    className="bg-yellow-600 hover:bg-yellow-700 text-white rounded-xl px-6 py-2.5"
-                  >
-                    Tüm Tedarikçileri Görüntüle
-                  </Button>
-                </div>
-              </div>
             ) : userRole !== 'site_personnel' && userRole !== 'site_manager' && userRole !== 'santiye_depo' ? (
               <div className="bg-gradient-to-br from-white/80 to-gray-50/60 backdrop-blur-sm rounded-2xl p-6 shadow-sm border border-gray-200/50">
                 {/* Clickable Header */}
@@ -2391,7 +2885,7 @@ export default function OffersPage() {
                 </CardContent>
               </Card>
             ) : userRole === 'santiye_depo' ? (
-              // Santiye depo için özel talep takibi
+              // Santiye depo için malzeme listesi
               <Card className="bg-white border-0 shadow-sm">
                 <CardHeader>
                   <div className="flex items-center gap-3">
@@ -2399,83 +2893,134 @@ export default function OffersPage() {
                       <Package className="h-6 w-6 text-blue-600" />
                     </div>
                     <div>
-                      <CardTitle className="text-xl font-semibold text-gray-900">Talep Takibi</CardTitle>
-                      <p className="text-sm text-gray-600 mt-1">Depo malzeme durumu</p>
+                      <CardTitle className="text-xl font-semibold text-gray-900">Depo İşlemleri</CardTitle>
+                      <p className="text-sm text-gray-600 mt-1">Malzeme gönderimi yapın</p>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  {/* Talep Bilgileri */}
-                  {request?.purchase_request_items?.[0] && (
-                    <div className="space-y-4 mb-6">
-                      {/* Mevcut Talep Miktarı */}
-                      <div className="bg-gray-50 rounded-lg p-4 border border-gray-200">
-                        <p className="text-sm font-medium text-gray-600 mb-2">
-                          {request.status === 'kısmen gönderildi' ? 'Kalan Talep' : 'Talep Edilen Miktar'}
-                        </p>
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl font-bold text-gray-900">
-                            {request.purchase_request_items[0].quantity}
-                          </span>
-                          <span className="text-lg text-gray-600 bg-white px-3 py-1 rounded-md border">
-                            {request.purchase_request_items[0].unit}
-                          </span>
-                        </div>
-                        <p className="text-sm text-gray-500 mt-2">
-                          {request.purchase_request_items[0].item_name}
-                        </p>
-                      </div>
-
-                      {/* Gönderilen Miktar (eğer varsa) */}
-                      {request.sent_quantity && request.sent_quantity > 0 && (
-                        <div className="bg-green-50 rounded-lg p-4 border border-green-200">
-                          <p className="text-sm font-medium text-green-700 mb-2">Daha Önce Gönderilen</p>
-                          <div className="flex items-center gap-3">
-                            <span className="text-xl font-bold text-green-800">
-                              {request.sent_quantity}
-                            </span>
-                            <span className="text-lg text-green-600 bg-white px-3 py-1 rounded-md border border-green-200">
-                              {request.purchase_request_items[0].unit}
-                            </span>
-                          </div>
-                          <p className="text-xs text-green-600 mt-2">
-                            Toplam gönderilmiş miktar
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Depo İşlem Butonları */}
-                  <div className="space-y-3">
-                    <h5 className="text-sm font-medium text-gray-700 mb-3">Malzeme Durumu</h5>
-                    
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {/* Gönder Butonu */}
-                      <Button
-                        onClick={handleSendItem}
-                        className="h-12 bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium flex items-center justify-center gap-2"
-                      >
-                        <Package className="h-5 w-5" />
-                        Gönder
-                      </Button>
+                  {/* Malzeme Satırları */}
+                  <div className="space-y-4">
+                    {request?.purchase_request_items?.map((item, index) => {
+                      const itemShipments = shipmentData[item.id]
+                      const totalShipped = itemShipments?.total_shipped || 0
+                      const currentQuantity = sendQuantities[item.id] || ''
                       
-                      {/* Depoda Yok Butonu */}
-                      <Button
-                        onClick={handleDepotNotAvailable}
-                        variant="outline"
-                        className="h-12 border-red-200 text-red-700 hover:bg-red-50 hover:border-red-300 rounded-lg font-medium flex items-center justify-center gap-2"
-                      >
-                        <X className="h-5 w-5" />
-                        Depoda Yok
-                      </Button>
-                    </div>
-                    
-                    <div className="text-center pt-2">
-                      <p className="text-xs text-gray-500">
-                        Malzeme durumunu seçerek talebi işleme alın
-                      </p>
-                    </div>
+                      return (
+                        <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                          {/* Malzeme Bilgisi */}
+                          <div className="flex items-start justify-between mb-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                {request.purchase_request_items.length > 1 && (
+                                  <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                                    {index + 1}
+                                  </div>
+                                )}
+                                <h5 className="text-sm font-semibold text-gray-900">{item.item_name}</h5>
+                              </div>
+                              <div className="text-sm text-gray-600 space-y-1">
+                                {/* Orijinal talep edilen miktar - her zaman sabit */}
+                                <div>
+                                  İlk Talep: <span className="font-medium">{(item.quantity + totalShipped).toFixed(2)} {item.unit}</span>
+                                </div>
+                                {/* Gönderilmiş miktar */}
+                                {totalShipped > 0 && (
+                                  <div className="text-green-600">
+                                    Gönderilmiş: <span className="font-medium">{totalShipped.toFixed(2)} {item.unit}</span>
+                                  </div>
+                                )}
+                                {/* Kalan miktar */}
+                                {item.quantity > 0 && (
+                                  <div className="text-orange-600">
+                                    Kalan: <span className="font-medium">{item.quantity} {item.unit}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Gönderim Kontrolü - Sadece işlem yapılmamışsa göster */}
+                          {(totalShipped === 0 && request.status !== 'depoda mevcut değil') ? (
+                            <div className="grid grid-cols-12 gap-3 items-center">
+                              <div className="col-span-4">
+                                <label className="block text-xs font-medium text-gray-600 mb-1">
+                                  Gönderilecek Miktar
+                                </label>
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  max={item.quantity}
+                                  value={currentQuantity}
+                                  onChange={(e) => setSendQuantities(prev => ({
+                                    ...prev,
+                                    [item.id]: e.target.value
+                                  }))}
+                                  placeholder="0.00"
+                                  className="h-10 bg-white"
+                                />
+                                <p className="text-xs text-gray-500 mt-1">Max: {item.quantity}</p>
+                              </div>
+                              <div className="col-span-2 text-center">
+                                <span className="text-sm font-medium text-gray-600">{item.unit}</span>
+                              </div>
+                              <div className="col-span-3">
+                                <Button
+                                  onClick={async () => {
+                                    if (!currentQuantity.trim() || parseFloat(currentQuantity) <= 0) {
+                                      showToast('Geçerli bir miktar girin.', 'error')
+                                      return
+                                    }
+                                    
+                                    // Tek ürün için gönderim yap
+                                    const tempQuantities = { [item.id]: currentQuantity }
+                                    setSendQuantities(tempQuantities)
+                                    await confirmSendItem()
+                                  }}
+                                  disabled={!currentQuantity.trim() || parseFloat(currentQuantity) <= 0 || sendingItem}
+                                  className="w-full h-10 bg-green-600 hover:bg-green-700 text-white text-xs"
+                                >
+                                  {sendingItem ? (
+                                    <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                  ) : (
+                                    <Package className="h-3 w-3 mr-1" />
+                                  )}
+                                  Gönder
+                                </Button>
+                              </div>
+                              <div className="col-span-3">
+                                <Button
+                                  onClick={handleDepotNotAvailable}
+                                  variant="outline"
+                                  className="w-full h-10 border-red-200 text-red-700 hover:bg-red-50 text-xs"
+                                >
+                                  <X className="h-3 w-3 mr-1" />
+                                  Depoda Yok
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* İşlem Tamamlandı Mesajı */
+                            <div className="text-center py-4">
+                              {totalShipped > 0 ? (
+                                <div className="flex items-center justify-center gap-2 text-green-600">
+                                  <CheckCircle className="h-5 w-5" />
+                                  <span className="text-sm font-medium">
+                                    {item.quantity === 0 ? 'Bu malzeme tamamen gönderildi' : 'Bu malzeme için gönderim yapıldı'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center gap-2 text-red-600">
+                                  <X className="h-5 w-5" />
+                                  <span className="text-sm font-medium">Bu malzeme depoda mevcut değil</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 </CardContent>
               </Card>
@@ -2512,6 +3057,11 @@ export default function OffersPage() {
                 <div>
                   <h2 className="text-xl font-semibold text-gray-900">Sipariş Oluştur</h2>
                   <p className="text-sm text-gray-500 mt-1">{selectedSupplier.name}</p>
+                  {currentMaterialForAssignment && (
+                    <p className="text-xs text-blue-600 mt-1">
+                      Malzeme: {currentMaterialForAssignment.name}
+                    </p>
+                  )}
                 </div>
                 <Button
                   variant="ghost"
@@ -2519,6 +3069,7 @@ export default function OffersPage() {
                   onClick={() => {
                     setIsCreateOrderModalOpen(false)
                     setSelectedSupplier(null)
+                    setCurrentMaterialForAssignment(null)
                     setOrderDetails({
                       deliveryDate: '',
                       amount: '',
@@ -2561,6 +3112,7 @@ export default function OffersPage() {
                 onClick={() => {
                   setIsCreateOrderModalOpen(false)
                   setSelectedSupplier(null)
+                  setCurrentMaterialForAssignment(null)
                   setOrderDetails({
                     deliveryDate: '',
                     amount: '',
@@ -2574,6 +3126,7 @@ export default function OffersPage() {
               </Button>
               <Button
                 onClick={async () => {
+                  let orderData: any = null
                   try {
                     console.log('🚀 Sipariş oluşturma başlatılıyor...')
                     console.log('📋 Sipariş detayları:', {
@@ -2622,7 +3175,7 @@ export default function OffersPage() {
                       email: session.user.email
                     })
 
-                    const orderData = {
+                    orderData = {
                       purchase_request_id: requestId,
                       supplier_id: selectedSupplier.id,
                       delivery_date: orderDetails.deliveryDate,
@@ -2650,6 +3203,22 @@ export default function OffersPage() {
 
                     console.log('✅ Sipariş oluşturuldu:', order)
 
+                    // Local tracking'e sipariş bilgisini ekle
+                    if (currentMaterialForAssignment) {
+                      const trackingKey = `${currentMaterialForAssignment.id}_${selectedSupplier.id}`
+                      setLocalOrderTracking(prev => ({
+                        ...prev,
+                        [trackingKey]: {
+                          supplier_id: selectedSupplier.id,
+                          material_item_id: currentMaterialForAssignment.id,
+                          delivery_date: orderDetails.deliveryDate,
+                          order_id: order.id,
+                          supplier_name: selectedSupplier.name
+                        }
+                      }))
+                      console.log('✅ Local tracking güncellendi:', trackingKey)
+                    }
+
                     // Talep durumunu güncelle
                     console.log('🔄 Talep durumu güncelleniyor...')
                     const { error: updateError } = await supabase
@@ -2671,6 +3240,7 @@ export default function OffersPage() {
                     // Modalı kapat ve state'i temizle
                     setIsCreateOrderModalOpen(false)
                     setSelectedSupplier(null)
+                    setCurrentMaterialForAssignment(null)
                     setOrderDetails({
                       deliveryDate: '',
                       amount: '',
@@ -2681,17 +3251,23 @@ export default function OffersPage() {
 
                     // Sayfayı yenile
                     fetchRequestData()
+                    fetchMaterialSuppliers() // Malzeme tedarikçi listesini yenile
+                    fetchMaterialOrders() // Malzeme sipariş bilgilerini yenile
 
                   } catch (error: any) {
-                    console.error('❌ Sipariş oluşturma hatası:', {
-                      error,
-                      message: error.message,
-                      details: error.details,
-                      hint: error.hint,
-                      code: error.code
+                    console.error('❌ Sipariş oluşturma hatası:', error)
+                    console.error('❌ Hata detayları:', {
+                      message: error?.message,
+                      details: error?.details,
+                      hint: error?.hint,
+                      code: error?.code,
+                      stack: error?.stack
                     })
+                    if (orderData) {
+                      console.error('❌ OrderData:', orderData)
+                    }
                     showToast(
-                      error.message || 'Sipariş oluşturulurken bir hata oluştu.',
+                      error?.message || 'Sipariş oluşturulurken bir hata oluştu.',
                       'error'
                     )
                   }
@@ -2968,12 +3544,18 @@ export default function OffersPage() {
       {/* Tedarikçi Atama Modal */}
       <AssignSupplierModal
         isOpen={isAssignSupplierModalOpen}
-        onClose={() => setIsAssignSupplierModalOpen(false)}
-        itemName={firstItem?.item_name || ''}
-        itemUnit={firstItem?.unit}
+        onClose={() => {
+          setIsAssignSupplierModalOpen(false)
+          setCurrentMaterialForAssignment(null)
+        }}
+        itemName={currentMaterialForAssignment?.name || firstItem?.item_name || ''}
+        itemUnit={currentMaterialForAssignment?.unit || firstItem?.unit}
         materialClass={request?.material_class || undefined}
         materialGroup={request?.material_group || undefined}
-        onSuccess={checkItemInSupplierMaterials}
+        onSuccess={() => {
+          checkItemInSupplierMaterials()
+          fetchMaterialSuppliers() // Malzeme bazlı tedarikçi listesini yenile
+        }}
       />
 
       {/* Resim Modal */}

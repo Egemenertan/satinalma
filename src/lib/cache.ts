@@ -16,6 +16,9 @@ export const invalidatePurchaseRequestsCache = () => {
   // Bekleyen talep sayısı cache'ini temizle (Sidebar notification için)
   mutate('pending_requests_count', undefined, { revalidate: true })
   
+  // Auth cache'ini de temizle (kullanıcı rol kontrolü için)
+  mutate('auth', undefined, { revalidate: true })
+  
   console.log('🔄 Purchase requests cache invalidated')
 }
 

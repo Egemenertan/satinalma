@@ -48,9 +48,9 @@ const fetchStats = async () => {
   // Santiye depo tüm talepleri görebilir (site personnel gibi sadece requests sayfasına erişim var)
   // Bu role için özel filtreleme yok - tüm talepleri görebilir
   
-  // Purchasing officer sadece şantiye şefi onayladığı ve sipariş verilmiş talepleri görebilir
+  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    query = query.in('status', ['şantiye şefi onayladı', 'sipariş verildi'])
+    query = query.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
   }
   
   const { data: requests, error } = await query

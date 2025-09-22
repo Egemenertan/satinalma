@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { createClient } from '@/lib/supabase/client'
 import { 
   BarChart3, 
@@ -19,13 +20,35 @@ import {
   DollarSign,
   FileText,
   Eye,
-  Filter
+  Filter,
+  Clock,
+  CheckCircle2
 } from 'lucide-react'
+// import { type ReportData } from '@/lib/pdf-generator'
+
+interface CompletedRequest {
+  id: string
+  title: string
+  request_number: string
+  created_at: string
+  requested_by: string
+  status: string
+  site_name: string
+  material_class: string
+  delivery_date?: string
+  delivered_at?: string
+  supplier_name?: string
+  total_amount?: number
+  currency?: string
+}
 
 export default function ReportsPage() {
   const supabase = createClient()
   const [dateRange, setDateRange] = useState('last_30_days')
   const [selectedSite, setSelectedSite] = useState('all')
+  const [completedRequests, setCompletedRequests] = useState<CompletedRequest[]>([])
+  const [loading, setLoading] = useState(true)
+  const [generatingPDF, setGeneratingPDF] = useState<string | null>(null)
   const [reportData, setReportData] = useState({
     totalRequests: 45,
     totalSpent: 127650,
@@ -48,8 +71,112 @@ export default function ReportsPage() {
     ]
   })
 
+  // Teslim alınan talepleri çek
+  const fetchCompletedRequests = async () => {
+    try {
+      setLoading(true)
+
+      // Önce tüm talep durumlarını kontrol et
+      const { data: allRequests } = await supabase
+        .from('purchase_requests')
+        .select('status')
+      
+      console.log('📊 Tüm talep durumları:', {
+        statuses: allRequests?.reduce((acc, req) => {
+          acc[req.status] = (acc[req.status] || 0) + 1
+          return acc
+        }, {})
+      })
+      
+      const { data: requests, error } = await supabase
+        .from('purchase_requests')
+        .select('id, title, created_at, status, site_name, material_class, requested_by')
+        .in('status', ['teslim alındı', 'sipariş verildi'])
+        .order('created_at', { ascending: false })
+
+      if (error) {
+        console.error('Tamamlanan talepler alınırken hata:', {
+          message: error.message,
+          details: error.details,
+          hint: error.hint,
+          code: error.code,
+          fullError: error
+        })
+        return
+      }
+
+      console.log('🔍 Teslim alınan talepler sorgusu sonucu:', {
+        count: requests?.length || 0,
+        requests: requests?.map(r => ({ id: r.id.slice(0,8), title: r.title, status: r.status }))
+      })
+
+      const formattedRequests: CompletedRequest[] = (requests || []).map(request => ({
+        id: request.id,
+        title: request.title,
+        request_number: `REQ-${request.id.slice(0, 8)}`,
+        created_at: request.created_at,
+        requested_by: 'Kullanıcı', // Basitleştirildi
+        status: request.status,
+        site_name: request.site_name || 'Belirtilmemiş',
+        material_class: request.material_class,
+        delivery_date: undefined, // Basitleştirildi
+        delivered_at: undefined, // Basitleştirildi
+        supplier_name: undefined, // Basitleştirildi
+        total_amount: undefined, // Basitleştirildi
+        currency: 'TRY'
+      }))
+
+      setCompletedRequests(formattedRequests)
+    } catch (error) {
+      console.error('Hata:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchCompletedRequests()
+  }, [])
+
   const formatCurrency = (amount: number) => {
     return `£${amount.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+  }
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  const generatePDFReport = async (request: CompletedRequest) => {
+    try {
+      setGeneratingPDF(request.id)
+      
+      // Timeline verilerini API'den al
+      const response = await fetch(`/api/reports/timeline?requestId=${request.id}`)
+      
+      if (!response.ok) {
+        throw new Error('Timeline verileri alınamadı')
+      }
+      
+      const timelineData = await response.json()
+      
+      // PDF generator'ı dynamic import ile yükle
+      const { generatePurchaseRequestReport } = await import('@/lib/pdf-generator')
+      
+      // PDF oluştur ve indir
+      await generatePurchaseRequestReport(timelineData)
+      
+    } catch (error) {
+      console.error('PDF raporu oluşturulurken hata:', error)
+      alert('Rapor oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.')
+    } finally {
+      setGeneratingPDF(null)
+    }
   }
 
   const getPerformanceCard = (title: string, value: string, change: number, icon: React.ElementType) => {
@@ -120,13 +247,116 @@ export default function ReportsPage() {
       </div>
 
       {/* Main Reports */}
-      <Tabs defaultValue="overview" className="space-y-6">
+      <Tabs defaultValue="completed" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="completed">Tamamlanan Talepler</TabsTrigger>
           <TabsTrigger value="overview">Genel Bakış</TabsTrigger>
           <TabsTrigger value="procurement">Satın Alma</TabsTrigger>
           <TabsTrigger value="suppliers">Tedarikçiler</TabsTrigger>
           <TabsTrigger value="financial">Finansal</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="completed" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+                Teslim Alınan Talepler
+              </CardTitle>
+              <p className="text-sm text-gray-600">
+                Tamamlanan taleplerin detaylı raporlarını oluşturun
+              </p>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                  <span className="ml-2 text-gray-600">Talepler yükleniyor...</span>
+                </div>
+              ) : completedRequests.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <FileText className="w-12 h-12 mx-auto mb-4 text-gray-400" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Teslim Alınan Talep Bulunamadı</h3>
+                  <p className="text-gray-600">Henüz teslim alınan talep bulunmuyor.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Talep No</TableHead>
+                        <TableHead>Talep Başlığı</TableHead>
+                        <TableHead>Oluşturan</TableHead>
+                        <TableHead>Şantiye</TableHead>
+                        <TableHead>Tedarikçi</TableHead>
+                        <TableHead>Tutar</TableHead>
+                        <TableHead>Oluşturulma</TableHead>
+                        <TableHead>Teslim Alma</TableHead>
+                        <TableHead>İşlemler</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {completedRequests.map((request) => (
+                        <TableRow key={request.id}>
+                          <TableCell className="font-medium">
+                            {request.request_number}
+                          </TableCell>
+                          <TableCell>
+                            <div className="max-w-[200px] truncate">
+                              {request.title}
+                            </div>
+                          </TableCell>
+                          <TableCell>{request.requested_by}</TableCell>
+                          <TableCell>{request.site_name}</TableCell>
+                          <TableCell>{request.supplier_name || '-'}</TableCell>
+                          <TableCell>
+                            {request.total_amount 
+                              ? `${request.total_amount.toLocaleString('tr-TR')} ${request.currency}`
+                              : '-'
+                            }
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {formatDate(request.created_at)}
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="text-sm">
+                              {request.delivered_at 
+                                ? formatDate(request.delivered_at)
+                                : '-'
+                              }
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              size="sm"
+                              onClick={() => generatePDFReport(request)}
+                              disabled={generatingPDF === request.id}
+                              className="bg-blue-600 hover:bg-blue-700 text-white disabled:bg-gray-400"
+                            >
+                              {generatingPDF === request.id ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-1"></div>
+                                  Oluşturuluyor...
+                                </>
+                              ) : (
+                                <>
+                                  <FileText className="w-4 h-4 mr-1" />
+                                  Rapor Oluştur
+                                </>
+                              )}
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="overview" className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

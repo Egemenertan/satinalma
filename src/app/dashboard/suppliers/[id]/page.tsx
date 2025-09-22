@@ -35,7 +35,9 @@ import {
   Receipt,
   Camera,
   Upload,
-  X
+  X,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react'
 
 interface Order {
@@ -123,6 +125,9 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   const [invoiceCurrency, setInvoiceCurrency] = useState('TRY')
   const [invoicePhotos, setInvoicePhotos] = useState<string[]>([])
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false)
+  
+  // Expanded cards state
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     let isActive = true
@@ -458,6 +463,18 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
     setInvoicePhotos(prev => prev.filter((_, i) => i !== index))
   }
 
+  const toggleCardExpansion = (orderId: string) => {
+    setExpandedCards(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId)
+      } else {
+        newSet.add(orderId)
+      }
+      return newSet
+    })
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -713,31 +730,30 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                     <p className="text-gray-600">Bu tedarikçi ile henüz sipariş oluşturulmamış.</p>
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-6">
                     {orders.map((order) => (
-                      <Card key={order.id} className="bg-white border border-gray-200 hover:shadow-md transition-shadow duration-200">
-                        <CardContent className="p-6">
-                          <div className="flex gap-6">
-                            {/* Sol Kısım - Ana Bilgiler */}
-                            <div className="flex-1 min-w-0">
-                              {/* Sipariş Başlığı */}
-                              <div className="mb-4">
-                                <div className="flex items-start justify-between mb-3">
+                      <Card key={order.id} className="bg-white border border-gray-200 hover:shadow-lg transition-all duration-300 rounded-xl overflow-hidden">
+                        <CardContent className="p-0">
+                          {/* Sipariş Başlığı ve Ana Bilgiler */}
+                          <div className="p-6 border-b border-gray-100">
+                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
                                   <div className="flex-1">
-                                    <h4 className="text-lg font-medium text-gray-900 mb-2">
+                                    <h4 className="text-lg font-semibold text-gray-900 mb-2 leading-tight">
                                       {order.purchase_requests?.[0]?.title || `Sipariş #${order.id.slice(0, 8)}`}
                                     </h4>
-                                    <div className="flex items-center gap-4 text-sm text-gray-600">
-                                      <span className="flex items-center gap-1">
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                      <span className="flex items-center gap-1.5">
                                         <FileText className="w-4 h-4" />
-                                        Talep No: {order.purchase_requests?.[0]?.request_number || '-'}
+                                        Talep No: <span className="font-medium">{order.purchase_requests?.[0]?.request_number || '-'}</span>
                                       </span>
                                       <Badge className={
-                                        order.status === 'completed' ? 'bg-green-100 text-green-800 border-green-200' :
-                                        order.status === 'delivered' ? 'bg-green-100 text-green-800 border-green-200' :
+                                        order.status === 'completed' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                                        order.status === 'delivered' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
                                         order.status === 'approved' ? 'bg-blue-100 text-blue-800 border-blue-200' :
                                         order.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
-                                        'bg-yellow-100 text-yellow-800 border-yellow-200'
+                                        'bg-amber-100 text-amber-800 border-amber-200'
                                       }>
                                         {order.status === 'completed' ? 'Tamamlandı' :
                                          order.status === 'delivered' ? 'Teslim Edildi' :
@@ -749,174 +765,208 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                   </div>
                                   
                                   {/* Fatura Tutarı */}
-                                  <div className="text-right ml-4">
-                                    {(() => {
-                                      const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
-                                        ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
-                                        : 0
-                                      
-                                      if (totalInvoiceAmount > 0) {
-                                        return (
-                                          <div>
-                                            <div className="text-xl font-semibold text-green-700">
-                                              {new Intl.NumberFormat('tr-TR', { 
-                                                style: 'currency', 
-                                                currency: order.invoices![0].currency || 'TRY'
-                                              }).format(totalInvoiceAmount)}
-                                            </div>
-                                            <div className="text-xs text-gray-500 mt-1">Fatura Tutarı</div>
+                                  {(() => {
+                                    const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
+                                      ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
+                                      : 0
+                                    
+                                    if (totalInvoiceAmount > 0) {
+                                      return (
+                                        <div className="text-right">
+                                          <div className="text-xl font-bold text-emerald-700">
+                                            {new Intl.NumberFormat('tr-TR', { 
+                                              style: 'currency', 
+                                              currency: order.invoices![0].currency || 'TRY'
+                                            }).format(totalInvoiceAmount)}
                                           </div>
-                                        )
-                                      }
-                                      return null
-                                    })()}
-                                  </div>
+                                          <div className="text-xs text-gray-500 mt-1">Toplam Fatura</div>
+                                        </div>
+                                      )
+                                    }
+                                    return null
+                                  })()}
                                 </div>
 
                                 {/* Tarih Bilgileri */}
-                                <div className="flex items-center gap-6 text-sm text-gray-600">
+                                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
                                   <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4" />
-                                    <span>Oluşturulma: {new Date(order.created_at).toLocaleDateString('tr-TR')}</span>
+                                    <Calendar className="w-4 h-4 text-gray-400" />
+                                    <span>Oluşturulma: <span className="font-medium">{new Date(order.created_at).toLocaleDateString('tr-TR')}</span></span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Package className="w-4 h-4" />
-                                    <span>Teslimat: {new Date(order.delivery_date).toLocaleDateString('tr-TR')}</span>
+                                    <Package className="w-4 h-4 text-gray-400" />
+                                    <span>Teslimat: <span className="font-medium">{new Date(order.delivery_date).toLocaleDateString('tr-TR')}</span></span>
                                   </div>
                                 </div>
-                              </div>
 
-                              {/* Fatura Butonu */}
-                              <div className="mt-4">
-                                {order.invoices && order.invoices.length > 0 ? (
-                                  <Button 
-                                    onClick={() => handleOpenInvoiceModal(order.id)}
-                                    className="bg-green-600 hover:bg-green-700 text-white"
-                                    size="sm"
-                                  >
-                                    <Receipt className="w-4 h-4 mr-2" />
-                                    Yeni Fatura Ekle
-                                  </Button>
-                                ) : (
-                                  <Button 
-                                    onClick={() => handleOpenInvoiceModal(order.id)}
-                                    className="bg-gray-900 hover:bg-gray-800 text-white"
-                                    size="sm"
-                                  >
-                                    <Receipt className="w-4 h-4 mr-2" />
-                                    Fatura Ekle
-                                  </Button>
+                                {/* Fatura Butonu ve Chevron */}
+                                <div className="flex items-center justify-between">
+                                  <div className="flex justify-start">
+                                    {order.invoices && order.invoices.length > 0 ? (
+                                      <Button 
+                                        onClick={() => handleOpenInvoiceModal(order.id)}
+                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
+                                        size="sm"
+                                      >
+                                        <Receipt className="w-4 h-4 mr-2" />
+                                        Yeni Fatura Ekle
+                                      </Button>
+                                    ) : (
+                                      <Button 
+                                        onClick={() => handleOpenInvoiceModal(order.id)}
+                                        className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg shadow-sm"
+                                        size="sm"
+                                      >
+                                        <Receipt className="w-4 h-4 mr-2" />
+                                        Fatura Ekle
+                                      </Button>
+                                    )}
+                                  </div>
+
+                                  {/* Chevron Button - Sadece görseller varsa göster */}
+                                  {(
+                                    (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0) ||
+                                    (order.invoices && order.invoices.length > 0)
+                                  ) && (
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => toggleCardExpansion(order.id)}
+                                      className="text-gray-500 hover:text-gray-700 p-2"
+                                    >
+                                      {expandedCards.has(order.id) ? (
+                                        <ChevronUp className="w-5 h-5" />
+                                      ) : (
+                                        <ChevronDown className="w-5 h-5" />
+                                      )}
+                                    </Button>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Görseller Bölümü */}
+                          {(
+                            (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0) ||
+                            (order.invoices && order.invoices.length > 0)
+                          ) && expandedCards.has(order.id) && (
+                            <div className="p-6 bg-gray-50/50 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
+                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                                {/* İrsaliye Fotoğrafları */}
+                                {order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0 && (
+                                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
+                                    <div className="flex items-center gap-3 mb-4">
+                                      <div className="p-2 bg-gray-100 rounded-lg">
+                                        <Image className="w-4 h-4 text-gray-600" />
+                                      </div>
+                                      <div>
+                                        <span className="text-sm font-semibold text-gray-900">İrsaliye Belgeleri</span>
+                                        <Badge variant="outline" className="ml-2 text-xs">
+                                          {order.delivery_receipt_photos.length} fotoğraf
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="grid grid-cols-3 gap-3">
+                                      {order.delivery_receipt_photos.slice(0, 6).map((photo, index) => (
+                                        <button
+                                          key={index}
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
+                                          className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-gray-300 transition-all duration-200 group bg-white"
+                                        >
+                                          <img
+                                            src={photo}
+                                            alt={`İrsaliye ${index + 1}`}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                          />
+                                        </button>
+                                      ))}
+                                      {order.delivery_receipt_photos.length > 6 && (
+                                        <button
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, 6)}
+                                          className="aspect-square rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200 transition-colors duration-200"
+                                        >
+                                          <div className="text-center">
+                                            <div className="font-semibold">+{order.delivery_receipt_photos.length - 6}</div>
+                                            <div>daha</div>
+                                          </div>
+                                        </button>
+                                      )}
+                                    </div>
+                                    
+                                    {order.delivered_at && (
+                                      <div className="text-xs text-gray-500 mt-4 p-3 bg-gray-50 rounded-lg">
+                                        <span className="font-medium">Teslim alındı:</span> {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
+                                          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* Fatura Fotoğrafları */}
+                                {order.invoices && order.invoices.length > 0 && (
+                                  <div className="bg-white rounded-xl border border-emerald-200 p-5 shadow-sm">
+                                    <div className="flex items-center gap-3 mb-4">
+                                      <div className="p-2 bg-emerald-100 rounded-lg">
+                                        <Receipt className="w-4 h-4 text-emerald-600" />
+                                      </div>
+                                      <div>
+                                        <span className="text-sm font-semibold text-emerald-900">Fatura Belgeleri</span>
+                                        <Badge variant="outline" className="ml-2 text-xs border-emerald-200 text-emerald-700">
+                                          {order.invoices.length} fatura
+                                        </Badge>
+                                      </div>
+                                    </div>
+                                    
+                                    <div className="space-y-4">
+                                      {order.invoices.map((invoice, index) => (
+                                        <div key={invoice.id} className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/50">
+                                          <div className="flex items-center justify-between mb-3">
+                                            <span className="text-sm font-semibold text-emerald-800">
+                                              Fatura #{index + 1}
+                                            </span>
+                                            <span className="text-sm font-bold text-emerald-800">
+                                              {new Intl.NumberFormat('tr-TR', { 
+                                                style: 'currency', 
+                                                currency: invoice.currency || 'TRY'
+                                              }).format(invoice.amount)}
+                                            </span>
+                                          </div>
+                                          
+                                          {invoice.invoice_photos && invoice.invoice_photos.length > 0 && (
+                                            <div className="grid grid-cols-3 gap-2 mb-3">
+                                              {invoice.invoice_photos.slice(0, 3).map((photo, photoIndex) => (
+                                                <button
+                                                  key={photoIndex}
+                                                  onClick={() => handleViewDeliveryPhotos(invoice.invoice_photos, photoIndex)}
+                                                  className="aspect-square rounded-lg overflow-hidden border-2 border-emerald-200 hover:border-emerald-300 transition-all duration-200 bg-white"
+                                                >
+                                                  <img src={photo} alt={`Fatura ${photoIndex + 1}`} className="w-full h-full object-cover" />
+                                                </button>
+                                              ))}
+                                              {invoice.invoice_photos.length > 3 && (
+                                                <div className="aspect-square bg-emerald-100 rounded-lg border-2 border-emerald-200 flex items-center justify-center text-xs text-emerald-600 font-medium">
+                                                  +{invoice.invoice_photos.length - 3}
+                                                </div>
+                                              )}
+                                            </div>
+                                          )}
+                                          
+                                          <div className="text-xs text-emerald-600 font-medium">
+                                            {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
+                                              day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                            })}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
                                 )}
                               </div>
                             </div>
-
-                            {/* Sağ Kısım - Görseller */}
-                            <div className="w-80 flex flex-col gap-4">
-                              {/* İrsaliye Fotoğrafları */}
-                              {order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0 && (
-                                <div className="bg-gray-50 rounded-lg p-4">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <Image className="w-4 h-4 text-gray-600" />
-                                    <span className="text-sm font-medium text-gray-700">İrsaliye</span>
-                                    <Badge variant="outline" className="text-xs">
-                                      {order.delivery_receipt_photos.length} fotoğraf
-                                    </Badge>
-                                  </div>
-                                  
-                                  <div className="grid grid-cols-3 gap-2">
-                                    {order.delivery_receipt_photos.slice(0, 6).map((photo, index) => (
-                                      <button
-                                        key={index}
-                                        onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
-                                        className="aspect-square rounded overflow-hidden border border-gray-200 hover:border-gray-300 transition-colors group"
-                                      >
-                                        <img
-                                          src={photo}
-                                          alt={`İrsaliye ${index + 1}`}
-                                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
-                                        />
-                                      </button>
-                                    ))}
-                                    {order.delivery_receipt_photos.length > 6 && (
-                                      <button
-                                        onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, 6)}
-                                        className="aspect-square rounded border border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200"
-                                      >
-                                        <div className="text-center">
-                                          <div className="font-medium">+{order.delivery_receipt_photos.length - 6}</div>
-                                          <div>daha</div>
-                                        </div>
-                                      </button>
-                                    )}
-                                  </div>
-                                  
-                                  {order.delivered_at && (
-                                    <div className="text-xs text-gray-500 mt-3">
-                                      Teslim alındı: {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
-                                        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                                      })}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-
-                              {/* Fatura Fotoğrafları */}
-                              {order.invoices && order.invoices.length > 0 && (
-                                <div className="bg-green-50 rounded-lg p-4">
-                                  <div className="flex items-center gap-2 mb-3">
-                                    <Receipt className="w-4 h-4 text-green-600" />
-                                    <span className="text-sm font-medium text-green-700">Faturalar</span>
-                                    <Badge variant="outline" className="text-xs border-green-200">
-                                      {order.invoices.length} fatura
-                                    </Badge>
-                                  </div>
-                                  
-                                  <div className="space-y-3">
-                                    {order.invoices.map((invoice, index) => (
-                                      <div key={invoice.id} className="border border-green-200 rounded p-2">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <span className="text-xs font-medium text-green-800">
-                                            Fatura #{index + 1}
-                                          </span>
-                                          <span className="text-xs font-semibold text-green-800">
-                                            {new Intl.NumberFormat('tr-TR', { 
-                                              style: 'currency', 
-                                              currency: invoice.currency || 'TRY'
-                                            }).format(invoice.amount)}
-                                          </span>
-                                        </div>
-                                        
-                                        {invoice.invoice_photos && invoice.invoice_photos.length > 0 && (
-                                          <div className="grid grid-cols-3 gap-1">
-                                            {invoice.invoice_photos.slice(0, 3).map((photo, photoIndex) => (
-                                              <button
-                                                key={photoIndex}
-                                                onClick={() => handleViewDeliveryPhotos(invoice.invoice_photos, photoIndex)}
-                                                className="aspect-square rounded overflow-hidden border border-green-200 hover:border-green-300 transition-colors"
-                                              >
-                                                <img src={photo} alt={`Fatura ${photoIndex + 1}`} className="w-full h-full object-cover" />
-                                              </button>
-                                            ))}
-                                            {invoice.invoice_photos.length > 3 && (
-                                              <div className="aspect-square bg-green-100 rounded border border-green-200 flex items-center justify-center text-xs text-green-600">
-                                                +{invoice.invoice_photos.length - 3}
-                                              </div>
-                                            )}
-                                          </div>
-                                        )}
-                                        
-                                        <div className="text-xs text-green-600 mt-2">
-                                          {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
-                                            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-                                          })}
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                          )}
                         </CardContent>
                       </Card>
                     ))}
