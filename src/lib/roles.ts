@@ -70,7 +70,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === 'requests' || 
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
-           page.startsWith('/dashboard/requests/')
+           page.startsWith('/dashboard/requests/') ||
+           page === 'reports' ||
+           page === '/dashboard/reports'
   }
   
   // Purchasing officer dashboard, requests, suppliers, sites ve reports sayfalarına erişebilir
@@ -117,7 +119,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
 // Sidebar menü öğelerini filtreleme
 export const getAccessibleMenuItems = (userRole: UserRole) => {
   if (userRole === 'site_manager' || userRole === 'warehouse_manager') {
-    return ['dashboard', 'requests'] // Sadece dashboard ve requests
+    return ['dashboard', 'requests', 'reports'] // Dashboard, requests ve reports
   }
   
   if (userRole === 'purchasing_officer') {
@@ -133,7 +135,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'user') {
-    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites'] // Settings ve reports hariç
+    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports'] // Settings hariç
   }
   
   // Admin ve manager tüm menülere erişebilir

@@ -15,7 +15,7 @@ function getOpenAIClient() {
   return openai
 }
 
-// AI analiz fonksiyonları - Expanded interface
+// AI analiz fonksiyonları - Updated interface for all_materials
 interface DashboardData {
   requests: any[]
   requestItems: any[]
@@ -25,9 +25,7 @@ interface DashboardData {
   offers: any[]
   offerItems: any[]
   profiles: any[]
-  materialCategories: any[]
-  materialSubcategories: any[]
-  materialItems: any[]
+  allMaterials: any[]
   supplierMaterials: any[]
   approvalHistory: any[]
   attachments: any[]
@@ -102,9 +100,7 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
       ordersResult,
       offersResult,
       profilesResult,
-      materialCategoriesResult,
-      materialSubcategoriesResult,
-      materialItemsResult,
+      allMaterialsResult,
       supplierMaterialsResult,
       approvalHistoryResult,
       attachmentsResult
@@ -117,11 +113,8 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
         profiles!purchase_requests_approved_by_fkey(id, full_name, role, email)
       `),
       
-      // Purchase request items - malzeme detaylarıyla
-      supabase.from('purchase_request_items').select(`
-        *,
-        material_items(id, name, description, unit)
-      `),
+      // Purchase request items - basit
+      supabase.from('purchase_request_items').select('*'),
       
       // Sites - basit
       supabase.from('sites').select('*'),
@@ -147,31 +140,13 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
       // Profiles - kullanıcı bilgileri
       supabase.from('profiles').select('*'),
       
-      // Material categories
-      supabase.from('material_categories').select('*'),
-      
-      // Material subcategories - kategorilerle
-      supabase.from('material_subcategories').select(`
-        *,
-        material_categories(id, name, description)
-      `),
-      
-      // Material items - tam hiyerarşiyle
-      supabase.from('material_items').select(`
-        *,
-        material_subcategories(
-          id, name, 
-          material_categories(id, name)
-        )
-      `),
+      // All materials - unified material system
+      supabase.from('all_materials').select('*'),
       
       // Supplier materials - tüm ilişkilerle
       supabase.from('supplier_materials').select(`
         *,
-        suppliers(id, name, contact_person),
-        material_categories(id, name),
-        material_subcategories(id, name),
-        material_items(id, name, unit)
+        suppliers(id, name, contact_person)
       `),
       
       // Approval history - kullanıcı bilgileriyle
@@ -199,9 +174,7 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
     console.log('- Orders:', ordersResult.data?.length, ordersResult.error?.message || 'OK')
     console.log('- Offers:', offersResult.data?.length, offersResult.error?.message || 'OK')
     console.log('- Profiles:', profilesResult.data?.length, profilesResult.error?.message || 'OK')
-    console.log('- Material Categories:', materialCategoriesResult.data?.length, materialCategoriesResult.error?.message || 'OK')
-    console.log('- Material Subcategories:', materialSubcategoriesResult.data?.length, materialSubcategoriesResult.error?.message || 'OK')
-    console.log('- Material Items:', materialItemsResult.data?.length, materialItemsResult.error?.message || 'OK')
+    console.log('- All Materials:', allMaterialsResult.data?.length, allMaterialsResult.error?.message || 'OK')
     console.log('- Supplier Materials:', supplierMaterialsResult.data?.length, supplierMaterialsResult.error?.message || 'OK')
     console.log('- Approval History:', approvalHistoryResult.data?.length, approvalHistoryResult.error?.message || 'OK')
     console.log('- Attachments:', attachmentsResult.data?.length, attachmentsResult.error?.message || 'OK')
@@ -275,11 +248,9 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
       suppliers: enrichedSuppliers,
       orders: enrichedOrders,
       offers: enrichedOffers,
-      offerItems: materialItemsResult.data || [], // Material items as offer items
+      offerItems: [], // Removed - using all_materials instead
       profiles: profilesResult.data || [],
-      materialCategories: materialCategoriesResult.data || [],
-      materialSubcategories: materialSubcategoriesResult.data || [],
-      materialItems: materialItemsResult.data || [],
+      allMaterials: allMaterialsResult.data || [],
       supplierMaterials: supplierMaterialsResult.data || [],
       approvalHistory: approvalHistoryResult.data || [],
       attachments: attachmentsResult.data || []
@@ -318,9 +289,7 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
       offers: [],
       offerItems: [],
       profiles: [],
-      materialCategories: [],
-      materialSubcategories: [],
-      materialItems: [],
+      allMaterials: [],
       supplierMaterials: [],
       approvalHistory: [],
       attachments: []
@@ -533,9 +502,7 @@ function prepareDataContext(data: DashboardData): string {
     offers: data.offers?.length || 0,
     offerItems: data.offerItems?.length || 0,
     profiles: data.profiles?.length || 0,
-    materialCategories: data.materialCategories?.length || 0,
-    materialSubcategories: data.materialSubcategories?.length || 0,
-    materialItems: data.materialItems?.length || 0,
+    allMaterials: data.allMaterials?.length || 0,
     supplierMaterials: data.supplierMaterials?.length || 0,
     approvalHistory: data.approvalHistory?.length || 0,
     attachments: data.attachments?.length || 0
@@ -708,9 +675,7 @@ TOPLAM VERİ SAYILARI:
 - Siparişler: ${data.orders?.length || 0}
 - Teklifler: ${data.offers?.length || 0}
 - Kullanıcılar: ${data.profiles?.length || 0}
-- Malzeme Kategorileri: ${data.materialCategories?.length || 0}
-- Malzeme Alt Kategorileri: ${data.materialSubcategories?.length || 0}
-- Malzeme Öğeleri: ${data.materialItems?.length || 0}
+- Tüm Malzemeler: ${data.allMaterials?.length || 0}
 - Tedarikçi-Malzeme İlişkileri: ${data.supplierMaterials?.length || 0}
 - Onay Geçmişi: ${data.approvalHistory?.length || 0}
 - Ekli Dosyalar: ${data.attachments?.length || 0}
@@ -780,24 +745,26 @@ ${(data.profiles || []).map(profile =>
   `- ${profile.full_name || 'İsimsiz'} (${profile.email}) - ${profile.role || 'rol belirtilmemiş'} - ${profile.department || 'birim belirtilmemiş'}`
 ).join('\n') || 'Kullanıcı bulunamadı'}
 
-MALZEME KATEGORİ HİYERARŞİSİ:
-${(data.materialCategories || []).map(category => {
-  const subcategories = (data.materialSubcategories || []).filter(sub => sub.category_id === category.id)
-  const subcatText = subcategories.map(sub => {
-    const items = (data.materialItems || []).filter(item => item.subcategory_id === sub.id)
-    return `  • ${sub.name} (${items.length} malzeme)`
-  }).join('\n')
-  return `- ${category.name}: ${category.description || 'açıklama yok'}\n${subcatText}`
-}).join('\n\n') || 'Kategori bulunamadı'}
+MALZEME HİYERARŞİSİ (ALL_MATERIALS):
+${(() => {
+  const materials = data.allMaterials || []
+  const classes = [...new Set(materials.map(m => m.class).filter(Boolean))]
+  
+  return classes.map(className => {
+    const groups = [...new Set(materials.filter(m => m.class === className).map(m => m.group).filter(Boolean))]
+    const groupsText = groups.map(groupName => {
+      const items = materials.filter(m => m.class === className && m.group === groupName)
+      return `  • ${groupName} (${items.length} malzeme)`
+    }).join('\n')
+    return `- ${className}:\n${groupsText}`
+  }).join('\n\n')
+})() || 'Malzeme bulunamadı'}
 
 TEDARİKÇİ-MALZEME İLİŞKİLERİ:
 ${(data.supplierMaterials || []).slice(0, 15).map(sm => {
   const supplier = data.suppliers?.find(s => s.id === sm.supplier_id)
-  const category = data.materialCategories?.find(c => c.id === sm.material_category_id)
-  const subcategory = data.materialSubcategories?.find(sc => sc.id === sm.material_subcategory_id)
-  const item = data.materialItems?.find(i => i.id === sm.material_item_id)
   
-  return `- ${supplier?.name || 'Bilinmeyen tedarikçi'}: ${category?.name || 'kategori yok'} > ${subcategory?.name || 'alt kategori yok'} > ${item?.name || 'malzeme yok'} | Min. Sipariş: ₺${parseFloat(sm.minimum_order_amount || 0).toLocaleString('tr-TR')} | Teslimat: ${sm.delivery_time_days || 0} gün`
+  return `- ${supplier?.name || 'Bilinmeyen tedarikçi'}: ${sm.material_class || 'sınıf yok'} > ${sm.material_group || 'grup yok'} > ${sm.material_item || 'malzeme yok'} | Min. Miktar: ${sm.minimum_order_quantity || 0} | Teslimat: ${sm.delivery_time_days || 0} gün`
 }).join('\n') || 'Tedarikçi-malzeme ilişkisi bulunamadı'}
 
 ONAY SÜREÇLERİ GEÇMİŞİ:

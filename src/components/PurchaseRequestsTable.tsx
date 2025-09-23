@@ -27,7 +27,6 @@ import {
   Check,
   Truck
 } from 'lucide-react'
-import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 
 interface PurchaseRequest {
   id: string
@@ -38,7 +37,7 @@ interface PurchaseRequest {
   site_id: string
   material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
-  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'cancelled' | 'awaiting_offers' | 'sipariş verildi' | 'şantiye şefi onayladı' | 'satın almaya gönderildi' | 'gönderildi' | 'kısmen gönderildi' | 'depoda mevcut değil' | 'eksik onaylandı' | 'alternatif onaylandı' | 'teslim alındı' | 'delivered'
+  status: string // Basitleştirdik - artık database'den ne geliyorsa onu kullanıyoruz
   requested_by: string
   approved_by?: string
   approved_at?: string
@@ -56,12 +55,6 @@ interface PurchaseRequest {
     quantity: number
     unit: string
     item_name?: string
-  }>
-  orders?: Array<{
-    id: string
-    delivery_date: string
-    status: string
-    delivered_at?: string
   }>
 }
 
@@ -106,7 +99,7 @@ const fetchPurchaseRequests = async (key: string) => {
   
   // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
+    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
   }
   
   // Santiye depo tüm talepleri görebilir
@@ -143,12 +136,6 @@ const fetchPurchaseRequests = async (key: string) => {
         quantity,
         unit,
         item_name
-      ),
-      orders!left (
-        id,
-        delivery_date,
-        status,
-        delivered_at
       )
     `)
     .range(from, to)
@@ -156,7 +143,7 @@ const fetchPurchaseRequests = async (key: string) => {
   
   // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
+    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
   }
   
   // Santiye depo tüm talepleri görebilir  
@@ -176,23 +163,12 @@ const fetchPurchaseRequests = async (key: string) => {
   }
 
   const formattedRequests = (requests || []).map(request => {
-    let finalStatus = request.status
-    
-    // Order durumuna göre status'u güncelle
-    if (request.orders && request.orders.length > 0) {
-      const order = request.orders[0]
-      if (order.status === 'delivered') {
-        finalStatus = 'teslim alındı'
-      } else {
-        finalStatus = 'sipariş verildi'
-      }
-    }
-    
+    // Sadece database'den gelen status'u kullan - Supabase trigger'ları otomatik güncelliyor
     return {
       ...request,
       request_number: `REQ-${request.id.slice(0, 8)}`,
-      updated_at: request.created_at,
-      status: finalStatus
+      updated_at: request.created_at
+      // status zaten database'den doğru geliyor, değiştirmeye gerek yok
     }
   }) as PurchaseRequest[]
 
@@ -206,10 +182,6 @@ export default function PurchaseRequestsTable() {
   const [userRole, setUserRole] = useState<string>('')
   const [approving, setApproving] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<string>('approval_pending')
-  
-  // Delivery confirmation modal state
-  const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
-  const [selectedRequestForDelivery, setSelectedRequestForDelivery] = useState<any>(null)
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -314,23 +286,40 @@ export default function PurchaseRequestsTable() {
 
 
   const getStatusBadge = (status: string) => {
+    // Purchasing officer için özel görünüm - satın almaya gönderilmiş talepler "Beklemede" olarak görünür
+    if (userRole === 'purchasing_officer' && 
+        (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi')) {
+      return (
+        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+          Beklemede
+        </Badge>
+      )
+    }
+
     const statusConfig = {
+      // Temel statuslar
       draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-700 border-0' },
       pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
-      'şantiye şefi onayladı': { label: 'Şantiye Şefi Onayladı', className: 'bg-blue-100 text-blue-800 border-0' },
+      'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
+      'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
-      awaiting_offers: { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
-      approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
-      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
-      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
       'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
-      'eksik onaylandı': { label: 'Eksik Onaylandı', className: 'bg-blue-100 text-blue-800 border-0' },
-      'alternatif onaylandı': { label: 'Alternatif Onaylandı', className: 'bg-purple-100 text-purple-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
-      'delivered': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' }
+      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
+      cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
+      
+      // Eski statuslar için backward compatibility
+      'şantiye şefi onayladı': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      awaiting_offers: { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
+      approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
+      delivered: { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
+      'eksik onaylandı': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      'alternatif onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
+      'eksik malzemeler talep edildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' }
     }
 
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
@@ -402,34 +391,7 @@ export default function PurchaseRequestsTable() {
   }
 
   // Delivery confirmation functions
-  const isDeliveryDateReached = (order: any) => {
-    if (!order?.delivery_date) return false
-    const deliveryDate = new Date(order.delivery_date)
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
-    deliveryDate.setHours(0, 0, 0, 0)
-    return today >= deliveryDate
-  }
-
-  const canConfirmDelivery = (request: any) => {
-    return userRole === 'site_personnel' && 
-           request.orders && 
-           request.orders.length > 0 && 
-           request.orders[0].status !== 'delivered' && 
-           isDeliveryDateReached(request.orders[0])
-  }
-
-  const handleDeliveryConfirmation = (request: any, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setSelectedRequestForDelivery(request)
-    setIsDeliveryModalOpen(true)
-  }
-
-  const handleDeliverySuccess = () => {
-    refreshData()
-    invalidatePurchaseRequestsCache()
-    setSelectedRequestForDelivery(null)
-  }
+  // Delivery fonksiyonları kaldırıldı - artık offers sayfasında yönetiliyor
 
   const handleSiteManagerApproval = async (requestId: string, e: React.MouseEvent) => {
     e.stopPropagation() // Tıklamanın satır tıklamasına etki etmesini engelle
@@ -750,10 +712,10 @@ export default function PurchaseRequestsTable() {
                               {approving === request.id ? (
                                 <>
                                   <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                  Talep Ediliyor...
+                                  Gönderiliyor...
                                 </>
                               ) : (
-                                'Talep Et'
+                                'Satın Almaya Gönder'
                               )}
                             </Button>
                           ) : request.status === 'satın almaya gönderildi' ? (
@@ -780,21 +742,12 @@ export default function PurchaseRequestsTable() {
                             <span className="text-xs text-gray-400">-</span>
                           )
                         ) : userRole === 'site_personnel' ? (
-                          // Site Personnel Actions (Delivery Confirmation)
-                          canConfirmDelivery(request) ? (
-                            <Button
-                              size="sm"
-                              onClick={(e) => handleDeliveryConfirmation(request, e)}
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-2 py-1 h-8 rounded-lg flex items-center gap-1"
-                            >
-                              <Check className="h-3 w-3" />
-                              Teslim Al
-                            </Button>
-                          ) : request.status === 'teslim alındı' ? (
+                          // Site Personnel - Teslimat durumu gösterimi
+                          request.status === 'teslim alındı' ? (
                             <Badge className="bg-green-100 text-green-700 border-0 text-xs">
                               ✓ Teslim Alındı
                             </Badge>
-                          ) : request.status === 'sipariş verildi' && request.orders?.[0] && !isDeliveryDateReached(request.orders[0]) ? (
+                          ) : request.status === 'sipariş verildi' ? (
                             <Badge className="bg-yellow-100 text-yellow-700 border-0 text-xs">
                               Teslimat Bekliyor
                             </Badge>
@@ -881,20 +834,7 @@ export default function PurchaseRequestsTable() {
         
       </CardContent>
 
-      {/* Delivery Confirmation Modal */}
-      {selectedRequestForDelivery && selectedRequestForDelivery.orders?.[0] && (
-        <DeliveryConfirmationModal
-          isOpen={isDeliveryModalOpen}
-          onClose={() => {
-            setIsDeliveryModalOpen(false)
-            setSelectedRequestForDelivery(null)
-          }}
-          orderId={selectedRequestForDelivery.orders[0].id}
-          requestId={selectedRequestForDelivery.id}
-          deliveryDate={selectedRequestForDelivery.orders[0].delivery_date}
-          onSuccess={handleDeliverySuccess}
-        />
-      )}
+      {/* Delivery Confirmation Modal - Artık orders'a ihtiyaç yok, direkt order bilgisi geçiliyor */}
     </Card>
   )
 }

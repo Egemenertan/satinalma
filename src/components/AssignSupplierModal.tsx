@@ -222,12 +222,8 @@ export default function AssignSupplierModal({
       return
     }
 
-    // material_class ve material_group kontrol et
-    if (!materialClass || !materialGroup) {
-      showToast('Malzeme sınıf ve grup bilgisi eksik. Bu ürün atanamaz.', 'error')
-      console.error('❌ Material class/group eksik:', { materialClass, materialGroup, itemName })
-      return
-    }
+    // material_class ve material_group opsiyonel bilgi - yoksa null olarak geçilecek
+    console.log('ℹ️ Material class/group bilgisi:', { materialClass, materialGroup, itemName })
 
     try {
       setAssigningSupplier(true)
@@ -248,14 +244,21 @@ export default function AssignSupplierModal({
       })
 
       // Önce bu tedarikçi-ürün ilişkisi zaten var mı kontrol et
-      const { data: existingAssignment } = await supabase
+      let existingQuery = supabase
         .from('supplier_materials')
         .select('id')
         .eq('supplier_id', supplierId)
-        .eq('material_class', materialClass)
-        .eq('material_group', materialGroup)
         .eq('material_item', itemName)
-        .single()
+      
+      // material_class ve material_group null ise koşullara ekleme
+      if (materialClass) {
+        existingQuery = existingQuery.eq('material_class', materialClass)
+      }
+      if (materialGroup) {
+        existingQuery = existingQuery.eq('material_group', materialGroup)
+      }
+      
+      const { data: existingAssignment } = await existingQuery.single()
 
       if (existingAssignment) {
         showToast(`${supplierName} zaten bu ürün için kayıtlı.`, 'info')
@@ -264,11 +267,17 @@ export default function AssignSupplierModal({
       }
 
       // Yeni atama oluştur
-      const insertData = {
+      const insertData: any = {
         supplier_id: supplierId,
-        material_class: materialClass,
-        material_group: materialGroup,
         material_item: itemName
+      }
+      
+      // Sadece varsa ekle
+      if (materialClass) {
+        insertData.material_class = materialClass
+      }
+      if (materialGroup) {
+        insertData.material_group = materialGroup
       }
 
       console.log('💾 Insert verisi:', insertData)
@@ -312,9 +321,9 @@ export default function AssignSupplierModal({
                 <p className="text-gray-500 mt-1">
                   "{itemName}" ürününü bir tedarikçiye atayın
                 </p>
-                {(!materialClass || !materialGroup) && (
-                  <p className="text-red-600 text-sm mt-2 bg-red-50 px-3 py-2 rounded-lg">
-                    ⚠️ Bu ürün için malzeme sınıf/grup bilgisi eksik. Atama yapılamayacak.
+                {(!materialClass && !materialGroup) && (
+                  <p className="text-yellow-600 text-sm mt-2 bg-yellow-50 px-3 py-2 rounded-lg">
+                    ℹ️ Malzeme sınıf/grup bilgisi mevcut değil. Genel tedarikçi kategorilerinden seçim yapılacak.
                   </p>
                 )}
               </div>

@@ -30,27 +30,16 @@ const fetchStats = async () => {
 
   let query = supabase
     .from('purchase_requests')
-    .select(`
-      id,
-      status,
-      urgency_level,
-      requested_by,
-      orders!left (
-        id
-      )
-    `)
+    .select('id, status, urgency_level, requested_by')
   
   // Site personeli sadece kendi taleplerini görebilir
   if (profile?.role === 'site_personnel') {
     query = query.eq('requested_by', user.id)
   }
   
-  // Santiye depo tüm talepleri görebilir (site personnel gibi sadece requests sayfasına erişim var)
-  // Bu role için özel filtreleme yok - tüm talepleri görebilir
-  
   // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    query = query.in('status', ['satın almaya gönderildi', 'sipariş verildi'])
+    query = query.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı'])
   }
   
   const { data: requests, error } = await query
@@ -60,17 +49,12 @@ const fetchStats = async () => {
   }
   
   if (requests) {
-    // Siparişi olan taleplerin durumunu güncelle
-    const updatedRequests = requests.map(request => ({
-      ...request,
-      status: request.orders && request.orders.length > 0 ? 'sipariş verildi' : request.status
-    }))
-
+    // Basit istatistikler - sadece database'den gelen statusları kullan
     return {
-      total: updatedRequests.length,
-      pending: updatedRequests.filter(r => r.status === 'pending').length,
-      approved: updatedRequests.filter(r => r.status === 'approved').length,
-      urgent: updatedRequests.filter(r => r.urgency_level === 'critical' || r.urgency_level === 'high').length
+      total: requests.length,
+      pending: requests.filter(r => r.status === 'pending' || r.status === 'onay bekliyor').length,
+      approved: requests.filter(r => r.status === 'onaylandı' || r.status === 'sipariş verildi' || r.status === 'gönderildi' || r.status === 'teslim alındı').length,
+      urgent: requests.filter(r => r.urgency_level === 'critical' || r.urgency_level === 'high').length
     }
   }
   
@@ -92,6 +76,7 @@ export default function RequestsPage() {
       fallbackData: { total: 0, pending: 0, approved: 0, urgent: 0 }
     }
   )
+
 
   // Real-time updates için subscription
   useEffect(() => {
@@ -116,6 +101,7 @@ export default function RequestsPage() {
       subscription.unsubscribe()
     }
   }, [])
+
 
 
 

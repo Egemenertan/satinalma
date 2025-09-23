@@ -133,13 +133,26 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('material_categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('sort_order', { ascending: true })
+        .from('all_materials')
+        .select('class')
+        .not('class', 'is', null)
+        .not('class', 'eq', '')
+        .order('class')
 
       if (error) throw error
-      setCategories(data || [])
+      
+      // Unique class'ları al
+      const uniqueClasses = Array.from(new Set(data?.map(item => item.class)))
+        .filter(Boolean)
+        .sort()
+        .map((className, index) => ({
+          id: `class-${index}`,
+          name: className,
+          description: `${className} kategorisi`,
+          created_at: new Date().toISOString()
+        }))
+      
+      setCategories(uniqueClasses)
     } catch (error) {
       console.error('Error fetching categories:', error)
       showToast('Kategoriler yüklenirken hata oluştu', 'error')
@@ -148,17 +161,32 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
     }
   }
 
-  const fetchSubcategories = async (categoryId: string) => {
+  const fetchSubcategories = async (categoryName: string) => {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('material_subcategories')
-        .select('*')
-        .eq('category_id', categoryId)
-        .order('name')
+        .from('all_materials')
+        .select('group')
+        .eq('class', categoryName)
+        .not('group', 'is', null)
+        .not('group', 'eq', '')
+        .order('group')
 
       if (error) throw error
-      setSubcategories(data || [])
+      
+      // Unique group'ları al
+      const uniqueGroups = Array.from(new Set(data?.map(item => item.group)))
+        .filter(Boolean)
+        .sort()
+        .map((groupName, index) => ({
+          id: `group-${index}`,
+          category_id: categoryName,
+          name: groupName,
+          description: `${groupName} alt kategorisi`,
+          created_at: new Date().toISOString()
+        }))
+      
+      setSubcategories(uniqueGroups)
     } catch (error) {
       console.error('Error fetching subcategories:', error)
       showToast('Alt kategoriler yüklenirken hata oluştu', 'error')
@@ -167,18 +195,32 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
     }
   }
 
-  const fetchMaterialItems = async (subcategoryId: string) => {
+  const fetchMaterialItems = async (categoryName: string, groupName: string) => {
     try {
       setLoading(true)
       const { data, error } = await supabase
-        .from('material_items')
+        .from('all_materials')
         .select('*')
-        .eq('subcategory_id', subcategoryId)
-        .eq('is_active', true)
-        .order('name')
+        .eq('class', categoryName)
+        .eq('group', groupName)
+        .not('item_name', 'is', null)
+        .not('item_name', 'eq', '')
+        .order('item_name')
 
       if (error) throw error
-      setMaterialItems(data || [])
+      
+      // Material items'ı uygun format'a çevir
+      const formattedItems = data?.map((item, index) => ({
+        id: `item-${item.id}`,
+        subcategory_id: groupName,
+        name: item.item_name,
+        description: `${item.class} - ${item.group}`,
+        unit: 'adet', // Default unit
+        is_active: true,
+        created_at: item.created_at
+      })) || []
+      
+      setMaterialItems(formattedItems)
     } catch (error) {
       console.error('Error fetching material items:', error)
       showToast('Malzemeler yüklenirken hata oluştu', 'error')
@@ -193,21 +235,16 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
     try {
       const { data, error } = await supabase
         .from('supplier_materials')
-        .select(`
-          *,
-          material_categories!supplier_materials_material_category_id_fkey(name),
-          material_subcategories!supplier_materials_material_subcategory_id_fkey(name),
-          material_items!supplier_materials_material_item_id_fkey(name)
-        `)
+        .select('*')
         .eq('supplier_id', supplier.id)
 
       if (error) throw error
       
       const processedMaterials = (data || []).map(material => ({
         ...material,
-        category_name: material.material_categories?.name,
-        subcategory_name: material.material_subcategories?.name,
-        item_name: material.material_items?.name
+        category_name: material.material_class,
+        subcategory_name: material.material_group,
+        item_name: material.material_item
       }))
 
       setSupplierMaterials(processedMaterials)
@@ -220,14 +257,16 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
     setSelectedCategory(category)
     setSelectedSubcategory(null)
     setSelectedItems([])
-    fetchSubcategories(category.id)
+    fetchSubcategories(category.name)
     setCurrentStep('subcategory')
   }
 
   const handleSubcategorySelect = (subcategory: MaterialSubcategory) => {
     setSelectedSubcategory(subcategory)
     setSelectedItems([])
-    fetchMaterialItems(subcategory.id)
+    if (selectedCategory) {
+      fetchMaterialItems(selectedCategory.name, subcategory.name)
+    }
     setCurrentStep('items')
   }
 
@@ -251,9 +290,9 @@ export function SupplierMaterialsPanel({ supplier, isOpen, onClose, onUpdate }: 
       // Her seçili malzeme için kayıt oluştur
       const materialRecords = selectedItems.map(item => ({
         supplier_id: supplier.id,
-        material_category_id: selectedCategory.id,
-        material_subcategory_id: selectedSubcategory.id,
-        material_item_id: item.id,
+        material_class: selectedCategory.name,
+        material_group: selectedSubcategory.name,
+        material_item: item.name,
         delivery_time_days: 7,
         is_preferred: false
       }))

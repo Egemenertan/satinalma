@@ -1,4 +1,4 @@
-// Dynamic imports will be used instead
+// Modern PDF generator using HTML and print CSS
 
 export interface TimelineItem {
   date: string
@@ -42,324 +42,505 @@ export interface ReportData {
   }
 }
 
-export const generatePurchaseRequestReport = async (data: ReportData): Promise<void> => {
-  // Dynamic import to avoid SSR issues
-  const jsPDF = (await import('jspdf')).default
-  await import('jspdf-autotable')
+// Professional corporate PDF CSS
+const getPDFStyles = () => `
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
   
-  const doc = new jsPDF()
-  
-  // Türkçe karakter desteği için font ayarları
-  // jsPDF'de Times ve Helvetica fontları Türkçe karakterleri destekler
-  doc.setFont('times', 'normal')
-  
-  let yPosition = 30
-  const pageWidth = doc.internal.pageSize.getWidth()
-  const margin = 25
-  const contentWidth = pageWidth - 2 * margin
-  
-  // Colors
-  const primaryColor = [41, 128, 185] // Blue
-  const secondaryColor = [52, 73, 94] // Dark blue
-  const textColor = [44, 62, 80] // Dark gray
-  const lightGray = [236, 240, 241]
-
-  // Header background
-  doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
-  doc.rect(0, 0, pageWidth, 50, 'F')
-  
-  // Logo placeholder (white rectangle)
-  doc.setFillColor(255, 255, 255)
-  doc.rect(margin, 15, 30, 20, 'F')
-  doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
-  doc.setFontSize(12)
-  doc.text('LOGO', margin + 8, 27)
-  
-  // Main title
-  doc.setFontSize(20)
-  doc.setTextColor(255, 255, 255)
-  doc.text('SATIN ALMA TALEBİ RAPORU', margin + 40, 25)
-  
-  // Company info
-  doc.setFontSize(10)
-  doc.text('İnşaat Malzeme Yönetim Sistemi', margin + 40, 35)
-  
-  // Report date - right aligned
-  const reportDate = `Rapor Tarihi: ${new Date().toLocaleDateString('tr-TR', {
-    year: 'numeric',
-    month: 'long', 
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  })}`
-  const dateWidth = doc.getTextWidth(reportDate)
-  doc.text(reportDate, pageWidth - margin - dateWidth, 35)
-  
-  yPosition = 70
-
-  // Section title with background
-  const drawSectionTitle = (title: string, y: number) => {
-    doc.setFillColor(lightGray[0], lightGray[1], lightGray[2])
-    doc.rect(margin, y - 5, contentWidth, 15, 'F')
-    doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2])
-    doc.setLineWidth(0.5)
-    doc.rect(margin, y - 5, contentWidth, 15, 'S')
-    
-    doc.setFontSize(14)
-    doc.setTextColor(secondaryColor[0], secondaryColor[1], secondaryColor[2])
-    doc.text(title, margin + 5, y + 5)
-    return y + 20
+  @page {
+    size: A4;
+    margin: 0;
+    background: white;
   }
-
-  yPosition = drawSectionTitle('TALEP BİLGİLERİ', yPosition)
-
-  // Request details in professional table format
-  const drawDetailRow = (label: string, value: string, y: number, isOdd: boolean = false) => {
-    // Background for alternating rows
-    if (isOdd) {
-      doc.setFillColor(250, 250, 250)
-      doc.rect(margin, y - 3, contentWidth, 12, 'F')
+  
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+  
+  body {
+    font-family: 'Inter', Arial, sans-serif;
+    font-size: 10px;
+    line-height: 1.4;
+    color: #000000;
+    background: white;
+    -webkit-print-color-adjust: exact;
+    color-adjust: exact;
+  }
+  
+  .page {
+    width: 210mm;
+    min-height: 297mm;
+    padding: 15mm;
+    background: white;
+    display: block;
+    margin: 0 auto;
+    page-break-after: always;
+  }
+  
+  .page:last-child {
+    page-break-after: avoid;
+  }
+  
+  /* Header Styles */
+  .header {
+    background: white;
+    color: black;
+    padding: 15px 0;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #000000;
+  }
+  
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  
+  .logo-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+  
+  .logo {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+    max-width: 50px;
+    max-height: 50px;
+    display: block;
+  }
+  
+  .header-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 3px;
+  }
+  
+  .header-subtitle {
+    font-size: 10px;
+    color: #333333;
+  }
+  
+  .header-date {
+    text-align: right;
+    font-size: 9px;
+    color: #333333;
+  }
+  
+  /* Section Styles */
+  .section {
+    margin-bottom: 20px;
+  }
+  
+  .section-title {
+    font-size: 12px;
+    font-weight: 700;
+    color: #000000;
+    background: #f5f5f5;
+    padding: 8px 12px;
+    margin-bottom: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  /* Info Card Styles */
+  .info-card {
+    background: white;
+    padding: 15px;
+  }
+  
+  .info-row {
+    display: flex;
+    margin-bottom: 8px;
+    align-items: flex-start;
+  }
+  
+  .info-row:last-child {
+    margin-bottom: 0;
+  }
+  
+  .info-label {
+    width: 120px;
+    font-size: 9px;
+    font-weight: 600;
+    color: #333333;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  
+  .info-value {
+    flex: 1;
+    font-size: 10px;
+    color: #000000;
+    font-weight: 400;
+  }
+  
+  .status-value {
+    font-weight: 600;
+  }
+  
+  /* Material Styles */
+  .material-container {
+    margin-top: 10px;
+  }
+  
+  .material-item {
+    background: #fafafa;
+    padding: 12px;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+  }
+  
+  .material-number {
+    background: #000000;
+    color: white;
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  
+  .material-content {
+    flex: 1;
+  }
+  
+  .material-name {
+    font-size: 11px;
+    font-weight: 600;
+    color: #000000;
+    margin-bottom: 4px;
+  }
+  
+  .material-details {
+    font-size: 9px;
+    color: #333333;
+    margin-bottom: 2px;
+  }
+  
+  /* Statistics Styles */
+  .stats-container {
+    display: flex;
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+  
+  .stat-card {
+    background: #fafafa;
+    padding: 12px;
+    flex: 1;
+    text-align: center;
+  }
+  
+  .stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 3px;
+  }
+  
+  .stat-label {
+    font-size: 8px;
+    color: #333333;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+  
+  /* Timeline Styles */
+  .timeline-item {
+    background: white;
+    padding: 12px;
+    margin-bottom: 8px;
+    border-left: 3px solid #000000;
+  }
+  
+  .timeline-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 6px;
+  }
+  
+  .timeline-action {
+    font-size: 10px;
+    font-weight: 600;
+    color: #000000;
+    flex: 1;
+  }
+  
+  .timeline-date {
+    font-size: 8px;
+    color: #333333;
+    background: #f0f0f0;
+    padding: 2px 6px;
+  }
+  
+  .timeline-actor {
+    font-size: 8px;
+    color: #333333;
+    font-weight: 500;
+    margin-bottom: 3px;
+  }
+  
+  .timeline-details {
+    font-size: 9px;
+    color: #000000;
+    line-height: 1.3;
+  }
+  
+  /* Description Styles */
+  .description {
+    background: #fafafa;
+    padding: 12px;
+    font-size: 10px;
+    color: #000000;
+    line-height: 1.4;
+  }
+  
+  /* Footer Styles */
+  .footer {
+    position: fixed;
+    bottom: 10mm;
+    left: 15mm;
+    right: 15mm;
+    border-top: 1px solid #cccccc;
+    padding-top: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 8px;
+    color: #333333;
+  }
+  
+  .footer-center {
+    font-weight: 500;
+  }
+  
+  /* Print Specific */
+  @media print {
+    .page {
+      margin: 0;
     }
     
-    // Border
-    doc.setDrawColor(200, 200, 200)
-    doc.setLineWidth(0.2)
-    doc.rect(margin, y - 3, contentWidth, 12, 'S')
-    
-    // Label (bold)
-    doc.setFontSize(10)
-    doc.setTextColor(textColor[0], textColor[1], textColor[2])
-    doc.text(label, margin + 5, y + 4)
-    
-    // Value
-    doc.setTextColor(60, 60, 60)
-    const labelWidth = 60
-    const maxValueWidth = contentWidth - labelWidth - 10
-    const lines = doc.splitTextToSize(value, maxValueWidth)
-    doc.text(lines, margin + labelWidth, y + 4)
-    
-    return y + Math.max(12, lines.length * 5 + 2)
-  }
-
-  let isOdd = false
-  yPosition = drawDetailRow('Talep No:', `REQ-${data.request.id.slice(0, 8)}`, yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Başlık:', data.request.title, yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Durum:', data.request.status.toUpperCase(), yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Aciliyet:', data.request.urgency_level, yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Malzeme Sınıfı:', data.request.material_class, yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Şantiye:', data.request.sites?.name || data.request.site_name || 'Belirtilmemiş', yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Talep Eden:', data.request.profiles?.full_name || data.request.profiles?.email || 'Bilinmeyen', yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Rol:', data.request.profiles?.role || 'Belirtilmemiş', yPosition, isOdd = !isOdd)
-  yPosition = drawDetailRow('Oluşturulma:', new Date(data.request.created_at).toLocaleDateString('tr-TR', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  }), yPosition, isOdd = !isOdd)
-
-  yPosition += 15
-
-  // Page break check function
-  const checkPageBreak = (requiredSpace: number) => {
-    if (yPosition + requiredSpace > doc.internal.pageSize.getHeight() - 30) {
-      doc.addPage()
-      yPosition = 30
+    .material-item,
+    .timeline-item {
+      page-break-inside: avoid;
     }
   }
+</style>
+`
 
-  // Talep Açıklaması
-  if (data.request.description) {
-    checkPageBreak(40)
-    yPosition = drawSectionTitle('TALEP AÇIKLAMASI', yPosition)
-    
-    doc.setFillColor(249, 249, 249)
-    const descLines = doc.splitTextToSize(data.request.description, contentWidth - 10)
-    const descHeight = descLines.length * 5 + 10
-    doc.rect(margin, yPosition - 5, contentWidth, descHeight, 'F')
-    doc.setDrawColor(200, 200, 200)
-    doc.rect(margin, yPosition - 5, contentWidth, descHeight, 'S')
-    
-    doc.setFontSize(10)
-    doc.setTextColor(60, 60, 60)
-    doc.text(descLines, margin + 5, yPosition + 5)
-    yPosition += descHeight + 10
-  }
-
-  // Talep Edilen Malzemeler
-  if (data.request.purchase_request_items && data.request.purchase_request_items.length > 0) {
-    checkPageBreak(60)
-    yPosition = drawSectionTitle('TALEP EDİLEN MALZEMELER', yPosition)
-    
-    data.request.purchase_request_items.forEach((item, index) => {
-      const isItemOdd = index % 2 === 1
-      
-      // Item background
-      if (isItemOdd) {
-        doc.setFillColor(250, 250, 250)
-      } else {
-        doc.setFillColor(255, 255, 255)
-      }
-      doc.rect(margin, yPosition - 3, contentWidth, 20, 'F')
-      
-      // Item border
-      doc.setDrawColor(200, 200, 200)
-      doc.setLineWidth(0.2)
-      doc.rect(margin, yPosition - 3, contentWidth, 20, 'S')
-      
-      // Item number circle
-      doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
-      doc.circle(margin + 8, yPosition + 5, 4, 'F')
-      doc.setTextColor(255, 255, 255)
-      doc.setFontSize(8)
-      doc.text((index + 1).toString(), margin + 6, yPosition + 7)
-      
-      // Item details
-      doc.setFontSize(11)
-      doc.setTextColor(textColor[0], textColor[1], textColor[2])
-      doc.text(item.item_name, margin + 20, yPosition + 5)
-      
-      doc.setFontSize(9)
-      doc.setTextColor(100, 100, 100)
-      doc.text(`Miktar: ${item.quantity} ${item.unit}`, margin + 20, yPosition + 12)
-      
-      if (item.description) {
-        const itemDescWidth = contentWidth - 25
-        const itemDescLines = doc.splitTextToSize(`Açıklama: ${item.description}`, itemDescWidth)
-        doc.text(itemDescLines[0], margin + 20, yPosition + 17)
-      }
-      
-      yPosition += 25
-    })
-
-    yPosition += 10
-  }
-
-  // İstatistikler
-  checkPageBreak(80)
-  yPosition = drawSectionTitle('İSTATİSTİKLER', yPosition)
-  
-  // Statistics cards
-  const statItems = [
-    { label: 'Toplam İşlem Süresi', value: `${data.statistics.totalDays} gün`, icon: '📅' },
-    { label: 'Alınan Teklif Sayısı', value: data.statistics.totalOffers.toString(), icon: '📄' },
-    { label: 'Toplam Tutar', value: `${data.statistics.totalAmount.toLocaleString('tr-TR')} ${data.statistics.currency}`, icon: '💰' }
-  ]
-  
-  const cardWidth = (contentWidth - 20) / 3
-  statItems.forEach((item, index) => {
-    const cardX = margin + index * (cardWidth + 10)
-    
-    // Card background
-    doc.setFillColor(248, 249, 250)
-    doc.roundedRect(cardX, yPosition - 5, cardWidth, 35, 3, 3, 'F')
-    doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2])
-    doc.setLineWidth(0.5)
-    doc.roundedRect(cardX, yPosition - 5, cardWidth, 35, 3, 3, 'S')
-    
-    // Icon area
-    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
-    doc.circle(cardX + 12, yPosition + 8, 6, 'F')
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(10)
-    doc.text(item.icon, cardX + 9, yPosition + 11)
-    
-    // Value
-    doc.setFontSize(14)
-    doc.setTextColor(textColor[0], textColor[1], textColor[2])
-    doc.text(item.value, cardX + 25, yPosition + 8)
-    
-    // Label
-    doc.setFontSize(8)
-    doc.setTextColor(100, 100, 100)
-    const labelLines = doc.splitTextToSize(item.label, cardWidth - 30)
-    doc.text(labelLines, cardX + 25, yPosition + 18)
-  })
-  
-  yPosition += 50
-
-  // Timeline
-  checkPageBreak(60)
-  yPosition = drawSectionTitle('TALEBİN ZAMAN ÇİZELGESİ', yPosition)
-  
-  data.timeline.forEach((item, index) => {
-    checkPageBreak(35)
-    
-    const date = new Date(item.date).toLocaleDateString('tr-TR', {
+// HTML Template Generator
+const generatePDFHTML = (data: ReportData): string => {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
       year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
+      month: 'long',
+      day: 'numeric',
       hour: '2-digit',
       minute: '2-digit'
     })
+  }
+
+  const getReportDate = () => {
+    return new Date().toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Supabase storage'dan logo URL'i oluştur
+  const getLogoUrl = () => {
+    // Doğru Supabase URL'i
+    const publicUrl = 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dunya.png'
     
-    // Timeline item background
-    const itemBg = index % 2 === 0 ? [255, 255, 255] : [248, 249, 250]
-    doc.setFillColor(itemBg[0], itemBg[1], itemBg[2])
-    doc.rect(margin, yPosition - 3, contentWidth, 30, 'F')
+    // Fallback: Local public klasöründeki logo
+    const fallbackUrl = '/d.png'
     
-    // Left border indicator
-    const typeColors: any = {
-      'creation': [46, 204, 113],
-      'shipment': [52, 152, 219],
-      'offer': [155, 89, 182],
-      'approval': [241, 196, 15],
-      'order': [230, 126, 34],
-      'delivery': [26, 188, 156]
+    console.log('PDF Logo URL test:', publicUrl)
+    
+    // Test için önce public URL'i kullanelim
+    return publicUrl
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Satın Alma Talebi Raporu - REQ-${data.request.id.slice(0, 8)}</title>
+  ${getPDFStyles()}
+</head>
+<body>
+  <div class="page">
+    <!-- Header -->
+    <div class="header">
+      <div class="header-content">
+        <div class="logo-section">
+          <img src="${getLogoUrl()}" alt="DOVEC Logo" class="logo" onerror="this.onerror=null; this.src='/d.png';" />
+          <div>
+            <div class="header-title">SATIN ALMA TALEBİ RAPORU</div>
+            <div class="header-subtitle">İnşaat Malzeme Yönetim Sistemi</div>
+          </div>
+        </div>
+        <div class="header-date">
+          <div>Rapor Tarihi:</div>
+          <div>${getReportDate()}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Talep Bilgileri -->
+    <div class="section">
+      <div class="section-title">TALEP BİLGİLERİ</div>
+      <div class="info-card">
+        <div class="info-row">
+          <div class="info-label">TALEP NO</div>
+          <div class="info-value">REQ-${data.request.id.slice(0, 8)}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">BAŞLIK</div>
+          <div class="info-value">${data.request.title}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">DURUM</div>
+          <div class="info-value status-value">${data.request.status.toUpperCase()}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">ACİLİYET</div>
+          <div class="info-value">${data.request.urgency_level}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">MALZEME SINIFI</div>
+          <div class="info-value">${data.request.material_class}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">ŞANTİYE</div>
+          <div class="info-value">${data.request.sites?.name || data.request.site_name || 'Belirtilmemiş'}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">TALEP EDEN</div>
+          <div class="info-value">${data.request.profiles?.full_name || data.request.profiles?.email || 'Bilinmeyen'}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">OLUŞTURULMA</div>
+          <div class="info-value">${formatDate(data.request.created_at)}</div>
+        </div>
+      </div>
+    </div>
+
+    ${data.request.description ? `
+    <!-- Açıklama -->
+    <div class="section">
+      <div class="section-title">TALEP AÇIKLAMASI</div>
+      <div class="description">${data.request.description}</div>
+    </div>
+    ` : ''}
+
+    ${data.request.purchase_request_items && data.request.purchase_request_items.length > 0 ? `
+    <!-- Malzemeler -->
+    <div class="section">
+      <div class="section-title">TALEP EDİLEN MALZEMELER</div>
+      <div class="material-container">
+        ${data.request.purchase_request_items.map((item, index) => `
+          <div class="material-item">
+            <div class="material-number">${index + 1}</div>
+            <div class="material-content">
+              <div class="material-name">${item.item_name}</div>
+              <div class="material-details">Miktar: ${item.quantity} ${item.unit}</div>
+              ${item.description ? `<div class="material-details">Açıklama: ${item.description}</div>` : ''}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    <!-- İstatistikler -->
+    <div class="section">
+      <div class="section-title">İSTATİSTİKLER</div>
+      <div class="stats-container">
+        <div class="stat-card">
+          <div class="stat-value">${data.statistics.totalDays} gün</div>
+          <div class="stat-label">Toplam İşlem Süresi</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${data.statistics.totalOffers}</div>
+          <div class="stat-label">Alınan Teklif Sayısı</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value">${data.statistics.totalAmount.toLocaleString('tr-TR')} ${data.statistics.currency}</div>
+          <div class="stat-label">Toplam Tutar</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Timeline -->
+    <div class="section">
+      <div class="section-title">TALEBİN ZAMAN ÇİZELGESİ</div>
+      ${data.timeline.map((item, index) => `
+        <div class="timeline-item">
+          <div class="timeline-header">
+            <div class="timeline-action">${index + 1}. ${item.action}</div>
+            <div class="timeline-date">${formatDate(item.date)}</div>
+          </div>
+          <div class="timeline-actor">Kullanıcı: ${item.actor}</div>
+          <div class="timeline-details">Detay: ${item.details}</div>
+        </div>
+      `).join('')}
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div>Bu rapor sistem tarafından otomatik olarak oluşturulmuştur.</div>
+      <div class="footer-center">İnşaat Malzeme Yönetim Sistemi - DOVEC</div>
+      <div>Sayfa 1</div>
+    </div>
+  </div>
+</body>
+</html>
+  `
+}
+
+// PDF Generator Function
+export const generatePurchaseRequestReport = async (data: ReportData): Promise<void> => {
+  try {
+    // HTML content oluştur
+    const htmlContent = generatePDFHTML(data)
+    
+    // Yeni pencere aç
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      throw new Error('Pop-up engellendi. Lütfen pop-up engelleyicisini devre dışı bırakın.')
     }
-    const borderColor = typeColors[item.type] || primaryColor
-    doc.setFillColor(borderColor[0], borderColor[1], borderColor[2])
-    doc.rect(margin, yPosition - 3, 4, 30, 'F')
     
-    // Timeline content
-    doc.setFontSize(11)
-    doc.setTextColor(textColor[0], textColor[1], textColor[2])
-    doc.text(`${index + 1}. ${item.action}`, margin + 10, yPosition + 5)
+    // HTML'i yaz
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
     
-    doc.setFontSize(9)
-    doc.setTextColor(100, 100, 100)
-    doc.text(`📅 ${date}`, margin + 10, yPosition + 12)
-    doc.text(`👤 ${item.actor}`, margin + 10, yPosition + 18)
+    // Print dialog'u aç
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+      }, 500)
+    }
     
-    // Details with text wrapping
-    doc.setFontSize(9)
-    doc.setTextColor(80, 80, 80)
-    const detailLines = doc.splitTextToSize(`💬 ${item.details}`, contentWidth - 15)
-    doc.text(detailLines[0], margin + 10, yPosition + 24)
-    
-    yPosition += 35
-  })
-
-  // Professional footer
-  const addFooter = () => {
-    const footerY = doc.internal.pageSize.getHeight() - 20
-    
-    // Footer line
-    doc.setDrawColor(primaryColor[0], primaryColor[1], primaryColor[2])
-    doc.setLineWidth(1)
-    doc.line(margin, footerY - 5, pageWidth - margin, footerY - 5)
-    
-    // Footer text
-    doc.setFontSize(8)
-    doc.setTextColor(100, 100, 100)
-    doc.text('Bu rapor sistem tarafından otomatik olarak oluşturulmuştur.', margin, footerY)
-    
-    const pageInfo = `Sayfa ${doc.getCurrentPageInfo().pageNumber}/${doc.getNumberOfPages()}`
-    const pageInfoWidth = doc.getTextWidth(pageInfo)
-    doc.text(pageInfo, pageWidth - margin - pageInfoWidth, footerY)
-    
-    // Company info
-    doc.text('İnşaat Malzeme Yönetim Sistemi - DOVEC', (pageWidth - doc.getTextWidth('İnşaat Malzeme Yönetim Sistemi - DOVEC')) / 2, footerY)
+  } catch (error) {
+    console.error('PDF oluşturma hatası:', error)
+    throw new Error('PDF oluşturulurken bir hata oluştu: ' + (error as Error).message)
   }
-  
-  // Add footer to all pages
-  const totalPages = doc.getNumberOfPages()
-  for (let i = 1; i <= totalPages; i++) {
-    doc.setPage(i)
-    addFooter()
-  }
-
-  // PDF'i indir
-  const fileName = `Talep_Raporu_${data.request.id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.pdf`
-  doc.save(fileName)
 }
