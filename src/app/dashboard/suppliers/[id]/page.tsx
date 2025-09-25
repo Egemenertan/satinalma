@@ -52,6 +52,7 @@ interface Order {
   purchase_request_id: string
   document_urls: string[]
   delivery_receipt_photos?: string[]
+  delivery_image_urls?: string[]
   delivered_at?: string
   delivery_notes?: string
   purchase_requests?: {
@@ -128,6 +129,9 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   
   // Expanded cards state
   const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
+  
+  // Report generation state
+  const [generatingPDF, setGeneratingPDF] = useState<string | null>(null)
 
   useEffect(() => {
     let isActive = true
@@ -177,6 +181,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
           purchase_request_id,
           document_urls,
           delivery_receipt_photos,
+          delivery_image_urls,
           delivered_at,
           delivery_notes
         `)
@@ -473,6 +478,58 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
       }
       return newSet
     })
+  }
+
+  const generatePDFReport = async (order: Order) => {
+    try {
+      setGeneratingPDF(order.id)
+      
+      const requestId = order.purchase_request_id
+      if (!requestId) {
+        showToast('Bu sipariş için talep ID bulunamadı', 'error')
+        return
+      }
+      
+      // Timeline verilerini API'den al
+      console.log('📋 Timeline API çağrısı yapılıyor:', {
+        requestId,
+        orderId: order.id,
+        url: `/api/reports/timeline?requestId=${requestId}`
+      })
+      
+      const response = await fetch(`/api/reports/timeline?requestId=${requestId}`)
+      
+      if (!response.ok) {
+        console.error('❌ Timeline API hatası:', {
+          status: response.status,
+          statusText: response.statusText,
+          url: response.url
+        })
+        throw new Error('Timeline verileri alınamadı')
+      }
+      
+      const timelineData = await response.json()
+      
+      console.log('📊 Timeline API Response:', {
+        requestId,
+        orderId: order.id,
+        ordersFound: timelineData.orders?.length || 0,
+        timelineLength: timelineData.timeline?.length || 0,
+        shipmentsLength: timelineData.shipments?.length || 0
+      })
+      
+      // PDF generator'ı dynamic import ile yükle
+      const { generatePurchaseRequestReport } = await import('@/lib/pdf-generator')
+      
+      // PDF oluştur ve indir
+      await generatePurchaseRequestReport(timelineData)
+      
+    } catch (error) {
+      console.error('PDF raporu oluşturulurken hata:', error)
+      showToast('Rapor oluşturulurken bir hata oluştu. Lütfen tekrar deneyin.', 'error')
+    } finally {
+      setGeneratingPDF(null)
+    }
   }
 
   if (loading) {
@@ -799,9 +856,64 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                   </div>
                                 </div>
 
-                                {/* Fatura Butonu ve Chevron */}
+                                {/* İrsaliye Durumu */}
+                                {order.delivery_image_urls && order.delivery_image_urls.length > 0 && (
+                                  <div className="mb-3">
+                                    <Badge className="bg-green-100 text-green-800 border-green-200">
+                                      <CheckCircle className="w-3 h-3 mr-1" />
+                                      İrsaliye Teslim Alındı
+                                    </Badge>
+                                    {order.delivered_at && (
+                                      <span className="text-xs text-gray-500 ml-2">
+                                        {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
+                                          day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                                        })}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
+
+                                {/* İrsaliye Önizleme */}
+                                {order.delivery_image_urls && order.delivery_image_urls.length > 0 && (
+                                  <div className="mb-4">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      <Image className="w-4 h-4 text-blue-600" />
+                                      <span className="text-sm font-medium text-gray-900">İrsaliye Belgeleri</span>
+                                      <Badge variant="outline" className="text-xs">
+                                        {order.delivery_image_urls.length} adet
+                                      </Badge>
+                                    </div>
+                                    <div className="flex gap-2 overflow-x-auto pb-2">
+                                      {order.delivery_image_urls.slice(0, 4).map((photo, index) => (
+                                        <button
+                                          key={index}
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, index)}
+                                          className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-blue-200 hover:border-blue-400 transition-all duration-200 group bg-white"
+                                        >
+                                          <img
+                                            src={photo}
+                                            alt={`İrsaliye ${index + 1}`}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                          />
+                                        </button>
+                                      ))}
+                                      {order.delivery_image_urls.length > 4 && (
+                                        <button
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, 4)}
+                                          className="flex-shrink-0 w-16 h-16 rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200 transition-colors duration-200"
+                                        >
+                                          <div className="text-center">
+                                            <div className="font-semibold">+{order.delivery_image_urls.length - 4}</div>
+                                          </div>
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {/* Fatura Butonu ve Rapor Butonu */}
                                 <div className="flex items-center justify-between">
-                                  <div className="flex justify-start">
+                                  <div className="flex justify-start gap-2">
                                     {order.invoices && order.invoices.length > 0 ? (
                                       <Button 
                                         onClick={() => handleOpenInvoiceModal(order.id)}
@@ -821,23 +933,46 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                         Fatura Ekle
                                       </Button>
                                     )}
+                                    
+                                    {/* Rapor Oluştur Butonu */}
+                                    <Button
+                                      onClick={() => generatePDFReport(order)}
+                                      disabled={generatingPDF === order.id}
+                                      className="bg-slate-800 hover:bg-slate-700 text-white disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors rounded-lg shadow-sm"
+                                      size="sm"
+                                    >
+                                      {generatingPDF === order.id ? (
+                                        <>
+                                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                          Oluşturuluyor...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FileText className="w-4 h-4 mr-2" />
+                                          Rapor Oluştur
+                                        </>
+                                      )}
+                                    </Button>
                                   </div>
 
-                                  {/* Chevron Button - Sadece görseller varsa göster */}
+                                  {/* Detayları Gör Butonu */}
                                   {(
+                                    (order.delivery_image_urls && order.delivery_image_urls.length > 0) ||
                                     (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0) ||
                                     (order.invoices && order.invoices.length > 0)
                                   ) && (
                                     <Button
-                                      variant="ghost"
+                                      variant="outline"
                                       size="sm"
                                       onClick={() => toggleCardExpansion(order.id)}
-                                      className="text-gray-500 hover:text-gray-700 p-2"
+                                      className="text-gray-600 hover:text-gray-800 border-gray-300"
                                     >
+                                      <Eye className="w-4 h-4 mr-2" />
+                                      {expandedCards.has(order.id) ? 'Gizle' : 'Detayları Gör'}
                                       {expandedCards.has(order.id) ? (
-                                        <ChevronUp className="w-5 h-5" />
+                                        <ChevronUp className="w-4 h-4 ml-1" />
                                       ) : (
-                                        <ChevronDown className="w-5 h-5" />
+                                        <ChevronDown className="w-4 h-4 ml-1" />
                                       )}
                                     </Button>
                                   )}
@@ -848,13 +983,15 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
                           {/* Görseller Bölümü */}
                           {(
+                            (order.delivery_image_urls && order.delivery_image_urls.length > 0) ||
                             (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0) ||
                             (order.invoices && order.invoices.length > 0)
                           ) && expandedCards.has(order.id) && (
                             <div className="p-6 bg-gray-50/50 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
                               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                                 {/* İrsaliye Fotoğrafları */}
-                                {order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0 && (
+                                {((order.delivery_image_urls && order.delivery_image_urls.length > 0) || 
+                                  (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0)) && (
                                   <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
                                     <div className="flex items-center gap-3 mb-4">
                                       <div className="p-2 bg-gray-100 rounded-lg">
@@ -863,17 +1000,18 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                       <div>
                                         <span className="text-sm font-semibold text-gray-900">İrsaliye Belgeleri</span>
                                         <Badge variant="outline" className="ml-2 text-xs">
-                                          {order.delivery_receipt_photos.length} fotoğraf
+                                          {(order.delivery_image_urls?.length || 0) + (order.delivery_receipt_photos?.length || 0)} fotoğraf
                                         </Badge>
                                       </div>
                                     </div>
                                     
                                     <div className="grid grid-cols-3 gap-3">
-                                      {order.delivery_receipt_photos.slice(0, 6).map((photo, index) => (
+                                      {/* Önce delivery_image_urls'i göster */}
+                                      {order.delivery_image_urls?.slice(0, 6).map((photo, index) => (
                                         <button
-                                          key={index}
-                                          onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
-                                          className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-gray-300 transition-all duration-200 group bg-white"
+                                          key={`delivery-${index}`}
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, index)}
+                                          className="aspect-square rounded-lg overflow-hidden border-2 border-blue-200 hover:border-blue-300 transition-all duration-200 group bg-white"
                                         >
                                           <img
                                             src={photo}
@@ -882,13 +1020,33 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                           />
                                         </button>
                                       ))}
-                                      {order.delivery_receipt_photos.length > 6 && (
+                                      
+                                      {/* Sonra delivery_receipt_photos'u göster (eğer yer varsa) */}
+                                      {order.delivery_receipt_photos?.slice(0, Math.max(0, 6 - (order.delivery_image_urls?.length || 0))).map((photo, index) => (
                                         <button
-                                          onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, 6)}
+                                          key={`receipt-${index}`}
+                                          onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
+                                          className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-gray-300 transition-all duration-200 group bg-white"
+                                        >
+                                          <img
+                                            src={photo}
+                                            alt={`İrsaliye Fişi ${index + 1}`}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                          />
+                                        </button>
+                                      ))}
+                                      
+                                      {/* Toplam fotoğraf sayısı 6'dan fazlaysa +X göster */}
+                                      {((order.delivery_image_urls?.length || 0) + (order.delivery_receipt_photos?.length || 0)) > 6 && (
+                                        <button
+                                          onClick={() => {
+                                            const allPhotos = [...(order.delivery_image_urls || []), ...(order.delivery_receipt_photos || [])]
+                                            handleViewDeliveryPhotos(allPhotos, 6)
+                                          }}
                                           className="aspect-square rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200 transition-colors duration-200"
                                         >
                                           <div className="text-center">
-                                            <div className="font-semibold">+{order.delivery_receipt_photos.length - 6}</div>
+                                            <div className="font-semibold">+{((order.delivery_image_urls?.length || 0) + (order.delivery_receipt_photos?.length || 0)) - 6}</div>
                                             <div>daha</div>
                                           </div>
                                         </button>

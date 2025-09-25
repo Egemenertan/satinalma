@@ -12,26 +12,30 @@ import { useToast } from '@/components/ui/toast'
 interface DeliveryConfirmationModalProps {
   isOpen: boolean
   onClose: () => void
-  orderId: string
-  requestId: string
-  deliveryDate: string
+  materialItem?: any
+  materialOrders?: any[]
   onSuccess: () => void
+  showToast: (message: string, type?: 'success' | 'error') => void
+  orderId?: string
+  requestId?: string
 }
 
 export default function DeliveryConfirmationModal({
   isOpen,
   onClose,
+  materialItem,
+  materialOrders = [],
+  onSuccess,
+  showToast,
   orderId,
-  requestId,
-  deliveryDate,
-  onSuccess
+  requestId
 }: DeliveryConfirmationModalProps) {
   const [notes, setNotes] = useState('')
   const [photos, setPhotos] = useState<File[]>([])
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
+  const [selectedOrders, setSelectedOrders] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const { showToast } = useToast()
   const supabase = createClient()
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,7 +79,7 @@ export default function DeliveryConfirmationModal({
     const uploadedUrls: string[] = []
 
     for (const photo of photos) {
-      const fileName = `delivery-receipts/${orderId}/${Date.now()}-${photo.name}`
+      const fileName = `delivery-receipts/material-${materialItem?.id}/${Date.now()}-${photo.name}`
       
       const { data, error } = await supabase.storage
         .from('satinalma')
@@ -196,7 +200,7 @@ export default function DeliveryConfirmationModal({
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Teslimat Tarihi</p>
             <p className="text-lg font-medium text-gray-900">
-              {new Date(deliveryDate).toLocaleDateString('tr-TR')}
+              {new Date().toLocaleDateString('tr-TR')}
             </p>
             <p className="text-sm text-gray-500 mt-1">
               Bugün teslimat alındığını onaylıyorsunuz

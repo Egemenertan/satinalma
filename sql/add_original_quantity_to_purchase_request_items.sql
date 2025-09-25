@@ -22,3 +22,4 @@ COMMENT ON COLUMN purchase_request_items.quantity IS 'Kalan miktar - gönderimle
 CREATE INDEX IF NOT EXISTS idx_purchase_request_items_original_quantity 
 ON purchase_request_items(original_quantity);
 
+

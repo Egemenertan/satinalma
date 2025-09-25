@@ -47,3 +47,4 @@ ORDER BY ordinal_position;
 
 COMMENT ON COLUMN orders.user_id IS 'Siparişi veren purchasing officer kullanıcısı. Hangi kullanıcının hangi tedarikçiden sipariş verdiğini takip eder.';
 
+

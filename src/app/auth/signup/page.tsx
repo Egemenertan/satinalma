@@ -6,18 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2, CheckCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { UserRole } from '@/lib/types'
 import Link from 'next/link'
 
 export default function SignupPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [name, setName] = useState('')
-  const [role, setRole] = useState<UserRole>('user')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
@@ -37,7 +34,7 @@ export default function SignupPage() {
         options: {
           data: {
             name,
-            role
+            role: 'user'
           }
         }
       })
@@ -159,7 +156,6 @@ export default function SignupPage() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
                   className="h-12 rounded-2xl border-gray-300 focus:border-black focus:ring-black"
                   required
                   disabled={loading}
@@ -168,31 +164,6 @@ export default function SignupPage() {
                 <p className="text-xs text-gray-500">En az 6 karakter olmalıdır</p>
               </div>
 
-              {/* Rol */}
-              <div className="space-y-2">
-                <Label htmlFor="role" className="text-sm font-medium text-gray-900">
-                  Rol
-                </Label>
-                <Select 
-                  value={role} 
-                  onValueChange={(value: UserRole) => setRole(value)}
-                  disabled={loading}
-                >
-                  <SelectTrigger className="h-12 rounded-2xl border-gray-300 focus:border-black focus:ring-black">
-                    <SelectValue placeholder="Rolünüzü seçin" />
-                  </SelectTrigger>
-                  <SelectContent className="rounded-2xl">
-                    <SelectItem value="user">Kullanıcı</SelectItem>
-                    <SelectItem value="site_personnel">Şantiye Personeli</SelectItem>
-                    <SelectItem value="site_manager">Şantiye Yöneticisi</SelectItem>
-                    <SelectItem value="warehouse_manager">Depo Yöneticisi</SelectItem>
-                    <SelectItem value="purchasing_officer">Satın Alma Sorumlusu</SelectItem>
-                    <SelectItem value="santiye_depo">Şantiye Depo</SelectItem>
-                    <SelectItem value="manager">Yönetici</SelectItem>
-                    <SelectItem value="admin">Admin</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
               
               {/* Submit Button */}
               <Button 

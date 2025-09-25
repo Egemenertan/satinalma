@@ -355,12 +355,13 @@ export async function createMultiMaterialPurchaseRequest(data: {
     material_class?: string
     material_group?: string
     material_item_name?: string
+    specifications?: string  // Her malzeme için ayrı teknik özellikler
     image_urls?: string[]
   }>
   purpose?: string
   site_id?: string
   site_name?: string
-  specifications?: string
+  specifications?: string  // Genel teknik özellikler (artık kullanılmıyor)
   required_date?: string
 }) {
   try {
@@ -424,9 +425,14 @@ export async function createMultiMaterialPurchaseRequest(data: {
       item_name: material.material_name,
       description: `${material.brand || ''} ${material.material_name}`.trim(),
       quantity: Math.round(material.quantity), // Veritabanı integer beklediği için yuvarla
+      original_quantity: Math.round(material.quantity), // İlk talep edilen miktar - ASLA değişmez
       unit: material.unit,
       unit_price: 0,
-      specifications: data.specifications || data.purpose || 'Şantiye ihtiyacı'
+      specifications: material.specifications || 'Şantiye ihtiyacı', // Her malzeme için ayrı teknik özellikler
+      brand: material.brand || null,
+      material_class: material.material_class || null,
+      material_group: material.material_group || null,
+      image_urls: material.image_urls || null // Her malzeme için ayrı resimler
     }))
     
     console.log('💾 Purchase request items data hazırlandı:', itemsData)

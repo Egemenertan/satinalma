@@ -8,9 +8,9 @@ export const metadata: Metadata = {
   description: "Şantiye satın alma talepleri için modern yönetim sistemi",
   manifest: '/manifest.json',
   icons: {
-    icon: '/favicon.ico',
-    shortcut: '/favicon.ico',
-    apple: '/favicon.ico',
+    icon: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
+    shortcut: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
+    apple: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
   },
   appleWebApp: {
     capable: true,

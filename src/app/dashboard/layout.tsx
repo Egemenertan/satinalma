@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
-import AIChatbot from '@/components/AIChatbot'
+// import AIChatbot from '@/components/AIChatbot'
 import { Button } from '@/components/ui/button'
 import { Menu, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -154,8 +154,8 @@ export default function DashboardLayout({
         </div>
       </main>
 
-      {/* AI Chatbot - Dashboard'un her yerinde erişilebilir */}
-      <AIChatbot />
+      {/* AI Chatbot - Temporarily disabled */}
+      {/* <AIChatbot /> */}
     </div>
   )
 }

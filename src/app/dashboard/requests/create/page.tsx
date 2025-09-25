@@ -54,8 +54,7 @@ const steps = [
   { id: 4, title: 'Malzeme Seçimi', icon: Package },
   { id: 5, title: 'Malzeme Detayları', icon: FileText },
   { id: 6, title: 'Kullanım & Zamanlama', icon: Target },
-  { id: 7, title: 'Teknik Özellikler', icon: Settings },
-  { id: 8, title: 'Onay & Gönderim', icon: CheckCircle2 }
+  { id: 7, title: 'Onay & Gönderim', icon: CheckCircle2 }
 ]
 
 // Helper fonksiyonlar
@@ -178,12 +177,13 @@ export default function CreatePurchaseRequestPage() {
     unit: string
     quantity: string
     brand: string
+    specifications: string  // Her malzeme için ayrı teknik özellikler
     image_urls: string[]
+    uploaded_images: File[]  // Her malzeme için ayrı yüklenen dosyalar
+    image_preview_urls: string[]  // Her malzeme için ayrı önizleme URL'leri
   }>>([])
   
   const [currentMaterialIndex, setCurrentMaterialIndex] = useState(0)
-  const [uploadedImages, setUploadedImages] = useState<File[]>([])
-  const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   
   // Yeni malzeme oluşturma modal state'leri
@@ -198,9 +198,11 @@ export default function CreatePurchaseRequestPage() {
   // Cleanup URL objects when component unmounts
   useEffect(() => {
     return () => {
-      imagePreviewUrls.forEach(url => URL.revokeObjectURL(url))
+      selectedMaterials.forEach(material => {
+        (material.image_preview_urls || []).forEach(url => URL.revokeObjectURL(url))
+      })
     }
-  }, [])
+  }, [selectedMaterials])
 
   // Dış tıklamada arama sonuçlarını kapat
   useEffect(() => {
@@ -812,7 +814,10 @@ export default function CreatePurchaseRequestPage() {
       unit: '',
       quantity: '',
       brand: '',
-      image_urls: []
+      specifications: '',  // Her malzeme için ayrı teknik özellikler
+      image_urls: [],
+      uploaded_images: [],  // Her malzeme için ayrı yüklenen dosyalar
+      image_preview_urls: []  // Her malzeme için ayrı önizleme URL'leri
     }
 
     // Seçili malzemeler listesine ekle
@@ -910,7 +915,10 @@ export default function CreatePurchaseRequestPage() {
         unit: '',
         quantity: '',
         brand: '',
-        image_urls: []
+        specifications: '',
+        image_urls: [],
+        uploaded_images: [],
+        image_preview_urls: []
       }
 
       // Seçili malzemeler listesine ekle
@@ -973,9 +981,11 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const handleImageUpload = (files: FileList | null) => {
-    if (!files) return
+    if (!files || selectedMaterials.length === 0) return
 
-    const newFiles = Array.from(files).slice(0, 3 - uploadedImages.length) // Max 3 resim
+    const currentMaterial = selectedMaterials[currentMaterialIndex]
+    const currentImages = currentMaterial.uploaded_images || []
+    const newFiles = Array.from(files).slice(0, 3 - currentImages.length) // Max 3 resim per material
     const newPreviewUrls: string[] = []
 
     newFiles.forEach(file => {
@@ -985,16 +995,35 @@ export default function CreatePurchaseRequestPage() {
       }
     })
 
-    setUploadedImages(prev => [...prev, ...newFiles])
-    setImagePreviewUrls(prev => [...prev, ...newPreviewUrls])
+    // Seçili malzemeyi güncelle
+    const updatedMaterials = [...selectedMaterials]
+    updatedMaterials[currentMaterialIndex] = {
+      ...updatedMaterials[currentMaterialIndex],
+      uploaded_images: [...currentImages, ...newFiles],
+      image_preview_urls: [...(currentMaterial.image_preview_urls || []), ...newPreviewUrls]
+    }
+    setSelectedMaterials(updatedMaterials)
   }
 
   const removeImage = (index: number) => {
-    // Clean up URL object
-    URL.revokeObjectURL(imagePreviewUrls[index])
+    if (selectedMaterials.length === 0) return
+
+    const currentMaterial = selectedMaterials[currentMaterialIndex]
+    const imageUrls = currentMaterial.image_preview_urls || []
     
-    setUploadedImages(prev => prev.filter((_, i) => i !== index))
-    setImagePreviewUrls(prev => prev.filter((_, i) => i !== index))
+    // Clean up URL object
+    if (imageUrls[index]) {
+      URL.revokeObjectURL(imageUrls[index])
+    }
+    
+    // Seçili malzemeyi güncelle
+    const updatedMaterials = [...selectedMaterials]
+    updatedMaterials[currentMaterialIndex] = {
+      ...updatedMaterials[currentMaterialIndex],
+      uploaded_images: (currentMaterial.uploaded_images || []).filter((_, i) => i !== index),
+      image_preview_urls: imageUrls.filter((_, i) => i !== index)
+    }
+    setSelectedMaterials(updatedMaterials)
   }
 
   const triggerCameraCapture = () => {
@@ -1032,15 +1061,13 @@ export default function CreatePurchaseRequestPage() {
       case 4:
         return selectedMaterials.length > 0 // En az bir malzeme seçilmeli
       case 5:
-        // Tüm seçili malzemeler için zorunlu alanlar dolu olmalı
+        // Tüm seçili malzemeler için zorunlu alanlar dolu olmalı (material_name otomatik dolu olduğu için kontrol edilmez)
         return selectedMaterials.length > 0 && selectedMaterials.every(material => 
-          material.material_name && material.unit && material.quantity
+          material.unit && material.quantity
         )
       case 6:
         return formData.purpose
       case 7:
-        return true // Teknik özellikler opsiyonel
-      case 8:
         return isFormValid()
       default:
         return false
@@ -1051,7 +1078,7 @@ export default function CreatePurchaseRequestPage() {
     return (formData.construction_site || userSite) && 
            selectedMaterials.length > 0 &&
            selectedMaterials.every(material => 
-             material.material_name && material.unit && material.quantity
+             material.unit && material.quantity
            ) &&
            formData.purpose
   }
@@ -1068,20 +1095,20 @@ export default function CreatePurchaseRequestPage() {
     }
   }
 
-  // Resimleri storage'a yükle
-  const uploadImagesToStorage = async (): Promise<string[]> => {
-    if (uploadedImages.length === 0) return []
+  // Belirli bir malzeme için resimleri storage'a yükle
+  const uploadImagesForMaterial = async (materialId: string, files: File[]): Promise<string[]> => {
+    if (files.length === 0) return []
     
     const uploadedUrls: string[] = []
     
-    for (let i = 0; i < uploadedImages.length; i++) {
-      const file = uploadedImages[i]
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
       const fileExt = file.name.split('.').pop()
       const uniqueId = Math.random().toString(36).substring(2, 15)
-      const fileName = `purchase_requests/images/${Date.now()}_${uniqueId}.${fileExt}`
+      const fileName = `purchase_requests/materials/${materialId}/${Date.now()}_${uniqueId}.${fileExt}`
       
       try {
-        console.log('📤 Uploading image:', { fileName, fileSize: file.size, fileType: file.type })
+        console.log('📤 Uploading image for material:', { materialId, fileName, fileSize: file.size, fileType: file.type })
         
         const { data, error } = await supabase.storage
           .from('satinalma')
@@ -1096,15 +1123,15 @@ export default function CreatePurchaseRequestPage() {
           .from('satinalma')
           .getPublicUrl(fileName)
 
-        console.log('🔗 Generated URL:', urlData.publicUrl)
+        console.log('🔗 Generated URL for material:', urlData.publicUrl)
         uploadedUrls.push(urlData.publicUrl)
       } catch (error) {
         console.error('❌ Resim yükleme hatası:', error)
-        throw new Error(`Resim yüklenirken hata oluştu: ${error}`)
+        throw new Error(`${materialId} malzemesi için resim yüklenirken hata oluştu: ${error}`)
       }
     }
     
-    console.log('✅ Image upload completed. URLs:', uploadedUrls)
+    console.log(`✅ Image upload completed for material ${materialId}. URLs:`, uploadedUrls)
     return uploadedUrls
   }
 
@@ -1119,17 +1146,15 @@ export default function CreatePurchaseRequestPage() {
     setLoading(true)
     
     try {
-      // Resim yükleme işlemini her malzeme için ayrı yap
+      // Her malzeme için ayrı resim yükleme
       const materialsWithImages = await Promise.all(
-        selectedMaterials.map(async (material, index) => {
+        selectedMaterials.map(async (material) => {
           let imageUrls: string[] = []
           
-          // Sadece şu anki malzeme için yüklenen resimleri kullan
-          // (Bu implementasyonda tüm resimler ilk malzemeye atanıyor, 
-          // gelecekte her malzeme için ayrı resim yönetimi yapılabilir)
-          if (index === 0 && uploadedImages.length > 0) {
-            showToast('Resimler yükleniyor...', 'info')
-            imageUrls = await uploadImagesToStorage()
+          // Bu malzemeye ait resimleri yükle
+          if (material.uploaded_images && material.uploaded_images.length > 0) {
+            showToast(`${material.material_name} için resimler yükleniyor...`, 'info')
+            imageUrls = await uploadImagesForMaterial(material.id, material.uploaded_images)
           }
           
           return {
@@ -1140,6 +1165,7 @@ export default function CreatePurchaseRequestPage() {
             material_class: material.material_class,
             material_group: material.material_group,
             material_item_name: material.material_item_name,
+            specifications: material.specifications, // Her malzeme için ayrı teknik özellikler
             image_urls: imageUrls
           }
         })
@@ -1151,7 +1177,7 @@ export default function CreatePurchaseRequestPage() {
         purpose: formData.purpose,
         site_id: formData.construction_site_id || userSite?.id,
         site_name: formData.construction_site || userSite?.name,
-        specifications: formData.specifications,
+        specifications: '', // Artık her malzeme için ayrı teknik özellikler var
         required_date: formData.required_date
       })
 
@@ -1723,7 +1749,10 @@ export default function CreatePurchaseRequestPage() {
                                 unit: '',
                                 quantity: '',
                                 brand: '',
-                                image_urls: []
+                                specifications: '',
+                                image_urls: [],
+                                uploaded_images: [],
+                                image_preview_urls: []
                               }
                               setSelectedMaterials(prev => [...prev, newMaterial])
                             }
@@ -1883,21 +1912,16 @@ export default function CreatePurchaseRequestPage() {
                 <div>
                   <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4" />
-                    Malzeme Adı *
+                    Malzeme Adı
                   </Label>
                   <Input
                     value={currentMaterial?.material_name || ''}
-                    onChange={(e) => {
-                      const updatedMaterials = [...selectedMaterials]
-                      updatedMaterials[currentMaterialIndex] = {
-                        ...updatedMaterials[currentMaterialIndex],
-                        material_name: e.target.value
-                      }
-                      setSelectedMaterials(updatedMaterials)
-                    }}
-                    placeholder="Malzeme adını giriniz..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                    readOnly
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed text-base lg:text-base"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Seçilen malzeme adı değiştirilemez. Farklı malzeme için 4. adıma dönün.
+                  </p>
                 </div>
                 
                 <div>
@@ -1965,6 +1989,30 @@ export default function CreatePurchaseRequestPage() {
                 </div>
               </div>
 
+              {/* Teknik Özellikler */}
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <Settings className="w-4 h-4" />
+                  Teknik Özellikler
+                </Label>
+                <Textarea
+                  value={currentMaterial?.specifications || ''}
+                  onChange={(e) => {
+                    const updatedMaterials = [...selectedMaterials]
+                    updatedMaterials[currentMaterialIndex] = {
+                      ...updatedMaterials[currentMaterialIndex],
+                      specifications: e.target.value
+                    }
+                    setSelectedMaterials(updatedMaterials)
+                  }}
+                  placeholder="Bu malzeme için teknik özellikler, kalite standartları, özel notlar..."
+                  className="min-h-[80px] resize-none rounded-lg border-gray-200 focus:border-black focus:ring-black/20 text-sm"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Bu malzemeye özel teknik detayları buraya girebilirsiniz.
+                </p>
+              </div>
+
               {/* Image Upload Section */}
               <div className="space-y-4">
                 <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
@@ -1978,7 +2026,7 @@ export default function CreatePurchaseRequestPage() {
                     type="button"
                     variant="outline"
                     onClick={triggerCameraCapture}
-                    disabled={uploadedImages.length >= 3}
+                    disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
                     className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
                   >
                     <Camera className="w-5 h-5 text-gray-600" />
@@ -1989,7 +2037,7 @@ export default function CreatePurchaseRequestPage() {
                     type="button"
                     variant="outline"
                     onClick={triggerGallerySelect}
-                    disabled={uploadedImages.length >= 3}
+                    disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
                     className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
                   >
                     <Upload className="w-5 h-5 text-gray-600" />
@@ -1998,15 +2046,17 @@ export default function CreatePurchaseRequestPage() {
                 </div>
 
                 {/* Image Previews */}
-                {imagePreviewUrls.length > 0 && (
+                {(currentMaterial?.image_preview_urls?.length || 0) > 0 && (
                   <div className="space-y-2">
-                    <p className="text-xs text-gray-600">Yüklenen Fotoğraflar:</p>
+                    <p className="text-xs text-gray-600">
+                      {currentMaterial?.material_name} için Yüklenen Fotoğraflar:
+                    </p>
                     <div className="grid grid-cols-3 gap-3">
-                      {imagePreviewUrls.map((url, index) => (
+                      {(currentMaterial?.image_preview_urls || []).map((url, index) => (
                         <div key={index} className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden">
                           <img
                             src={url}
-                            alt={`Preview ${index + 1}`}
+                            alt={`${currentMaterial?.material_name} Preview ${index + 1}`}
                             className="w-full h-full object-cover"
                           />
                           <Button
@@ -2022,17 +2072,17 @@ export default function CreatePurchaseRequestPage() {
                       ))}
                     </div>
                     <p className="text-xs text-gray-500">
-                      {uploadedImages.length}/3 fotoğraf yüklendi
+                      {currentMaterial?.uploaded_images?.length || 0}/3 fotoğraf yüklendi
                     </p>
                   </div>
                 )}
 
                 {/* Upload Instructions */}
-                {uploadedImages.length === 0 && (
+                {(currentMaterial?.uploaded_images?.length || 0) === 0 && (
                   <div className="text-center py-4 px-4 bg-gray-50/50 rounded-xl">
                     <ImageIcon className="w-8 h-8 mx-auto mb-2 text-gray-400" />
                     <p className="text-sm text-gray-600">
-                      Bu malzeme için fotoğraf ekleyebilirsiniz
+                      {currentMaterial?.material_name} için fotoğraf ekleyebilirsiniz
                     </p>
                     <p className="text-xs text-gray-500 mt-1">
                       Maksimum 3 fotoğraf yükleyebilirsiniz
@@ -2113,31 +2163,6 @@ export default function CreatePurchaseRequestPage() {
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
-                <Settings className="w-4 lg:w-5 h-4 lg:h-5 text-orange-600" />
-                Teknik Detaylar
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-2 lg:p-6">
-              <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">
-                  Teknik Özellikler ve Açıklamalar
-                </Label>
-                                  <Textarea
-                    value={formData.specifications}
-                    onChange={(e) => handleInputChange('specifications', e.target.value)}
-                    placeholder="Teknik özellikler, kalite standartları, özel notlar..."
-                    className="min-h-[100px] lg:min-h-[120px] resize-none rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                  />
-              </div>
-            </CardContent>
-          </Card>
-        )
-
-      case 8:
-        return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
                 <CheckCircle2 className="w-4 lg:w-5 h-4 lg:h-5 text-green-600" />
                 Talep Özeti
               </CardTitle>
@@ -2200,6 +2225,15 @@ export default function CreatePurchaseRequestPage() {
                           <span className="ml-2 font-medium text-gray-900">{material.material_item_name}</span>
                         </div>
                       </div>
+                      
+                      {material.specifications && (
+                        <div className="mt-3 pt-3 border-t border-white/20">
+                          <div className="text-xs text-gray-600 mb-1">Teknik Özellikler:</div>
+                          <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
+                            {material.specifications}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -2210,31 +2244,33 @@ export default function CreatePurchaseRequestPage() {
                   <p className="text-base lg:text-lg font-semibold text-gray-900">{new Date(formData.required_date).toLocaleDateString('tr-TR')}</p>
                 </div>
               )}
-              {formData.specifications && (
-                <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Teknik Özellikler</Label>
-                  <p className="text-gray-900">{formData.specifications}</p>
-                </div>
-              )}
 
-              {/* Uploaded Images Summary */}
-              {uploadedImages.length > 0 && (
+              {/* Material Images Summary */}
+              {selectedMaterials.some(m => (m.uploaded_images?.length || 0) > 0) && (
                 <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
                   <Label className="text-xs lg:text-sm font-medium text-gray-600 mb-3 block">Malzeme Fotoğrafları</Label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {imagePreviewUrls.map((url, index) => (
-                      <div key={index} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                        <img
-                          src={url}
-                          alt={`Preview ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
+                  {selectedMaterials.map((material, materialIndex) => {
+                    if ((material.uploaded_images?.length || 0) === 0) return null
+                    
+                    return (
+                      <div key={material.id} className="mb-4 last:mb-0">
+                        <p className="text-xs font-medium text-gray-700 mb-2">
+                          {material.material_name} ({material.uploaded_images?.length || 0} fotoğraf)
+                        </p>
+                        <div className="grid grid-cols-3 gap-2">
+                          {(material.image_preview_urls || []).map((url, index) => (
+                            <div key={index} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                              <img
+                                src={url}
+                                alt={`${material.material_name} Preview ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  <p className="text-xs text-gray-600 mt-2">
-                    {uploadedImages.length} fotoğraf eklenmiş
-                  </p>
+                    )
+                  })}
                 </div>
               )}
               
@@ -2271,10 +2307,7 @@ export default function CreatePurchaseRequestPage() {
     <>
     {/* Create New Material Modal */}
     <Dialog open={showCreateMaterialModal} onOpenChange={setShowCreateMaterialModal}>
-      <DialogContent className="sm:max-w-[550px] bg-white/20 backdrop-blur-xl border border-white/30 shadow-2xl">
-        {/* Subtle Background */}
-        <div className="absolute inset-0 bg-white/5 rounded-lg" />
-        
+      <DialogContent className="sm:max-w-[550px] bg-white border border-gray-200 shadow-2xl">
         {/* Content */}
         <div className="relative z-10">
           <DialogHeader className="pb-6">
@@ -2298,10 +2331,10 @@ export default function CreatePurchaseRequestPage() {
                 value={createMaterialData.class} 
                 onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, class: value }))}
               >
-                <SelectTrigger className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 text-base">
+                <SelectTrigger className="w-full h-12 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 text-base">
                   <SelectValue placeholder="Sınıf seçin veya yeni sınıf adı yazın..." />
                 </SelectTrigger>
-                <SelectContent className="bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
+                <SelectContent className="bg-white border border-gray-200 shadow-2xl">
                   {materialClasses.map((cls) => (
                     <SelectItem 
                       key={cls.id} 
@@ -2316,20 +2349,6 @@ export default function CreatePurchaseRequestPage() {
                   ))}
                 </SelectContent>
               </Select>
-              
-              {/* Manuel Sınıf Girişi */}
-              <div className="text-xs text-gray-600 bg-blue-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <Grid3X3 className="w-3 h-3 text-blue-600" />
-                  <span className="font-medium text-blue-700">Yeni sınıf oluştur</span>
-                </div>
-                <Input
-                  value={createMaterialData.class}
-                  onChange={(e) => setCreateMaterialData(prev => ({ ...prev, class: e.target.value }))}
-                  placeholder="Yeni sınıf adı yazın..."
-                  className="h-8 text-xs bg-white/60 border-blue-200"
-                />
-              </div>
             </div>
 
             {/* Group Selection */}
@@ -2343,14 +2362,14 @@ export default function CreatePurchaseRequestPage() {
                 onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, group: value }))}
                 disabled={!createMaterialData.class}
               >
-                <SelectTrigger className={`w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 text-base ${
+                <SelectTrigger className={`w-full h-12 bg-white border border-gray-300 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 text-base ${
                   !createMaterialData.class 
                     ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-white/70'
+                    : 'hover:bg-gray-50'
                 }`}>
                   <SelectValue placeholder="Grup seçin veya yeni grup adı yazın..." />
                 </SelectTrigger>
-                <SelectContent className="bg-white/95 backdrop-blur-xl border border-white/40 shadow-2xl">
+                <SelectContent className="bg-white border border-gray-200 shadow-2xl">
                   {materialGroups.length === 0 ? (
                     <SelectItem value="no-groups" disabled>
                       Grup bulunamadı
@@ -2372,28 +2391,14 @@ export default function CreatePurchaseRequestPage() {
                 </SelectContent>
               </Select>
               
-              {/* Manuel Grup Girişi */}
-              <div className="text-xs text-gray-600 bg-blue-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-blue-200/50">
-                <div className="flex items-center gap-2 mb-2">
-                  <Package className="w-3 h-3 text-blue-600" />
-                  <span className="font-medium text-blue-700">Yeni grup oluştur</span>
-                </div>
-                <Input
-                  value={createMaterialData.group}
-                  onChange={(e) => setCreateMaterialData(prev => ({ ...prev, group: e.target.value }))}
-                  placeholder="Yeni grup adı yazın..."
-                  className="h-8 text-xs bg-white/60 border-blue-200"
-                />
-              </div>
-              
               {!createMaterialData.class ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50/50 backdrop-blur-sm px-3 py-2 rounded-lg border border-gray-200/50">
+                <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
                   <Settings className="w-3 h-3" />
                   Önce bir sınıf seçin
                 </div>
               ) : (
                 <div className="text-xs text-gray-500">
-                  {materialGroups.length} mevcut grup veya yeni grup oluşturabilirsiniz
+                  {materialGroups.length} mevcut grup bulundu
                 </div>
               )}
             </div>
@@ -2408,7 +2413,7 @@ export default function CreatePurchaseRequestPage() {
                 value={createMaterialData.item_name}
                 onChange={(e) => setCreateMaterialData(prev => ({ ...prev, item_name: e.target.value }))}
                 placeholder="Malzeme adını girin..."
-                className="w-full h-12 bg-white/60 backdrop-blur-sm border border-white/40 rounded-xl hover:bg-white/70 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500/50 placeholder:text-gray-500 text-base"
+                className="w-full h-12 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 placeholder:text-gray-500 text-base"
               />
             </div>
           </div>
@@ -2418,7 +2423,7 @@ export default function CreatePurchaseRequestPage() {
               variant="outline" 
               onClick={() => setShowCreateMaterialModal(false)}
               disabled={isCreatingMaterial}
-              className="h-12 px-6 bg-white/60 backdrop-blur-sm border border-white/40 hover:bg-white/70 text-gray-700 rounded-xl transition-all duration-200"
+              className="h-12 px-6 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-all duration-200"
             >
               İptal
             </Button>

@@ -27,7 +27,7 @@ SELECT grantee, privilege_type
 FROM information_schema.role_table_grants 
 WHERE table_name = 'purchase_requests';
 
--- 5. Trigger fonksiyonunu yeniden oluştur (basitleştirilmiş)
+-- 5. Trigger fonksiyonunu yeniden oluştur (sipariş ve shipment için)
 CREATE OR REPLACE FUNCTION update_purchase_request_status()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -39,7 +39,29 @@ BEGIN
     -- Debug log
     RAISE NOTICE 'Trigger çalıştı: % %, Table: %', TG_OP, TG_TABLE_NAME, TG_TABLE_NAME;
     
-    -- Sadece shipments insert'i için çalışır
+    -- Sipariş verildiğinde status güncelle
+    IF TG_TABLE_NAME = 'orders' AND TG_OP = 'INSERT' THEN
+        UPDATE purchase_requests 
+        SET 
+            status = 'sipariş verildi',
+            updated_at = NOW()
+        WHERE id = NEW.purchase_request_id;
+        RAISE NOTICE 'Sipariş verildi, status güncellendi: %', NEW.purchase_request_id;
+        RETURN NEW;
+    END IF;
+
+    -- Sipariş teslim alındığında status güncelle
+    IF TG_TABLE_NAME = 'orders' AND TG_OP = 'UPDATE' AND NEW.status = 'delivered' AND OLD.status != 'delivered' THEN
+        UPDATE purchase_requests 
+        SET 
+            status = 'teslim alındı',
+            updated_at = NOW()
+        WHERE id = NEW.purchase_request_id;
+        RAISE NOTICE 'Sipariş teslim alındı, status güncellendi: %', NEW.purchase_request_id;
+        RETURN NEW;
+    END IF;
+    
+    -- Shipments insert'i için çalışır
     IF TG_TABLE_NAME = 'shipments' AND TG_OP = 'INSERT' THEN
         request_id := NEW.purchase_request_id;
         
@@ -151,6 +173,12 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 7. Trigger'ları sil ve yeniden oluştur
+DROP TRIGGER IF EXISTS orders_status_trigger ON orders;
+CREATE TRIGGER orders_status_trigger
+    AFTER INSERT OR UPDATE ON orders
+    FOR EACH ROW
+    EXECUTE FUNCTION update_purchase_request_status();
+
 DROP TRIGGER IF EXISTS shipments_status_trigger ON shipments;
 CREATE TRIGGER shipments_status_trigger
     AFTER INSERT ON shipments
@@ -214,4 +242,5 @@ FROM shipments s
 JOIN purchase_requests pr ON s.purchase_request_id = pr.id
 ORDER BY s.shipped_at DESC
 LIMIT 5;
+
 

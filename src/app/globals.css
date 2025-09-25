@@ -18,6 +18,17 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
   }
+  
+  /* Number input'larda scroll ile değer değişimini engelle */
+  .no-scroll-number {
+    -moz-appearance: textfield; /* Firefox */
+  }
+  
+  .no-scroll-number::-webkit-outer-spin-button,
+  .no-scroll-number::-webkit-inner-spin-button {
+    -webkit-appearance: none; /* Chrome, Safari, Edge */
+    margin: 0;
+  }
 }
 
 /* Helvetica Neue system font fallback */

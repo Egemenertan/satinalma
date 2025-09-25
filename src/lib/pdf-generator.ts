@@ -708,7 +708,7 @@ const generatePDFHTML = (data: ReportData): string => {
   // Supabase storage'dan logo URL'i oluştur
   const getLogoUrl = () => {
     // Doğru Supabase URL'i
-    const publicUrl = 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecb.png'
+    const publicUrl = 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
     
     // Fallback: Local public klasöründeki logo
     const fallbackUrl = '/d.png'
@@ -842,30 +842,10 @@ const generatePDFHTML = (data: ReportData): string => {
     <!-- İstatistikler -->
     <div class="section">
       <div class="section-title">İSTATİSTİKLER</div>
-      <div class="stats-container">
-        <div class="stat-card">
+      <div class="stats-container" style="display: flex; justify-content: center;">
+        <div class="stat-card" style="max-width: 200px;">
           <div class="stat-value">${data.statistics.totalDays} gün</div>
           <div class="stat-label">Toplam İşlem Süresi</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${data.statistics.totalOffers}</div>
-          <div class="stat-label">Alınan Teklif Sayısı</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${data.statistics.totalShipments || 0}</div>
-          <div class="stat-label">Şantiye Gönderimi</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${data.orders?.length || 0}</div>
-          <div class="stat-label">Sipariş Sayısı</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${data.statistics.totalInvoices || 0}</div>
-          <div class="stat-label">Fatura Sayısı</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value">${data.statistics.totalAmount.toLocaleString('tr-TR')} ${data.statistics.currency}</div>
-          <div class="stat-label">Toplam Tutar</div>
         </div>
       </div>
     </div>
@@ -873,35 +853,31 @@ const generatePDFHTML = (data: ReportData): string => {
     <!-- Timeline -->
     <div class="section">
       <div class="section-title">TALEBİN ZAMAN ÇİZELGESİ</div>
-      ${data.timeline.map((item, index) => `
+      ${data.timeline.filter(item => item.type !== 'invoice').map((item, index) => `
         <div class="timeline-item ${item.type === 'shipment' ? 'shipment' : item.type === 'approval' ? 'approval' : item.type === 'order' ? 'order' : item.type === 'invoice' ? 'invoice' : ''}">
           <div class="timeline-header">
             <div class="timeline-action">${index + 1}. ${item.action}${item.type === 'shipment' ? ' 📦' : item.type === 'approval' ? ' ✅' : item.type === 'order' ? ' 🛒' : item.type === 'invoice' ? ' 🧾' : ''}</div>
             <div class="timeline-date">${formatDate(item.date)}</div>
           </div>
           <div class="timeline-actor">Kullanıcı: ${item.actor}</div>
-          <div class="timeline-details">Detay: ${item.details}</div>
-          ${item.shipment_data ? `
-            <div class="timeline-details" style="margin-top: 4px; font-weight: 500;">
-              ↳ Malzeme: ${item.shipment_data.item_name} (${item.shipment_data.quantity} ${item.shipment_data.unit})
-            </div>
-          ` : ''}
-          ${item.order_data ? `
-            <div class="timeline-details" style="margin-top: 4px; font-weight: 500;">
-              ↳ Tedarikçi: ${item.order_data.supplier_name} | Malzeme: ${item.order_data.item_name}
-            </div>
-            <div class="timeline-details" style="margin-top: 2px; font-weight: 500;">
-              ↳ Tutar: ${item.order_data.amount.toLocaleString('tr-TR')} ${item.order_data.currency} | Teslimat: ${formatDate(item.order_data.delivery_date)}
-            </div>
-          ` : ''}
-          ${item.invoice_data ? `
-            <div class="timeline-details" style="margin-top: 4px; font-weight: 500;">
-              ↳ Fatura: ${item.invoice_data.supplier_name} | ${item.invoice_data.item_name}
-            </div>
-            <div class="timeline-details" style="margin-top: 2px; font-weight: 500;">
-              ↳ Tutar: ${item.invoice_data.amount.toLocaleString('tr-TR')} ${item.invoice_data.currency}
-            </div>
-          ` : ''}
+          ${(() => {
+            // Shipment için details'ı basitleştir - sadece temel bilgi göster
+            if (item.type === 'shipment' && item.shipment_data) {
+              return `<div class="timeline-details">Malzeme: ${item.shipment_data.item_name} (${item.shipment_data.quantity} ${item.shipment_data.unit}) gönderildi</div>`
+            }
+            // Order için details'ı basitleştir - tutar bilgisi olmadan
+            else if (item.type === 'order' && item.order_data) {
+              return `<div class="timeline-details">Tedarikçi: ${item.order_data.supplier_name} - ${item.order_data.item_name}</div>`
+            }
+            // Invoice timeline'dan kaldırıldı - faturalar ayrı bölümde gösteriliyor
+            else if (item.type === 'invoice') {
+              return '' // Boş string döndür, timeline'da fatura gösterme
+            }
+            // Diğer durumlar için orijinal details'ı kullan
+            else {
+              return `<div class="timeline-details">${item.details}</div>`
+            }
+          })()}
         </div>
       `).join('')}
     </div>
@@ -948,6 +924,333 @@ const generatePDFHTML = (data: ReportData): string => {
 </body>
 </html>
   `
+}
+
+// Material Purchase Request Interface
+export interface MaterialPurchaseRequest {
+  request: {
+    id: string
+    title: string
+    created_at: string
+    site_name: string
+    description?: string
+    urgency_level: string
+    profiles?: {
+      full_name?: string
+      email?: string
+      role?: string
+    }
+  }
+  material: {
+    id: string
+    item_name: string
+    quantity: number
+    unit: string
+    brand?: string
+    specifications?: string
+    description?: string
+    image_urls?: string[]
+  }
+  suppliers?: Array<{
+    id: string
+    name: string
+    contact_person?: string
+    phone?: string
+    email?: string
+    address?: string
+  }>
+}
+
+// Material-specific PDF template
+const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => {
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  const getCurrentDate = () => {
+    return new Date().toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  const getLogoUrl = () => {
+    return 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Malzeme Detayları - ${data.material.item_name}</title>
+  ${getPDFStyles()}
+  <style>
+    .purchase-form {
+      max-width: 180mm;
+      margin: 0 auto;
+      padding: 30px;
+    }
+    
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 50px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #cccccc;
+    }
+    
+    .logo-area {
+      flex-shrink: 0;
+    }
+    
+    .form-section {
+      margin-bottom: 0;
+    }
+    
+    .section-title {
+      font-size: 14px;
+      font-weight: 700;
+      color: #000000;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 25px;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #000000;
+    }
+    
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 25px;
+      margin-bottom: 20px;
+    }
+    
+    .form-grid.single {
+      grid-template-columns: 1fr;
+    }
+    
+    .form-grid.with-image {
+      grid-template-columns: 2fr 1fr;
+      gap: 30px;
+      align-items: start;
+    }
+    
+    .form-field {
+      margin-bottom: 20px;
+    }
+    
+    .form-label {
+      display: block;
+      font-size: 10px;
+      font-weight: 600;
+      color: #333333;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 8px;
+    }
+    
+    .form-value {
+      font-size: 12px;
+      color: #000000;
+      padding: 12px 0;
+      border-bottom: 1px solid #cccccc;
+      min-height: 28px;
+      line-height: 1.5;
+    }
+    
+    .form-value.large {
+      min-height: 60px;
+    }
+    
+    .material-image {
+      width: 100%;
+      max-width: 200px;
+      height: auto;
+      border: 1px solid #dddddd;
+      border-radius: 8px;
+      object-fit: cover;
+    }
+    
+    .image-container {
+      text-align: center;
+      padding: 20px;
+    }
+    
+    .image-label {
+      font-size: 9px;
+      color: #666666;
+      margin-top: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    
+    .clean-layout {
+      background: white;
+      color: #000000;
+    }
+  </style>
+</head>
+<body>
+  <div class="page clean-layout">
+    <div class="purchase-form">
+      <!-- Header -->
+      <div class="header-section">
+        <div class="logo-area">
+          <img src="${getLogoUrl()}" alt="DOVEC Logo" style="width: 80px; height: 80px; object-fit: contain;" onerror="this.onerror=null; this.src='/d.png';" />
+        </div>
+        
+        <div style="text-align: right; font-size: 11px; color: #666666;">
+          <div style="font-weight: 600; margin-bottom: 4px;">Tarih:</div>
+          <div>${getCurrentDate()}</div>
+        </div>
+      </div>
+      
+      <!-- Açıklama Metni -->
+      <div style="margin-bottom: 40px; padding: 15px 0;">
+        <p style="font-size: 13px; color: #333333; line-height: 1.6; margin: 0; font-weight: 500; text-align: left;">
+          Sayın Tedarikçimiz, aşağıda belirtilen malzeme için teklif talebinde bulunmaktayız. 
+          Lütfen en uygun fiyat ve teslimat sürenizi bize bildirin. Teklifinizi bizimle paylaştığınız için teşekkür ederiz.
+        </p>
+      </div>
+      
+      <!-- Malzeme Detayları -->
+      <div class="form-section">
+        <div class="section-title">Malzeme Detayları</div>
+        
+        ${data.material.image_urls && data.material.image_urls.length > 0 ? `
+        <div class="form-grid with-image">
+          <div>
+            <div class="form-field">
+              <label class="form-label">Malzeme Adı</label>
+              <div class="form-value">${data.material.item_name}</div>
+            </div>
+            
+            <div class="form-field">
+              <label class="form-label">Talep Edilen Miktar</label>
+              <div class="form-value">${data.material.quantity} ${data.material.unit}</div>
+            </div>
+            
+            <div class="form-field">
+              <label class="form-label">Birim</label>
+              <div class="form-value">${data.material.unit}</div>
+            </div>
+            
+            ${data.material.brand ? `
+            <div class="form-field">
+              <label class="form-label">Marka</label>
+              <div class="form-value">${data.material.brand}</div>
+            </div>
+            ` : ''}
+          </div>
+          
+          <div class="image-container">
+            <img src="${data.material.image_urls[0]}" alt="Malzeme Resmi" class="material-image" />
+            <div class="image-label">Malzeme Resmi</div>
+          </div>
+        </div>
+        ` : `
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label">Malzeme Adı</label>
+            <div class="form-value">${data.material.item_name}</div>
+          </div>
+          <div class="form-field">
+            <label class="form-label">Talep Edilen Miktar</label>
+            <div class="form-value">${data.material.quantity} ${data.material.unit}</div>
+          </div>
+        </div>
+        
+        <div class="form-grid">
+          <div class="form-field">
+            <label class="form-label">Birim</label>
+            <div class="form-value">${data.material.unit}</div>
+          </div>
+          ${data.material.brand ? `
+          <div class="form-field">
+            <label class="form-label">Marka</label>
+            <div class="form-value">${data.material.brand}</div>
+          </div>
+          ` : `
+          <div class="form-field">
+            <label class="form-label">Marka</label>
+            <div class="form-value">Belirtilmemiş</div>
+          </div>
+          `}
+        </div>
+        `}
+        
+        ${data.material.specifications ? `
+        <div class="form-grid single">
+          <div class="form-field">
+            <label class="form-label">Teknik Özellikler</label>
+            <div class="form-value large">${data.material.specifications}</div>
+          </div>
+        </div>
+        ` : ''}
+        
+        ${data.material.description ? `
+        <div class="form-grid single">
+          <div class="form-field">
+            <label class="form-label">Malzeme Açıklaması</label>
+            <div class="form-value large">${data.material.description}</div>
+          </div>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `
+}
+
+// Material Purchase Request HTML Generator (for modal)
+export const getMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => {
+  return generateMaterialPurchaseHTML(data)
+}
+
+// Material Purchase Request PDF Generator
+export const generateMaterialPurchaseRequest = async (data: MaterialPurchaseRequest): Promise<void> => {
+  try {
+    console.log('🔍 Malzeme satın alma formu oluşturuluyor:', {
+      requestId: data.request.id,
+      materialName: data.material.item_name,
+      suppliersCount: data.suppliers?.length || 0
+    })
+
+    // HTML content oluştur
+    const htmlContent = generateMaterialPurchaseHTML(data)
+    
+    // Yeni pencere aç
+    const printWindow = window.open('', '_blank')
+    if (!printWindow) {
+      throw new Error('Pop-up engellendi. Lütfen pop-up engelleyicisini devre dışı bırakın.')
+    }
+    
+    // HTML'i yaz
+    printWindow.document.write(htmlContent)
+    printWindow.document.close()
+    
+    // Print dialog'u aç
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+      }, 500)
+    }
+    
+  } catch (error) {
+    console.error('Malzeme satın alma formu oluşturma hatası:', error)
+    throw new Error('PDF oluşturulurken bir hata oluştu: ' + (error as Error).message)
+  }
 }
 
 // PDF Generator Function
