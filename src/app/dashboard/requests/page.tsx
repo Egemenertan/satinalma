@@ -9,7 +9,7 @@ import PurchaseRequestsTable from '@/components/PurchaseRequestsTable'
 
 import { Package, Plus, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { invalidateStatsCache } from '@/lib/cache'
+import { invalidateStatsCache, invalidatePurchaseRequestsCache } from '@/lib/cache'
 
 // Stats fetcher fonksiyonu
 const fetchStats = async () => {
@@ -91,8 +91,22 @@ export default function RequestsPage() {
           table: 'purchase_requests' 
         }, 
         () => {
-          console.log('📡 Stats update triggered')
+          console.log('📡 Purchase requests table update triggered')
           invalidateStatsCache()
+          // Tablo cache'ini de temizle
+          invalidatePurchaseRequestsCache()
+        }
+      )
+      .on('postgres_changes', 
+        { 
+          event: '*', 
+          schema: 'public', 
+          table: 'shipments' 
+        }, 
+        () => {
+          console.log('📡 Shipments table update triggered')
+          invalidateStatsCache()
+          invalidatePurchaseRequestsCache()
         }
       )
       .subscribe()

@@ -218,6 +218,8 @@ export type Database = {
           delivered_at?: string
           received_by?: string
           delivery_notes?: string
+          user_id?: string
+          material_item_id?: string
           created_at: string
           updated_at: string
         }
@@ -234,6 +236,8 @@ export type Database = {
           delivered_at?: string
           received_by?: string
           delivery_notes?: string
+          user_id?: string
+          material_item_id?: string
           created_at?: string
           updated_at?: string
         }

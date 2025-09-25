@@ -96,6 +96,7 @@ export async function createPurchaseRequest(data: {
       item_name: data.material,
       description: data.description,
       quantity: Math.round(data.quantity), // Veritabanı integer beklediği için yuvarla
+      original_quantity: Math.round(data.quantity), // İlk talep edilen miktar
       unit: data.unit,
       unit_price: 0,
       specifications: data.purpose || 'Şantiye ihtiyacı'

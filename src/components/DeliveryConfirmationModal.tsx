@@ -112,33 +112,46 @@ export default function DeliveryConfirmationModal({
         photoUrls = await uploadPhotosToSupabase()
       }
 
-      // Update order with delivery confirmation
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({
-          status: 'delivered',
-          delivery_receipt_photos: photoUrls,
-          delivered_at: new Date().toISOString(),
-          received_by: user.id,
-          delivery_notes: notes.trim() || null
-        })
-        .eq('id', orderId)
+      // Update order with delivery confirmation (sadece gerçek order ID varsa)
+      if (orderId && orderId !== 'temp-order-id') {
+        console.log('📦 Order güncelleniyor:', orderId)
+        const { error: orderError } = await supabase
+          .from('orders')
+          .update({
+            status: 'delivered',
+            delivery_receipt_photos: photoUrls,
+            delivered_at: new Date().toISOString(),
+            received_by: user.id,
+            delivery_notes: notes.trim() || null
+          })
+          .eq('id', orderId)
 
-      if (orderError) {
-        throw new Error(`Teslimat kaydedilirken hata oluştu: ${orderError.message}`)
+        if (orderError) {
+          throw new Error(`Teslimat kaydedilirken hata oluştu: ${orderError.message}`)
+        }
+        console.log('✅ Order başarıyla güncellendi')
+      } else {
+        console.log('⚠️ Geçici order ID kullanıldığı için order güncellenmedi')
       }
 
-      // Update purchase request status to 'teslim alındı'
-      const { error: requestError } = await supabase
-        .from('purchase_requests')
-        .update({
-          status: 'teslim alındı'
+      // Update purchase request status to 'teslim alındı' using secure function
+      console.log('📋 Purchase request status güncelleniyor...')
+      
+      const { data: updateResult, error: requestError } = await supabase
+        .rpc('update_delivery_status_by_site_personnel', {
+          request_id: requestId,
+          delivery_notes: notes.trim() || null
         })
-        .eq('id', requestId)
 
       if (requestError) {
         throw new Error(`Talep durumu güncellenirken hata oluştu: ${requestError.message}`)
       }
+      
+      if (!updateResult) {
+        throw new Error('Talep durumu güncellenemedi')
+      }
+      
+      console.log('✅ Purchase request status başarıyla güncellendi')
 
       showToast('Teslimat başarıyla kaydedildi!', 'success')
       onSuccess()

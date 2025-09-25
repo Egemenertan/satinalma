@@ -61,15 +61,21 @@ export default function AssignSupplierModal({
   const [loadingSuppliers, setLoadingSuppliers] = useState(false)
   const [assigningSupplier, setAssigningSupplier] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [materialData, setMaterialData] = useState<{
+    material_class?: string
+    material_group?: string
+  } | null>(null)
+  const [loadingMaterial, setLoadingMaterial] = useState(true)
 
   // Modal açıldığında tedarikçileri yükle ve search'i temizle
   useEffect(() => {
     if (isOpen) {
-      console.log('🚀 Modal açıldı, tedarikçiler yüklenecek...')
+      console.log('🚀 Modal açıldı, tedarikçiler ve malzeme bilgileri yüklenecek...')
       fetchAllSuppliers()
+      fetchMaterialData()
       setSearchQuery('') // Search'i temizle
     }
-  }, [isOpen])
+  }, [isOpen, itemName])
 
   // ESC tuşu ile modal kapatma
   useEffect(() => {
@@ -108,6 +114,59 @@ export default function AssignSupplierModal({
       document.body.style.overflow = 'unset'
     }
   }, [isOpen])
+
+  const fetchMaterialData = async () => {
+    try {
+      setLoadingMaterial(true)
+      console.log('🔍 All_materials tablosundan malzeme bilgileri çekiliyor...', { itemName })
+      
+      const { data: materials, error } = await supabase
+        .from('all_materials')
+        .select(`
+          class,
+          group,
+          item_name
+        `)
+        .eq('item_name', itemName)
+        .limit(1)
+      
+      if (error) {
+        console.error('❌ All_materials sorgu hatası:', error)
+        throw error
+      }
+      
+      if (materials && materials.length > 0) {
+        const material = materials[0]
+        console.log('✅ All_materials\'dan çekilen ham veri:', material)
+        
+        // Kolon isimlerini map et
+        const mappedMaterial = {
+          material_class: material.class,
+          material_group: material.group
+        }
+        
+        console.log('✅ Map edilmiş veri:', mappedMaterial)
+        setMaterialData(mappedMaterial)
+      } else {
+        console.log('⚠️ All_materials\'da malzeme bulunamadı:', itemName)
+        // Fallback - prop'lardan gelen değerleri kullan
+        setMaterialData({
+          material_class: materialClass,
+          material_group: materialGroup
+        })
+      }
+      
+    } catch (error) {
+      console.error('❌ Material data fetch hatası:', error)
+      // Hata durumunda prop'lardan gelen değerleri kullan
+      setMaterialData({
+        material_class: materialClass,
+        material_group: materialGroup
+      })
+    } finally {
+      setLoadingMaterial(false)
+    }
+  }
 
   const fetchAllSuppliers = async () => {
     try {
@@ -222,8 +281,20 @@ export default function AssignSupplierModal({
       return
     }
 
-    // material_class ve material_group opsiyonel bilgi - yoksa null olarak geçilecek
-    console.log('ℹ️ Material class/group bilgisi:', { materialClass, materialGroup, itemName })
+    // All_materials tablosundan çekilen güncel veriler
+    const currentMaterialClass = materialData?.material_class || materialClass
+    const currentMaterialGroup = materialData?.material_group || materialGroup
+    
+    console.log('ℹ️ Material bilgisi:', { 
+      fromAllMaterials: materialData,
+      fromProps: { materialClass, materialGroup },
+      using: { currentMaterialClass, currentMaterialGroup },
+      defaults: { 
+        finalClass: currentMaterialClass || 'Genel', 
+        finalGroup: currentMaterialGroup || 'Diğer' 
+      },
+      itemName 
+    })
 
     try {
       setAssigningSupplier(true)
@@ -231,16 +302,16 @@ export default function AssignSupplierModal({
         supplierId, 
         supplierName,
         itemName,
-        materialClass,
-        materialGroup
+        currentMaterialClass,
+        currentMaterialGroup
       })
 
       console.log('📦 Tedarikçi-malzeme ataması yapılıyor:', {
         supplierId,
         supplierName,
         itemName,
-        materialClass,
-        materialGroup
+        currentMaterialClass,
+        currentMaterialGroup
       })
 
       // Önce bu tedarikçi-ürün ilişkisi zaten var mı kontrol et
@@ -250,13 +321,13 @@ export default function AssignSupplierModal({
         .eq('supplier_id', supplierId)
         .eq('material_item', itemName)
       
-      // material_class ve material_group null ise koşullara ekleme
-      if (materialClass) {
-        existingQuery = existingQuery.eq('material_class', materialClass)
-      }
-      if (materialGroup) {
-        existingQuery = existingQuery.eq('material_group', materialGroup)
-      }
+      // Material class ve group ile existing assignment kontrolü
+      const queryMaterialClass = currentMaterialClass || 'Genel'
+      const queryMaterialGroup = currentMaterialGroup || 'Diğer'
+      
+      existingQuery = existingQuery
+        .eq('material_class', queryMaterialClass)
+        .eq('material_group', queryMaterialGroup)
       
       const { data: existingAssignment } = await existingQuery.single()
 
@@ -266,21 +337,15 @@ export default function AssignSupplierModal({
         return
       }
 
-      // Yeni atama oluştur
+      // Yeni atama oluştur - sadece supplier_materials şemasına uygun kolonlar
       const insertData: any = {
         supplier_id: supplierId,
-        material_item: itemName
+        material_item: itemName,
+        material_class: currentMaterialClass || 'Genel',
+        material_group: currentMaterialGroup || 'Diğer'
       }
       
-      // Sadece varsa ekle
-      if (materialClass) {
-        insertData.material_class = materialClass
-      }
-      if (materialGroup) {
-        insertData.material_group = materialGroup
-      }
-
-      console.log('💾 Insert verisi:', insertData)
+      console.log('💾 Supplier materials şemasına uygun insert verisi:', insertData)
 
       const { error: assignError } = await supabase
         .from('supplier_materials')
@@ -321,10 +386,30 @@ export default function AssignSupplierModal({
                 <p className="text-gray-500 mt-1">
                   "{itemName}" ürününü bir tedarikçiye atayın
                 </p>
-                {(!materialClass && !materialGroup) && (
-                  <p className="text-yellow-600 text-sm mt-2 bg-yellow-50 px-3 py-2 rounded-lg">
-                    ℹ️ Malzeme sınıf/grup bilgisi mevcut değil. Genel tedarikçi kategorilerinden seçim yapılacak.
+                {loadingMaterial ? (
+                  <p className="text-blue-600 text-sm mt-2 bg-blue-50 px-3 py-2 rounded-lg">
+                    🔍 Malzeme bilgileri all_materials tablosundan yükleniyor...
                   </p>
+                ) : (
+                  <div>
+                    {materialData ? (
+                      <div className="text-sm mt-2 bg-green-50 px-3 py-2 rounded-lg">
+                        <p className="text-green-800 font-medium">✅ All_materials tablosundan yüklendi:</p>
+                        <div className="text-green-700 mt-1 space-y-1">
+                          {materialData.material_class && (
+                            <div>Sınıf: <span className="font-medium">{materialData.material_class}</span></div>
+                          )}
+                          {materialData.material_group && (
+                            <div>Grup: <span className="font-medium">{materialData.material_group}</span></div>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-yellow-600 text-sm mt-2 bg-yellow-50 px-3 py-2 rounded-lg">
+                        ℹ️ All_materials tablosunda malzeme bulunamadı. {(materialClass || materialGroup) ? 'Prop bilgileri kullanılacak.' : 'Genel kategorilerden seçim yapılacak.'}
+                      </p>
+                    )}
+                  </div>
                 )}
               </div>
             <Button

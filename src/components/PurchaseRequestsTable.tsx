@@ -415,6 +415,12 @@ export default function PurchaseRequestsTable() {
       
       const supabase = createClient()
       
+      // Kullanıcı bilgisini al
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        throw new Error('Kullanıcı oturumu bulunamadı.')
+      }
+      
       const { data: updateResult, error } = await supabase
         .from('purchase_requests')
         .update({ 
@@ -425,6 +431,22 @@ export default function PurchaseRequestsTable() {
         .select()
       
       if (error) throw error
+      
+      // Approval history kaydı ekle
+      const { error: historyError } = await supabase
+        .from('approval_history')
+        .insert({
+          purchase_request_id: requestId,
+          action: 'approved',
+          performed_by: user.id,
+          comments: 'Site Manager tarafından satın almaya gönderildi'
+        })
+
+      if (historyError) {
+        console.error('⚠️ Approval history kaydı eklenirken hata:', historyError)
+      } else {
+        console.log('✅ Approval history kaydı eklendi')
+      }
       
       console.log('✅ Status updated successfully:', {
         requestId,
