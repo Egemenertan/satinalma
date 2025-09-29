@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -11,13 +11,22 @@ import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 
-export default function LoginPage() {
+function LoginContent() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const router = useRouter()
+  const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // URL parametrelerini kontrol et
+  useEffect(() => {
+    const urlError = searchParams.get('error')
+    if (urlError === 'access_denied') {
+      setError('Bu hesap dashboard\'a erişim yetkisine sahip değil. Lütfen sistem yöneticisine başvurun.')
+    }
+  }, [searchParams])
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -49,6 +58,13 @@ export default function LoginPage() {
         console.log('🔍 Profile check:', { profile: profile?.id, error: profileError })
 
         if (profile) {
+          // User rolü dashboard'a erişemez
+          if (profile.role === 'user') {
+            console.log('❌ User role detected, denying access')
+            setError('Bu hesap dashboard\'a erişim yetkisine sahip değil. Lütfen sistem yöneticisine başvurun.')
+            return
+          }
+          
           console.log('🚀 Redirecting to dashboard...')
           // Başarılı - Dashboard'a git
           window.location.href = '/dashboard'
@@ -155,5 +171,22 @@ export default function LoginPage() {
         </Card>
       </div>
     </div>
+  )
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
+            <div className="animate-spin rounded-full h-10 w-10 border-3 border-white border-t-transparent"></div>
+          </div>
+          <p className="text-gray-600 font-light text-lg">Yükleniyor...</p>
+        </div>
+      </div>
+    }>
+      <LoginContent />
+    </Suspense>
   )
 }

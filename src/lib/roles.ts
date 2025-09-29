@@ -108,9 +108,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/requests/')
   }
   
-  // Normal kullanıcılar çoğu sayfaya erişebilir (settings hariç)
+  // Normal kullanıcılar hiçbir sayfaya erişemez
   if (userRole === 'user') {
-    return page !== 'settings' && page !== '/dashboard/settings'
+    return false
   }
   
   return false
@@ -135,7 +135,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'user') {
-    return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports'] // Settings hariç
+    return [] // User rolü hiçbir menüye erişemez
   }
   
   // Admin ve manager tüm menülere erişebilir

@@ -87,6 +87,14 @@ export async function middleware(request: NextRequest) {
 
     console.log('👤 Middleware: Profile check:', { role: profile?.role })
 
+    // User rolü dashboard'a erişemez
+    if (request.nextUrl.pathname.startsWith('/dashboard') && profile?.role === 'user') {
+      console.log('❌ Middleware: User role cannot access dashboard, redirecting to login')
+      const redirectUrl = new URL('/auth/login', request.url)
+      redirectUrl.searchParams.set('error', 'access_denied')
+      return NextResponse.redirect(redirectUrl)
+    }
+
     // Admin route'ları için admin rolü gerekli
     if (request.nextUrl.pathname.startsWith('/admin') && profile?.role !== 'admin') {
       console.log('❌ Middleware: Admin role required, redirecting to dashboard')

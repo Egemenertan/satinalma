@@ -546,16 +546,38 @@ DOVEC İnşaat
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {request.purchase_request_items.filter(item => item.quantity > 0).length === 0 ? (
-                // Tüm malzemeler gönderildi - direkt özet göster
-                <div className="text-center py-4">
-                  <p className="text-sm text-gray-600">
-                    Bu talepteki tüm malzemeler santiye depo tarafından gönderilmiştir.
-                  </p>
-                </div>
-              ) : (
-                request.purchase_request_items
-                  .filter(item => item.quantity > 0)
+              
+              {(() => {
+                // Aktif malzemeler: quantity > 0 VEYA hiç sipariş kaydı yok
+                const activeItems = request.purchase_request_items.filter(item => {
+                  // Eğer quantity > 0 ise kesinlikle göster
+                  if (item.quantity > 0) return true
+                  
+                  // Quantity = 0 ama hiç sipariş kaydı yoksa da göster
+                  if (item.quantity === 0) {
+                    const hasOrders = Array.isArray(materialOrders) 
+                      ? materialOrders.some(order => order.material_item_id === item.id)
+                      : false
+                    const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
+                      order.material_item_id === item.id
+                    )
+                    
+                    // Hiç sipariş kaydı yoksa göster
+                    return !hasOrders && !hasLocalOrders
+                  }
+                  
+                  return false
+                })
+                
+                return activeItems.length === 0 ? (
+                  // Tüm malzemeler gönderildi veya sipariş verildi
+                  <div className="text-center py-4">
+                    <p className="text-sm text-gray-600">
+                      Bu talepteki tüm malzemeler santiye depo tarafından gönderildi veya sipariş verildi.
+                    </p>
+                  </div>
+                ) : (
+                  activeItems
                   .map((item, index) => {
                     const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
                     
@@ -984,11 +1006,27 @@ DOVEC İnşaat
                       </div>
                     )
                   })
-              )}
+                )
+              })()}
             </div>
             
             {/* Genel Bilgilendirme - Sadece aktif malzemeler varsa göster */}
-            {request.purchase_request_items.filter(item => item.quantity > 0).length > 0 && (
+            {(() => {
+              const activeItems = request.purchase_request_items.filter(item => {
+                if (item.quantity > 0) return true
+                if (item.quantity === 0) {
+                  const hasOrders = Array.isArray(materialOrders) 
+                    ? materialOrders.some(order => order.material_item_id === item.id)
+                    : false
+                  const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
+                    order.material_item_id === item.id
+                  )
+                  return !hasOrders && !hasLocalOrders
+                }
+                return false
+              })
+              return activeItems.length > 0
+            })() && (
               <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
                 <div className="flex gap-3">
                   <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
