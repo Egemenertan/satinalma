@@ -35,7 +35,6 @@ interface PurchaseRequest {
   description?: string
   site_name: string
   site_id: string
-  material_class?: string
   urgency_level: 'low' | 'normal' | 'high' | 'critical'
   status: string // Basitleştirdik - artık database'den ne geliyorsa onu kullanıyoruz
   requested_by: string
@@ -51,11 +50,10 @@ interface PurchaseRequest {
   sites?: Array<{
     name: string
   }>
-  purchase_request_items?: Array<{
-    quantity: number
-    unit: string
-    item_name?: string
-  }>
+  profiles?: {
+    full_name: string
+    email: string
+  }
 }
 
 interface Filters {
@@ -124,18 +122,13 @@ const fetchPurchaseRequests = async (key: string) => {
       status,
       urgency_level,
       created_at,
+      delivery_date,
       requested_by,
-      material_class,
       site_name,
       site_id,
       sent_quantity,
       sites:site_id (
         name
-      ),
-      purchase_request_items (
-        quantity,
-        unit,
-        item_name
       )
     `)
     .range(from, to)
@@ -162,15 +155,73 @@ const fetchPurchaseRequests = async (key: string) => {
     throw new Error('Satın alma talepleri yüklenirken hata oluştu')
   }
 
-  const formattedRequests = (requests || []).map(request => {
+  const formattedRequests = await Promise.all((requests || []).map(async request => {
+    // Profile bilgisini useOfferData hook'u gibi işle
+    let processedProfiles = null
+    
+    if (request.requested_by) {
+      try {
+        // Önce profiles tablosundan dene (useOfferData hook'u gibi)
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', request.requested_by)
+          .single()
+
+        if (!profileError && profileData) {
+          // Eğer full_name boş ise email'den isim oluşturmaya çalış
+          let displayName = profileData.full_name
+          
+          if (!displayName || displayName.trim() === '') {
+            // Email'den isim oluştur (@ işaretinden öncesini al)
+            if (profileData.email) {
+              displayName = profileData.email.split('@')[0]
+                .replace(/[._-]/g, ' ') // . _ - karakterlerini boşlukla değiştir
+                .split(' ')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()) // Her kelimenin ilk harfini büyüt
+                .join(' ')
+            } else {
+              displayName = 'İsimsiz Kullanıcı'
+            }
+          }
+          
+          processedProfiles = {
+            full_name: displayName,
+            email: profileData.email
+          }
+        } else {
+          // Eğer profiles'tan bulunamazsa, fallback (useOfferData hook'u gibi olmasa da basit fallback)
+          processedProfiles = { 
+            full_name: 'Kullanıcı bulunamadı', 
+            email: '' 
+          }
+        }
+      } catch (error) {
+        console.error('Profile fetch error:', error)
+        processedProfiles = { full_name: 'Kullanıcı bulunamadı', email: '' }
+      }
+    } else {
+      processedProfiles = { full_name: 'Bilinmiyor', email: '' }
+    }
+    
     // Sadece database'den gelen status'u kullan - Supabase trigger'ları otomatik güncelliyor
-    return {
+    const formattedRequest = {
       ...request,
+      profiles: processedProfiles,
       request_number: `REQ-${request.id.slice(0, 8)}`,
       updated_at: request.created_at
       // status zaten database'den doğru geliyor, değiştirmeye gerek yok
     }
-  }) as PurchaseRequest[]
+    
+    // Debug log - status'u kontrol et
+    console.log('📊 PurchaseRequestsTable fetchPurchaseRequests:', { 
+      requestId: request.id, 
+      status: request.status,
+      formattedStatus: formattedRequest.status 
+    })
+    
+    return formattedRequest
+  })) as PurchaseRequest[]
 
   return { requests: formattedRequests, totalCount: count || 0 }
 }
@@ -197,9 +248,10 @@ export default function PurchaseRequestsTable() {
     {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000, // 5 saniye cache - daha hızlı güncelleme
+      dedupingInterval: 1000, // 1 saniye cache - daha hızlı güncelleme
       errorRetryCount: 3,
       errorRetryInterval: 5000,
+      refreshInterval: 30000, // 30 saniyede bir otomatik yenile
     }
   )
 
@@ -242,8 +294,21 @@ export default function PurchaseRequestsTable() {
         }, 
         (payload) => {
           console.log('📡 Real-time update received:', payload)
+          
           // Global cache invalidation kullan
           invalidatePurchaseRequestsCache()
+          
+          // SWR cache'ini de manuel olarak temizle
+          mutate('purchase_requests_stats')
+          mutate('pending_requests_count')
+          
+          // Tüm purchase_requests cache'lerini temizle
+          mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
+          
+          // Veriyi yenile
+          refreshData()
+          
+          console.log('✅ PurchaseRequestsTable cache temizlendi ve veri yenilendi')
         }
       )
       .subscribe()
@@ -286,6 +351,9 @@ export default function PurchaseRequestsTable() {
 
 
   const getStatusBadge = (status: string) => {
+    // Debug log - status'u kontrol et
+    console.log('🔍 PurchaseRequestsTable getStatusBadge:', { status, userRole })
+    
     // Purchasing officer için özel görünüm - satın almaya gönderilmiş talepler "Beklemede" olarak görünür
     if (userRole === 'purchasing_officer' && 
         (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi')) {
@@ -307,6 +375,7 @@ export default function PurchaseRequestsTable() {
       'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
+      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
       rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
@@ -454,6 +523,15 @@ export default function PurchaseRequestsTable() {
         updateResult
       })
       
+      // Teams bildirimi gönder
+      try {
+        const { handlePurchaseRequestStatusChange } = await import('../lib/teams-webhook')
+        await handlePurchaseRequestStatusChange(requestId, 'satın almaya gönderildi')
+      } catch (webhookError) {
+        console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
+        // Webhook hatası ana işlemi etkilemesin
+      }
+      
       // Agresif cache temizleme ve veri yenileme
       invalidatePurchaseRequestsCache()
       
@@ -548,15 +626,14 @@ export default function PurchaseRequestsTable() {
                   </Button>
                 </TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Şantiye</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Malzeme Sınıfı</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Talep Edilen Miktar</TableHead>
+                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Talep Eden</TableHead>
                 <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
                   <Button 
                     variant="ghost" 
                     onClick={() => handleSort('created_at')}
                     className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
                   >
-                    Tarih
+                    Oluşturma Tarihi
                     <ArrowUpDown className="w-3 h-3" />
                   </Button>
                 </TableHead>
@@ -580,7 +657,7 @@ export default function PurchaseRequestsTable() {
             <TableBody>
               {isLoading ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 8 : 7} className="text-center py-12">
+                    <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12">
                     <div className="flex items-center justify-center gap-3">
                       <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
                       <span className="text-gray-600">Yükleniyor...</span>
@@ -589,7 +666,7 @@ export default function PurchaseRequestsTable() {
                 </TableRow>
               ) : error ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12 text-red-500">
+                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12 text-red-500">
                     <div className="flex flex-col items-center gap-2">
                       <AlertTriangle className="w-8 h-8 text-red-300" />
                       <span>Veriler yüklenirken hata oluştu</span>
@@ -606,7 +683,7 @@ export default function PurchaseRequestsTable() {
                 </TableRow>
               ) : filteredRequests.length === 0 ? (
                 <TableRow className="border-0">
-                  <TableCell colSpan={userRole === 'site_manager' ? 8 : 7} className="text-center py-12 text-gray-500">
+                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12 text-gray-500">
                     <div className="flex flex-col items-center gap-2">
                       <Package className="w-8 h-8 text-gray-300" />
                       <span>
@@ -672,27 +749,17 @@ export default function PurchaseRequestsTable() {
                     
                     <TableCell className="py-4">
                       <div className="flex items-center gap-2">
-                        <div className="p-1.5 bg-purple-100 rounded-2xl">
-                          <Package className="w-3 h-3 text-purple-600" />
-                        </div>
-                        <span className="font-medium text-gray-800">
-                          {request.material_class || 'Sınıf Belirtilmemiş'}
-                        </span>
-                      </div>
-                    </TableCell>
-                    
-                    <TableCell className="py-4">
-                      <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-blue-100 rounded-2xl">
-                          <Package className="w-3 h-3 text-blue-600" />
+                          <User className="w-3 h-3 text-blue-600" />
                         </div>
-                        <div className="text-sm">
-                          {request.purchase_request_items?.[0] ? (
-                            <div className="font-medium text-gray-800">
-                              {request.purchase_request_items[0].quantity} {request.purchase_request_items[0].unit}
+                        <div>
+                          <div className="font-medium text-sm text-gray-800">
+                            {request.profiles?.full_name || 'Kullanıcı bulunamadı'}
+                          </div>
+                          {request.profiles?.email && (
+                            <div className="text-xs text-gray-500">
+                              {request.profiles.email}
                             </div>
-                          ) : (
-                            <span className="text-gray-400 text-xs">Miktar belirtilmemiş</span>
                           )}
                         </div>
                       </div>
@@ -708,6 +775,7 @@ export default function PurchaseRequestsTable() {
                         </div>
                       </div>
                     </TableCell>
+                    
                     
 
 

@@ -4,13 +4,17 @@ import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Check, Truck, Clock } from 'lucide-react'
+import { Check, Truck, Clock, Edit } from 'lucide-react'
 import { OffersPageProps } from './types'
-import MaterialDeliveryModal from '@/components/MaterialDeliveryModal'
+import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
+import { useRouter } from 'next/navigation'
 
 interface SitePersonnelViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   materialOrders: any[]
   currentOrder: any
+  canEditRequest?: () => boolean  // Site Manager'dan geçirilen fonksiyon
+  handleEditRequest?: () => void  // Site Manager'dan geçirilen fonksiyon
+  hideDeliveryButtons?: boolean   // Site Manager için teslim alma butonlarını gizle
 }
 
 export default function SitePersonnelView({ 
@@ -20,10 +24,28 @@ export default function SitePersonnelView({
   shipmentData, 
   currentOrder,
   onRefresh, 
-  showToast 
+  showToast,
+  canEditRequest: externalCanEditRequest,
+  handleEditRequest: externalHandleEditRequest,
+  hideDeliveryButtons = false
 }: SitePersonnelViewProps) {
+  const router = useRouter()
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
   const [selectedMaterialForDelivery, setSelectedMaterialForDelivery] = useState<any>(null)
+
+  // Site Personnel düzenleme yetkisi kontrolü (kendi kontrol fonksiyonu)
+  const defaultCanEditRequest = () => {
+    return request?.status === 'pending'
+  }
+
+  // Edit sayfasına yönlendir (kendi fonksiyonu)
+  const defaultHandleEditRequest = () => {
+    router.push(`/dashboard/requests/${request.id}/edit`)
+  }
+
+  // Hangi edit fonksiyonlarını kullanacağını belirle
+  const canEditRequest = externalCanEditRequest || defaultCanEditRequest
+  const handleEditRequest = externalHandleEditRequest || defaultHandleEditRequest
 
   // Teslimat tarihi kontrolü
   const isDeliveryDateReached = () => {
@@ -119,18 +141,33 @@ export default function SitePersonnelView({
     <>
       <Card className="bg-white border-0 shadow-sm">
         <CardHeader>
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-              <Truck className="h-6 w-6 text-blue-600" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                <Truck className="h-6 w-6 text-blue-600" />
+              </div>
+              <div>
+                <CardTitle className="text-xl font-semibold text-gray-900">
+                  Malzeme Takip Sistemi
+                </CardTitle>
+                <p className="text-sm text-gray-600 mt-1">
+                  Her malzeme için talep, gönderim ve kalan miktar durumu
+                </p>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-xl font-semibold text-gray-900">
-                Malzeme Takip Sistemi
-              </CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
-                Her malzeme için talep, gönderim ve kalan miktar durumu
-              </p>
-            </div>
+            
+            {/* Site Personnel Edit Butonu */}
+            {canEditRequest() && (
+              <Button
+                onClick={handleEditRequest}
+                variant="outline"
+                size="sm"
+                className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+              >
+                <Edit className="h-4 w-4" />
+                Talebi Düzenle
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent>
@@ -150,17 +187,36 @@ export default function SitePersonnelView({
                           </div>
                         )}
                         <h4 className="text-lg font-semibold text-gray-900">{item.item_name}</h4>
-                        {item.brand && (
-                          <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                            {item.brand}
-                          </Badge>
-                        )}
                       </div>
+                      {item.brand && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-gray-700">Marka:</span>
+                          <span className="text-sm font-medium text-gray-900">{item.brand}</span>
+                        </div>
+                      )}
+                      
+                      {/* Kullanım Amacı */}
+                      {item.purpose && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-gray-700">Kullanım Amacı:</span>
+                          <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
+                        </div>
+                      )}
+                      
+                      {/* Gerekli Teslimat Tarihi */}
+                      {item.delivery_date && (
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-sm font-medium text-gray-700">Gerekli Tarih:</span>
+                          <span className="text-sm font-medium text-gray-900">
+                            {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
+                          </span>
+                        </div>
+                      )}
                       <div className="text-sm text-gray-600 space-y-1">
                         <div className="flex items-center gap-4">
                           <span>Miktar: <strong>{item.quantity} {item.unit}</strong></span>
                           {item.specifications && (
-                            <span className="text-xs text-gray-500">• {item.specifications}</span>
+                            <span className="text-sm text-gray-600">• {item.specifications}</span>
                           )}
                         </div>
                       </div>
@@ -198,27 +254,15 @@ export default function SitePersonnelView({
                                 <Clock className="h-3 w-3" />
                                 {deliveryStatus.deliveredCount}/{deliveryStatus.totalCount} Teslim
                               </div>
-                              <Button
-                                size="sm"
-                                onClick={() => handleMaterialDeliveryConfirmation(item)}
-                                className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md"
-                              >
-                                Teslim Al
-                              </Button>
                             </div>
                           )
                         }
                         
                         // Hiç teslim alınmadı
                         return (
-                          <Button
-                            size="sm"
-                            onClick={() => handleMaterialDeliveryConfirmation(item)}
-                            className="h-8 px-4 bg-green-600 hover:bg-green-700 text-white text-sm rounded-md flex items-center gap-2"
-                          >
-                            <Truck className="h-4 w-4" />
-                            Teslim Al
-                          </Button>
+                          <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
+                            📋 Görüntüleme
+                          </div>
                         )
                       })()}
                     </div>
@@ -398,6 +442,124 @@ export default function SitePersonnelView({
                       </div>
                     </div>
                   </div>
+
+                  {/* Tedarikçi Bilgileri - Site Manager için */}
+                  {(request?.status === 'sipariş verildi' || request?.status === 'kısmen teslim alındı' || request?.status === 'teslim alındı') && (
+                    <div className="mt-4">
+                      <div className="text-sm font-medium text-gray-700 mb-3">📋 Tedarikçi Bilgileri</div>
+                      {(() => {
+                        const itemOrders = materialOrders.filter((order: any) => 
+                          order.material_item_id === item.id
+                        )
+                        
+                        if (itemOrders.length === 0) {
+                          return (
+                            <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-500 text-sm border border-gray-200">
+                              Bu malzeme için henüz sipariş verilmemiş
+                            </div>
+                          )
+                        }
+
+                        // Tedarikçiye göre grupla
+                        const supplierGroups = itemOrders.reduce((groups: any, order: any) => {
+                          const supplierId = order.supplier?.id || 'unknown'
+                          const supplierName = order.supplier?.name || 'Bilinmeyen Tedarikçi'
+                          
+                          if (!groups[supplierId]) {
+                            groups[supplierId] = {
+                              supplier: order.supplier,
+                              name: supplierName,
+                              orders: [],
+                              totalQuantity: 0,
+                              totalDelivered: 0,
+                              deliveredCount: 0
+                            }
+                          }
+                          
+                          groups[supplierId].orders.push(order)
+                          groups[supplierId].totalQuantity += order.quantity || 0
+                          
+                          if (order.is_delivered) {
+                            groups[supplierId].deliveredCount += 1
+                          }
+                          
+                          // Kademeli teslim alma miktarını hesapla
+                          const deliveredQuantity = order.delivered_quantity || 0
+                          groups[supplierId].totalDelivered += deliveredQuantity
+                          
+                          return groups
+                        }, {})
+                        
+                        const suppliers = Object.values(supplierGroups)
+                        
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {suppliers.map((supplier: any, index: number) => (
+                              <div key={index} className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
+                                <div className="flex items-start justify-between mb-3">
+                                  <div className="flex-1">
+                                    <div className="font-semibold text-gray-900 mb-1">{supplier.name}</div>
+                                    <div className="text-sm text-gray-600">
+                                      <div className="space-y-1">
+                                        <div className="flex justify-between">
+                                          <span>Sipariş:</span>
+                                          <span className="font-medium">{supplier.totalQuantity.toFixed(2)} {item.unit}</span>
+                                        </div>
+                                        <div className="flex justify-between text-green-600">
+                                          <span>Teslim:</span>
+                                          <span className="font-medium">{supplier.totalDelivered.toFixed(2)} {item.unit}</span>
+                                        </div>
+                                        <div className="flex justify-between text-blue-600">
+                                          <span>Kalan:</span>
+                                          <span className="font-medium">{(supplier.totalQuantity - supplier.totalDelivered).toFixed(2)} {item.unit}</span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <div className="ml-3 shrink-0">
+                                    {supplier.totalDelivered >= supplier.totalQuantity ? (
+                                      <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-1 rounded-full">
+                                        ✓ Tamamlandı
+                                      </div>
+                                    ) : supplier.totalDelivered > 0 ? (
+                                      <div className="text-xs font-medium text-orange-700 bg-orange-100 px-2 py-1 rounded-full">
+                                        ⏳ Kısmen
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
+                                        📦 Bekliyor
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                                
+                                {/* İletişim Bilgileri */}
+                                {(supplier.supplier?.contact_person || supplier.supplier?.phone) && (
+                                  <div className="border-t border-gray-100 pt-3 mt-3">
+                                    <div className="text-xs text-gray-500 mb-2 uppercase tracking-wide">İletişim</div>
+                                    <div className="space-y-1 text-sm">
+                                      {supplier.supplier?.contact_person && (
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-600">Kişi:</span>
+                                          <span className="text-gray-900 font-medium">{supplier.supplier.contact_person}</span>
+                                        </div>
+                                      )}
+                                      {supplier.supplier?.phone && (
+                                        <div className="flex justify-between">
+                                          <span className="text-gray-600">Telefon:</span>
+                                          <span className="text-gray-900 font-medium">{supplier.supplier.phone}</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      })()}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -424,7 +586,7 @@ export default function SitePersonnelView({
 
 
       {/* Teslimat Onayı Modalı */}
-      <MaterialDeliveryModal
+      <DeliveryConfirmationModal
         isOpen={isDeliveryModalOpen}
         onClose={() => {
           setIsDeliveryModalOpen(false)
@@ -434,12 +596,15 @@ export default function SitePersonnelView({
         materialOrders={selectedMaterialForDelivery ? materialOrders.filter((order: any) => 
           order.material_item_id === selectedMaterialForDelivery.id
         ) : []}
+        shipmentData={shipmentData}
         onSuccess={() => {
           onRefresh()
           setSelectedMaterialForDelivery(null)
         }}
         showToast={showToast}
+        requestId={request?.id}
       />
     </>
   )
 }
+

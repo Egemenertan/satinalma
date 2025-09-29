@@ -18,6 +18,8 @@ export interface PurchaseRequestItem {
   unit: string
   specifications: string
   brand?: string
+  purpose?: string  // Her malzeme için ayrı kullanım amacı
+  delivery_date?: string  // Her malzeme için ayrı teslimat tarihi
   original_quantity?: number  // İlk talep edilen miktar - hiç değişmez
   image_urls?: string[]  // Malzeme görselleri
 }
@@ -31,6 +33,7 @@ export interface PurchaseRequest {
   urgency_level: string
   status: string
   created_at: string
+  delivery_date?: string
   site_id?: string
   site_name?: string
   construction_site_id?: string

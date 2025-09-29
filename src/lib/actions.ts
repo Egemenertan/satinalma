@@ -50,6 +50,7 @@ export async function createPurchaseRequest(data: {
   material_group?: string
   material_item_name?: string
   image_urls?: string[]
+  required_date?: string
 }) {
   try {
     // Gerçek kullanıcıyı al
@@ -73,6 +74,7 @@ export async function createPurchaseRequest(data: {
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
+      delivery_date: data.required_date || null, // Ne zaman gerekli tarihi eklendi
       material_class: data.material_class || null,
       material_group: data.material_group || null,
       material_item_name: data.material_item_name || null,
@@ -356,13 +358,15 @@ export async function createMultiMaterialPurchaseRequest(data: {
     material_group?: string
     material_item_name?: string
     specifications?: string  // Her malzeme için ayrı teknik özellikler
+    purpose?: string         // Her malzeme için ayrı kullanım amacı
+    delivery_date?: string   // Her malzeme için ayrı teslimat tarihi
     image_urls?: string[]
   }>
-  purpose?: string
+  purpose?: string         // Genel amaç (artık kullanılmıyor - geriye uyumluluk için)
   site_id?: string
   site_name?: string
   specifications?: string  // Genel teknik özellikler (artık kullanılmıyor)
-  required_date?: string
+  required_date?: string   // Genel tarih (artık kullanılmıyor - geriye uyumluluk için)
 }) {
   try {
     console.log('🚀 createMultiMaterialPurchaseRequest başlatıldı:', data)
@@ -400,6 +404,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
+      delivery_date: data.required_date || null, // Ne zaman gerekli tarihi eklendi
       image_urls: data.materials[0]?.image_urls || null // İlk malzemenin resimlerini kullan
     }
     
@@ -429,6 +434,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       unit: material.unit,
       unit_price: 0,
       specifications: material.specifications || 'Şantiye ihtiyacı', // Her malzeme için ayrı teknik özellikler
+      purpose: material.purpose || null, // Her malzeme için ayrı kullanım amacı
+      delivery_date: material.delivery_date || null, // Her malzeme için ayrı teslimat tarihi
       brand: material.brand || null,
       material_class: material.material_class || null,
       material_group: material.material_group || null,
@@ -485,6 +492,182 @@ export async function createMultiMaterialPurchaseRequest(data: {
     console.error('Error creating multi-material purchase request:', error)
     
     let errorMessage = 'Çoklu malzeme talebi oluşturulurken hata oluştu'
+    if (error instanceof Error) {
+      errorMessage = error.message
+    }
+    
+    return { success: false, error: errorMessage }
+  }
+}
+
+export async function updatePurchaseRequest(data: {
+  requestId: string
+  materials: Array<{
+    id: string
+    material_name: string
+    quantity: number
+    unit: string
+    brand?: string
+    material_class?: string
+    material_group?: string
+    material_item_name?: string
+    specifications?: string
+    purpose?: string
+    delivery_date?: string
+    image_urls?: string[]
+  }>
+  specifications?: string
+}) {
+  try {
+    console.log('🔄 updatePurchaseRequest başlatıldı:', data)
+    
+    // Gerçek kullanıcıyı al
+    const user = await getAuthenticatedUser()
+    console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
+    
+    const supabase = createClient()
+    
+    // Önce mevcut request'i kontrol et
+    console.log('🔍 Request ID kontrol ediliyor:', {
+      requestId: data.requestId, 
+      type: typeof data.requestId,
+      isString: typeof data.requestId === 'string',
+      isUUID: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(data.requestId),
+      userId: user.id
+    })
+    
+    // Önce kullanıcının auth durumunu kontrol et
+    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
+    console.log('🔐 Auth durumu:', { 
+      authUser: authUser ? { id: authUser.id, email: authUser.email } : null, 
+      authError,
+      serverUser: { id: user.id, email: user.email }
+    })
+
+    const { data: existingRequest, error: requestError } = await supabase
+      .from('purchase_requests')
+      .select('*')
+      .eq('id', data.requestId)
+      .single()
+
+    console.log('📋 Request sorgu sonucu:', { 
+      existingRequest: existingRequest ? {
+        id: existingRequest.id,
+        status: existingRequest.status,
+        requested_by: existingRequest.requested_by
+      } : null,
+      requestError,
+      userCanEdit: existingRequest ? existingRequest.requested_by === user.id : 'N/A'
+    })
+
+    if (requestError || !existingRequest) {
+      console.error('❌ Request bulunamadı:', requestError)
+      throw new Error('Güncellenecek talep bulunamadı')
+    }
+
+    // Sadece kendi taleplerini düzenleyebilir (güvenlik)
+    if (existingRequest.requested_by !== user.id && user.role !== 'admin') {
+      throw new Error('Bu talebi düzenleme yetkiniz yok')
+    }
+
+    // Request'in durumu düzenlemeye uygun mu? (kullanıcı rolüne göre)
+    const canEditByRole = () => {
+      // Site Personnel: sadece pending durumunda
+      if (user.role === 'site_personnel') {
+        return existingRequest.status === 'pending'
+      }
+      
+      // Site Manager: pending, rejected, kısmen gönderildi, depoda mevcut değil
+      if (user.role === 'site_manager') {
+        return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
+      }
+      
+      // Admin: her durumda düzenleyebilir
+      if (user.role === 'admin') {
+        return true
+      }
+      
+      // Diğer roller: sadece pending ve rejected
+      return ['pending', 'rejected'].includes(existingRequest.status)
+    }
+
+    if (!canEditByRole()) {
+      throw new Error(`Bu durumda olan talepler düzenlenemez. Mevcut durum: ${existingRequest.status}, Rolünüz: ${user.role}`)
+    }
+
+    // Purchase request güncelle
+    const { error: updateRequestError } = await supabase
+      .from('purchase_requests')
+      .update({
+        specifications: data.specifications || null,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', data.requestId)
+
+    if (updateRequestError) {
+      throw new Error(`Request güncellenemedi: ${updateRequestError.message}`)
+    }
+
+    // Mevcut items'ları sil
+    const { error: deleteItemsError } = await supabase
+      .from('purchase_request_items')
+      .delete()
+      .eq('purchase_request_id', data.requestId)
+
+    if (deleteItemsError) {
+      throw new Error(`Mevcut items silinemedi: ${deleteItemsError.message}`)
+    }
+
+    // Yeni items'ları ekle
+    const itemsData = data.materials.map(material => ({
+      purchase_request_id: data.requestId,
+      item_name: material.material_name,
+      description: `${material.brand || ''} ${material.material_name}`.trim(),
+      quantity: Math.round(material.quantity),
+      original_quantity: Math.round(material.quantity),
+      unit: material.unit,
+      unit_price: 0,
+      specifications: material.specifications || null,
+      purpose: material.purpose || null,
+      delivery_date: material.delivery_date || null,
+      brand: material.brand || null,
+      material_class: material.material_class || null,
+      material_group: material.material_group || null,
+      material_item_name: material.material_item_name || null,
+      image_urls: material.image_urls || null
+    }))
+
+    const { error: insertItemsError } = await supabase
+      .from('purchase_request_items')
+      .insert(itemsData)
+
+    if (insertItemsError) {
+      throw new Error(`Yeni items eklenemedi: ${insertItemsError.message}`)
+    }
+
+    // Approval history kaydı ekle
+    await supabase
+      .from('approval_history')
+      .insert({
+        purchase_request_id: data.requestId,
+        action: 'updated',
+        performed_by: user.id,
+        comments: `Talep güncellendi (${data.materials.length} adet malzeme)`
+      })
+
+    console.log('✅ Purchase request başarıyla güncellendi')
+
+    revalidatePath('/dashboard/requests')
+    revalidatePath(`/dashboard/requests/${data.requestId}`)
+    
+    return { 
+      success: true,
+      message: `Talep başarıyla güncellendi! ${data.materials.length} adet malzeme güncellendi.`
+    }
+  } catch (error) {
+    console.error('Error updating purchase request:', error)
+    
+    let errorMessage = 'Talep güncellenirken hata oluştu'
     if (error instanceof Error) {
       errorMessage = error.message
     }

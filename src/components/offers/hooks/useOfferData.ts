@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Database } from '@/lib/types'
-import { PurchaseRequest, MaterialSupplier, OrderInfo, ShipmentInfo } from '../types'
+import { createClient } from '@/lib/supabase/client'
+import { Database } from '@/lib/supabase'
+import { PurchaseRequest, MaterialSupplier, OrderInfo, ShipmentInfo, SupplierInfo } from '../types'
 
 export function useOfferData(requestId: string) {
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
@@ -14,8 +14,9 @@ export function useOfferData(requestId: string) {
   const [shipmentData, setShipmentData] = useState<{[key: string]: ShipmentInfo}>({})
   const [currentOrder, setCurrentOrder] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const supabase = createClientComponentClient<Database>()
+  const supabase = createClient()
 
   const fetchUserRole = async () => {
     try {
@@ -39,50 +40,115 @@ export function useOfferData(requestId: string) {
 
   const fetchRequestData = async () => {
     try {
-      setLoading(true)
       console.log('🔍 Fetching request with ID:', requestId)
       
+      // Önce authentication kontrol et
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      console.log('🔐 Auth status:', { hasUser: !!user, userId: user?.id, authError: authError?.message })
+      
+      // 🚀 OPTIMIZASYON: Tek sorguda hem request hem items'ı al
       const { data, error } = await supabase
         .from('purchase_requests')
-        .select('*')
+        .select(`
+          *, 
+          delivery_date,
+          purchase_request_items(
+            id, item_name, description, quantity, unit, 
+            specifications, brand, original_quantity, 
+            image_urls, purpose, delivery_date
+          )
+        `)
         .eq('id', requestId)
         .single()
+        
+      console.log('📊 Purchase request query result:', { hasData: !!data, error: error?.message })
       
       if (!error && data) {
-        const { data: items, error: itemsError } = await supabase
-          .from('purchase_request_items')
-          .select('id, item_name, description, quantity, unit, specifications, brand, original_quantity, image_urls')
-          .eq('purchase_request_id', requestId)
+        // Items artık data içinde geliyor, ayrı sorguya gerek yok
+        const items = data.purchase_request_items || []
+          
+        console.log('📊 Purchase request items query result:', { 
+          hasItems: !!items, 
+          itemsCount: items?.length, 
+          requestId 
+        })
         
-        // DEBUG: original_quantity değerlerini kontrol et
+        // DEBUG: tüm malzeme bilgilerini kontrol et
         console.log('🔍 Database\'den gelen purchase_request_items:', items?.map(item => ({
           id: item.id,
           item_name: item.item_name,
           quantity: item.quantity,
           original_quantity: item.original_quantity,
-          original_quantity_type: typeof item.original_quantity,
-          original_quantity_is_null: item.original_quantity === null,
-          original_quantity_is_undefined: item.original_quantity === undefined
+          purpose: item.purpose,
+          delivery_date: item.delivery_date,
+          brand: item.brand,
+          specifications: item.specifications
         })))
-        
-        if (!itemsError && items) {
-          data.purchase_request_items = items
-        } else {
-          data.purchase_request_items = []
-        }
 
         if (data.requested_by) {
+          console.log('🔍 Requested by ID:', data.requested_by)
+          
+          // Önce profiles tablosundan dene
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
             .select('full_name, email')
             .eq('id', data.requested_by)
             .single()
 
+          console.log('👤 Profile query result:', { profileData, profileError })
+
           if (!profileError && profileData) {
-            data.profiles = profileData
+            // Eğer full_name boş ise email'den isim oluşturmaya çalış
+            let displayName = profileData.full_name
+            
+            if (!displayName || displayName.trim() === '') {
+              // Email'den isim oluştur (@ işaretinden öncesini al)
+              if (profileData.email) {
+                displayName = profileData.email.split('@')[0]
+                  .replace(/[._-]/g, ' ') // . _ - karakterlerini boşlukla değiştir
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()) // Her kelimenin ilk harfini büyüt
+                  .join(' ')
+              } else {
+                displayName = 'İsimsiz Kullanıcı'
+              }
+            }
+            
+            data.profiles = {
+              full_name: displayName,
+              email: profileData.email
+            }
+            console.log('✅ Profile data set with processed name:', data.profiles)
           } else {
-            data.profiles = { full_name: 'Bilinmiyor', email: '' }
+            console.log('❌ Profile not found in profiles table, trying auth.users')
+            
+            // Eğer profiles'tan bulunamazsa, auth.users'tan email çek
+            const { data: { user } } = await supabase.auth.getUser()
+            if (user && user.id === data.requested_by) {
+              let displayName = user.user_metadata?.full_name
+              
+              if (!displayName && user.email) {
+                // Email'den isim oluştur
+                displayName = user.email.split('@')[0]
+                  .replace(/[._-]/g, ' ')
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+                  .join(' ')
+              }
+              
+              data.profiles = { 
+                full_name: displayName || 'İsimsiz Kullanıcı', 
+                email: user.email || 'E-posta bulunamadı' 
+              }
+              console.log('✅ User data from auth with processed name:', data.profiles)
+            } else {
+              console.log('❌ User not found in auth either')
+              data.profiles = { full_name: 'Bilinmiyor', email: '' }
+            }
           }
+        } else {
+          console.log('❌ No requested_by field in request data')
+          data.profiles = { full_name: 'Bilinmiyor', email: '' }
         }
 
         if (data.site_id) {
@@ -119,8 +185,6 @@ export function useOfferData(requestId: string) {
       setRequest(data)
     } catch (error) {
       console.error('💥 Error fetching request:', error)
-    } finally {
-      setLoading(false)
     }
   }
 
@@ -142,66 +206,63 @@ export function useOfferData(requestId: string) {
     }
   }
 
-  const fetchMaterialSuppliers = async () => {
+  const fetchMaterialSuppliers = async (requestItems?: any[]) => {
     try {
       console.log('🔍 Malzeme bazlı tedarikçi kontrolü başlatılıyor...')
       
-      const { data: requestData, error: requestError } = await supabase
-        .from('purchase_requests')
-        .select('purchase_request_items(id, item_name)')
-        .eq('id', requestId)
-        .single()
+      // Eğer requestItems parametre olarak gelmediyse, request'ten al
+      let items = requestItems
+      if (!items) {
+        const { data: requestData, error: requestError } = await supabase
+          .from('purchase_requests')
+          .select('purchase_request_items(id, item_name)')
+          .eq('id', requestId)
+          .single()
 
-      if (requestError) {
-        console.error('❌ Purchase request data alınamadı:', requestError)
-        throw requestError
+        if (requestError) {
+          console.error('❌ Purchase request data alınamadı:', requestError)
+          throw requestError
+        }
+        items = requestData?.purchase_request_items || []
       }
 
-      if (requestData?.purchase_request_items && requestData.purchase_request_items.length > 0) {
+      if (items && items.length > 0) {
         const materialSuppliersData: {[itemId: string]: MaterialSupplier} = {}
+        
+        // 🚀 OPTIMIZASYON: Tüm material isimleri için tek sorguda supplier-materials al
+        const materialNames = items.map(item => item.item_name)
+        
+        const { data: supplierMaterialsAll, error: materialsError } = await supabase
+          .from('supplier_materials')
+          .select(`
+            id,
+            supplier_id,
+            material_item,
+            supplier:suppliers(
+              id, name, contact_person, phone, email
+            )
+          `)
+          .in('material_item', materialNames)
 
-        for (const item of requestData.purchase_request_items) {
-          console.log(`🔍 ${item.item_name} için tedarikçi kontrolü...`)
+        console.log('📦 Tek sorguda tüm supplier materials:', supplierMaterialsAll?.length || 0)
+
+        // Her malzeme için tedarikçi bilgilerini organize et
+        for (const item of items) {
+          const itemSuppliers = supplierMaterialsAll?.filter(sm => sm.material_item === item.item_name) || []
           
-          try {
-            const { data: supplierMaterialsNew, error: materialsErrorNew } = await supabase
-              .from('supplier_materials')
-              .select(`
-                id,
-                supplier_id,
-                material_item
-              `)
-              .eq('material_item', item.item_name)
-
-            if (!materialsErrorNew && supplierMaterialsNew && supplierMaterialsNew.length > 0) {
-              console.log(`✅ ${item.item_name} için tedarikçi bulundu:`, supplierMaterialsNew.length)
-              
-              const supplierIds = supplierMaterialsNew.map(sm => sm.supplier_id)
-              const { data: suppliers, error: suppliersError } = await supabase
-                .from('suppliers')
-                .select('id, name, contact_person, phone, email')
-                .in('id', supplierIds)
-
-              if (!suppliersError && suppliers) {
-                materialSuppliersData[item.id] = {
-                  isRegistered: true,
-                  suppliers: suppliers
-                }
-              } else {
-                materialSuppliersData[item.id] = {
-                  isRegistered: false,
-                  suppliers: []
-                }
-              }
-            } else {
-              console.log(`ℹ️ ${item.item_name} için kayıtlı tedarikçi bulunamadı`)
-              materialSuppliersData[item.id] = {
-                isRegistered: false,
-                suppliers: []
-              }
+          if (itemSuppliers.length > 0) {
+            console.log(`✅ ${item.item_name} için tedarikçi bulundu:`, itemSuppliers.length)
+            
+            const suppliers = itemSuppliers
+              .map(sm => sm.supplier)
+              .filter(supplier => supplier !== null) as unknown as SupplierInfo[]
+            
+            materialSuppliersData[item.id] = {
+              isRegistered: true,
+              suppliers: suppliers
             }
-          } catch (itemError) {
-            console.error(`❌ ${item.item_name} için tedarikçi kontrolü hatası:`, itemError)
+          } else {
+            console.log(`ℹ️ ${item.item_name} için kayıtlı tedarikçi bulunamadı`)
             materialSuppliersData[item.id] = {
               isRegistered: false,
               suppliers: []
@@ -236,6 +297,12 @@ export function useOfferData(requestId: string) {
           supplier:suppliers(
             id,
             name
+          ),
+          order_deliveries(
+            id,
+            delivered_quantity,
+            delivered_at,
+            delivery_notes
           )
         `)
         .eq('purchase_request_id', requestId)
@@ -252,12 +319,18 @@ export function useOfferData(requestId: string) {
       if (orders && orders.length > 0) {
         // Array olarak döndür, quantity field'ı dahil et
         const ordersArray = orders.map((order: any) => {
+          // Toplam teslim alınan miktarı hesapla
+          const totalDelivered = order.order_deliveries && order.order_deliveries.length > 0 
+            ? order.order_deliveries.reduce((sum: number, delivery: any) => sum + (delivery.delivered_quantity || 0), 0)
+            : 0
+
           return {
             id: order.id,
             delivery_date: order.delivery_date,
             created_at: order.created_at,
             material_item_id: order.material_item_id,
             quantity: order.quantity || 0,
+            delivered_quantity: totalDelivered, // Kademeli teslim alma toplamı
             is_delivered: order.is_delivered || false,
             delivery_confirmed_at: order.delivery_confirmed_at,
             delivery_confirmed_by: order.delivery_confirmed_by,
@@ -269,7 +342,8 @@ export function useOfferData(requestId: string) {
             suppliers: order.supplier ? {
               id: order.supplier.id,
               name: order.supplier.name
-            } : null
+            } : null,
+            order_deliveries: order.order_deliveries || []
           }
         })
 
@@ -345,7 +419,6 @@ export function useOfferData(requestId: string) {
 
   const fetchOrderDetails = async () => {
     try {
-      setLoading(true)
       console.log('🔍 Sipariş detayları alınıyor...', requestId)
 
       const { data: order, error } = await supabase
@@ -388,14 +461,30 @@ export function useOfferData(requestId: string) {
   }
 
   const refreshData = async () => {
-    await Promise.all([
-      fetchRequestData(),
-      fetchExistingOffers(),
-      fetchMaterialSuppliers(),
-      fetchMaterialOrders(),
-      fetchShipmentData(),
-      fetchOrderDetails()
-    ])
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // 🚀 OPTIMIZASYON: İlk request'i al ve items'ı dahil et
+      const requestPromise = fetchRequestData()
+      
+      // Request'i bekle ki items bilgisini diğer fonksiyonlara aktarabiliriz  
+      await requestPromise
+      
+      // Geriye kalan işlemleri paralel çalıştır
+      await Promise.all([
+        fetchExistingOffers(),
+        fetchMaterialSuppliers(request?.purchase_request_items),
+        fetchMaterialOrders(),
+        fetchShipmentData(),
+        fetchOrderDetails()
+      ])
+    } catch (err) {
+      console.error('❌ Data refresh error:', err)
+      setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -414,6 +503,7 @@ export function useOfferData(requestId: string) {
     shipmentData,
     currentOrder,
     loading,
+    error,
     refreshData,
     supabase
   }

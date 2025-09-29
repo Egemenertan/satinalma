@@ -3,12 +3,13 @@
 import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { Package } from 'lucide-react'
+import { Package, Edit } from 'lucide-react'
 import { OffersPageProps } from './types'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Database } from '@/lib/types'
+import { createClient } from '@/lib/supabase/client'
+import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import SitePersonnelView from './SitePersonnelView'
+import { useRouter } from 'next/navigation'
 
 interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'materialOrders' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   currentOrder: any
@@ -17,7 +18,18 @@ interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materi
 export default function SiteManagerView(props: SiteManagerViewProps) {
   const { request, onRefresh, showToast } = props
   const [siteManagerApproving, setSiteManagerApproving] = useState(false)
-  const supabase = createClientComponentClient<Database>()
+  const router = useRouter()
+  const supabase = createClient()
+
+  // Site Manager düzenleme yetkisi kontrolü
+  const canEditRequest = () => {
+    return request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil'
+  }
+
+  // Edit sayfasına yönlendir
+  const handleEditRequest = () => {
+    router.push(`/dashboard/requests/${request.id}/edit`)
+  }
 
   const handleSiteManagerApproval = async () => {
     setSiteManagerApproving(true)
@@ -116,6 +128,23 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       console.log('✅ Status başarıyla güncellendi:', updateResult[0])
       showToast('Malzemeler satın almaya gönderildi!', 'success')
       
+      // Teams bildirimi gönder
+      try {
+        console.log('🔔 Teams webhook tetikleniyor...', {
+          requestId: request.id,
+          newStatus: 'satın almaya gönderildi',
+          oldStatus: request.status
+        })
+        
+        const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
+        const webhookResult = await handlePurchaseRequestStatusChange(request.id, 'satın almaya gönderildi', request.status)
+        
+        console.log('✅ Teams webhook sonucu:', webhookResult)
+      } catch (webhookError) {
+        console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
+        // Webhook hatası ana işlemi etkilemesin
+      }
+      
       await onRefresh()
       invalidatePurchaseRequestsCache()
       
@@ -137,7 +166,10 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
 
   const sitePersonnelProps = {
     ...props,
-    materialOrders: materialOrdersArray
+    materialOrders: materialOrdersArray,
+    canEditRequest,
+    handleEditRequest,
+    hideDeliveryButtons: true  // Site Manager teslim alma butonlarını görmesin
   }
 
   // Eğer özel durum değilse SitePersonnelView'i render et
@@ -158,27 +190,43 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
               <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Package className="w-8 h-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Satın Almaya Gönder</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-2">Site Manager İşlemleri</h3>
               <p className="text-gray-600 mb-6">
                 {request?.status === 'kısmen gönderildi' 
-                  ? 'Kısmen gönderilen malzemeler için satın alma talebinde bulunabilirsiniz.'
-                  : 'Depoda mevcut olmayan malzemeler için satın alma talebinde bulunabilirsiniz.'
+                  ? 'Kısmen gönderilen malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
+                  : 'Depoda mevcut olmayan malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
                 }
               </p>
-              <Button
-                onClick={handleSiteManagerApproval}
-                disabled={siteManagerApproving}
-                className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg text-lg font-medium"
-              >
-                {siteManagerApproving ? (
-                  <>
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                    Gönderiliyor...
-                  </>
-                ) : (
-                  'Satın Almaya Gönder'
+              
+              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                {/* Edit Butonu */}
+                {canEditRequest() && (
+                  <Button
+                    onClick={handleEditRequest}
+                    variant="outline"
+                    className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 px-6 py-3 text-lg"
+                  >
+                    <Edit className="h-5 w-5" />
+                    Talebi Düzenle
+                  </Button>
                 )}
-              </Button>
+                
+                {/* Satın Almaya Gönder Butonu */}
+                <Button
+                  onClick={handleSiteManagerApproval}
+                  disabled={siteManagerApproving}
+                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg text-lg font-medium"
+                >
+                  {siteManagerApproving ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      Gönderiliyor...
+                    </>
+                  ) : (
+                    'Satın Almaya Gönder'
+                  )}
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>

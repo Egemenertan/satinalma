@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
-import { Upload, X, Camera, FileImage, Loader2 } from 'lucide-react'
+import { Upload, X, Camera, FileImage, Loader2, Package } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 
 interface DeliveryConfirmationModalProps {
@@ -14,6 +15,7 @@ interface DeliveryConfirmationModalProps {
   onClose: () => void
   materialItem?: any
   materialOrders?: any[]
+  shipmentData?: {[key: string]: any}
   onSuccess: () => void
   showToast: (message: string, type?: 'success' | 'error') => void
   orderId?: string
@@ -25,6 +27,7 @@ export default function DeliveryConfirmationModal({
   onClose,
   materialItem,
   materialOrders = [],
+  shipmentData = {},
   onSuccess,
   showToast,
   orderId,
@@ -35,8 +38,39 @@ export default function DeliveryConfirmationModal({
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([])
   const [uploading, setUploading] = useState(false)
   const [selectedOrders, setSelectedOrders] = useState<string[]>([])
+  const [deliveredQuantity, setDeliveredQuantity] = useState<number>(0)
+  const [maxQuantity, setMaxQuantity] = useState<number>(0)
+  const [remainingQuantity, setRemainingQuantity] = useState<number>(0)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+
+  // Miktar hesaplamalarını yap
+  useEffect(() => {
+    if (materialItem && isOpen) {
+      // Sipariş edilen toplam miktarı hesapla
+      const totalOrderedQuantity = materialOrders
+        .filter(order => order.material_item_id === materialItem.id)
+        .reduce((sum, order) => sum + (order.quantity || 0), 0)
+
+      // Zaten teslim alınan miktarı hesapla (shipmentData'dan)
+      const materialShipments = shipmentData[materialItem.id]
+      const alreadyDeliveredQuantity = materialShipments ? materialShipments.total_shipped : 0
+
+      // Kalan miktarı hesapla
+      const remaining = totalOrderedQuantity - alreadyDeliveredQuantity
+
+      setMaxQuantity(totalOrderedQuantity)
+      setRemainingQuantity(remaining)
+      setDeliveredQuantity(Math.min(remaining, 1)) // Default olarak 1 veya kalan miktar
+
+      console.log('📦 Miktar hesaplamaları:', {
+        materialItem: materialItem.item_name,
+        totalOrdered: totalOrderedQuantity,
+        alreadyDelivered: alreadyDeliveredQuantity,
+        remaining: remaining
+      })
+    }
+  }, [materialItem, materialOrders, shipmentData, isOpen])
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || [])
@@ -104,6 +138,15 @@ export default function DeliveryConfirmationModal({
     try {
       setUploading(true)
 
+      // Validasyonlar
+      if (deliveredQuantity <= 0) {
+        throw new Error('Teslim alınan miktar 0\'dan büyük olmalıdır')
+      }
+
+      if (deliveredQuantity > remainingQuantity) {
+        throw new Error(`Teslim alınan miktar kalan miktardan (${remainingQuantity}) fazla olamaz`)
+      }
+
       // Get current user
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
@@ -115,6 +158,32 @@ export default function DeliveryConfirmationModal({
       if (photos.length > 0) {
         photoUrls = await uploadPhotosToSupabase()
       }
+
+      // Shipment kaydı oluştur (kısmi teslimat için)
+      console.log('📦 Shipment kaydı oluşturuluyor:', {
+        materialItemId: materialItem.id,
+        deliveredQuantity: deliveredQuantity,
+        requestId: requestId
+      })
+
+      const { error: shipmentError } = await supabase
+        .from('shipments')
+        .insert({
+          purchase_request_id: requestId,
+          purchase_request_item_id: materialItem.id,
+          shipped_quantity: deliveredQuantity,
+          shipped_at: new Date().toISOString(),
+          shipped_by: user.id,
+          delivery_receipt_photos: photoUrls,
+          notes: notes.trim() || null,
+          status: 'delivered'
+        })
+
+      if (shipmentError) {
+        throw new Error(`Teslimat kaydı oluşturulurken hata oluştu: ${shipmentError.message}`)
+      }
+
+      console.log('✅ Shipment kaydı başarıyla oluşturuldu')
 
       // Update order with delivery confirmation (sadece gerçek order ID varsa)
       if (orderId && orderId !== 'temp-order-id') {
@@ -157,7 +226,10 @@ export default function DeliveryConfirmationModal({
       
       console.log('✅ Purchase request status başarıyla güncellendi')
 
-      showToast('Teslimat başarıyla kaydedildi!', 'success')
+      showToast(
+        `${materialItem.item_name} için ${deliveredQuantity} ${materialItem.unit || 'adet'} teslimat kaydedildi!`, 
+        'success'
+      )
       onSuccess()
       onClose()
       
@@ -165,6 +237,9 @@ export default function DeliveryConfirmationModal({
       setNotes('')
       setPhotos([])
       setPhotoPreviewUrls([])
+      setDeliveredQuantity(0)
+      setMaxQuantity(0)
+      setRemainingQuantity(0)
       
     } catch (error) {
       console.error('Error confirming delivery:', error)
@@ -183,6 +258,9 @@ export default function DeliveryConfirmationModal({
     setPhotoPreviewUrls([])
     setPhotos([])
     setNotes('')
+    setDeliveredQuantity(0)
+    setMaxQuantity(0)
+    setRemainingQuantity(0)
     onClose()
   }
 
@@ -196,6 +274,64 @@ export default function DeliveryConfirmationModal({
         </DialogHeader>
 
         <div className="space-y-6 pt-4">
+          {/* Material Info */}
+          {materialItem && (
+            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Package className="h-5 w-5 text-gray-600" />
+                <p className="text-sm font-medium text-gray-900">Malzeme Bilgisi</p>
+              </div>
+              <p className="text-lg font-semibold text-gray-900 mb-1">{materialItem.item_name}</p>
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <span className="text-gray-600">Sipariş Edilen:</span>
+                  <span className="font-medium text-gray-900 ml-1">
+                    {maxQuantity} {materialItem.unit || 'adet'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-gray-600">Kalan Miktar:</span>
+                  <span className="font-medium text-gray-900 ml-1">
+                    {remainingQuantity} {materialItem.unit || 'adet'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Quantity Input */}
+          <div className="space-y-3">
+            <Label htmlFor="delivered-quantity" className="text-sm font-medium text-gray-900">
+              Teslim Alınan Miktar
+              <span className="text-red-500 ml-1">*</span>
+            </Label>
+            <div className="relative">
+              <Input
+                id="delivered-quantity"
+                type="number"
+                min="0.1"
+                max={remainingQuantity}
+                step="0.1"
+                value={deliveredQuantity}
+                onChange={(e) => setDeliveredQuantity(Number(e.target.value))}
+                className="bg-white border-gray-200 pr-16"
+                placeholder="Miktar girin"
+                disabled={uploading}
+              />
+              <div className="absolute right-3 top-1/2 transform -translate-y-1/2 text-sm text-gray-500">
+                {materialItem?.unit || 'adet'}
+              </div>
+            </div>
+            {deliveredQuantity > remainingQuantity && (
+              <p className="text-sm text-red-600">
+                Teslim alınan miktar kalan miktardan ({remainingQuantity}) fazla olamaz
+              </p>
+            )}
+            <p className="text-xs text-gray-500">
+              Kısmi teslimat yapabilirsiniz. Kalan miktar için daha sonra yeni teslimat kaydı oluşturabilirsiniz.
+            </p>
+          </div>
+
           {/* Delivery Date Info */}
           <div className="bg-white border border-gray-200 rounded-lg p-4">
             <p className="text-sm text-gray-600 mb-1">Teslimat Tarihi</p>
@@ -304,8 +440,13 @@ export default function DeliveryConfirmationModal({
             </Button>
             <Button
               onClick={handleConfirmDelivery}
-              disabled={uploading || photos.length === 0}
-              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+              disabled={
+                uploading || 
+                photos.length === 0 || 
+                deliveredQuantity <= 0 || 
+                deliveredQuantity > remainingQuantity
+              }
+              className="flex-1 bg-gray-800 hover:bg-gray-900 text-white"
             >
               {uploading ? (
                 <>
@@ -318,10 +459,18 @@ export default function DeliveryConfirmationModal({
             </Button>
           </div>
 
-          {photos.length === 0 && (
-            <p className="text-sm text-gray-600 text-center pt-2">
-              Teslimatı onaylamak için en az 1 irsaliye fotoğrafı yüklemeniz gerekiyor.
-            </p>
+          {(photos.length === 0 || deliveredQuantity <= 0 || deliveredQuantity > remainingQuantity) && (
+            <div className="text-sm text-gray-600 text-center pt-2 space-y-1">
+              {photos.length === 0 && (
+                <p>• En az 1 irsaliye fotoğrafı yüklemeniz gerekiyor</p>
+              )}
+              {deliveredQuantity <= 0 && (
+                <p>• Teslim alınan miktar 0'dan büyük olmalı</p>
+              )}
+              {deliveredQuantity > remainingQuantity && (
+                <p>• Teslim alınan miktar kalan miktardan fazla olamaz</p>
+              )}
+            </div>
           )}
         </div>
       </DialogContent>

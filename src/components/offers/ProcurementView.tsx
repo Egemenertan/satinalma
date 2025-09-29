@@ -12,8 +12,8 @@ import {
   Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight 
 } from 'lucide-react'
 import { OffersPageProps, Offer, CURRENCIES, getCurrencySymbol } from './types'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
-import { Database } from '@/lib/types'
+import { createClient } from '@/lib/supabase/client'
+import { Database } from '@/lib/supabase'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import AssignSupplierModal from '@/components/AssignSupplierModal'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
@@ -37,7 +37,7 @@ export default function ProcurementView({
   showToast
 }: ProcurementViewProps) {
   const router = useRouter()
-  const supabase = createClientComponentClient<Database>()
+  const supabase = createClient()
 
   // Local state
   const [newOffers, setNewOffers] = useState<Offer[]>([
@@ -618,12 +618,31 @@ DOVEC İnşaat
                                 </div>
                               )}
                               <h4 className="text-lg font-semibold text-gray-900">{item.item_name}</h4>
-                              {item.brand && (
-                                <Badge variant="secondary" className="bg-blue-50 text-blue-700 border-blue-200">
-                                  {item.brand}
-                                </Badge>
-                              )}
                             </div>
+                            {item.brand && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-gray-700">Marka:</span>
+                                <span className="text-sm font-medium text-gray-900">{item.brand}</span>
+                              </div>
+                            )}
+                            
+                            {/* Kullanım Amacı */}
+                            {item.purpose && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-gray-700">Kullanım Amacı:</span>
+                                <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
+                              </div>
+                            )}
+                            
+                            {/* Gerekli Teslimat Tarihi */}
+                            {item.delivery_date && (
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-sm font-medium text-gray-700">Gerekli Tarih:</span>
+                                <span className="text-sm font-medium text-gray-900">
+                                  {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
+                                </span>
+                              </div>
+                            )}
                             <div className="text-sm text-gray-600 space-y-1">
                               <div className="flex items-center gap-4">
                                 <span>Kalan Miktar: <strong className={item.quantity > 0 ? 'text-orange-600' : 'text-green-600'}>{item.quantity} {item.unit}</strong></span>
@@ -631,11 +650,11 @@ DOVEC İnşaat
                                   <span className="text-xs text-gray-500">• İlk Talep: {item.original_quantity} {item.unit}</span>
                                 )}
                                 {item.specifications && (
-                                  <span className="text-xs text-gray-500">• {item.specifications}</span>
+                                  <span className="text-sm text-gray-600">• {item.specifications}</span>
                                 )}
                               </div>
                               {item.description && (
-                                <div className="text-xs text-gray-500 mt-1">
+                                <div className="text-sm text-gray-600 mt-1">
                                   {item.description}
                                 </div>
                               )}
@@ -875,26 +894,66 @@ DOVEC İnşaat
                               <div className="space-y-3">
                                 {allOrders.map((order: any, idx: number) => (
                                   <div key={`summary_${order.order_id}_${idx}`} className="bg-white rounded-lg p-3 border border-green-200">
-                                    <div className="grid grid-cols-2 gap-3 text-sm">
-                                      <div>
-                                        <span className="text-gray-600">Tedarikçi:</span>
-                                        <p className="font-semibold text-green-900">{order.supplier_name}</p>
+                                    <div className="flex items-start gap-3">
+                                      {/* Malzeme Görseli */}
+                                      <div className="flex-shrink-0">
+                                        {item.image_urls && item.image_urls.length > 0 ? (
+                                          <div className="w-12 h-12 bg-gray-100 rounded-lg overflow-hidden border border-green-200 shadow-sm">
+                                            <img
+                                              src={item.image_urls[0]}
+                                              alt={item.item_name}
+                                              className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200"
+                                              onClick={() => {
+                                                setCurrentImageGallery({
+                                                  images: item.image_urls,
+                                                  itemName: item.item_name,
+                                                  currentIndex: 0
+                                                })
+                                                setIsImageGalleryOpen(true)
+                                              }}
+                                              onError={(e) => {
+                                                const target = e.target as HTMLImageElement;
+                                                target.style.display = 'none';
+                                                target.parentElement!.innerHTML = `
+                                                  <div class="w-full h-full flex items-center justify-center bg-gray-200">
+                                                    <svg class="w-3 h-3 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                                    </svg>
+                                                  </div>
+                                                `;
+                                              }}
+                                            />
+                                          </div>
+                                        ) : (
+                                          <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center border border-green-200">
+                                            <Package className="w-4 h-4 text-green-600" />
+                                          </div>
+                                        )}
                                       </div>
-                                      <div>
-                                        <span className="text-gray-600">Miktar:</span>
-                                        <p className="font-semibold text-green-900">{order.quantity} {item.unit}</p>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-600">Teslimat Tarihi:</span>
-                                        <p className="font-semibold text-green-900">
-                                          {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
-                                        </p>
-                                      </div>
-                                      <div>
-                                        <span className="text-gray-600">Sipariş No:</span>
-                                        <p className="font-mono text-xs text-green-800 bg-green-100 px-2 py-1 rounded">
-                                          #{order.order_id.toString().slice(-8)}
-                                        </p>
+
+                                      <div className="flex-1">
+                                        <div className="grid grid-cols-2 gap-3 text-sm">
+                                          <div>
+                                            <span className="text-gray-600">Tedarikçi:</span>
+                                            <p className="font-semibold text-green-900">{order.supplier_name}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Miktar:</span>
+                                            <p className="font-semibold text-green-900">{order.quantity} {item.unit}</p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Teslimat Tarihi:</span>
+                                            <p className="font-semibold text-green-900">
+                                              {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <span className="text-gray-600">Sipariş No:</span>
+                                            <p className="font-mono text-xs text-green-800 bg-green-100 px-2 py-1 rounded">
+                                              #{order.order_id.toString().slice(-8)}
+                                            </p>
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
                                   </div>
@@ -1019,7 +1078,59 @@ DOVEC İnşaat
                     
                     return (
                       <div key={`${order.order_id}_${index}`} className="bg-gray-50 border border-gray-200 rounded-lg p-4">
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-start gap-4">
+                          {/* Malzeme Görseli */}
+                          <div className="flex-shrink-0">
+                            {materialItem?.image_urls && materialItem.image_urls.length > 0 ? (
+                              <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200 shadow-sm">
+                                <img
+                                  src={materialItem.image_urls[0]}
+                                  alt={materialItem.item_name}
+                                  className="w-full h-full object-cover cursor-pointer hover:scale-105 transition-transform duration-200"
+                                  onClick={() => {
+                                    setCurrentImageGallery({
+                                      images: materialItem.image_urls,
+                                      itemName: materialItem.item_name,
+                                      currentIndex: 0
+                                    })
+                                    setIsImageGalleryOpen(true)
+                                  }}
+                                  onError={(e) => {
+                                    const target = e.target as HTMLImageElement;
+                                    target.style.display = 'none';
+                                    target.parentElement!.innerHTML = `
+                                      <div class="w-full h-full flex items-center justify-center bg-gray-200">
+                                        <svg class="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                                        </svg>
+                                      </div>
+                                    `;
+                                  }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="w-16 h-16 bg-gray-200 rounded-lg flex items-center justify-center border border-gray-300">
+                                <Package className="w-6 h-6 text-gray-400" />
+                              </div>
+                            )}
+                            
+                            {materialItem?.image_urls && materialItem.image_urls.length > 1 && (
+                              <div 
+                                className="text-xs text-gray-500 text-center mt-1 cursor-pointer hover:text-gray-700 transition-colors"
+                                onClick={() => {
+                                  setCurrentImageGallery({
+                                    images: materialItem.image_urls,
+                                    itemName: materialItem.item_name,
+                                    currentIndex: 0
+                                  })
+                                  setIsImageGalleryOpen(true)
+                                }}
+                              >
+                                +{materialItem.image_urls.length - 1} resim
+                              </div>
+                            )}
+                          </div>
+
                           <div className="flex-1">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-6 h-6 bg-gray-600 text-white rounded-full flex items-center justify-center text-xs font-medium">

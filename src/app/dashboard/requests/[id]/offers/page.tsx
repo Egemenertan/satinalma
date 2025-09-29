@@ -8,6 +8,7 @@ import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useOfferData } from '@/components/offers/hooks/useOfferData'
 import { getUrgencyColor, getStatusColor } from '@/components/offers/types'
+import { SkeletonCard } from '@/components/ui/skeleton'
 import SantiyeDepoView from '@/components/offers/SantiyeDepoView'
 import SitePersonnelView from '@/components/offers/SitePersonnelView'
 import SiteManagerView from '@/components/offers/SiteManagerView'
@@ -32,23 +33,90 @@ export default function OffersPage() {
     shipmentData,
     currentOrder,
     loading,
+    error,
     refreshData
   } = useOfferData(requestId)
 
+  // Retry function for error recovery
+  const handleRetry = () => {
+    refreshData()
+  }
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-900 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
-            <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
+      <div className="min-h-screen bg-gray-50">
+        {/* Header Skeleton */}
+        <div className="bg-white border-b border-gray-200">
+          <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+            <div className="hidden sm:flex items-center justify-between h-16">
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-9 bg-gray-200 animate-pulse rounded-lg"></div>
+                <div className="w-px h-6 bg-gray-200"></div>
+                <div>
+                  <div className="w-32 h-5 bg-gray-200 animate-pulse rounded mb-1"></div>
+                  <div className="w-24 h-4 bg-gray-200 animate-pulse rounded"></div>
+                </div>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="w-16 h-6 bg-gray-200 animate-pulse rounded"></div>
+                <div className="w-24 h-6 bg-gray-200 animate-pulse rounded"></div>
+              </div>
+            </div>
           </div>
-          <p className="text-gray-600 font-medium">Talep bilgileri yükleniyor...</p>
+        </div>
+
+        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
+          <div className="space-y-4 sm:space-y-8">
+            {/* Site Name Skeleton */}
+            <div className="mb-4 sm:mb-8">
+              <div className="w-64 h-8 bg-gray-200 animate-pulse rounded"></div>
+            </div>
+
+            {/* Request Details Skeleton */}
+            <SkeletonCard />
+
+            {/* Content Skeleton */}
+            <div className="space-y-6">
+              <SkeletonCard />
+              <SkeletonCard />
+            </div>
+          </div>
         </div>
       </div>
     )
   }
 
-  if (!request) {
+  // Error state
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center max-w-md mx-auto">
+          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-red-500" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Bir Hata Oluştu</h3>
+          <p className="text-gray-600 mb-6">{error}</p>
+          <div className="flex gap-3 justify-center">
+            <Button 
+              onClick={handleRetry}
+              className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 py-3 font-medium"
+            >
+              Tekrar Dene
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => router.push('/dashboard/requests')}
+              className="rounded-xl px-6 py-3 font-medium"
+            >
+              Taleplere Dön
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (!request && !loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
@@ -81,7 +149,12 @@ export default function OffersPage() {
 
     switch (userRole) {
       case 'santiye_depo':
-        return <SantiyeDepoView {...commonProps} />
+        return (
+          <SantiyeDepoView 
+            {...commonProps}
+            currentOrder={currentOrder}
+          />
+        )
         
       case 'site_personnel':
         return (
@@ -219,12 +292,20 @@ export default function OffersPage() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500 mb-2">Talep Eden</p>
-                    <p className="text-base text-gray-900">{request.profiles?.full_name}</p>
+                    <p className="text-base text-gray-900">
+                      {request.profiles?.full_name || 'Kullanıcı bilgisi bulunamadı'}
+                    </p>
                   </div>
                   <div>
                     <p className="text-sm font-medium text-gray-500 mb-2">Talep Tarihi</p>
                     <p className="text-base text-gray-900">{new Date(request.created_at).toLocaleDateString('tr-TR')}</p>
                   </div>
+                  {request.delivery_date && (
+                    <div>
+                      <p className="text-sm font-medium text-gray-500 mb-2">Gerekli Tarih</p>
+                      <p className="text-base text-gray-900">{new Date(request.delivery_date).toLocaleDateString('tr-TR')}</p>
+                    </div>
+                  )}
                   {/* Kategori Bilgileri */}
                   {request.category_name && (
                     <div className="md:col-span-2">

@@ -69,6 +69,14 @@ interface Order {
     invoice_photos: string[]
     created_at: string
   }[]
+  delivery_summary?: {
+    last_delivery_at: string | null
+    delivery_percentage: number | null
+    delivery_status: 'pending' | 'partial' | 'completed' | string
+    delivery_count: number | null
+    total_delivered: number | null
+    remaining_quantity: number | null
+  } | null
 }
 
 interface Supplier {
@@ -198,10 +206,10 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
         throw ordersError
       }
 
-      // Purchase request ve invoice verilerini ayrı olarak çek
+      // Purchase request, invoice ve teslimat özet/fotoğraf verilerini ayrı olarak çek
       const ordersWithPurchaseRequests = await Promise.all(
         (ordersData || []).map(async (order) => {
-          const promises = []
+          const promises: any[] = []
           
           // Purchase request verisi çek
           if (order.purchase_request_id) {
@@ -223,13 +231,46 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
               .select('id, amount, currency, invoice_photos, created_at')
               .eq('order_id', order.id)
           )
+
+          // Teslimat özeti (order_delivery_summary view)
+          promises.push(
+            supabase
+              .from('order_delivery_summary')
+              .select('last_delivery_at, delivery_percentage, delivery_status, delivery_count, total_delivered, remaining_quantity')
+              .eq('order_id', order.id)
+              .single()
+          )
+
+          // Teslimat fotoğrafları (order_deliveries)
+          promises.push(
+            supabase
+              .from('order_deliveries')
+              .select('delivery_photos, delivered_at')
+              .eq('order_id', order.id)
+              .order('delivered_at', { ascending: false })
+          )
           
-          const [purchaseResult, invoiceResult] = await Promise.all(promises)
+          const [purchaseResult, invoiceResult, summaryResult, deliveriesResult] = await Promise.all(promises)
+
+          // Teslimat fotoğraflarını düzleştir
+          const deliveryPhotosArrays: string[][] = (deliveriesResult?.data || [])
+            .map((d: { delivery_photos?: string[] | null }) => d.delivery_photos || [])
+          const flattenedDeliveryPhotos: string[] = deliveryPhotosArrays.flat().filter(Boolean)
+
+          // delivered_at alanını özetten veya en son teslim kaydından türet
+          const lastDeliveryAtFromSummary: string | null = summaryResult?.data?.last_delivery_at || null
+          const lastDeliveryAtFromDeliveries: string | null = (deliveriesResult?.data?.[0]?.delivered_at) || null
+          const computedDeliveredAt: string | undefined = (lastDeliveryAtFromSummary || lastDeliveryAtFromDeliveries) || undefined
           
           return {
             ...order,
             purchase_requests: purchaseResult.data ? [purchaseResult.data] : [],
-            invoices: invoiceResult.data || []
+            invoices: invoiceResult.data || [],
+            // Özet metrikleri ekle (opsiyonel kullanım için)
+            delivery_summary: summaryResult?.data || null,
+            // UI'da kullanılan alanlar
+            delivery_image_urls: flattenedDeliveryPhotos,
+            delivered_at: computedDeliveredAt
           }
         })
       )
@@ -805,19 +846,27 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                         <FileText className="w-4 h-4" />
                                         Talep No: <span className="font-medium">{order.purchase_requests?.[0]?.request_number || '-'}</span>
                                       </span>
-                                      <Badge className={
-                                        order.status === 'completed' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                                        order.status === 'delivered' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                                        order.status === 'approved' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                        order.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
-                                        'bg-amber-100 text-amber-800 border-amber-200'
-                                      }>
-                                        {order.status === 'completed' ? 'Tamamlandı' :
-                                         order.status === 'delivered' ? 'Teslim Edildi' :
-                                         order.status === 'approved' ? 'Onaylandı' :
-                                         order.status === 'rejected' ? 'Reddedildi' :
-                                         'Beklemede'}
-                                      </Badge>
+                                      {(() => {
+                                        const deliveryStatus = order.delivery_summary?.delivery_status as string | undefined
+                                        if (deliveryStatus === 'completed') {
+                                          return (
+                                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Tamamı Teslim Alındı</Badge>
+                                          )
+                                        }
+                                        const badgeClass =
+                                          order.status === 'completed' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                                          order.status === 'delivered' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
+                                          order.status === 'approved' ? 'bg-blue-100 text-blue-800 border-blue-200' :
+                                          order.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
+                                          'bg-amber-100 text-amber-800 border-amber-200'
+                                        const label =
+                                          order.status === 'completed' ? 'Tamamlandı' :
+                                          order.status === 'delivered' ? 'Teslim Edildi' :
+                                          order.status === 'approved' ? 'Onaylandı' :
+                                          order.status === 'rejected' ? 'Reddedildi' :
+                                          'Beklemede'
+                                        return <Badge className={badgeClass}>{label}</Badge>
+                                      })()}
                                     </div>
                                   </div>
                                   

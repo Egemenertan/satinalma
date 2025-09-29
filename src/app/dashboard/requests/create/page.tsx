@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs'
+// createClientComponentClient kaldırıldı - createClient kullanılıyor
 import { useToast } from '@/components/ui/toast'
 import { createMultiMaterialPurchaseRequest } from '@/lib/actions'
 import { 
@@ -178,6 +178,8 @@ export default function CreatePurchaseRequestPage() {
     quantity: string
     brand: string
     specifications: string  // Her malzeme için ayrı teknik özellikler
+    purpose: string          // Her malzeme için ayrı kullanım amacı
+    delivery_date: string    // Her malzeme için ayrı teslimat tarihi
     image_urls: string[]
     uploaded_images: File[]  // Her malzeme için ayrı yüklenen dosyalar
     image_preview_urls: string[]  // Her malzeme için ayrı önizleme URL'leri
@@ -815,6 +817,8 @@ export default function CreatePurchaseRequestPage() {
       quantity: '',
       brand: '',
       specifications: '',  // Her malzeme için ayrı teknik özellikler
+      purpose: '',         // Her malzeme için ayrı kullanım amacı
+      delivery_date: '',   // Her malzeme için ayrı teslimat tarihi
       image_urls: [],
       uploaded_images: [],  // Her malzeme için ayrı yüklenen dosyalar
       image_preview_urls: []  // Her malzeme için ayrı önizleme URL'leri
@@ -916,6 +920,8 @@ export default function CreatePurchaseRequestPage() {
         quantity: '',
         brand: '',
         specifications: '',
+        purpose: '',         // Her malzeme için ayrı kullanım amacı
+        delivery_date: '',   // Her malzeme için ayrı teslimat tarihi
         image_urls: [],
         uploaded_images: [],
         image_preview_urls: []
@@ -1063,10 +1069,10 @@ export default function CreatePurchaseRequestPage() {
       case 5:
         // Tüm seçili malzemeler için zorunlu alanlar dolu olmalı (material_name otomatik dolu olduğu için kontrol edilmez)
         return selectedMaterials.length > 0 && selectedMaterials.every(material => 
-          material.unit && material.quantity
+          material.unit && material.quantity && material.purpose
         )
       case 6:
-        return formData.purpose
+        return true // Step 6 artık sadece özet gösteriyor, purpose her malzemede ayrı kontrol ediliyor
       case 7:
         return isFormValid()
       default:
@@ -1078,9 +1084,8 @@ export default function CreatePurchaseRequestPage() {
     return (formData.construction_site || userSite) && 
            selectedMaterials.length > 0 &&
            selectedMaterials.every(material => 
-             material.unit && material.quantity
-           ) &&
-           formData.purpose
+             material.unit && material.quantity && material.purpose
+           )
   }
 
   const nextStep = () => {
@@ -1166,6 +1171,8 @@ export default function CreatePurchaseRequestPage() {
             material_group: material.material_group,
             material_item_name: material.material_item_name,
             specifications: material.specifications, // Her malzeme için ayrı teknik özellikler
+            purpose: material.purpose, // Her malzeme için ayrı kullanım amacı
+            delivery_date: material.delivery_date, // Her malzeme için ayrı teslimat tarihi
             image_urls: imageUrls
           }
         })
@@ -1174,11 +1181,9 @@ export default function CreatePurchaseRequestPage() {
       // Yeni multi-material server action'ı kullan
       const result = await createMultiMaterialPurchaseRequest({
         materials: materialsWithImages,
-        purpose: formData.purpose,
         site_id: formData.construction_site_id || userSite?.id,
         site_name: formData.construction_site || userSite?.name,
-        specifications: '', // Artık her malzeme için ayrı teknik özellikler var
-        required_date: formData.required_date
+        specifications: formData.specifications // Genel ek notlar
       })
 
       if (!result.success) {
@@ -1750,6 +1755,8 @@ export default function CreatePurchaseRequestPage() {
                                 quantity: '',
                                 brand: '',
                                 specifications: '',
+                                purpose: '',         // Her malzeme için ayrı kullanım amacı
+                                delivery_date: '',   // Her malzeme için ayrı teslimat tarihi
                                 image_urls: [],
                                 uploaded_images: [],
                                 image_preview_urls: []
@@ -1989,6 +1996,55 @@ export default function CreatePurchaseRequestPage() {
                 </div>
               </div>
 
+              {/* Kullanım Amacı */}
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <Target className="w-4 h-4" />
+                  Kullanım Amacı *
+                </Label>
+                <Input
+                  value={currentMaterial?.purpose || ''}
+                  onChange={(e) => {
+                    const updatedMaterials = [...selectedMaterials]
+                    updatedMaterials[currentMaterialIndex] = {
+                      ...updatedMaterials[currentMaterialIndex],
+                      purpose: e.target.value
+                    }
+                    setSelectedMaterials(updatedMaterials)
+                  }}
+                  placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
+                  className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Bu malzemenin özel kullanım amacını belirtin.
+                </p>
+              </div>
+
+              {/* Gerekli Teslimat Tarihi */}
+              <div>
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <Calendar className="w-4 h-4" />
+                  Ne Zaman Gerekli?
+                </Label>
+                <Input
+                  type="date"
+                  value={currentMaterial?.delivery_date || ''}
+                  onChange={(e) => {
+                    const updatedMaterials = [...selectedMaterials]
+                    updatedMaterials[currentMaterialIndex] = {
+                      ...updatedMaterials[currentMaterialIndex],
+                      delivery_date: e.target.value
+                    }
+                    setSelectedMaterials(updatedMaterials)
+                  }}
+                  className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                  min={new Date().toISOString().split('T')[0]}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Bu malzeme için gerekli teslimat tarihi.
+                </p>
+              </div>
+
               {/* Teknik Özellikler */}
               <div>
                 <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
@@ -2124,35 +2180,78 @@ export default function CreatePurchaseRequestPage() {
             <CardHeader className="pb-3 lg:pb-4">
               <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
                 <Target className="w-4 lg:w-5 h-4 lg:h-5 text-purple-600" />
-                Kullanım ve Zamanlama
+                Malzeme Kullanım Özeti
               </CardTitle>
             </CardHeader>
             <CardContent className="p-2 lg:p-6 space-y-4 lg:space-y-6">
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Target className="w-4 h-4" />
-                  Kullanım Amacı *
-                </Label>
-                <Input
-                  value={formData.purpose}
-                  onChange={(e) => handleInputChange('purpose', e.target.value)}
-                  placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
-                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                />
+              <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Package className="w-4 h-4 text-blue-600" />
+                  <span className="text-sm font-medium text-blue-800">
+                    {selectedMaterials.length} Malzeme Kullanım ve Teslimat Bilgileri
+                  </span>
+                </div>
+                <p className="text-sm text-blue-700">
+                  Tüm malzemeler için kullanım amacı ve teslimat tarihleri her malzeme detayında ayrı ayrı belirtildi.
+                </p>
               </div>
 
+              {/* Malzemelerin Kullanım Amaçları Özeti */}
+              <div className="space-y-3">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
+                  <Target className="w-4 h-4" />
+                  Malzeme Kullanım Amaçları
+                </Label>
+                
+                <div className="space-y-2">
+                  {selectedMaterials.map((material, index) => (
+                    <div key={material.id} className="bg-white/30 backdrop-blur-lg rounded-lg p-3 border border-white/20">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="bg-gray-600 text-white text-xs px-2 py-1 rounded-full font-medium">
+                              #{index + 1}
+                            </span>
+                            <h4 className="font-medium text-gray-900">{material.material_name}</h4>
+                          </div>
+                          <div className="text-sm space-y-1">
+                            <div>
+                              <span className="text-gray-600">Kullanım Amacı:</span>
+                              <span className="ml-2 font-medium text-gray-900">
+                                {material.purpose || 'Belirtilmedi'}
+                              </span>
+                            </div>
+                            {material.delivery_date && (
+                              <div>
+                                <span className="text-gray-600">Gerekli Tarih:</span>
+                                <span className="ml-2 font-medium text-gray-900">
+                                  {new Date(material.delivery_date).toLocaleDateString('tr-TR')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Ek Notlar (Opsiyonel) */}
               <div>
                 <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4" />
-                  Ne Zaman Gerekli?
+                  <FileText className="w-4 h-4" />
+                  Ek Notlar (Opsiyonel)
                 </Label>
-                <Input
-                  type="date"
-                  value={formData.required_date}
-                  onChange={(e) => handleInputChange('required_date', e.target.value)}
-                                      className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                  min={new Date().toISOString().split('T')[0]}
+                <Textarea
+                  value={formData.specifications}
+                  onChange={(e) => handleInputChange('specifications', e.target.value)}
+                  placeholder="Talep ile ilgili ek notlar, özel talimatlar..."
+                  className="min-h-[80px] resize-none rounded-lg border-gray-200 focus:border-black focus:ring-black/20 text-sm"
                 />
+                <p className="text-xs text-gray-500 mt-1">
+                  Genel talep notları (her malzeme için notlar malzeme detaylarında belirtildi).
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -2179,8 +2278,8 @@ export default function CreatePurchaseRequestPage() {
                   <p className="text-base lg:text-lg font-semibold text-gray-900">{selectedMaterials.length} farklı malzeme</p>
                 </div>
                 <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Kullanım Amacı</Label>
-                  <p className="text-base lg:text-lg font-semibold text-gray-900">{formData.purpose}</p>
+                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Kullanım Bilgisi</Label>
+                  <p className="text-base lg:text-lg font-semibold text-gray-900">Her malzeme için ayrı belirtildi</p>
                 </div>
               </div>
 
@@ -2226,6 +2325,26 @@ export default function CreatePurchaseRequestPage() {
                         </div>
                       </div>
                       
+                      {/* Kullanım Amacı ve Teslimat Tarihi */}
+                      <div className="mt-3 pt-3 border-t border-white/20 space-y-2">
+                        {material.purpose && (
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Kullanım Amacı:</div>
+                            <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
+                              {material.purpose}
+                            </div>
+                          </div>
+                        )}
+                        {material.delivery_date && (
+                          <div>
+                            <div className="text-xs text-gray-600 mb-1">Gerekli Teslimat Tarihi:</div>
+                            <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
+                              {new Date(material.delivery_date).toLocaleDateString('tr-TR')}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
                       {material.specifications && (
                         <div className="mt-3 pt-3 border-t border-white/20">
                           <div className="text-xs text-gray-600 mb-1">Teknik Özellikler:</div>
@@ -2238,12 +2357,6 @@ export default function CreatePurchaseRequestPage() {
                   ))}
                 </div>
               </div>
-              {formData.required_date && (
-                <div className="bg-white/30 backdrop-blur-lg  rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Gerekli Tarih</Label>
-                  <p className="text-base lg:text-lg font-semibold text-gray-900">{new Date(formData.required_date).toLocaleDateString('tr-TR')}</p>
-                </div>
-              )}
 
               {/* Material Images Summary */}
               {selectedMaterials.some(m => (m.uploaded_images?.length || 0) > 0) && (

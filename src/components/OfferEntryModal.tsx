@@ -61,7 +61,8 @@ export default function OfferEntryModal({ request, open, onOpenChange, onSubmit 
     if (!request?.id) return
     
     try {
-      const supabase = (await import('@/lib/supabase')).supabase
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
       const { data, error } = await supabase
         .from('offers')
         .select('*')
