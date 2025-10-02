@@ -274,6 +274,28 @@ export default function OffersPage() {
             )}
           </div>
 
+          {/* Reddedilme Nedeni - Sadece reddedildi status'unda göster */}
+          {request.status === 'reddedildi' && request.rejection_reason && (
+            <div className="mb-4 sm:mb-8">
+              <div className="bg-red-50 border border-red-200 rounded-lg">
+                <div className="p-6">
+                  <div className="flex items-start gap-3">
+                    <div className="flex-shrink-0">
+                      <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-red-900 mb-2">Talep Reddedildi</h3>
+                      <p className="text-sm font-medium text-red-800 mb-2">Reddedilme Nedeni:</p>
+                      <p className="text-sm text-red-700 leading-relaxed bg-red-100 rounded-lg p-4">
+                        {request.rejection_reason}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Talep Detayları - Tek Kolon */}
           <div className="mb-4 sm:mb-8">
             <div className="bg-white border-0 shadow-sm rounded-lg">

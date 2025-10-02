@@ -80,14 +80,18 @@ export default function SantiyeDepoView({
 
   // Malzeme kaldırma yetkisi kontrolü
   const canRemoveMaterial = () => {
-    // Santiye Depo sadece pending durumunda kaldırabilir
-    return request?.status === 'pending'
+    // Santiye Depo için: sipariş verildi, teslim alındı ve sonrası durumlarda kaldırma yapılamaz
+    // Kısmen gönderildi ve depoda mevcut değil durumlarında kaldırma yapılabilir
+    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi']
+    return !restrictedStatuses.includes(request?.status)
   }
 
   // Talebi düzenleme yetkisi kontrolü
   const canEditRequest = () => {
-    // Sipariş verildi ve sonrası durumlarda düzenleme yapılamaz
-    return request?.status === 'pending' || request?.status === 'site manager approved'
+    // Santiye Depo için: sipariş verildi, teslim alındı ve sonrası durumlarda düzenleme yapılamaz
+    // Kısmen gönderildi ve depoda mevcut değil durumlarında düzenleme yapılabilir
+    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi']
+    return !restrictedStatuses.includes(request?.status)
   }
 
   // Malzeme kaldırma onayı başlat
@@ -170,25 +174,37 @@ export default function SantiyeDepoView({
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
-            {request.purchase_request_items.map((item, index) => (
-              <MaterialCard
-                key={item.id}
-                item={item}
-                index={index}
-                request={request}
-                materialOrders={materialOrders}
-                shipmentData={shipmentData}
-                onRefresh={onRefresh}
-                showToast={showToast}
-                onMaterialDeliveryConfirmation={handleMaterialDeliveryConfirmation}
-                totalItems={request.purchase_request_items.length}
-                onRemoveMaterial={handleRemoveMaterial}
-                canRemoveMaterial={canRemoveMaterial()}
-                canEditRequest={canEditRequest()}
-                onOrderDeliveryConfirmation={handleOrderDeliveryConfirmation}
-                hideTopDeliveryButtons={true}  // Sağ üstteki teslim alma butonlarını gizle
-              />
-            ))}
+            {request.purchase_request_items.map((item, index) => {
+              // Her malzeme için gönderim durumunu kontrol et
+              const itemShipments = shipmentData[item.id]
+              const totalShipped = itemShipments?.total_shipped || 0
+              const isDepotUnavailable = itemShipments?.shipments?.some(s => s.shipped_quantity === 0) || false
+              const isPartiallyShipped = totalShipped > 0 && item.quantity > 0
+              const isFullyShipped = totalShipped > 0 && item.quantity <= 0
+              
+              // Bu malzeme için düzenle/kaldır butonları gizlenmeli mi?
+              const shouldHideButtons = isDepotUnavailable || isPartiallyShipped || isFullyShipped
+              
+              return (
+                <MaterialCard
+                  key={item.id}
+                  item={item}
+                  index={index}
+                  request={request}
+                  materialOrders={materialOrders}
+                  shipmentData={shipmentData}
+                  onRefresh={onRefresh}
+                  showToast={showToast}
+                  onMaterialDeliveryConfirmation={handleMaterialDeliveryConfirmation}
+                  totalItems={request.purchase_request_items.length}
+                  onRemoveMaterial={shouldHideButtons ? undefined : handleRemoveMaterial}
+                  canRemoveMaterial={shouldHideButtons ? false : canRemoveMaterial()}
+                  canEditRequest={shouldHideButtons ? false : canEditRequest()}
+                  onOrderDeliveryConfirmation={handleOrderDeliveryConfirmation}
+                  hideTopDeliveryButtons={true}  // Sağ üstteki teslim alma butonlarını gizle
+                />
+              )
+            })}
         </div>
 
         {/* Genel Durum Özeti */}

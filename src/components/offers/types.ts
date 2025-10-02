@@ -43,6 +43,7 @@ export interface PurchaseRequest {
   material_group?: string
   image_urls?: string[]
   sent_quantity?: number
+  rejection_reason?: string
   purchase_request_items: PurchaseRequestItem[]
   profiles: {
     full_name: string

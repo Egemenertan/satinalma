@@ -291,6 +291,26 @@ export default function EditPurchaseRequestPage() {
           return
         }
 
+        // Shipment verilerini çek - "depoda yok" malzemeleri filtrelemek için
+        const { data: shipments, error: shipmentError } = await supabase
+          .from('shipments')
+          .select('purchase_request_item_id, shipped_quantity')
+          .eq('purchase_request_id', requestId)
+
+        console.log('📦 Shipment verileri:', { shipments, shipmentError })
+
+        // "Depoda yok" olarak işaretlenmiş malzemelerin ID'lerini bul
+        const unavailableItemIds = new Set<string>()
+        if (shipments && !shipmentError) {
+          shipments.forEach(shipment => {
+            if (shipment.shipped_quantity === 0) {
+              unavailableItemIds.add(shipment.purchase_request_item_id)
+            }
+          })
+        }
+
+        console.log('🚫 Depoda yok malzemeler:', Array.from(unavailableItemIds))
+
         // Form verilerini doldur
         setFormData({
           construction_site: requestData.sites?.name || '',
@@ -302,8 +322,8 @@ export default function EditPurchaseRequestPage() {
           specifications: requestData.specifications || ''
         })
 
-        // Malzemeleri dönüştür
-        const materials = requestData.purchase_request_items?.map((item: any) => ({
+        // Malzemeleri dönüştür ve "depoda yok" olanları filtrele
+        const allMaterials = requestData.purchase_request_items?.map((item: any) => ({
           id: item.id.toString(),
           material_class: item.material_class || '',
           material_group: item.material_group || '',
@@ -321,12 +341,29 @@ export default function EditPurchaseRequestPage() {
           image_preview_urls: []
         })) || []
 
+        // "Depoda yok" malzemeleri filtrele
+        const materials = allMaterials.filter(material => !unavailableItemIds.has(material.id))
+        
+        console.log('📊 Malzeme filtreleme:', {
+          totalMaterials: allMaterials.length,
+          unavailableCount: unavailableItemIds.size,
+          editableMaterials: materials.length,
+          filteredOutIds: Array.from(unavailableItemIds)
+        })
+
         console.log('🔍 Malzeme adları debug:', materials.map(m => ({
           id: m.id,
           material_item_name: m.material_item_name,
           material_name: m.material_name,
           display_name: m.material_item_name || m.material_name || `Malzeme ${materials.indexOf(m) + 1}`
         })))
+
+        // Eğer düzenlenebilir malzeme kalmadıysa kullanıcıyı bilgilendir
+        if (materials.length === 0) {
+          showToast('Bu talepteki tüm malzemeler "depoda yok" olarak işaretlenmiş. Düzenlenebilir malzeme bulunamadı.', 'info')
+          router.push(`/dashboard/requests/${requestId}/offers`)
+          return
+        }
 
         setSelectedMaterials(materials)
 

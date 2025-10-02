@@ -135,6 +135,108 @@ function formatTeamsMessage(request: PurchaseRequestData): TeamsCard {
 }
 
 /**
+ * Teams webhook'una red bildirimi gönderir
+ */
+export async function sendRejectionTeamsNotification(requestId: string) {
+  try {
+    console.log('🚫 Teams red bildirimi gönderiliyor:', requestId)
+    
+    const supabase = createClient()
+    
+    // Talep detaylarını al
+    const { data: request, error: requestError } = await supabase
+      .from('purchase_requests')
+      .select(`
+        id,
+        request_number,
+        site_name,
+        created_at,
+        specifications,
+        status,
+        profiles!purchase_requests_requested_by_fkey (
+          full_name
+        )
+      `)
+      .eq('id', requestId)
+      .single()
+
+    if (requestError || !request) {
+      console.error('❌ Talep bulunamadı:', requestError)
+      return { success: false, error: 'Talep bulunamadı' }
+    }
+
+    // Malzeme listesini al
+    const { data: items, error: itemsError } = await supabase
+      .from('purchase_request_items')
+      .select('*')
+      .eq('purchase_request_id', requestId)
+
+    console.log('🔍 Malzeme sorgu sonucu:', { 
+      items, 
+      itemsError, 
+      requestId,
+      itemCount: items?.length || 0,
+      firstItem: items?.[0] || null
+    })
+
+    if (itemsError) {
+      console.error('❌ Malzemeler alınamadı:', itemsError)
+    }
+
+    // Red bildirimi için özel payload
+    const rejectionPayload = {
+      id: request.id,
+      request_number: request.request_number,
+      site_name: request.site_name,
+      requested_by_name: (request as any).profiles?.full_name || 'Bilinmeyen',
+      created_at: request.created_at,
+      specifications: request.specifications,
+      status: request.status,
+      items: items || [],
+      isRejection: true
+    }
+
+    console.log('📤 Red webhook payload hazırlandı:', rejectionPayload)
+
+    // Server-side API endpoint'ine gönder
+    const baseUrl = typeof window !== 'undefined' 
+      ? window.location.origin 
+      : process.env.NEXT_PUBLIC_APP_URL || 'https://dovac.app'
+    const webhookUrl = `${baseUrl}/api/teams-webhook`
+
+    console.log('🌐 Webhook URL:', webhookUrl)
+
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(rejectionPayload)
+    })
+
+    console.log('📡 Webhook response status:', response.status)
+
+    if (!response.ok) {
+      const errorText = await response.text()
+      console.error('❌ Webhook response error:', errorText)
+      throw new Error(`HTTP ${response.status}: ${errorText}`)
+    }
+
+    const result = await response.json()
+    console.log('✅ Teams red bildirimi başarıyla gönderildi:', result)
+
+    return { success: true, data: result }
+
+  } catch (error) {
+    console.error('❌ Teams red bildirimi hatası:', error)
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Bilinmeyen hata' 
+    }
+  }
+}
+
+/**
  * Teams webhook'una satın alma talebi bildirimi gönderir
  */
 export async function sendTeamsNotification(requestId: string) {
@@ -246,7 +348,7 @@ export async function sendTeamsNotification(requestId: string) {
 }
 
 /**
- * Talep durumu "satın almaya gönderildi" olduğunda Teams bildirimi gönder
+ * Talep durumu değiştiğinde Teams bildirimi gönder
  */
 export async function handlePurchaseRequestStatusChange(
   requestId: string, 
@@ -257,10 +359,11 @@ export async function handlePurchaseRequestStatusChange(
     requestId,
     newStatus,
     oldStatus,
-    shouldSend: newStatus === 'satın almaya gönderildi' && oldStatus !== 'satın almaya gönderildi'
+    shouldSendApproval: newStatus === 'satın almaya gönderildi' && oldStatus !== 'satın almaya gönderildi',
+    shouldSendRejection: newStatus === 'reddedildi' && oldStatus !== 'reddedildi'
   })
   
-  // Sadece "satın almaya gönderildi" durumunda bildirim gönder
+  // "satın almaya gönderildi" durumunda bildirim gönder
   if (newStatus === 'satın almaya gönderildi' && oldStatus !== 'satın almaya gönderildi') {
     console.log('🎯 Satın almaya gönderildi durumu tespit edildi, Teams bildirimi gönderiliyor...')
     
@@ -272,8 +375,22 @@ export async function handlePurchaseRequestStatusChange(
       console.error('❌ Teams bildirimi hatası:', error)
       return { success: false, error }
     }
-  } else {
-    console.log('ℹ️ Teams bildirimi gönderilmedi - koşul sağlanmadı')
-    return { success: false, error: 'Koşul sağlanmadı' }
   }
+  
+  // "reddedildi" durumunda bildirim gönder
+  if (newStatus === 'reddedildi' && oldStatus !== 'reddedildi') {
+    console.log('🚫 Reddedildi durumu tespit edildi, Teams bildirimi gönderiliyor...')
+    
+    try {
+      const result = await sendRejectionTeamsNotification(requestId)
+      console.log('📤 Red bildirimi sonucu:', result)
+      return result
+    } catch (error) {
+      console.error('❌ Red bildirimi hatası:', error)
+      return { success: false, error }
+    }
+  }
+  
+  console.log('ℹ️ Teams bildirimi gönderilmedi - koşul sağlanmadı')
+  return { success: false, error: 'Koşul sağlanmadı' }
 }

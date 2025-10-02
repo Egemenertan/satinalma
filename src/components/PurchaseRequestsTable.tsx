@@ -100,6 +100,11 @@ const fetchPurchaseRequests = async (key: string) => {
     countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
   }
   
+  // Site Personnel sadece kendi oluşturduğu talepleri görebilir
+  if (profile?.role === 'site_personnel') {
+    countQuery = countQuery.eq('requested_by', user.id)
+  }
+  
   // Santiye depo tüm talepleri görebilir
   // Bu role için özel filtreleme yok
   
@@ -137,6 +142,11 @@ const fetchPurchaseRequests = async (key: string) => {
   // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
     requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
+  }
+  
+  // Site Personnel sadece kendi oluşturduğu talepleri görebilir
+  if (profile?.role === 'site_personnel') {
+    requestsQuery = requestsQuery.eq('requested_by', user.id)
   }
   
   // Santiye depo tüm talepleri görebilir  
@@ -378,6 +388,7 @@ export default function PurchaseRequestsTable() {
       'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
+      'reddedildi': { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
       
@@ -453,7 +464,8 @@ export default function PurchaseRequestsTable() {
   }
 
   const handleRequestClick = (request: PurchaseRequest) => {
-    // Tüm status'lardaki taleplere gidilebilir (draft hariç)
+    // Tüm status'lardaki taleplere gidilebilir (draft, cancelled, rejected hariç)
+    // Reddedildi talepler de görüntülenebilir (reddedilme nedeni görmek için)
     if (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') {
       router.push(`/dashboard/requests/${request.id}/offers`)
     }
@@ -827,6 +839,10 @@ export default function PurchaseRequestsTable() {
                           ) : request.status === 'teslim alındı' ? (
                             <Badge className="bg-green-100 text-green-700 border-0 text-xs">
                               ✓ Teslim Alındı
+                            </Badge>
+                          ) : request.status === 'reddedildi' ? (
+                            <Badge className="bg-red-100 text-red-700 border-0 text-xs">
+                              ❌ Reddedildi
                             </Badge>
                           ) : (
                             <span className="text-xs text-gray-400">-</span>

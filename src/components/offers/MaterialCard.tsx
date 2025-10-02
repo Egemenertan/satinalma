@@ -279,6 +279,14 @@ export default function MaterialCard({
   const originalQuantity = item.original_quantity || item.quantity
   const remainingQuantity = item.quantity
 
+  // Malzeme durumu kontrolü - düzenle/kaldır butonları için
+  const isDepotUnavailable = itemShipments?.shipments?.some(s => s.shipped_quantity === 0) || false
+  const isPartiallyShipped = totalShipped > 0 && remainingQuantity > 0
+  const isFullyShipped = totalShipped > 0 && remainingQuantity <= 0
+  
+  // Düzenle/kaldır butonları gösterilmemeli mi?
+  const shouldHideEditButtons = isDepotUnavailable || isPartiallyShipped || isFullyShipped
+
   return (
     <div className="border border-gray-200 rounded-lg bg-white">
       {/* Malzeme Header */}
@@ -329,35 +337,37 @@ export default function MaterialCard({
           
           {/* Düzenle ve Kaldır Butonları */}
           <div className="flex flex-col items-end gap-2">
-            <div className="flex gap-1">
-              {/* Düzenle Butonu - sadece düzenleme yetkisi varsa göster */}
-              {canEditRequest && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => router.push(`/dashboard/requests/${request.id}/edit`)}
-                  className="h-8 px-3 bg-white/80 hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1"
-                  title="Talebi Düzenle"
-                >
-                  <Edit className="h-3 w-3 text-gray-600" />
-                  <span className="text-xs text-gray-600">Düzenle</span>
-                </Button>
-              )}
-              
-              {/* Kaldır Butonu */}
-              {canRemoveMaterial && onRemoveMaterial && totalItems > 1 && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => onRemoveMaterial(item.id)}
-                  className="h-8 px-3 bg-red-50 hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1"
-                  title="Malzemeyi Kaldır"
-                >
-                  <Trash2 className="h-3 w-3 text-red-600" />
-                  <span className="text-xs text-red-600">Kaldır</span>
-                </Button>
-              )}
-            </div>
+            {!shouldHideEditButtons && (
+              <div className="flex gap-1">
+                {/* Düzenle Butonu - sadece düzenleme yetkisi varsa göster */}
+                {canEditRequest && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => router.push(`/dashboard/requests/${request.id}/edit`)}
+                    className="h-8 px-3 bg-white/80 hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1"
+                    title="Talebi Düzenle"
+                  >
+                    <Edit className="h-3 w-3 text-gray-600" />
+                    <span className="text-xs text-gray-600">Düzenle</span>
+                  </Button>
+                )}
+                
+                {/* Kaldır Butonu */}
+                {canRemoveMaterial && onRemoveMaterial && totalItems > 1 && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => onRemoveMaterial(item.id)}
+                    className="h-8 px-3 bg-red-50 hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1"
+                    title="Malzemeyi Kaldır"
+                  >
+                    <Trash2 className="h-3 w-3 text-red-600" />
+                    <span className="text-xs text-red-600">Kaldır</span>
+                  </Button>
+                )}
+              </div>
+            )}
             
             {!shouldShowTrackingSystem() && (
               <Badge className={`${isShipped ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}`}>

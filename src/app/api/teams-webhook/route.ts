@@ -9,6 +9,8 @@ interface PurchaseRequest {
   requested_by_name: string
   created_at: string
   specifications?: string
+  status?: string
+  isRejection?: boolean
   items?: Array<{
     material_name: string
     quantity: number
@@ -45,14 +47,104 @@ interface TeamsCard {
   potentialAction?: TeamsCardAction[]
 }
 
+function formatTeamsRejectionMessage(request: PurchaseRequest): TeamsCard {
+  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://dovac.app'
+  const requestUrl = `${baseUrl}/dashboard/requests/${request.id}`
+  
+  // Malzeme listesini formatla
+  const materialsText = request.items?.map((item: any, index) => {
+    const materialName = item.item_name || item.material_name || item.material_item_name || 'Bilinmeyen Malzeme'
+    const quantity = item.quantity || item.original_quantity || 0
+    const unit = item.unit || 'adet'
+    const brand = item.brand ? ` (${item.brand})` : ''
+    
+    return `${index + 1}. **${materialName}** - ${quantity} ${unit}${brand}`
+  }).join('\n') || 'Malzeme bilgisi bulunamadı'
+
+  const card: TeamsCard = {
+    "@type": "MessageCard",
+    "@context": "http://schema.org/extensions",
+    "themeColor": "FF0000", // Kırmızı tema
+    "summary": `Talep Reddedildi: ${request.request_number}`,
+    "sections": [
+      {
+        "activityTitle": "🚫 Talep Reddedildi",
+        "activitySubtitle": `Talep No: ${request.request_number}`,
+        "facts": [
+          {
+            "name": "Şantiye",
+            "value": request.site_name
+          },
+          {
+            "name": "Talep Eden",
+            "value": request.requested_by_name
+          },
+          {
+            "name": "Tarih",
+            "value": new Date(request.created_at).toLocaleDateString('tr-TR', {
+              year: 'numeric',
+              month: 'long',
+              day: 'numeric',
+              hour: '2-digit',
+              minute: '2-digit'
+            })
+          },
+          {
+            "name": "Durum",
+            "value": "❌ Site Manager Tarafından Reddedildi"
+          }
+        ]
+      },
+      {
+        "activityTitle": "📋 Reddedilen Malzemeler",
+        "activitySubtitle": "",
+        "facts": [
+          {
+            "name": "Malzeme Listesi",
+            "value": materialsText
+          }
+        ],
+        "markdown": true
+      }
+    ],
+    "potentialAction": [
+      {
+        "@type": "OpenUri",
+        "name": "Talebi Görüntüle",
+        "targets": [
+          {
+            "os": "default",
+            "uri": requestUrl
+          }
+        ]
+      }
+    ]
+  }
+
+  // Eğer specifications varsa ekle
+  if (request.specifications) {
+    card.sections[1].facts.push({
+      "name": "Özel Notlar",
+      "value": request.specifications
+    })
+  }
+
+  return card
+}
+
 function formatTeamsMessage(request: PurchaseRequest): TeamsCard {
   const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'https://dovac.app'
   const requestUrl = `${baseUrl}/dashboard/requests/${request.id}`
   
   // Malzeme listesini formatla
-  const materialsText = request.items?.map((item, index) => 
-    `${index + 1}. **${item.material_name}** - ${item.quantity} ${item.unit}${item.brand ? ` (${item.brand})` : ''}`
-  ).join('\n') || 'Malzeme bilgisi bulunamadı'
+  const materialsText = request.items?.map((item: any, index) => {
+    const materialName = item.item_name || item.material_name || item.material_item_name || 'Bilinmeyen Malzeme'
+    const quantity = item.quantity || item.original_quantity || 0
+    const unit = item.unit || 'adet'
+    const brand = item.brand ? ` (${item.brand})` : ''
+    
+    return `${index + 1}. **${materialName}** - ${quantity} ${unit}${brand}`
+  }).join('\n') || 'Malzeme bilgisi bulunamadı'
 
   const card: TeamsCard = {
     "@type": "MessageCard",
@@ -147,8 +239,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Teams mesajını formatla
-    const teamsMessage = formatTeamsMessage(body)
+    // Teams mesajını formatla (red bildirimi mi kontrol et)
+    const teamsMessage = body.isRejection 
+      ? formatTeamsRejectionMessage(body)
+      : formatTeamsMessage(body)
     console.log('📤 Teams mesajı hazırlandı:', JSON.stringify(teamsMessage, null, 2))
 
     // Teams webhook'una gönder
