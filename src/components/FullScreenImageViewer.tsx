@@ -23,6 +23,7 @@ export default function FullScreenImageViewer({
   const [currentIndex, setCurrentIndex] = useState(initialIndex)
   const [zoom, setZoom] = useState(1)
   const [rotation, setRotation] = useState(0)
+  const [showControls, setShowControls] = useState(true)
 
   // Reset state when modal opens
   const handleOpen = (open: boolean) => {
@@ -30,9 +31,20 @@ export default function FullScreenImageViewer({
       setCurrentIndex(initialIndex)
       setZoom(1)
       setRotation(0)
+      setShowControls(true)
     } else {
       onClose()
     }
+  }
+
+  // Mouse movement handler
+  let hideControlsTimeout: NodeJS.Timeout
+  const handleMouseMove = () => {
+    setShowControls(true)
+    clearTimeout(hideControlsTimeout)
+    hideControlsTimeout = setTimeout(() => {
+      setShowControls(false)
+    }, 2000) // Hide after 2 seconds of inactivity
   }
 
   const handlePrevious = () => {
@@ -101,10 +113,11 @@ export default function FullScreenImageViewer({
       <DialogContent 
         className="max-w-screen max-h-screen w-screen h-screen p-0 border-0 bg-black/95"
         onKeyDown={handleKeyDown}
+        onMouseMove={handleMouseMove}
         tabIndex={0}
       >
         {/* Header */}
-        <div className="absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/50 to-transparent p-6">
+        <div className={`absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/50 to-transparent p-6 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
           <div className="flex items-center justify-between text-white">
             <div>
               <h2 className="text-xl font-medium">{title}</h2>
@@ -147,7 +160,7 @@ export default function FullScreenImageViewer({
               variant="ghost"
               size="sm"
               onClick={handlePrevious}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 h-12 w-12 p-0"
+              className={`absolute left-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 h-12 w-12 p-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
             >
               <ChevronLeft className="h-6 w-6" />
             </Button>
@@ -155,7 +168,7 @@ export default function FullScreenImageViewer({
               variant="ghost"
               size="sm"
               onClick={handleNext}
-              className="absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 h-12 w-12 p-0"
+              className={`absolute right-4 top-1/2 -translate-y-1/2 text-white hover:bg-white/20 h-12 w-12 p-0 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}
             >
               <ChevronRight className="h-6 w-6" />
             </Button>
@@ -163,7 +176,7 @@ export default function FullScreenImageViewer({
         )}
 
         {/* Bottom Controls */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/50 to-transparent p-6">
+        <div className={`absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/50 to-transparent p-6 transition-opacity duration-300 ${showControls ? 'opacity-100' : 'opacity-0'}`}>
           <div className="flex items-center justify-center gap-2">
             <Button
               variant="ghost"
@@ -238,15 +251,6 @@ export default function FullScreenImageViewer({
           )}
         </div>
 
-        {/* Keyboard Shortcuts Helper */}
-        <div className="absolute top-20 right-6 text-white text-xs bg-black/30 rounded-lg p-3 backdrop-blur-sm">
-          <div className="space-y-1">
-            <div>← → Fotoğraf değiştir</div>
-            <div>+ - Yakınlaştır/Uzaklaştır</div>
-            <div>R Çevir</div>
-            <div>ESC Kapat</div>
-          </div>
-        </div>
       </DialogContent>
     </Dialog>
   )

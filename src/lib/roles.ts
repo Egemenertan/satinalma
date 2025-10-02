@@ -75,7 +75,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/reports'
   }
   
-  // Purchasing officer dashboard, requests, suppliers, sites ve reports sayfalarına erişebilir
+  // Purchasing officer dashboard, requests, suppliers, sites, orders ve reports sayfalarına erişebilir
   if (userRole === 'purchasing_officer') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
@@ -89,6 +89,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === 'sites' ||
            page === '/dashboard/sites' ||
            page.startsWith('/dashboard/sites/') ||
+           page === 'orders' ||
+           page === '/dashboard/orders' ||
+           page.startsWith('/dashboard/orders/') ||
            page === 'reports' ||
            page === '/dashboard/reports'
   }
@@ -123,7 +126,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'suppliers', 'sites', 'reports'] // Dashboard, requests, suppliers, sites ve reports
+    return ['dashboard', 'requests', 'suppliers', 'sites', 'orders', 'reports'] // Dashboard, requests, suppliers, sites, orders ve reports
   }
   
   if (userRole === 'site_personnel') {
@@ -139,5 +142,5 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   // Admin ve manager tüm menülere erişebilir
-  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'reports', 'settings']
+  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'orders', 'reports', 'settings']
 }

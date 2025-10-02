@@ -102,6 +102,7 @@ export async function GET(request: NextRequest) {
         id,
         amount,
         currency,
+        quantity,
         delivery_date,
         created_at,
         delivered_at,
@@ -148,11 +149,18 @@ export async function GET(request: NextRequest) {
           .eq('id', order.material_item_id)
           .single()
         
+        // Invoice bilgisi (bu siparişe ait faturalar)
+        const { data: invoices } = await supabase
+          .from('invoices')
+          .select('id, amount, currency, created_at')
+          .eq('order_id', order.id)
+        
         ordersWithJoins.push({
           ...order,
           suppliers: supplier,
           profiles: profile,
-          purchase_request_items: material
+          purchase_request_items: material,
+          invoices: invoices || []
         })
       }
     }
@@ -179,7 +187,9 @@ export async function GET(request: NextRequest) {
         material: o.purchase_request_items?.item_name,
         hasSupplier: !!o.suppliers,
         hasProfile: !!o.profiles,
-        hasMaterial: !!o.purchase_request_items
+        hasMaterial: !!o.purchase_request_items,
+        invoicesCount: o.invoices?.length || 0,
+        totalInvoiceAmount: o.invoices?.reduce((sum, inv) => sum + inv.amount, 0) || 0
       }))
     })
 
@@ -352,12 +362,14 @@ export async function GET(request: NextRequest) {
           date: order.created_at,
           action: 'Sipariş Oluşturuldu',
           actor: userName,
-          details: `${supplierName} tedarikçisine ${itemName} için ${order.amount} ${order.currency} tutarında sipariş verildi`,
+          details: `${supplierName} tedarikçisine ${itemName} için ${order.quantity} ${itemInfo?.unit || 'adet'} sipariş verildi (${order.amount} ${order.currency})`,
           type: 'order',
           order_data: {
             supplier_name: supplierName,
             amount: order.amount,
             currency: order.currency,
+            quantity: order.quantity,
+            unit: itemInfo?.unit,
             delivery_date: order.delivery_date,
             item_name: itemName,
             ordered_by: userName,

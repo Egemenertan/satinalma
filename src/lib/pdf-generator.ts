@@ -17,6 +17,8 @@ export interface TimelineItem {
     supplier_name: string
     amount: number
     currency: string
+    quantity: number
+    unit?: string
     delivery_date: string
     item_name: string
     ordered_by: string
@@ -51,12 +53,6 @@ export interface ReportData {
     sites?: {
       name: string
     }
-    purchase_request_items?: Array<{
-      item_name: string
-      quantity: number
-      unit: string
-      description?: string
-    }>
   }
   timeline: TimelineItem[]
   shipments?: Array<{
@@ -78,6 +74,7 @@ export interface ReportData {
     id: string
     amount: number
     currency: string
+    quantity: number
     delivery_date?: string
     created_at: string
     delivered_at?: string
@@ -95,6 +92,12 @@ export interface ReportData {
       email?: string
       role?: string
     }
+    invoices?: Array<{
+      id: string
+      amount: number
+      currency: string
+      created_at: string
+    }>
   }>
   invoices?: Array<{
     id: string
@@ -279,50 +282,6 @@ const getPDFStyles = () => `
     font-weight: 600;
   }
   
-  /* Material Styles */
-  .material-container {
-    margin-top: 10px;
-  }
-  
-  .material-item {
-    background: #f8f9fa;
-    padding: 12px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid #e9ecef;
-  }
-  
-  .material-number {
-    background: #000000;
-    color: white;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 700;
-    flex-shrink: 0;
-  }
-  
-  .material-content {
-    flex: 1;
-  }
-  
-  .material-name {
-    font-size: 11px;
-    font-weight: 600;
-    color: #000000;
-    margin-bottom: 4px;
-  }
-  
-  .material-details {
-    font-size: 9px;
-    color: #333333;
-    margin-bottom: 2px;
-  }
   
   /* Statistics Styles */
   .stats-container {
@@ -675,7 +634,6 @@ const getPDFStyles = () => `
       margin: 0;
     }
     
-    .material-item,
     .timeline-item {
       page-break-inside: avoid;
     }
@@ -780,24 +738,6 @@ const generatePDFHTML = (data: ReportData): string => {
     </div>
 
 
-    ${data.request.purchase_request_items && data.request.purchase_request_items.length > 0 ? `
-    <!-- Malzemeler -->
-    <div class="section">
-      <div class="section-title">TALEP EDİLEN MALZEMELER</div>
-      <div class="material-container">
-        ${data.request.purchase_request_items.map((item, index) => `
-          <div class="material-item">
-            <div class="material-number">${index + 1}</div>
-            <div class="material-content">
-              <div class="material-name">${item.item_name}</div>
-              <div class="material-details">Miktar: ${item.quantity} ${item.unit}</div>
-              ${item.description ? `<div class="material-details">Açıklama: ${item.description}</div>` : ''}
-            </div>
-          </div>
-        `).join('')}
-      </div>
-    </div>
-    ` : ''}
 
 
     ${(() => {
@@ -820,16 +760,31 @@ const generatePDFHTML = (data: ReportData): string => {
       <div class="order-container">
         ${data.orders.map((order, index) => `
           <div class="order-item">
-            <div class="order-icon">🛒</div>
+          
             <div class="order-content">
               <div class="order-header">
                 <div class="order-supplier">${order.suppliers?.name || 'Tedarikçi'} - ${order.purchase_request_items?.item_name || 'Malzeme'}</div>
                 <div class="order-date">${formatDate(order.created_at)}</div>
               </div>
-              <div class="order-details">Tutar: ${order.amount.toLocaleString('tr-TR')} ${order.currency}</div>
+              <div class="order-details">Miktar: ${order.quantity} ${order.purchase_request_items?.unit || 'adet'}</div>
+              ${(() => {
+                // Fatura tutarlarını hesapla
+                const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
+                  ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
+                  : 0
+                
+                if (totalInvoiceAmount > 0) {
+                  // Fatura varsa fatura tutarını göster
+                  const currency = order.invoices[0].currency || order.currency
+                  return `<div class="order-details">Fatura Tutarı: ${totalInvoiceAmount.toLocaleString('tr-TR')} ${currency}</div>`
+                } else {
+                  // Fatura yoksa sipariş tutarını göster
+                  return `<div class="order-details">Sipariş Tutarı: ${order.amount.toLocaleString('tr-TR')} ${order.currency}</div>`
+                }
+              })()}
               <div class="order-details">Teslimat Tarihi: ${order.delivery_date ? formatDate(order.delivery_date) : 'Belirtilmemiş'}</div>
               <div class="order-user">Sipariş Veren: ${order.profiles?.full_name || order.profiles?.email || 'Purchasing Officer'}</div>
-              ${order.delivered_at ? `<div class="order-details delivery-status">✅ Teslim Alındı: ${formatDate(order.delivered_at)}</div>` : ''}
+              ${order.delivered_at ? `<div class="order-details delivery-status"> Teslim Alındı: ${formatDate(order.delivered_at)}</div>` : ''}
               ${order.delivery_notes ? `<div class="order-details">Teslimat Notu: ${order.delivery_notes}</div>` : ''}
             </div>
           </div>
@@ -865,9 +820,9 @@ const generatePDFHTML = (data: ReportData): string => {
             if (item.type === 'shipment' && item.shipment_data) {
               return `<div class="timeline-details">Malzeme: ${item.shipment_data.item_name} (${item.shipment_data.quantity} ${item.shipment_data.unit}) gönderildi</div>`
             }
-            // Order için details'ı basitleştir - tutar bilgisi olmadan
+            // Order için details'ı basitleştir - miktar ve tedarikçi bilgisi ile
             else if (item.type === 'order' && item.order_data) {
-              return `<div class="timeline-details">Tedarikçi: ${item.order_data.supplier_name} - ${item.order_data.item_name}</div>`
+              return `<div class="timeline-details">Tedarikçi: ${item.order_data.supplier_name} - ${item.order_data.item_name} (${item.order_data.quantity} ${item.order_data.unit || 'adet'})</div>`
             }
             // Invoice timeline'dan kaldırıldı - faturalar ayrı bölümde gösteriliyor
             else if (item.type === 'invoice') {

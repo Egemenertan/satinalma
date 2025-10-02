@@ -24,6 +24,16 @@ interface CompletedRequest {
   supplier_name?: string
   total_amount?: number
   currency?: string
+  orders?: {
+    id: string
+    amount: number
+    currency: string
+    delivery_date: string
+    delivered_at?: string
+    suppliers: {
+      name: string
+    }
+  }[]
 }
 
 export default function ReportsPage() {
@@ -51,7 +61,25 @@ export default function ReportsPage() {
       
       const { data: requests, error } = await supabase
         .from('purchase_requests')
-        .select('id, title, created_at, status, site_name, material_class, requested_by')
+        .select(`
+          id, 
+          title, 
+          created_at, 
+          status, 
+          site_name, 
+          material_class, 
+          requested_by,
+          orders (
+            id,
+            amount,
+            currency,
+            delivery_date,
+            delivered_at,
+            suppliers (
+              name
+            )
+          )
+        `)
         .in('status', ['teslim alındı', 'sipariş verildi'])
         .order('created_at', { ascending: false })
 
@@ -68,24 +96,38 @@ export default function ReportsPage() {
 
       console.log('🔍 Teslim alınan talepler sorgusu sonucu:', {
         count: requests?.length || 0,
-        requests: requests?.map(r => ({ id: r.id.slice(0,8), title: r.title, status: r.status }))
+        requests: requests?.map((r: any) => ({ 
+          id: r.id.slice(0,8), 
+          title: r.title, 
+          status: r.status,
+          ordersCount: r.orders?.length || 0,
+          suppliers: r.orders?.map((o: any) => o.suppliers?.name).filter(Boolean)
+        }))
       })
 
-      const formattedRequests: CompletedRequest[] = (requests || []).map(request => ({
-        id: request.id,
-        title: request.title,
-        request_number: `REQ-${request.id.slice(0, 8)}`,
-        created_at: request.created_at,
-        requested_by: 'Kullanıcı', // Basitleştirildi
-        status: request.status,
-        site_name: request.site_name || 'Belirtilmemiş',
-        material_class: request.material_class,
-        delivery_date: undefined, // Basitleştirildi
-        delivered_at: undefined, // Basitleştirildi
-        supplier_name: undefined, // Basitleştirildi
-        total_amount: undefined, // Basitleştirildi
-        currency: 'TRY'
-      }))
+      const formattedRequests: CompletedRequest[] = (requests || []).map((request: any) => {
+        // İlk siparişten tedarikçi ve tutar bilgilerini al
+        const firstOrder = request.orders?.[0]
+        const totalAmount = request.orders?.reduce((sum: number, order: any) => sum + (order.amount || 0), 0)
+        const supplierNames = [...new Set(request.orders?.map((order: any) => order.suppliers?.name).filter(Boolean))]
+        
+        return {
+          id: request.id,
+          title: request.title,
+          request_number: `REQ-${request.id.slice(0, 8)}`,
+          created_at: request.created_at,
+          requested_by: 'Kullanıcı', // Basitleştirildi
+          status: request.status,
+          site_name: request.site_name || 'Belirtilmemiş',
+          material_class: request.material_class,
+          delivery_date: firstOrder?.delivery_date,
+          delivered_at: firstOrder?.delivered_at,
+          supplier_name: supplierNames.length > 0 ? supplierNames.join(', ') : undefined,
+          total_amount: totalAmount > 0 ? totalAmount : undefined,
+          currency: firstOrder?.currency || 'TRY',
+          orders: request.orders
+        }
+      })
 
       setCompletedRequests(formattedRequests)
     } catch (error) {
