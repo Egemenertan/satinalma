@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 // import AIChatbot from '@/components/AIChatbot'
 import { Button } from '@/components/ui/button'
+import { Loading } from '@/components/ui/loading'
 import { Menu, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { canAccessPage } from '@/lib/roles'
@@ -77,12 +78,7 @@ export default function DashboardLayout({
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
-            <div className="animate-spin rounded-full h-10 w-10 border-3 border-white border-t-transparent"></div>
-          </div>
-          <p className="text-gray-600 font-light text-lg">Erişim kontrolü...</p>
-        </div>
+        <Loading size="lg" text="Erişim kontrolü..." />
       </div>
     )
   }

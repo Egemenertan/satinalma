@@ -76,11 +76,14 @@ export default function PartialDeliveryModal({
     sum + (delivery.delivered_quantity || 0), 0
   )
   
-  // Kalan miktar
-  const remainingQuantity = (order?.quantity || 0) - totalDelivered
+  // İade edilen miktar
+  const returnedQuantity = order?.returned_quantity || 0
+  
+  // Kalan miktar (sipariş miktarı - teslim alınan - iade edilen)
+  const remainingQuantity = (order?.quantity || 0) - totalDelivered - returnedQuantity
   
   // Maksimum teslim alınabilecek miktar
-  const maxDeliverable = Math.min(remainingQuantity, order?.quantity || 0)
+  const maxDeliverable = Math.max(0, remainingQuantity)
 
   const handlePhotoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files
@@ -310,9 +313,17 @@ export default function PartialDeliveryModal({
                   {totalDelivered.toFixed(2)} {materialItem?.unit || 'adet'}
                 </p>
               </div>
+              {returnedQuantity > 0 && (
+                <div>
+                  <span className="text-gray-600">İade Edilen:</span>
+                  <p className="font-semibold text-orange-600">
+                    {returnedQuantity.toFixed(2)} {materialItem?.unit || 'adet'}
+                  </p>
+                </div>
+              )}
               <div>
-                <span className="text-gray-600">Kalan:</span>
-                <p className="font-semibold text-orange-600">
+                <span className="text-gray-600">Teslim Alınabilir:</span>
+                <p className="font-semibold text-blue-600">
                   {remainingQuantity.toFixed(2)} {materialItem?.unit || 'adet'}
                 </p>
               </div>

@@ -417,7 +417,7 @@ export default function Sidebar({
                   setIsMobileOpen(false)
                 }
               }}
-              className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-md"
+              className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-2xl"
             >
               
               Hızlı Talep

@@ -6,6 +6,7 @@ import { Package, Truck, Trash2 } from 'lucide-react'
 import { OffersPageProps } from './types'
 import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 import PartialDeliveryModal from '@/components/PartialDeliveryModal'
+import ReturnModal from '@/components/ReturnModal'
 import MaterialCard from './MaterialCard'
 import StatusSummary from './StatusSummary'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -30,6 +31,8 @@ export default function SantiyeDepoView({
   const [selectedMaterialForDelivery, setSelectedMaterialForDelivery] = useState<any>(null)
   const [isPartialDeliveryModalOpen, setIsPartialDeliveryModalOpen] = useState(false)
   const [selectedOrderForDelivery, setSelectedOrderForDelivery] = useState<any>(null)
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null)
   
   // Malzeme silme onayı için state'ler
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
@@ -40,7 +43,13 @@ export default function SantiyeDepoView({
   const shouldShowTrackingSystem = () => {
     return request?.status === 'sipariş verildi' || 
            request?.status === 'teslim alındı' || 
-           request?.status === 'kısmen teslim alındı'
+           request?.status === 'kısmen teslim alındı' ||
+           request?.status === 'iade var'
+  }
+
+  // İade nedeniyle sipariş durumunda mı?
+  const isReturnReorderStatus = () => {
+    return request?.status === 'iade nedeniyle sipariş'
   }
 
   // Malzeme teslimat onayı fonksiyonu (eski shipment sistemi için)
@@ -78,11 +87,28 @@ export default function SantiyeDepoView({
     setIsPartialDeliveryModalOpen(true)
   }
 
+  // İade işlemi fonksiyonu
+  const handleOrderReturn = (order: any, materialItem: any) => {
+    console.log('🔄 İade modalı açılıyor:', {
+      orderId: order.id,
+      orderQuantity: order.quantity,
+      returnedQuantity: order.returned_quantity || 0,
+      materialName: materialItem.item_name,
+      supplierName: order.suppliers?.name || order.supplier?.name
+    })
+    
+    setSelectedOrderForReturn({
+      ...order,
+      materialItem: materialItem
+    })
+    setIsReturnModalOpen(true)
+  }
+
   // Malzeme kaldırma yetkisi kontrolü
   const canRemoveMaterial = () => {
     // Santiye Depo için: sipariş verildi, teslim alındı ve sonrası durumlarda kaldırma yapılamaz
     // Kısmen gönderildi ve depoda mevcut değil durumlarında kaldırma yapılabilir
-    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi']
+    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi', 'iade var']
     return !restrictedStatuses.includes(request?.status)
   }
 
@@ -90,7 +116,7 @@ export default function SantiyeDepoView({
   const canEditRequest = () => {
     // Santiye Depo için: sipariş verildi, teslim alındı ve sonrası durumlarda düzenleme yapılamaz
     // Kısmen gönderildi ve depoda mevcut değil durumlarında düzenleme yapılabilir
-    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi']
+    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi', 'iade var']
     return !restrictedStatuses.includes(request?.status)
   }
 
@@ -158,15 +184,19 @@ export default function SantiyeDepoView({
           </div>
           <div>
             <CardTitle className="text-xl font-semibold text-gray-900">
-              {shouldShowTrackingSystem()
-                ? 'Malzeme Takip Sistemi' 
-                : 'Depo İşlemleri'
+              {isReturnReorderStatus()
+                ? 'İade Nedeniyle Yeniden Sipariş'
+                : shouldShowTrackingSystem()
+                  ? 'Malzeme Takip Sistemi' 
+                  : 'Depo İşlemleri'
               }
             </CardTitle>
             <p className="text-sm text-gray-600 mt-1">
-              {shouldShowTrackingSystem()
-                ? 'Her malzeme için talep, gönderim ve teslimat durumu'
-                : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
+              {isReturnReorderStatus()
+                ? 'Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır ve sadece görüntüleme yapabilirsiniz.'
+                : shouldShowTrackingSystem()
+                  ? 'Her malzeme için talep, gönderim ve teslimat durumu. İade sebepli yeni siparişler mor renkle işaretlenmiştir.'
+                  : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
               }
             </p>
           </div>
@@ -201,6 +231,7 @@ export default function SantiyeDepoView({
                   canRemoveMaterial={shouldHideButtons ? false : canRemoveMaterial()}
                   canEditRequest={shouldHideButtons ? false : canEditRequest()}
                   onOrderDeliveryConfirmation={handleOrderDeliveryConfirmation}
+                  onOrderReturn={handleOrderReturn}
                   hideTopDeliveryButtons={true}  // Sağ üstteki teslim alma butonlarını gizle
                 />
               )
@@ -320,6 +351,40 @@ export default function SantiyeDepoView({
           mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
           
           console.log('✅ SantiyeDepoView cache temizlendi')
+        } catch (error) {
+          console.error('Cache temizleme hatası:', error)
+        }
+      }}
+      showToast={showToast}
+    />
+
+    {/* İade Modalı */}
+    <ReturnModal
+      isOpen={isReturnModalOpen}
+      onClose={() => {
+        setIsReturnModalOpen(false)
+        setSelectedOrderForReturn(null)
+      }}
+      order={selectedOrderForReturn}
+      materialItem={selectedOrderForReturn?.materialItem}
+      onSuccess={async () => {
+        onRefresh()
+        setSelectedOrderForReturn(null)
+        
+        // Cache'i temizle ki tabloda güncel status gözüksün
+        try {
+          const { invalidatePurchaseRequestsCache } = await import('@/lib/cache')
+          invalidatePurchaseRequestsCache()
+          
+          // SWR cache'ini de manuel olarak temizle
+          const { mutate } = await import('swr')
+          mutate('purchase_requests_stats')
+          mutate('pending_requests_count')
+          
+          // Tüm purchase_requests cache'lerini temizle
+          mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
+          
+          console.log('✅ SantiyeDepoView cache temizlendi (iade sonrası)')
         } catch (error) {
           console.error('Cache temizleme hatası:', error)
         }

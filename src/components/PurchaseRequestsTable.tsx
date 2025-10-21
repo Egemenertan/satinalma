@@ -7,8 +7,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Loading } from '@/components/ui/loading'
+import { 
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 
@@ -25,8 +33,26 @@ import {
   User,
   ArrowUpDown,
   Check,
-  Truck
+  Truck,
+  Bell,
+  RotateCcw,
+  Box,
+  Hash,
+  MoreVertical,
+  Trash2
 } from 'lucide-react'
+
+interface PurchaseRequestItem {
+  id: string
+  item_name: string
+  quantity: number
+  unit: string
+  unit_price: number
+  brand?: string
+  material_class?: string
+  material_group?: string
+  specifications?: string
+}
 
 interface PurchaseRequest {
   id: string
@@ -46,6 +72,7 @@ interface PurchaseRequest {
   created_at: string
   updated_at: string
   sent_quantity?: number
+  notifications?: string[] // Bildirimler: ["iade var", "acil"] gibi
   // Relations
   sites?: Array<{
     name: string
@@ -83,6 +110,23 @@ const fetcherWithAuth = async (url: string) => {
   return { user, profile, supabase }
 }
 
+// Kullanıcı rolü için ayrı fetcher
+const fetchUserRole = async () => {
+  const supabase = createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error('Kullanıcı oturumu bulunamadı')
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, site_id')
+    .eq('id', user.id)
+    .single()
+
+  return profile?.role || ''
+}
+
 // Purchase requests fetcher
 const fetchPurchaseRequests = async (key: string) => {
   const [_, currentPage, pageSize] = key.split('/')
@@ -95,9 +139,9 @@ const fetchPurchaseRequests = async (key: string) => {
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
   
-  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
+  // Purchasing officer satın almaya gönderilmiş, sipariş verilmiş, teslimat sürecindeki talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
+    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
   }
   
   // Site Personnel sadece kendi oluşturduğu talepleri görebilir
@@ -123,6 +167,7 @@ const fetchPurchaseRequests = async (key: string) => {
     .from('purchase_requests')
     .select(`
       id,
+      request_number,
       title,
       status,
       urgency_level,
@@ -132,6 +177,7 @@ const fetchPurchaseRequests = async (key: string) => {
       site_name,
       site_id,
       sent_quantity,
+      notifications,
       sites:site_id (
         name
       )
@@ -139,9 +185,9 @@ const fetchPurchaseRequests = async (key: string) => {
     .range(from, to)
     .order('created_at', { ascending: false })
   
-  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
+  // Purchasing officer satın almaya gönderilmiş, sipariş verilmiş, teslimat sürecindeki talepleri görebilir
   if (profile?.role === 'purchasing_officer') {
-    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi'])
+    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
   }
   
   // Site Personnel sadece kendi oluşturduğu talepleri görebilir
@@ -218,7 +264,18 @@ const fetchPurchaseRequests = async (key: string) => {
     const formattedRequest = {
       ...request,
       profiles: processedProfiles,
-      request_number: `REQ-${request.id.slice(0, 8)}`,
+      request_number: request.request_number ? 
+        (() => {
+          const parts = request.request_number.split('-')
+          if (parts.length >= 2) {
+            const lastPart = parts[parts.length - 1] // Son rakamsal kısım (1009)
+            const secondLastPart = parts[parts.length - 2] // Önceki kısım (N1ZV1O)
+            const lastTwoChars = secondLastPart.slice(-2) // Son 2 hane (VO)
+            return `${lastTwoChars}-${lastPart}` // VO-1009 (6 basamak)
+          }
+          return request.request_number
+        })() :
+        `REQ-${request.id.slice(-6)}`, // Fallback
       updated_at: request.created_at
       // status zaten database'den doğru geliyor, değiştirmeye gerek yok
     }
@@ -227,7 +284,7 @@ const fetchPurchaseRequests = async (key: string) => {
     console.log('📊 PurchaseRequestsTable fetchPurchaseRequests:', { 
       requestId: request.id, 
       status: request.status,
-      formattedStatus: formattedRequest.status 
+      formattedStatus: formattedRequest.status
     })
     
     return formattedRequest
@@ -238,11 +295,17 @@ const fetchPurchaseRequests = async (key: string) => {
 
 export default function PurchaseRequestsTable() {
   const router = useRouter()
+  const { showToast } = useToast()
   const [currentPage, setCurrentPage] = useState(1)
   const [pageSize] = useState(20)
-  const [userRole, setUserRole] = useState<string>('')
   const [approving, setApproving] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<string>('approval_pending')
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    // localStorage'dan son seçilen filtreyi al, yoksa 'approval_pending' kullan
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('purchase_requests_active_tab') || 'approval_pending'
+    }
+    return 'approval_pending'
+  })
 
   const [filters, setFilters] = useState<Filters>({
     search: '',
@@ -250,6 +313,82 @@ export default function PurchaseRequestsTable() {
     sortBy: 'created_at',
     sortOrder: 'desc'
   })
+
+  // Tooltip state'leri
+  const [hoveredRequestId, setHoveredRequestId] = useState<string | null>(null)
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
+  const [requestMaterials, setRequestMaterials] = useState<{ [requestId: string]: PurchaseRequestItem[] }>({})
+  const [loadingMaterials, setLoadingMaterials] = useState<{ [requestId: string]: boolean }>({})
+  
+  // Dropdown state'leri
+  const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
+  
+  // Delete modal state'leri
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [requestToDelete, setRequestToDelete] = useState<PurchaseRequest | null>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+
+  // activeTab değiştiğinde localStorage'a kaydet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('purchase_requests_active_tab', activeTab)
+    }
+  }, [activeTab])
+
+  // Malzeme bilgilerini çekme fonksiyonu
+  const fetchRequestMaterials = async (requestId: string) => {
+    if (requestMaterials[requestId] || loadingMaterials[requestId]) {
+      return // Zaten yüklendi veya yükleniyor
+    }
+
+    setLoadingMaterials(prev => ({ ...prev, [requestId]: true }))
+
+    try {
+      const supabase = createClient()
+      const { data: materials, error } = await supabase
+        .from('purchase_request_items')
+        .select(`
+          id,
+          item_name,
+          quantity,
+          unit,
+          unit_price,
+          brand,
+          material_class,
+          material_group,
+          specifications
+        `)
+        .eq('purchase_request_id', requestId)
+        .order('item_name')
+
+      if (error) {
+        console.error('Malzeme bilgileri çekilirken hata:', error)
+        return
+      }
+
+      setRequestMaterials(prev => ({
+        ...prev,
+        [requestId]: materials || []
+      }))
+    } catch (error) {
+      console.error('Malzeme bilgileri çekilirken hata:', error)
+    } finally {
+      setLoadingMaterials(prev => ({ ...prev, [requestId]: false }))
+    }
+  }
+
+  // SWR ile kullanıcı rolünü hızlı yükle
+  const { data: userRole } = useSWR(
+    'user_role',
+    fetchUserRole,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 300000, // 5 dakika cache
+      errorRetryCount: 3,
+      fallbackData: '', // Başlangıç değeri
+    }
+  )
 
   // SWR ile cache'li veri çekme
   const { data, error, isLoading, mutate: refreshData } = useSWR(
@@ -267,27 +406,6 @@ export default function PurchaseRequestsTable() {
 
   const requests = data?.requests || []
   const totalCount = data?.totalCount || 0
-
-  // Kullanıcı rolünü çek
-  useEffect(() => {
-    const fetchUserRole = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, site_id')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile?.role) {
-          setUserRole(profile.role)
-        }
-      }
-    }
-    
-    fetchUserRole()
-  }, [])
 
   // Real-time updates için subscription
   useEffect(() => {
@@ -360,7 +478,7 @@ export default function PurchaseRequestsTable() {
 
 
 
-  const getStatusBadge = (status: string) => {
+  const getStatusBadge = (status: string, notifications?: string[]) => {
     // Debug log - status'u kontrol et
     console.log('🔍 PurchaseRequestsTable getStatusBadge:', { status, userRole })
     
@@ -368,9 +486,24 @@ export default function PurchaseRequestsTable() {
     if (userRole === 'purchasing_officer' && 
         (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi')) {
       return (
-        <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
-          Beklemede
-        </Badge>
+        <div className="flex flex-col gap-1">
+          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+            Beklemede
+          </Badge>
+        {notifications && notifications.includes('iade var') && (
+          <div className="flex flex-wrap gap-1">
+            <Badge 
+              variant="outline" 
+              className=" text-red-700 border-0 rounded-full text-xs font-medium px-1 py-0.5"
+            >
+              <span className="flex items-center gap-1">
+                <RotateCcw className="w-3 h-3 text-red-600" />
+                İade Var
+              </span>
+            </Badge>
+          </div>
+        )}
+        </div>
       )
     }
 
@@ -383,11 +516,14 @@ export default function PurchaseRequestsTable() {
       'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
       'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
+      'ordered': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
       'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
+      'iade var': { label: 'İade Var', className: 'bg-orange-100 text-orange-800 border-0' },
+      'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
       'reddedildi': { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
@@ -402,12 +538,28 @@ export default function PurchaseRequestsTable() {
       'eksik malzemeler talep edildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' }
     }
 
+    // Database'den gelen status'u direkt kullan - trigger zaten doğru güncelliyor
     const config = statusConfig[status as keyof typeof statusConfig] || statusConfig.draft
 
     return (
-      <Badge variant="outline" className={`${config.className} rounded-full text-xs font-medium px-2 py-1`}>
-        {config.label}
-      </Badge>
+      <div className="flex flex-col gap-1">
+        <Badge variant="outline" className={`${config.className} rounded-full text-xs font-medium px-2 py-1`}>
+          {config.label}
+        </Badge>
+        {notifications && notifications.includes('iade var') && (
+          <div className="flex flex-wrap gap-1">
+            <Badge 
+              variant="outline" 
+              className="border-red-500 text-red-700 border-1 rounded-full text-xs font-medium px-1 py-0.5"
+            >
+              <span className="flex items-center gap-1">
+                <RotateCcw className="w-3 h-3 text-red-600" />
+                İade Var
+              </span>
+            </Badge>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -469,6 +621,127 @@ export default function PurchaseRequestsTable() {
     if (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') {
       router.push(`/dashboard/requests/${request.id}/offers`)
     }
+  }
+
+  // Hover event handler'ları
+  const handleMouseEnter = (e: React.MouseEvent, requestId: string) => {
+    setTooltipPosition({
+      x: e.clientX + 15, // İmlecin 15px sağında
+      y: e.clientY - 10  // İmlecin 10px üstünde
+    })
+    setHoveredRequestId(requestId)
+    fetchRequestMaterials(requestId)
+  }
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (hoveredRequestId) {
+      setTooltipPosition({
+        x: e.clientX + 15, // İmlecin 15px sağında
+        y: e.clientY - 10  // İmlecin 10px üstünde
+      })
+    }
+  }
+
+  const handleMouseLeave = () => {
+    setHoveredRequestId(null)
+  }
+
+  // Dropdown toggle fonksiyonu
+  const toggleDropdown = (requestId: string, e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setOpenDropdownId(openDropdownId === requestId ? null : requestId)
+  }
+
+  // Dropdown dışına tıklandığında kapat
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setOpenDropdownId(null)
+    }
+    
+    if (openDropdownId) {
+      document.addEventListener('click', handleClickOutside)
+      return () => document.removeEventListener('click', handleClickOutside)
+    }
+  }, [openDropdownId])
+
+  // Delete modal açma fonksiyonu
+  const openDeleteModal = (request: PurchaseRequest, e: React.MouseEvent) => {
+    e.stopPropagation() // Satır tıklamasını engelle
+    setRequestToDelete(request)
+    setShowDeleteModal(true)
+    setOpenDropdownId(null) // Dropdown'ı kapat
+  }
+
+  // Delete modal kapatma fonksiyonu
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false)
+    setRequestToDelete(null)
+    setIsDeleting(false)
+  }
+
+  // Talep silme fonksiyonu
+  const handleDeleteRequest = async () => {
+    if (!requestToDelete) return
+
+    setIsDeleting(true)
+
+    try {
+      const supabase = createClient()
+      
+      // Kullanıcı yetkisini kontrol et
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        throw new Error('Kullanıcı oturumu bulunamadı')
+      }
+      
+      // Önce talep items'ları sil
+      const { error: itemsError } = await supabase
+        .from('purchase_request_items')
+        .delete()
+        .eq('purchase_request_id', requestToDelete.id)
+
+      if (itemsError) {
+        console.error('Talep items silme hatası:', itemsError)
+        // Items silme hatası olsa da devam et, talep silinebilir
+      }
+
+      // Talebi sil
+      const { error: requestError } = await supabase
+        .from('purchase_requests')
+        .delete()
+        .eq('id', requestToDelete.id)
+
+      if (requestError) {
+        throw new Error(`Talep silinirken hata oluştu: ${requestError.message}`)
+      }
+
+      // Cache'i temizle
+      invalidatePurchaseRequestsCache()
+      mutate('purchase_requests_stats')
+      mutate('pending_requests_count')
+      mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
+      
+      // Veriyi yenile
+      await refreshData()
+      
+      // Başarı toast'ı göster
+      showToast('Talep başarıyla kaldırıldı!', 'success')
+      
+      // Modal'ı kapat
+      closeDeleteModal()
+      
+    } catch (error: any) {
+      console.error('Talep silme hatası:', error)
+      showToast(`Talep silinirken hata oluştu: ${error.message}`, 'error')
+      setIsDeleting(false)
+    }
+  }
+
+  // Talep silme yetkisi kontrolü
+  const canDeleteRequest = (request: PurchaseRequest) => {
+    // Sadece "pending" (beklemede) statusundaki talepler silinebilir
+    return request.status === 'pending'
   }
 
   // Delivery confirmation functions
@@ -582,7 +855,7 @@ export default function PurchaseRequestsTable() {
     <Card className="bg-transparent border-transparent shadow-none">
       <CardContent className="p-0">
         {/* Search Bar ve Tab Menu */}
-        <div className="mb-6 px-4">
+        <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
             {/* Search Bar */}
             <div className="w-full sm:max-w-md order-1 sm:order-2">
@@ -592,7 +865,7 @@ export default function PurchaseRequestsTable() {
                   placeholder="Talep ara..."
                   value={filters.search}
                   onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                  className="pl-10 h-10 rounded-lg border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
+                  className="pl-10 h-10 bg-white rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                 />
               </div>
             </div>
@@ -600,148 +873,122 @@ export default function PurchaseRequestsTable() {
             {/* Tab Menu - Sadece site manager için */}
             {userRole === 'site_manager' && (
               <div className="order-2 sm:order-1">
-                <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full sm:w-auto">
-                  <TabsList className="grid grid-cols-2 h-9 bg-transparent p-0 rounded-none">
-                    <TabsTrigger 
-                      value="approval_pending" 
-                      className="text-xs border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent data-[state=active]:text-black rounded-none px-4 py-2"
-                    >
-                      Onay Bekleyenler
-                    </TabsTrigger>
-                    <TabsTrigger 
-                      value="all" 
-                      className="text-xs border-b-2 border-transparent data-[state=active]:border-black data-[state=active]:bg-transparent data-[state=active]:text-black rounded-none px-4 py-2"
-                    >
-                      Tümü
-                    </TabsTrigger>
-                  </TabsList>
-                </Tabs>
+                <div className="flex items-center gap-2 p-1 bg-gray-50 rounded-lg border border-gray-100">
+                  <button
+                    onClick={() => setActiveTab('approval_pending')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                      activeTab === 'approval_pending'
+                        ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    Onay Bekleyenler
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('all')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                      activeTab === 'all'
+                        ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
+                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                    }`}
+                  >
+                    Tümü
+                  </button>
+                </div>
               </div>
             )}
           </div>
         </div>
 
         {/* Tablo */}
-        <div className="rounded-lg border-0 overflow-hidden overflow-x-auto">
-          <Table className="min-w-full">
-            <TableHeader>
-              <TableRow className="bg-gray-50 border-b border-gray-200 hover:bg-gray-50">
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Durum</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => handleSort('title')}
-                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
-                  >
-                    Başlık
-                    <ArrowUpDown className="w-3 h-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Şantiye</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">Talep Eden</TableHead>
-                <TableHead className="py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => handleSort('created_at')}
-                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
-                  >
-                    Oluşturma Tarihi
-                    <ArrowUpDown className="w-3 h-3" />
-                  </Button>
-                </TableHead>
-                <TableHead className="w-[120px] py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  <Button 
-                    variant="ghost" 
-                    onClick={() => handleSort('request_number')}
-                    className="h-auto p-0 text-xs font-medium text-gray-500 uppercase tracking-wider hover:text-gray-700 flex items-center gap-1"
-                  >
-                    Talep No
-                    <ArrowUpDown className="w-3 h-3" />
-                  </Button>
-                </TableHead>
-                {(userRole === 'site_manager' || userRole === 'site_personnel') && (
-                  <TableHead className="w-[120px] py-3 text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    İşlemler
-                  </TableHead>
-                )}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow className="border-0">
-                    <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12">
-                    <div className="flex items-center justify-center gap-3">
-                      <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
-                      <span className="text-gray-600">Yükleniyor...</span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : error ? (
-                <TableRow className="border-0">
-                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12 text-red-500">
-                    <div className="flex flex-col items-center gap-2">
-                      <AlertTriangle className="w-8 h-8 text-red-300" />
-                      <span>Veriler yüklenirken hata oluştu</span>
-                      <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => refreshData()}
-                        className="mt-2"
-                      >
-                        Tekrar Dene
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : filteredRequests.length === 0 ? (
-                <TableRow className="border-0">
-                  <TableCell colSpan={(userRole === 'site_manager' || userRole === 'site_personnel') ? 7 : 6} className="text-center py-12 text-gray-500">
-                    <div className="flex flex-col items-center gap-2">
-                      <Package className="w-8 h-8 text-gray-300" />
-                      <span>
-                        {filters.search || filters.status !== 'all' 
-                          ? 'Filtre kriterlerinize uygun talep bulunamadı' 
-                          : 'Henüz talep bulunamadı'
-                        }
-                      </span>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredRequests.map((request, index) => (
-                  <TableRow 
-                    key={request.id}
-                    className={`border-b border-gray-200 hover:bg-gray-50 transition-colors ${
-                      (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') 
-                        ? 'cursor-pointer hover:bg-blue-50' 
-                        : 'cursor-default'
-                    }`}
-                    onClick={() => handleRequestClick(request)}
-                  >
-                    <TableCell className="py-4">
-                      {getStatusBadge(request.status)}
-                    </TableCell>
+        <div className="space-y-3">
+          {/* Header - Desktop Only */}
+          <div className="hidden md:grid gap-4 px-4 py-3 bg-white rounded-2xl border border-gray-200" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr auto'}}>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Durum</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Başlık</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Şantiye</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Talep Eden</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Oluşturma Tarihi</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Talep No</div>
+            <div className="w-10"></div> {/* Kebab buton için dar alan */}
+          </div>
 
-                    <TableCell className="py-4">
-                      <div className="max-w-xs">
-                        <div className="font-semibold text-gray-800 mb-1">
-                          {request.title && request.title.length > 30 
-                            ? `${request.title.substring(0, 30)}...` 
-                            : request.title
+          {/* Satırlar */}
+          <div className="space-y-2">
+            {isLoading ? (
+              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center">
+                <Loading size="md" text="Yükleniyor..." />
+              </div>
+            ) : error ? (
+              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-red-500">
+                <div className="flex flex-col items-center gap-2">
+                  <AlertTriangle className="w-8 h-8 text-red-300" />
+                  <span>Veriler yüklenirken hata oluştu</span>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => refreshData()}
+                    className="mt-2"
+                  >
+                    Tekrar Dene
+                  </Button>
+                </div>
+              </div>
+            ) : filteredRequests.length === 0 ? (
+              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-gray-500">
+                <div className="flex flex-col items-center gap-2">
+                  <Package className="w-8 h-8 text-gray-300" />
+                  <span>
+                    {filters.search || filters.status !== 'all' 
+                      ? 'Filtre kriterlerinize uygun talep bulunamadı' 
+                      : 'Henüz talep bulunamadı'
+                    }
+                  </span>
+                </div>
+              </div>
+            ) : (
+              filteredRequests.map((request, index) => (
+                <div 
+                  key={request.id}
+                  className={`bg-white rounded-3xl border border-gray-200 p-4 hover:shadow-md transition-all duration-200 relative ${
+                    (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') 
+                      ? 'cursor-pointer hover:border-gray-300' 
+                      : 'cursor-default'
+                  }`}
+                  onClick={() => handleRequestClick(request)}
+                >
+                  {/* Desktop Layout */}
+                  <div className="hidden md:grid gap-4 items-center" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr auto'}}>
+                    {/* Durum */}
+                    <div>
+                      {getStatusBadge(request.status, request.notifications)}
+                    </div>
+
+                    {/* Başlık */}
+                    <div 
+                      onMouseEnter={(e) => handleMouseEnter(e, request.id)}
+                      onMouseMove={handleMouseMove}
+                      onMouseLeave={handleMouseLeave}
+                      className="cursor-help"
+                    >
+                      <div className="font-normal text-gray-800 mb-1">
+                        {request.title && request.title.length > 30 
+                          ? `${request.title.substring(0, 30)}...` 
+                          : request.title
+                        }
+                      </div>
+                      {request.description && (
+                        <div className="text-sm text-gray-600 line-clamp-2">
+                          {request.description.length > 50 
+                            ? `${request.description.substring(0, 50)}...` 
+                            : request.description
                           }
                         </div>
-                        {request.description && (
-                          <div className="text-sm text-gray-600 line-clamp-2">
-                            {request.description.length > 50 
-                              ? `${request.description.substring(0, 50)}...` 
-                              : request.description
-                            }
-                          </div>
-                        )}
-                      </div>
-                    </TableCell>
+                      )}
+                    </div>
                     
-                    <TableCell className="py-4">
+                    {/* Şantiye */}
+                    <div>
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-gray-100 rounded-2xl">
                           <Building2 className="w-3 h-3 text-gray-600" />
@@ -757,9 +1004,10 @@ export default function PurchaseRequestsTable() {
                           )}
                         </div>
                       </div>
-                    </TableCell>
+                    </div>
                     
-                    <TableCell className="py-4">
+                    {/* Talep Eden */}
+                    <div>
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-blue-100 rounded-2xl">
                           <User className="w-3 h-3 text-blue-600" />
@@ -775,9 +1023,10 @@ export default function PurchaseRequestsTable() {
                           )}
                         </div>
                       </div>
-                    </TableCell>
+                    </div>
                     
-                    <TableCell className="py-4">
+                    {/* Oluşturma Tarihi */}
+                    <div>
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-gray-100 rounded-2xl">
                           <Calendar className="w-3 h-3 text-black" />
@@ -786,88 +1035,171 @@ export default function PurchaseRequestsTable() {
                           <div className="font-medium text-gray-800">{formatDate(request.created_at)}</div>
                         </div>
                       </div>
-                    </TableCell>
+                    </div>
                     
-                    
-
-
-                    <TableCell className="py-4">
+                    {/* Talep No */}
+                    <div>
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-gray-100 rounded-2xl">
                           <FileText className="w-4 h-4 text-black" />
                         </div>
                         <span className="font-semibold text-gray-800">{request.request_number}</span>
                       </div>
-                    </TableCell>
+                    </div>
                     
-                    {(userRole === 'site_manager' || userRole === 'site_personnel') && (
-                      <TableCell className="py-4">
-                        {userRole === 'site_manager' ? (
-                          // Site Manager Actions
-                          (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') ? (
-                            <Button
-                              size="sm"
-                              onClick={(e) => handleSiteManagerApproval(request.id, e)}
-                              disabled={approving === request.id}
-                              className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1 h-8 rounded-lg"
+                    {/* Kebab Menu */}
+                    <div className="relative flex justify-center">
+                      <Button
+                        variant="ghost"
+                        className="h-8 w-8 p-0 hover:bg-gray-100 relative z-10"
+                        onClick={(e) => toggleDropdown(request.id, e)}
+                      >
+                        <MoreVertical className="h-4 w-4 text-gray-500" />
+                      </Button>
+                      
+                      {openDropdownId === request.id && (
+                        <div className="absolute right-0 top-8 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1">
+                          {canDeleteRequest(request) ? (
+                            <button
+                              onClick={(e) => openDeleteModal(request, e)}
+                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                             >
-                              {approving === request.id ? (
-                                <>
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-2"></div>
-                                  Gönderiliyor...
-                                </>
+                              <Trash2 className="w-4 h-4" />
+                              Kaldır
+                            </button>
+                          ) : (
+                            <button
+                              disabled
+                              className="w-full text-left px-3 py-2 text-sm text-gray-400 cursor-not-allowed flex items-center gap-2"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                              Kaldır (İzin yok)
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mobile Layout */}
+                  <div className="md:hidden space-y-3">
+                    {/* Header Row - Status & Title */}
+                    <div className="flex items-start justify-between gap-3">
+                      <div 
+                        className="flex-1 cursor-help"
+                        onMouseEnter={(e) => handleMouseEnter(e, request.id)}
+                        onMouseMove={handleMouseMove}
+                        onMouseLeave={handleMouseLeave}
+                      >
+                        <div className="font-normal text-gray-800 mb-1">
+                          {request.title}
+                        </div>
+                        {request.description && (
+                          <div className="text-sm text-gray-600 line-clamp-2">
+                            {request.description.length > 80 
+                              ? `${request.description.substring(0, 80)}...` 
+                              : request.description
+                            }
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {getStatusBadge(request.status, request.notifications)}
+                        
+                        {/* Kebab Menu */}
+                        <div className="relative">
+                          <Button
+                            variant="ghost"
+                            className="h-8 w-8 p-0 hover:bg-gray-100 relative z-10"
+                            onClick={(e) => toggleDropdown(request.id, e)}
+                          >
+                            <MoreVertical className="h-4 w-4 text-gray-500" />
+                          </Button>
+                          
+                          {openDropdownId === request.id && (
+                            <div className="absolute right-0 top-8 w-48 bg-white border border-gray-200 rounded-md shadow-lg z-50 py-1">
+                              {canDeleteRequest(request) ? (
+                                <button
+                                  onClick={(e) => openDeleteModal(request, e)}
+                                  className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Kaldır
+                                </button>
                               ) : (
-                                'Satın Almaya Gönder'
+                                <button
+                                  disabled
+                                  className="w-full text-left px-3 py-2 text-sm text-gray-400 cursor-not-allowed flex items-center gap-2"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  Kaldır (İzin yok)
+                                </button>
                               )}
-                            </Button>
-                          ) : request.status === 'satın almaya gönderildi' ? (
-                            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                              ✓ Satın Almaya Gönderildi
-                            </Badge>
-                          ) : request.status === 'gönderildi' ? (
-                            <Badge className="bg-emerald-100 text-emerald-700 border-0 text-xs">
-                              ✓ Tamamlandı
-                            </Badge>
-                          ) : request.status === 'eksik onaylandı' ? (
-                            <Badge className="bg-blue-100 text-blue-700 border-0 text-xs">
-                              ✓ Eksik Onaylandı
-                            </Badge>
-                          ) : request.status === 'alternatif onaylandı' ? (
-                            <Badge className="bg-purple-100 text-purple-700 border-0 text-xs">
-                              ✓ Alternatif Onaylandı
-                            </Badge>
-                          ) : request.status === 'teslim alındı' ? (
-                            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
-                              ✓ Teslim Alındı
-                            </Badge>
-                          ) : request.status === 'reddedildi' ? (
-                            <Badge className="bg-red-100 text-red-700 border-0 text-xs">
-                              ❌ Reddedildi
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )
-                        ) : userRole === 'site_personnel' ? (
-                          // Site Personnel - Teslimat durumu gösterimi
-                          request.status === 'teslim alındı' ? (
-                            <Badge className="bg-green-100 text-green-700 border-0 text-xs">
-                              ✓ Teslim Alındı
-                            </Badge>
-                          ) : request.status === 'sipariş verildi' ? (
-                            <Badge className="bg-yellow-100 text-yellow-700 border-0 text-xs">
-                              Teslimat Bekliyor
-                            </Badge>
-                          ) : (
-                            <span className="text-xs text-gray-400">-</span>
-                          )
-                        ) : null}
-                      </TableCell>
-                    )}
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Info Grid */}
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      {/* Şantiye */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Şantiye</div>
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-gray-100 rounded-lg">
+                            <Building2 className="w-3 h-3 text-gray-600" />
+                          </div>
+                          <span className="font-medium text-gray-800 text-xs">
+                            {request.sites?.[0]?.name || request.site_name || 'Atanmamış'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Talep Eden */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Talep Eden</div>
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-blue-100 rounded-lg">
+                            <User className="w-3 h-3 text-blue-600" />
+                          </div>
+                          <span className="font-medium text-gray-800 text-xs">
+                            {request.profiles?.full_name || 'Bilinmiyor'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Tarih */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Tarih</div>
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-gray-100 rounded-lg">
+                            <Calendar className="w-3 h-3 text-black" />
+                          </div>
+                          <span className="font-medium text-gray-800 text-xs">
+                            {formatDate(request.created_at)}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Talep No */}
+                      <div>
+                        <div className="text-xs text-gray-500 mb-1">Talep No</div>
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 bg-gray-100 rounded-lg">
+                            <FileText className="w-3 h-3 text-black" />
+                          </div>
+                          <span className="font-medium text-gray-800 text-xs">
+                            {request.request_number}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Pagination */}
@@ -936,12 +1268,142 @@ export default function PurchaseRequestsTable() {
               </Button>
             </div>
           </div>
-        )        }
+        )}
         
       </CardContent>
+
+      {/* Materials Tooltip */}
+      {hoveredRequestId && (
+        <div 
+          className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-4 max-w-sm pointer-events-none"
+          style={{
+            left: tooltipPosition.x,
+            top: tooltipPosition.y
+          }}
+        >
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
+            <Box className="w-4 h-4 text-gray-600" />
+            <span className="font-medium text-gray-900 text-sm">Talep Edilen Malzemeler</span>
+          </div>
+          
+          {loadingMaterials[hoveredRequestId] ? (
+            <div className="flex items-center gap-2 py-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+              <span className="text-xs text-gray-500">Yükleniyor...</span>
+            </div>
+          ) : requestMaterials[hoveredRequestId]?.length > 0 ? (
+            <div className="space-y-2 max-h-64 overflow-y-auto">
+              {requestMaterials[hoveredRequestId].map((material, index) => (
+                <div key={material.id} className="flex items-start gap-2 py-1.5 px-2 bg-gray-50 rounded-lg">
+                  <Hash className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-xs text-gray-900 truncate">
+                      {material.item_name}
+                    </div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span className="text-xs text-gray-600">
+                        {material.quantity} {material.unit}
+                      </span>
+                      {material.brand && (
+                        <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
+                          {material.brand}
+                        </span>
+                      )}
+                    </div>
+                    {material.material_class && (
+                      <div className="text-xs text-gray-500 mt-0.5">
+                        {material.material_class}
+                        {material.material_group && ` • ${material.material_group}`}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-xs text-gray-500 py-2">
+              Malzeme bilgisi bulunamadı
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>
+        <DialogContent className="sm:max-w-md bg-white rounded-2xl border-0 shadow-xl">
+          <DialogHeader className="text-center pb-2">
+            <DialogTitle className="flex items-center justify-center gap-2 text-gray-800 text-lg font-medium">
+              <Trash2 className="w-5 h-5 text-red-500" />
+              Talebi Kaldır
+            </DialogTitle>
+            <DialogDescription className="text-gray-500 text-sm mt-2">
+              Bu işlem geri alınamaz. Talep ve tüm ilgili malzemeler kalıcı olarak silinecektir.
+            </DialogDescription>
+          </DialogHeader>
+          
+          {requestToDelete && (
+            <div className="py-3">
+              <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+                <div className="text-center">
+                  <div className="text-sm text-gray-600 mb-1">Talep No</div>
+                  <div className="font-medium text-gray-900">
+                    {requestToDelete.request_number ? 
+                      (() => {
+                        const parts = requestToDelete.request_number.split('-')
+                        if (parts.length >= 2) {
+                          const lastPart = parts[parts.length - 1]
+                          const secondLastPart = parts[parts.length - 2]
+                          const lastTwoChars = secondLastPart.slice(-2)
+                          return `${lastTwoChars}-${lastPart}`
+                        }
+                        return requestToDelete.request_number
+                      })() :
+                      `REQ-${requestToDelete.id.slice(-6)}`
+                    }
+                  </div>
+                </div>
+                <div className="text-center">
+                  <div className="text-sm text-gray-600 mb-1">Başlık</div>
+                  <div className="font-medium text-gray-900 truncate">
+                    {requestToDelete.title}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          <DialogFooter className="gap-3 pt-2">
+            <Button
+              variant="outline"
+              onClick={closeDeleteModal}
+              disabled={isDeleting}
+              className="flex-1 rounded-xl border-gray-200 text-gray-700 hover:bg-gray-50"
+            >
+              İptal
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDeleteRequest}
+              disabled={isDeleting}
+              className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl border-0"
+            >
+              {isDeleting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Siliniyor...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Kaldır
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delivery Confirmation Modal - Artık orders'a ihtiyaç yok, direkt order bilgisi geçiliyor */}
     </Card>
   )
 }
-

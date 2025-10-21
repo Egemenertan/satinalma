@@ -18,6 +18,9 @@ export interface TimelineItem {
     amount: number
     currency: string
     quantity: number
+    returned_quantity?: number
+    return_notes?: string
+    is_return_reorder?: boolean
     unit?: string
     delivery_date: string
     item_name: string
@@ -75,6 +78,9 @@ export interface ReportData {
     amount: number
     currency: string
     quantity: number
+    returned_quantity?: number
+    return_notes?: string
+    is_return_reorder?: boolean
     delivery_date?: string
     created_at: string
     delivered_at?: string
@@ -141,7 +147,7 @@ export interface ReportData {
   }
 }
 
-// Professional corporate PDF CSS
+// Minimal Professional PDF CSS
 const getPDFStyles = () => `
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
@@ -160,8 +166,8 @@ const getPDFStyles = () => `
   
   body {
     font-family: 'Inter', Arial, sans-serif;
-    font-size: 10px;
-    line-height: 1.4;
+    font-size: 11px;
+    line-height: 1.5;
     color: #000000;
     background: white;
     -webkit-print-color-adjust: exact;
@@ -171,7 +177,7 @@ const getPDFStyles = () => `
   .page {
     width: 210mm;
     min-height: 297mm;
-    padding: 15mm;
+    padding: 20mm;
     background: white;
     display: block;
     margin: 0 auto;
@@ -186,9 +192,9 @@ const getPDFStyles = () => `
   .header {
     background: white;
     color: black;
-    padding: 15px 0;
-    margin-bottom: 20px;
-    border-bottom: 2px solid #000000;
+    padding: 0 0 15px 0;
+    margin-bottom: 25px;
+    border-bottom: 1px solid #000000;
   }
   
   .header-content {
@@ -200,48 +206,49 @@ const getPDFStyles = () => `
   .logo-section {
     display: flex;
     align-items: center;
-    gap: 15px;
+    gap: 20px;
   }
   
   .logo {
-    width: 85px;
-    height: 85px;
+    width: 60px;
+    height: 60px;
     object-fit: contain;
-    max-width: 85px;
-    max-height: 85px;
+    max-width: 60px;
+    max-height: 60px;
     display: block;
   }
   
   .header-title {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 16px;
+    font-weight: 600;
     color: #000000;
-    margin-bottom: 3px;
+    margin-bottom: 4px;
   }
   
   .header-subtitle {
-    font-size: 10px;
-    color: #333333;
+    font-size: 11px;
+    color: #666666;
+    font-weight: 400;
   }
   
   .header-date {
     text-align: right;
-    font-size: 9px;
-    color: #333333;
+    font-size: 10px;
+    color: #666666;
   }
   
   /* Section Styles */
   .section {
-    margin-bottom: 20px;
+    margin-bottom: 15px;
   }
   
   .section-title {
-    font-size: 12px;
-    font-weight: 700;
+    font-size: 13px;
+    font-weight: 600;
     color: #000000;
-    background: #f5f5f5;
-    padding: 8px 12px;
-    margin-bottom: 12px;
+    padding: 0 0 6px 0;
+    margin-bottom: 10px;
+    border-bottom: 1px solid #e0e0e0;
     text-transform: uppercase;
     letter-spacing: 0.5px;
   }
@@ -249,12 +256,12 @@ const getPDFStyles = () => `
   /* Info Card Styles */
   .info-card {
     background: white;
-    padding: 15px;
+    padding: 0;
   }
   
   .info-row {
     display: flex;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     align-items: flex-start;
   }
   
@@ -263,115 +270,92 @@ const getPDFStyles = () => `
   }
   
   .info-label {
-    width: 120px;
-    font-size: 9px;
-    font-weight: 600;
-    color: #333333;
+    width: 140px;
+    font-size: 10px;
+    font-weight: 500;
+    color: #666666;
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
   
   .info-value {
     flex: 1;
-    font-size: 10px;
+    font-size: 11px;
     color: #000000;
     font-weight: 400;
   }
   
   .status-value {
-    font-weight: 600;
+    font-weight: 500;
   }
   
   
-  /* Statistics Styles */
+  /* Statistics Styles - Tek satır */
   .stats-container {
     display: flex;
-    gap: 15px;
+    align-items: center;
+    gap: 10px;
     margin-bottom: 20px;
-  }
-  
-  .stat-card {
-    background: #fafafa;
-    padding: 12px;
-    flex: 1;
-    text-align: center;
-  }
-  
-  .stat-value {
-    font-size: 14px;
-    font-weight: 700;
-    color: #000000;
-    margin-bottom: 3px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f0f0f0;
   }
   
   .stat-label {
-    font-size: 8px;
-    color: #333333;
-    text-transform: uppercase;
-    letter-spacing: 0.3px;
+    font-size: 11px;
+    color: #666666;
+    font-weight: 500;
+  }
+  
+  .stat-value {
+    font-size: 12px;
+    font-weight: 600;
+    color: #000000;
+    margin-left: 8px;
   }
   
   /* Timeline Styles */
   .timeline-item {
-    background: #f8f9fa;
-    padding: 12px;
-    margin-bottom: 8px;
-    border: 1px solid #e9ecef;
-    border-left: 3px solid #000000;
+    background: white;
+    padding: 15px 0;
+    margin-bottom: 12px;
+    border-bottom: 1px solid #f0f0f0;
   }
   
-  .timeline-item.shipment {
-    border-left-color: #666666;
-    background: #f8f9fa;
-  }
-  
-  .timeline-item.approval {
-    border-left-color: #666666;
-    background: #f8f9fa;
-  }
-  
-  .timeline-item.order {
-    border-left-color: #000000;
-    background: #f8f9fa;
-  }
-  
-  .timeline-item.invoice {
-    border-left-color: #666666;
-    background: #f8f9fa;
+  .timeline-item:last-child {
+    border-bottom: none;
   }
   
   .timeline-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   
   .timeline-action {
-    font-size: 10px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     color: #000000;
     flex: 1;
   }
   
   .timeline-date {
-    font-size: 8px;
-    color: #333333;
-    background: #f0f0f0;
-    padding: 2px 6px;
+    font-size: 10px;
+    color: #666666;
+    font-weight: 400;
   }
   
   .timeline-actor {
-    font-size: 8px;
-    color: #333333;
-    font-weight: 500;
-    margin-bottom: 3px;
+    font-size: 10px;
+    color: #666666;
+    font-weight: 400;
+    margin-bottom: 4px;
   }
   
   .timeline-details {
-    font-size: 9px;
-    color: #000000;
-    line-height: 1.3;
+    font-size: 11px;
+    color: #333333;
+    line-height: 1.4;
   }
   
   /* Shipment Styles (Unused - removed from PDF) */
@@ -440,135 +424,127 @@ const getPDFStyles = () => `
   
   /* Order Styles */
   .order-container {
-    margin-top: 10px;
+    margin-top: 15px;
   }
   
   .order-item {
-    background: #f8f9fa;
-    padding: 12px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid #e9ecef;
+    background: white;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #f0f0f0;
   }
   
-  .order-icon {
-    background: #000000;
-    color: white;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 700;
-    flex-shrink: 0;
+  .order-item:last-child {
+    border-bottom: none;
   }
   
   .order-content {
-    flex: 1;
+    width: 100%;
   }
   
   .order-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   
   .order-supplier {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     color: #000000;
   }
   
   .order-date {
-    font-size: 8px;
+    font-size: 10px;
     color: #666666;
-    background: #f1f3f4;
-    padding: 2px 6px;
+    font-weight: 400;
   }
   
   .order-details {
-    font-size: 9px;
+    font-size: 11px;
     color: #333333;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  
+  .order-amount {
+    font-size: 14px;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 4px;
+    line-height: 1.4;
   }
   
   .order-details.delivery-status {
-    color: #333333;
+    color: #000000;
     font-weight: 500;
   }
   
   .order-user {
-    font-size: 8px;
+    font-size: 10px;
     color: #666666;
-    font-weight: 500;
+    font-weight: 400;
   }
 
   /* Invoice Styles */
   .invoice-container {
-    margin-top: 10px;
+    margin-top: 15px;
   }
   
   .invoice-item {
-    background: #f8f9fa;
-    padding: 12px;
-    margin-bottom: 8px;
-    display: flex;
-    align-items: flex-start;
-    gap: 12px;
-    border: 1px solid #e9ecef;
+    background: white;
+    padding: 15px 0;
+    margin-bottom: 15px;
+    border-bottom: 1px solid #f0f0f0;
   }
   
-  .invoice-icon {
-    background: #000000;
-    color: white;
-    width: 20px;
-    height: 20px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 9px;
-    font-weight: 700;
-    flex-shrink: 0;
+  .invoice-item:last-child {
+    border-bottom: none;
   }
   
   .invoice-content {
-    flex: 1;
+    width: 100%;
   }
   
   .invoice-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
   }
   
   .invoice-supplier {
-    font-size: 11px;
-    font-weight: 600;
+    font-size: 12px;
+    font-weight: 500;
     color: #000000;
   }
   
   .invoice-date {
-    font-size: 8px;
+    font-size: 10px;
     color: #666666;
-    background: #f1f3f4;
-    padding: 2px 6px;
+    font-weight: 400;
   }
   
   .invoice-details {
-    font-size: 9px;
+    font-size: 11px;
     color: #333333;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
+    line-height: 1.4;
+  }
+  
+  .invoice-amount {
+    font-size: 14px;
+    font-weight: 700;
+    color: #000000;
+    margin-bottom: 4px;
+    line-height: 1.4;
   }
   
   .invoice-user {
-    font-size: 8px;
+    font-size: 10px;
     color: #666666;
-    font-weight: 500;
+    font-weight: 400;
   }
   
   /* Description Styles */
@@ -580,24 +556,63 @@ const getPDFStyles = () => `
     line-height: 1.4;
   }
   
-  /* Footer Styles */
-  .footer {
-    position: fixed;
-    bottom: 10mm;
-    left: 15mm;
-    right: 15mm;
-    border-top: 1px solid #cccccc;
-    padding-top: 8px;
+  /* Invoice Summary Styles */
+  .invoice-summary {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #000000;
+  }
+  
+  .invoice-summary-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #000000;
+    margin-bottom: 15px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  
+  .invoice-summary-content {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    font-size: 8px;
+    align-items: flex-start;
+  }
+  
+  .invoice-list {
+    flex: 1;
+  }
+  
+  .invoice-summary-item {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 11px;
     color: #333333;
   }
   
-  .footer-center {
-    font-weight: 500;
+  .invoice-summary-item:last-child {
+    margin-bottom: 0;
   }
+  
+  .invoice-summary-total {
+    text-align: right;
+    padding-left: 30px;
+    border-left: 1px solid #e0e0e0;
+    min-width: 200px;
+  }
+  
+  .total-label {
+    font-size: 12px;
+    color: #666666;
+    margin-bottom: 8px;
+  }
+  
+  .total-amount {
+    font-size: 18px;
+    font-weight: 700;
+    color: #000000;
+  }
+
   
   /* Statistics Styles */
   .stats-container {
@@ -760,15 +775,20 @@ const generatePDFHTML = (data: ReportData): string => {
       <div class="order-container">
         ${data.orders.map((order, index) => `
           <div class="order-item">
-          
             <div class="order-content">
               <div class="order-header">
                 <div class="order-supplier">${order.suppliers?.name || 'Tedarikçi'} - ${order.purchase_request_items?.item_name || 'Malzeme'}</div>
                 <div class="order-date">${formatDate(order.created_at)}</div>
               </div>
-              <div class="order-details">Miktar: ${order.quantity} ${order.purchase_request_items?.unit || 'adet'}</div>
+              <div class="order-details">Miktar: ${order.quantity} ${order.purchase_request_items?.unit || 'adet'}${order.returned_quantity && order.returned_quantity > 0 ? ` - İade: ${order.returned_quantity} ${order.purchase_request_items?.unit || 'adet'}` : ''}</div>
+              ${order.return_notes ? `<div class="order-details">İade Nedeni: ${order.return_notes}</div>` : ''}
+              ${order.is_return_reorder ? `<div class="order-details" style="color: #333333; font-weight: 500;">İade nedeniyle yeniden sipariş</div>` : ''}
+              <div class="order-details">Teslimat Tarihi: ${order.delivery_date ? formatDate(order.delivery_date) : 'Belirtilmemiş'}</div>
+              <div class="order-user">Sipariş Veren: ${order.profiles?.full_name || order.profiles?.email || 'Purchasing Officer'}</div>
+              ${order.delivered_at ? `<div class="order-details delivery-status">Teslim Alındı: ${formatDate(order.delivered_at)}</div>` : ''}
+              ${order.delivery_notes ? `<div class="order-details">Teslimat Notu: ${order.delivery_notes}</div>` : ''}
               ${(() => {
-                // Fatura tutarlarını hesapla
+                // Fatura tutarlarını hesapla - EN SONDA
                 const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
                   ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
                   : 0
@@ -776,16 +796,12 @@ const generatePDFHTML = (data: ReportData): string => {
                 if (totalInvoiceAmount > 0) {
                   // Fatura varsa fatura tutarını göster
                   const currency = order.invoices[0].currency || order.currency
-                  return `<div class="order-details">Fatura Tutarı: ${totalInvoiceAmount.toLocaleString('tr-TR')} ${currency}</div>`
+                  return `<div class="order-amount">Fatura Tutarı: ${totalInvoiceAmount.toLocaleString('tr-TR')} ${currency}</div>`
                 } else {
                   // Fatura yoksa sipariş tutarını göster
-                  return `<div class="order-details">Sipariş Tutarı: ${order.amount.toLocaleString('tr-TR')} ${order.currency}</div>`
+                  return `<div class="order-amount">Sipariş Tutarı: ${order.amount.toLocaleString('tr-TR')} ${order.currency}</div>`
                 }
               })()}
-              <div class="order-details">Teslimat Tarihi: ${order.delivery_date ? formatDate(order.delivery_date) : 'Belirtilmemiş'}</div>
-              <div class="order-user">Sipariş Veren: ${order.profiles?.full_name || order.profiles?.email || 'Purchasing Officer'}</div>
-              ${order.delivered_at ? `<div class="order-details delivery-status"> Teslim Alındı: ${formatDate(order.delivered_at)}</div>` : ''}
-              ${order.delivery_notes ? `<div class="order-details">Teslimat Notu: ${order.delivery_notes}</div>` : ''}
             </div>
           </div>
         `).join('')}
@@ -794,27 +810,22 @@ const generatePDFHTML = (data: ReportData): string => {
     ` : ''}
 
 
-    <!-- İstatistikler -->
-    <div class="section">
-      <div class="section-title">İSTATİSTİKLER</div>
-      <div class="stats-container" style="display: flex; justify-content: center;">
-        <div class="stat-card" style="max-width: 200px;">
-          <div class="stat-value">${data.statistics.totalDays} gün</div>
-          <div class="stat-label">Toplam İşlem Süresi</div>
-        </div>
-      </div>
+    <!-- İşlem Süresi -->
+    <div class="stats-container">
+      <span class="stat-label">Toplam İşlem Süresi:</span>
+      <span class="stat-value">${data.statistics.totalDays} gün</span>
     </div>
 
     <!-- Timeline -->
     <div class="section">
       <div class="section-title">TALEBİN ZAMAN ÇİZELGESİ</div>
       ${data.timeline.filter(item => item.type !== 'invoice').map((item, index) => `
-        <div class="timeline-item ${item.type === 'shipment' ? 'shipment' : item.type === 'approval' ? 'approval' : item.type === 'order' ? 'order' : item.type === 'invoice' ? 'invoice' : ''}">
+        <div class="timeline-item">
           <div class="timeline-header">
-            <div class="timeline-action">${index + 1}. ${item.action}${item.type === 'shipment' ? ' 📦' : item.type === 'approval' ? ' ✅' : item.type === 'order' ? ' 🛒' : item.type === 'invoice' ? ' 🧾' : ''}</div>
+            <div class="timeline-action">${index + 1}. ${item.action}</div>
             <div class="timeline-date">${formatDate(item.date)}</div>
           </div>
-          <div class="timeline-actor">Kullanıcı: ${item.actor}</div>
+          <div class="timeline-actor">${item.actor}</div>
           ${(() => {
             // Shipment için details'ı basitleştir - sadece temel bilgi göster
             if (item.type === 'shipment' && item.shipment_data) {
@@ -822,7 +833,22 @@ const generatePDFHTML = (data: ReportData): string => {
             }
             // Order için details'ı basitleştir - miktar ve tedarikçi bilgisi ile
             else if (item.type === 'order' && item.order_data) {
-              return `<div class="timeline-details">Tedarikçi: ${item.order_data.supplier_name} - ${item.order_data.item_name} (${item.order_data.quantity} ${item.order_data.unit || 'adet'})</div>`
+              let orderDetails = `Tedarikçi: ${item.order_data.supplier_name} - ${item.order_data.item_name} (${item.order_data.quantity} ${item.order_data.unit || 'adet'})`
+              
+              // İade bilgilerini ekle
+              if (item.order_data.returned_quantity && item.order_data.returned_quantity > 0) {
+                orderDetails += ` - İade: ${item.order_data.returned_quantity} ${item.order_data.unit || 'adet'}`
+                if (item.order_data.return_notes) {
+                  orderDetails += ` (${item.order_data.return_notes})`
+                }
+              }
+              
+              // Yeniden sipariş işareti
+              if (item.order_data.is_return_reorder) {
+                orderDetails += ' - İade nedeniyle yeniden sipariş'
+              }
+              
+              return `<div class="timeline-details">${orderDetails}</div>`
             }
             // Invoice timeline'dan kaldırıldı - faturalar ayrı bölümde gösteriliyor
             else if (item.type === 'invoice') {
@@ -853,13 +879,12 @@ const generatePDFHTML = (data: ReportData): string => {
       <div class="invoice-container">
         ${data.invoices.map((invoice, index) => `
           <div class="invoice-item">
-            <div class="invoice-icon">🧾</div>
             <div class="invoice-content">
               <div class="invoice-header">
                 <div class="invoice-supplier">${invoice.orders?.suppliers?.name || 'Tedarikçi'} - ${invoice.orders?.purchase_request_items?.item_name || 'Malzeme'}</div>
                 <div class="invoice-date">${formatDate(invoice.created_at)}</div>
               </div>
-              <div class="invoice-details">Tutar: ${invoice.amount.toLocaleString('tr-TR')} ${invoice.currency}</div>
+              <div class="invoice-amount">Tutar: ${invoice.amount.toLocaleString('tr-TR')} ${invoice.currency}</div>
               <div class="invoice-user">Ekleyen: ${invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || 'Purchasing Officer'}</div>
               ${invoice.notes ? `<div class="invoice-details">Not: ${invoice.notes}</div>` : ''}
             </div>
@@ -869,12 +894,89 @@ const generatePDFHTML = (data: ReportData): string => {
     </div>
     ` : ''}
 
-    <!-- Footer -->
-    <div class="footer">
-      <div>Bu rapor sistem tarafından otomatik olarak oluşturulmuştur.</div>
-      <div class="footer-center">İnşaat Malzeme Yönetim Sistemi - DOVEC</div>
-      <div>Sayfa 1</div>
-    </div>
+    <!-- Fatura Özeti -->
+    ${(() => {
+      // Tüm fatura tutarlarını topla
+      const allInvoices = []
+      let totalAmount = 0
+      let currency = 'TRY'
+      
+      // Siparişlerden fatura bilgilerini çek
+      if (data.orders && data.orders.length > 0) {
+        data.orders.forEach(order => {
+          if (order.invoices && order.invoices.length > 0) {
+            order.invoices.forEach(invoice => {
+              const supplierName = order.suppliers?.name || 'Tedarikçi'
+              const itemName = order.purchase_request_items?.item_name || 'Malzeme'
+              allInvoices.push({
+                description: `${supplierName} - ${itemName}`,
+                amount: invoice.amount,
+                currency: invoice.currency
+              })
+              totalAmount += invoice.amount
+              currency = invoice.currency
+            })
+          } else {
+            // Fatura yoksa sipariş tutarını kullan
+            const supplierName = order.suppliers?.name || 'Tedarikçi'
+            const itemName = order.purchase_request_items?.item_name || 'Malzeme'
+            allInvoices.push({
+              description: `${supplierName} - ${itemName}`,
+              amount: order.amount,
+              currency: order.currency
+            })
+            totalAmount += order.amount
+            currency = order.currency
+          }
+        })
+      }
+      
+      // Ayrı faturalar varsa onları da ekle
+      if (data.invoices && data.invoices.length > 0) {
+        data.invoices.forEach(invoice => {
+          const supplierName = invoice.orders?.suppliers?.name || 'Tedarikçi'
+          const itemName = invoice.orders?.purchase_request_items?.item_name || 'Malzeme'
+          
+          // Zaten sipariş faturalarında eklenmişse tekrar ekleme
+          const alreadyAdded = allInvoices.some(inv => 
+            inv.description.includes(supplierName) && 
+            inv.description.includes(itemName) &&
+            inv.amount === invoice.amount
+          )
+          
+          if (!alreadyAdded) {
+            allInvoices.push({
+              description: `${supplierName} - ${itemName}`,
+              amount: invoice.amount,
+              currency: invoice.currency
+            })
+            totalAmount += invoice.amount
+            currency = invoice.currency
+          }
+        })
+      }
+      
+      return allInvoices.length > 0 ? `
+        <div class="invoice-summary">
+          <div class="invoice-summary-title">Fatura Özeti</div>
+          <div class="invoice-summary-content">
+            <div class="invoice-list">
+              ${allInvoices.map(invoice => `
+                <div class="invoice-summary-item">
+                  <span>${invoice.description}</span>
+                  <span>${invoice.amount.toLocaleString('tr-TR')} ${invoice.currency}</span>
+                </div>
+              `).join('')}
+            </div>
+            <div class="invoice-summary-total">
+              <div class="total-label">Toplam Tutar</div>
+              <div class="total-amount">${totalAmount.toLocaleString('tr-TR')} ${currency}</div>
+            </div>
+          </div>
+        </div>
+      ` : ''
+    })()}
+
   </div>
 </body>
 </html>
@@ -1071,8 +1173,7 @@ const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => 
       <!-- Açıklama Metni -->
       <div style="margin-bottom: 40px; padding: 15px 0;">
         <p style="font-size: 13px; color: #333333; line-height: 1.6; margin: 0; font-weight: 500; text-align: left;">
-          Sayın Tedarikçimiz, aşağıda belirtilen malzeme için teklif talebinde bulunmaktayız. 
-          Lütfen en uygun fiyat ve teslimat sürenizi bize bildirin. Teklifinizi bizimle paylaştığınız için teşekkür ederiz.
+          Sayın Tedarikçimiz, Şantiyemizden tarafımıza iletilen ihtiyaç ve talepler ekte bilgilerinize sunulmustur. ilgili konularda gerekli aksiyonların alınmasını rica eder, desteginiz igin şimdiden teşekkür ederiz.
         </p>
       </div>
       
@@ -1208,32 +1309,145 @@ export const generateMaterialPurchaseRequest = async (data: MaterialPurchaseRequ
   }
 }
 
-// PDF Generator Function
-export const generatePurchaseRequestReport = async (data: ReportData): Promise<void> => {
+// Hızlı PDF Generator - İframe kullanarak
+export const generatePurchaseRequestReportFast = async (data: ReportData): Promise<void> => {
   try {
+    console.log('⚡ Hızlı PDF oluşturma başlatılıyor...')
+    
     // HTML content oluştur
     const htmlContent = generatePDFHTML(data)
     
-    // Yeni pencere aç
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      throw new Error('Pop-up engellendi. Lütfen pop-up engelleyicisini devre dışı bırakın.')
+    // Gizli iframe oluştur
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'absolute'
+    iframe.style.top = '-9999px'
+    iframe.style.left = '-9999px'
+    iframe.style.width = '1px'
+    iframe.style.height = '1px'
+    iframe.style.opacity = '0'
+    
+    document.body.appendChild(iframe)
+    
+    // HTML'i iframe'e yaz
+    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!iframeDoc) {
+      throw new Error('İframe document erişilemedi')
     }
     
-    // HTML'i yaz
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
+    iframeDoc.open()
+    iframeDoc.write(htmlContent)
+    iframeDoc.close()
     
-    // Print dialog'u aç
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-      }, 500)
-    }
+    // Print işlemini başlat
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+        
+        console.log('✅ Hızlı PDF print dialog açıldı')
+        
+        // İframe'i temizle
+        setTimeout(() => {
+          document.body.removeChild(iframe)
+        }, 1000)
+        
+      } catch (error) {
+        console.error('Print hatası:', error)
+        document.body.removeChild(iframe)
+        // Fallback olarak normal yöntemi çağır
+        generatePurchaseRequestReport(data)
+      }
+    }, 100) // Çok hızlı
     
   } catch (error) {
-    console.error('PDF oluşturma hatası:', error)
+    console.error('❌ Hızlı PDF oluşturma hatası:', error)
+    // Fallback olarak normal yöntemi çağır
+    return generatePurchaseRequestReport(data)
+  }
+}
+
+// PDF Generator Function - Pop-up engelleyicisini bypass eden versiyon
+export const generatePurchaseRequestReport = async (data: ReportData): Promise<void> => {
+  try {
+    console.log('🔄 PDF oluşturma başlatılıyor...')
+    
+    // HTML content oluştur
+    const htmlContent = generatePDFHTML(data)
+    
+    // Blob oluştur
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    
+    console.log('📄 HTML Blob oluşturuldu, boyut:', blob.size, 'bytes')
+    
+    // Yeni pencere aç (kullanıcı etkileşimi sırasında)
+    const printWindow = window.open(url, '_blank', 'width=1200,height=800,scrollbars=yes,resizable=yes')
+    
+    if (!printWindow) {
+      console.log('⚠️ Pop-up engellendi, alternatif yöntem deneniyor...')
+      
+      // Alternatif: Aynı pencerede aç
+      const currentWindow = window.open('', '_self')
+      if (currentWindow) {
+        currentWindow.document.write(htmlContent)
+        currentWindow.document.close()
+        
+        // Print dialog'u aç
+        setTimeout(() => {
+          currentWindow.print()
+          // Print tamamlandıktan sonra geri dön (opsiyonel)
+          setTimeout(() => {
+            currentWindow.history.back()
+          }, 1000)
+        }, 500)
+      } else {
+        // Son çare: Download link oluştur
+        console.log('📥 Download link oluşturuluyor...')
+        const downloadLink = document.createElement('a')
+        downloadLink.href = url
+        downloadLink.download = `siparis-raporu-${data.request.id.slice(0, 8)}.html`
+        downloadLink.style.display = 'none'
+        document.body.appendChild(downloadLink)
+        downloadLink.click()
+        document.body.removeChild(downloadLink)
+        
+        // Kullanıcıya bilgi ver
+        alert('PDF dosyası indirildi. Dosyayı açıp yazdırabilirsiniz.')
+      }
+    } else {
+      console.log('✅ Yeni pencere açıldı')
+      
+      // Print dialog'u aç
+      printWindow.onload = () => {
+        console.log('📄 Pencere yüklendi, print dialog açılıyor...')
+        setTimeout(() => {
+          printWindow.focus()
+          printWindow.print()
+        }, 300) // Daha kısa timeout
+      }
+      
+      // Timeout fallback
+      setTimeout(() => {
+        if (printWindow && !printWindow.closed) {
+          try {
+            printWindow.focus()
+            printWindow.print()
+          } catch (e) {
+            console.log('Print fallback çalıştırıldı')
+          }
+        }
+      }, 1000)
+    }
+    
+    // URL'i temizle (biraz sonra)
+    setTimeout(() => {
+      URL.revokeObjectURL(url)
+    }, 5000)
+    
+    console.log('✅ PDF oluşturma tamamlandı')
+    
+  } catch (error) {
+    console.error('❌ PDF oluşturma hatası:', error)
     throw new Error('PDF oluşturulurken bir hata oluştu: ' + (error as Error).message)
   }
 }

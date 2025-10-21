@@ -11,6 +11,39 @@ import { Package, Plus, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lu
 import { createClient } from '@/lib/supabase/client'
 import { invalidateStatsCache, invalidatePurchaseRequestsCache } from '@/lib/cache'
 
+// User info fetcher fonksiyonu
+const fetchUserInfo = async () => {
+  const supabase = createClient()
+  
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) {
+    throw new Error('Kullanıcı oturumu bulunamadı')
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', user.id)
+    .single()
+
+  let displayName = profile?.full_name
+  
+  if (!displayName || displayName.trim() === '') {
+    // Email'den isim oluştur
+    if (profile?.email) {
+      displayName = profile.email.split('@')[0]
+        .replace(/[._-]/g, ' ')
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ')
+    } else {
+      displayName = 'Kullanıcı'
+    }
+  }
+  
+  return { displayName, email: profile?.email }
+}
+
 // Stats fetcher fonksiyonu
 const fetchStats = async () => {
   const supabase = createClient()
@@ -63,6 +96,19 @@ const fetchStats = async () => {
 
 export default function RequestsPage() {
   const router = useRouter()
+  
+  // SWR ile cache'li user info
+  const { data: userInfo } = useSWR(
+    'user_info',
+    fetchUserInfo,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 300000, // 5 dakika cache
+      errorRetryCount: 3,
+      fallbackData: { displayName: 'Kullanıcı', email: '' }
+    }
+  )
   
   // SWR ile cache'li stats
   const { data: stats, error: statsError, mutate: refreshStats } = useSWR(
@@ -121,18 +167,25 @@ export default function RequestsPage() {
 
   return (
     <div className="px-0 pb-6 space-y-6 sm:space-y-8">
+      {/* Welcome Message */}
+      <div className="px-4 pt-2">
+        <p className="text-lg text-gray-700 font-light">
+          Merhaba <span className="font-medium text-gray-900">{userInfo?.displayName}</span>, hoşgeldin! 👋
+        </p>
+      </div>
+
       {/* Header */}
       <div className="space-y-4 px-4">
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900">Satın Alma Talepleri</h1>
+            <h1 className="text-3xl font-normal text-gray-900">Satın Alma Talepleri</h1>
             <p className="text-gray-600 mt-2 text-lg font-light">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <div className="flex items-center gap-4">
             <Button 
               onClick={() => router.push('/dashboard/requests/create')}
-              className="px-8 py-5 rounded-md font-light text-md  bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
+              className="px-8 py-5 rounded-2xl font-light text-md  bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
             >
               
               Yeni Talep Oluştur
@@ -143,12 +196,12 @@ export default function RequestsPage() {
         {/* Mobile: Header with button below */}
         <div className="sm:hidden space-y-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Satın Alma Talepleri</h1>
+            <h1 className="text-2xl font-normal text-gray-900">Satın Alma Talepleri</h1>
             <p className="text-gray-600 mt-2 text-base font-light">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <Button 
             onClick={() => router.push('/dashboard/requests/create')}
-            className="w-full h-12 rounded-lg text-md bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
+            className="w-full h-12 rounded-2xl text-md bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
           >
             
             Yeni Talep Oluştur

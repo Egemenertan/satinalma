@@ -49,7 +49,8 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
     try {
       console.log('🚀 Site Manager onayı başlatılıyor...', {
         requestId: request.id,
-        currentStatus: request?.status
+        currentStatus: request?.status,
+        requestSiteId: request?.site_id
       })
 
       const { data: { user }, error: userError } = await supabase.auth.getUser()
@@ -57,84 +58,66 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
-      console.log('✅ Kullanıcı oturumu doğrulandı:', user.id)
+      // Kullanıcının profile bilgilerini al
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('role, site_id, full_name')
+        .eq('id', user.id)
+        .single();
 
-      let updateResult, error;
-      
-      try {
-        const result = await supabase
-          .from('purchase_requests')
-          .update({ 
-            status: 'satın almaya gönderildi',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', request.id)
-          .select();
-          
-        updateResult = result.data;
-        error = result.error;
+      console.log('✅ Kullanıcı bilgileri:', {
+        userId: user.id,
+        role: userProfile?.role,
+        siteId: userProfile?.site_id,
+        fullName: userProfile?.full_name
+      })
+
+      // Direkt update dene
+      const { data: updateResult, error: updateError } = await supabase
+        .from('purchase_requests')
+        .update({ 
+          status: 'satın almaya gönderildi',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', request.id)
+        .select();
         
-        console.log('🔍 Direkt update sonucu:', { updateResult, error });
+      console.log('🔍 Update sonucu:', { 
+        success: !updateError, 
+        updateResult, 
+        error: updateError,
+        errorCode: updateError?.code,
+        errorMessage: updateError?.message
+      });
 
-        if (!error && updateResult) {
-          const { error: historyError } = await supabase
-            .from('approval_history')
-            .insert({
-              purchase_request_id: request.id,
-              action: 'approved',
-              performed_by: user.id,
-              comments: 'Site Manager tarafından satın almaya gönderildi'
-            });
-
-          if (historyError) {
-            console.error('⚠️ Approval history kaydı eklenirken hata:', historyError);
-          } else {
-            console.log('✅ Approval history kaydı eklendi');
-          }
+      if (updateError) {
+        console.error('❌ Update hatası:', updateError)
+        
+        if (updateError.message?.includes('policy') || updateError.message?.includes('permission') || updateError.code === '42501') {
+          throw new Error(`Yetki hatası: Site manager rolünüz ile bu işlemi yapmaya yetkiniz yok.\n\nDetay: ${updateError.message}\n\nKullanıcı: ${userProfile?.role} | Site: ${userProfile?.site_id}`)
         }
         
-      } catch (directError) {
-        console.log('⚠️ Direkt update başarısız, stored procedure deneniyor...', directError);
-        
-        try {
-          const { data: procResult, error: procError } = await supabase
-            .rpc('update_request_status_by_site_manager', {
-              request_id: request.id,
-              new_status: 'satın almaya gönderildi'
-            });
-            
-          console.log('🔍 Stored procedure sonucu:', { procResult, procError });
-          
-          if (procError) {
-            error = procError;
-          } else {
-            const { data: refetchedData } = await supabase
-              .from('purchase_requests')
-              .select('*')
-              .eq('id', request.id)
-              .single();
-            updateResult = refetchedData ? [refetchedData] : null;
-          }
-        } catch (procError) {
-          console.error('❌ Stored procedure de başarısız:', procError);
-          error = procError;
-        }
-      }
-
-      console.log('📊 Update sonucu:', { updateResult, error })
-
-      if (error) {
-        console.error('❌ Update hatası:', error)
-        
-        if (error.message?.includes('policy') || error.message?.includes('permission') || error.code === '42501') {
-          throw new Error(`Yetki hatası: Site manager rolünüz ile bu işlemi yapmaya yetkiniz yok. Lütfen sistem yöneticinize başvurun.\n\nDetay: ${error.message}`)
-        }
-        
-        throw error
+        throw updateError
       }
 
       if (!updateResult || updateResult.length === 0) {
         throw new Error('Status güncellendi ancak sonuç alınamadı. Sayfayı yenileyip kontrol edin.')
+      }
+
+      // Approval history ekle
+      const { error: historyError } = await supabase
+        .from('approval_history')
+        .insert({
+          purchase_request_id: request.id,
+          action: 'approved',
+          performed_by: user.id,
+          comments: 'Site Manager tarafından satın almaya gönderildi'
+        });
+
+      if (historyError) {
+        console.error('⚠️ Approval history kaydı eklenirken hata:', historyError);
+      } else {
+        console.log('✅ Approval history kaydı eklendi');
       }
 
       console.log('✅ Status başarıyla güncellendi:', updateResult[0])
@@ -181,6 +164,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       console.log('🚫 Site Manager reddi başlatılıyor...', {
         requestId: request.id,
         currentStatus: request?.status,
+        requestSiteId: request?.site_id,
         rejectionReason
       })
 
@@ -189,95 +173,67 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
-      console.log('✅ Kullanıcı oturumu doğrulandı:', user.id)
+      // Kullanıcının profile bilgilerini al
+      const { data: userProfile } = await supabase
+        .from('profiles')
+        .select('role, site_id, full_name')
+        .eq('id', user.id)
+        .single();
 
-      let updateResult, error;
-      
-      try {
-        const result = await supabase
-          .from('purchase_requests')
-          .update({ 
-            status: 'reddedildi',
-            rejection_reason: rejectionReason.trim(),
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', request.id)
-          .select();
-          
-        updateResult = result.data;
-        error = result.error;
+      console.log('✅ Kullanıcı bilgileri:', {
+        userId: user.id,
+        role: userProfile?.role,
+        siteId: userProfile?.site_id,
+        fullName: userProfile?.full_name
+      })
+
+      // Direkt update dene
+      const { data: updateResult, error: updateError } = await supabase
+        .from('purchase_requests')
+        .update({ 
+          status: 'reddedildi',
+          rejection_reason: rejectionReason.trim(),
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', request.id)
+        .select();
         
-        console.log('🔍 Direkt update sonucu:', { updateResult, error });
+      console.log('🔍 Update sonucu:', { 
+        success: !updateError, 
+        updateResult, 
+        error: updateError,
+        errorCode: updateError?.code,
+        errorMessage: updateError?.message
+      });
 
-        if (!error && updateResult) {
-          const { error: historyError } = await supabase
-            .from('approval_history')
-            .insert({
-              purchase_request_id: request.id,
-              action: 'rejected',
-              performed_by: user.id,
-              comments: `Site Manager tarafından reddedildi: ${rejectionReason.trim()}`
-            });
-
-          if (historyError) {
-            console.error('⚠️ Approval history kaydı eklenirken hata:', historyError);
-          } else {
-            console.log('✅ Approval history kaydı eklendi');
-          }
+      if (updateError) {
+        console.error('❌ Update hatası:', updateError)
+        
+        if (updateError.message?.includes('policy') || updateError.message?.includes('permission') || updateError.code === '42501') {
+          throw new Error(`Yetki hatası: Site manager rolünüz ile bu işlemi yapmaya yetkiniz yok.\n\nDetay: ${updateError.message}\n\nKullanıcı: ${userProfile?.role} | Site: ${userProfile?.site_id}`)
         }
         
-      } catch (directError) {
-        console.log('⚠️ Direkt update başarısız, stored procedure deneniyor...', directError);
-        
-        try {
-          const { data: procResult, error: procError } = await supabase
-            .rpc('update_request_status_by_site_manager', {
-              request_id: request.id,
-              new_status: 'reddedildi'
-            });
-            
-          console.log('🔍 Stored procedure sonucu:', { procResult, procError });
-          
-          if (procError) {
-            error = procError;
-          } else {
-            // Stored procedure kullanıldıysa rejection_reason'ı ayrıca güncelle
-            const { error: reasonError } = await supabase
-              .from('purchase_requests')
-              .update({ rejection_reason: rejectionReason.trim() })
-              .eq('id', request.id);
-              
-            if (reasonError) {
-              console.error('⚠️ Rejection reason güncellenirken hata:', reasonError);
-            }
-
-            const { data: refetchedData } = await supabase
-              .from('purchase_requests')
-              .select('*')
-              .eq('id', request.id)
-              .single();
-            updateResult = refetchedData ? [refetchedData] : null;
-          }
-        } catch (procError) {
-          console.error('❌ Stored procedure de başarısız:', procError);
-          error = procError;
-        }
-      }
-
-      console.log('📊 Update sonucu:', { updateResult, error })
-
-      if (error) {
-        console.error('❌ Update hatası:', error)
-        
-        if (error.message?.includes('policy') || error.message?.includes('permission') || error.code === '42501') {
-          throw new Error(`Yetki hatası: Site manager rolünüz ile bu işlemi yapmaya yetkiniz yok. Lütfen sistem yöneticinize başvurun.\n\nDetay: ${error.message}`)
-        }
-        
-        throw error
+        throw updateError
       }
 
       if (!updateResult || updateResult.length === 0) {
         throw new Error('Status güncellendi ancak sonuç alınamadı. Sayfayı yenileyip kontrol edin.')
+      }
+
+      // Approval history ekle
+      const { error: historyError } = await supabase
+        .from('approval_history')
+        .insert({
+          purchase_request_id: request.id,
+          action: 'rejected',
+          performed_by: user.id,
+          comments: `Site Manager tarafından reddedildi: ${rejectionReason.trim()}`
+        });
+
+      if (historyError) {
+        console.error('⚠️ Approval history kaydı eklenirken hata:', historyError);
+      } else {
+        console.log('✅ Approval history kaydı eklendi');
       }
 
       console.log('✅ Status başarıyla güncellendi:', updateResult[0])

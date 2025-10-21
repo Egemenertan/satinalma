@@ -18,12 +18,12 @@
     -webkit-box-orient: vertical;
     -webkit-line-clamp: 3;
   }
-  
+
   /* Number input'larda scroll ile değer değişimini engelle */
   .no-scroll-number {
     -moz-appearance: textfield; /* Firefox */
   }
-  
+
   .no-scroll-number::-webkit-outer-spin-button,
   .no-scroll-number::-webkit-inner-spin-button {
     -webkit-appearance: none; /* Chrome, Safari, Edge */
@@ -157,8 +157,8 @@
 }
 
 @layer components {
-  .rounded-3xl {
-    border-radius: 1.5rem;
+  .rounded-5xl {
+    border-radius: 12.5rem;
   }
 
   /* Modern Scrollbar */
@@ -244,6 +244,35 @@
     backdrop-filter: blur(8px);
     border: 1px solid rgba(255, 255, 255, 0.2);
   }
+
+  /* Custom Dove Loading Animations */
+  @keyframes pulse-smooth {
+    0%, 100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+    50% {
+      transform: scale(1.1);
+      opacity: 0.8;
+    }
+  }
+
+  @keyframes fade-in-out {
+    0%, 100% {
+      opacity: 0.7;
+    }
+    50% {
+      opacity: 1;
+    }
+  }
+
+  .animate-pulse-smooth {
+    animation: pulse-smooth 2s ease-in-out infinite;
+  }
+
+  .animate-fade-in-out {
+    animation: fade-in-out 2s ease-in-out infinite;
+  }
 }
 
 @theme inline {
@@ -312,6 +341,50 @@
   --shadow-blur: var(--shadow-blur);
   --shadow-opacity: var(--shadow-opacity);
   --color-shadow-color: var(--shadow-color);
+  --animate-star-movement-bottom: star-movement-bottom linear infinite alternate;
+  --animate-star-movement-top: star-movement-top linear infinite alternate;
+
+  @keyframes star-movement-bottom {
+    0% {
+      transform: translate(0%, 0%);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(-100%, 0%);
+      opacity: 0;
+    }
+  }
+
+  @keyframes star-movement-top {
+    0% {
+      transform: translate(0%, 0%);
+      opacity: 1;
+    }
+    100% {
+      transform: translate(100%, 0%);
+      opacity: 0;
+    }
+  }
+  @keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+    }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0;
+    }
+  }
+  @keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 1;
+    }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0;
+    }
+  }
 }
 
 :root {

@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
+import { Loading, InlineLoading } from '@/components/ui/loading'
 
 function LoginContent() {
   const [email, setEmail] = useState('')
@@ -146,7 +147,7 @@ function LoginContent() {
               >
                 {loading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <InlineLoading className="mr-2" />
                     Giriş yapılıyor...
                   </>
                 ) : (
@@ -178,12 +179,7 @@ export default function LoginPage() {
   return (
     <Suspense fallback={
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
-            <div className="animate-spin rounded-full h-10 w-10 border-3 border-white border-t-transparent"></div>
-          </div>
-          <p className="text-gray-600 font-light text-lg">Yükleniyor...</p>
-        </div>
+        <Loading size="lg" text="Yükleniyor..." />
       </div>
     }>
       <LoginContent />

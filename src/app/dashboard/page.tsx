@@ -18,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 import { invalidateDashboardCache } from '@/lib/cache'
+import { Loading } from '@/components/ui/loading'
 
 interface DashboardStats {
   totalRequests: number
@@ -325,12 +326,7 @@ export default function Dashboard() {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-black rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
-            <div className="animate-spin rounded-full h-10 w-10 border-3 border-white border-t-transparent"></div>
-          </div>
-          <p className="text-gray-600 font-light text-lg">Loading dashboard...</p>
-        </div>
+        <Loading size="lg" text="Dashboard yükleniyor..." />
       </div>
     )
   }

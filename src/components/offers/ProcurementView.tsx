@@ -18,6 +18,7 @@ import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import AssignSupplierModal from '@/components/AssignSupplierModal'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
+import ReturnedMaterialsCard from './ReturnedMaterialsCard'
 
 interface ProcurementViewProps extends OffersPageProps {
   currentOrder: any
@@ -65,6 +66,9 @@ export default function ProcurementView({
     id: string;
     name: string;
     unit?: string;
+    isReturnReorder?: boolean; // İade yeniden siparişi flag'i
+    supplierSpecific?: boolean; // Tedarikçi özel siparişi
+    targetSupplierId?: string; // Hedef tedarikçi ID'si
   } | null>(null)
   const [isOfferFormOpen, setIsOfferFormOpen] = useState(false)
   const [isPDFModalOpen, setIsPDFModalOpen] = useState(false)
@@ -76,6 +80,89 @@ export default function ProcurementView({
     itemName: '',
     currentIndex: 0
   })
+  // İade nedeniyle sipariş için orijinal sipariş bilgileri
+  const [returnOrderDetails, setReturnOrderDetails] = useState<any>(null)
+  const [loadingReturnDetails, setLoadingReturnDetails] = useState(false)
+
+  // Multi-select state for bulk supplier assignment
+  const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
+
+  // Multi-select functions
+  const toggleMaterialSelection = (materialId: string) => {
+    const newSelected = new Set(selectedMaterials)
+    if (newSelected.has(materialId)) {
+      newSelected.delete(materialId)
+    } else {
+      newSelected.add(materialId)
+    }
+    setSelectedMaterials(newSelected)
+    
+    // Auto-enable multi-select mode when materials are selected
+    if (newSelected.size > 0 && !isMultiSelectMode) {
+      setIsMultiSelectMode(true)
+    }
+  }
+
+  const selectAllMaterials = () => {
+    if (!request?.purchase_request_items) return
+    
+    const activeItems = request.purchase_request_items.filter(item => {
+      if (item.quantity > 0) return true
+      if (item.quantity === 0) {
+        const hasOrders = Array.isArray(materialOrders) 
+          ? materialOrders.some(order => order.material_item_id === item.id)
+          : false
+        const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
+          order.material_item_id === item.id
+        )
+        return !hasOrders && !hasLocalOrders
+      }
+      return false
+    })
+    
+    const allMaterialIds = activeItems.map(item => item.id)
+    const newSelected = new Set(selectedMaterials)
+    
+    // Eğer tüm malzemeler seçiliyse, hepsini kaldır
+    const allSelected = allMaterialIds.every(id => newSelected.has(id))
+    
+    if (allSelected) {
+      allMaterialIds.forEach(id => newSelected.delete(id))
+    } else {
+      allMaterialIds.forEach(id => newSelected.add(id))
+    }
+    
+    setSelectedMaterials(newSelected)
+    setIsMultiSelectMode(newSelected.size > 0)
+  }
+
+  const clearMaterialSelection = () => {
+    setSelectedMaterials(new Set())
+    setIsMultiSelectMode(false)
+  }
+
+  const handleBulkSupplierAssignment = () => {
+    if (selectedMaterials.size === 0) {
+      showToast('Lütfen en az bir malzeme seçin', 'error')
+      return
+    }
+    
+    // İlk seçili malzemenin bilgilerini al (modal başlığı için)
+    const firstSelectedMaterial = request?.purchase_request_items?.find(
+      item => selectedMaterials.has(item.id)
+    )
+    
+    if (firstSelectedMaterial) {
+      setCurrentMaterialForAssignment({
+        id: firstSelectedMaterial.id,
+        name: `${selectedMaterials.size} malzeme seçildi`,
+        unit: firstSelectedMaterial.unit
+      })
+      setIsAssignSupplierModalOpen(true)
+    }
+  }
+
 
   // Teklif girilmeye başlandığında formu otomatik aç
   useEffect(() => {
@@ -88,6 +175,49 @@ export default function ProcurementView({
       setIsOfferFormOpen(true)
     }
   }, [newOffers, isOfferFormOpen])
+
+  // İade nedeniyle sipariş durumunda orijinal sipariş bilgilerini çek
+  useEffect(() => {
+    const fetchReturnOrderDetails = async () => {
+      if (request?.status === 'iade nedeniyle sipariş' && (request as any).return_order_id && !returnOrderDetails) {
+        setLoadingReturnDetails(true)
+        try {
+          console.log('🔍 İade sipariş detayları çekiliyor:', (request as any).return_order_id)
+          
+          const { data: orderData, error: orderError } = await supabase
+            .from('orders')
+            .select(`
+              id,
+              delivery_date,
+              return_notes,
+              created_at,
+              suppliers:supplier_id (
+                id,
+                name,
+                contact_person,
+                phone,
+                email
+              )
+            `)
+            .eq('id', (request as any).return_order_id)
+            .single()
+
+          if (orderError) {
+            console.error('❌ İade sipariş detayları çekilemedi:', orderError)
+          } else if (orderData) {
+            console.log('✅ İade sipariş detayları çekildi:', orderData)
+            setReturnOrderDetails(orderData)
+          }
+        } catch (error) {
+          console.error('❌ İade sipariş detayları çekme hatası:', error)
+        } finally {
+          setLoadingReturnDetails(false)
+        }
+      }
+    }
+
+    fetchReturnOrderDetails()
+  }, [request?.status, (request as any)?.return_order_id, returnOrderDetails])
 
   // Cleanup URL objects when component unmounts
   useEffect(() => {
@@ -521,27 +651,338 @@ DOVEC İnşaat
   const totalOffers = existingOffers.length
   const firstItem = request?.purchase_request_items?.[0]
 
+  // İade edilen malzeme var mı kontrol et
+  const hasReturnedMaterials = (() => {
+    if (!request?.purchase_request_items || request.purchase_request_items.length === 0) {
+      return false
+    }
+    
+    // İade edilen malzemeleri bul
+    const returnedItems = request.purchase_request_items.filter((item: any) => {
+      const itemOrders = Array.isArray(materialOrders) 
+        ? materialOrders.filter((order: any) => order.material_item_id === item.id)
+        : []
+      
+      return itemOrders.some((order: any) => (order.returned_quantity || 0) > 0)
+    })
+    
+    return returnedItems.length > 0
+  })()
+
   return (
     <>
-      {/* Malzeme Bazlı Tedarikçi/Sipariş Yönetimi */}
-      {request?.purchase_request_items && request.purchase_request_items.length > 0 && (
-        <Card className="bg-white border-0 shadow-sm">
-          <CardHeader>
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Building2 className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <CardTitle className="text-xl font-semibold text-gray-900">
-                  Malzeme Tedarikçi Yönetimi
-                </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
-                  {request.purchase_request_items.filter(item => item.quantity > 0).length > 0 
-                    ? `${request.purchase_request_items.filter(item => item.quantity > 0).length} malzeme için tedarikçi ataması ve sipariş yönetimi`
-                    : 'Tüm malzemeler santiye depo tarafından gönderildi'
-                  }
+      {/* Status Badge - İade nedeniyle sipariş durumunu göster */}
+      {request?.status === 'iade nedeniyle sipariş' && (
+        <div className="mb-6">
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex items-start gap-3 mb-3">
+             
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-1">
+                  <h3 className="text-sm font-medium text-red-700">İade Nedeniyle Sipariş</h3>
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                    Otomatik
+                  </span>
+                </div>
+                <p className="text-xs text-gray-600">
+                  Bu talep iade işlemi sonrasında otomatik oluşturuldu.
+                  {(request as any).original_request_id && (
+                    <span className="ml-1 font-medium">
+                      Orijinal: #{(request as any).original_request_id.toString().slice(-8)}
+                    </span>
+                  )}
                 </p>
               </div>
+            </div>
+
+            {/* İade Sipariş Detayları */}
+            {loadingReturnDetails ? (
+              <div className="bg-gray-50 rounded-md p-3 border-t border-gray-200">
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400"></div>
+                  <span className="text-xs text-gray-600">Detaylar yükleniyor...</span>
+                </div>
+              </div>
+            ) : returnOrderDetails ? (
+              <div className="bg-gray-50 rounded-md p-3 border-t border-gray-200">
+                <h4 className="text-xs font-medium text-gray-700 mb-2 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+                  </svg>
+                  İade Edilen Sipariş
+                </h4>
+                
+                <div className="space-y-2">
+                  {/* Tedarikçi Bilgileri */}
+                  <div className="flex items-start gap-2">
+                    <svg className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
+                    </svg>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-medium text-gray-900">{returnOrderDetails.suppliers?.name || 'Bilinmeyen Tedarikçi'}</p>
+                      {returnOrderDetails.suppliers?.contact_person && (
+                        <p className="text-xs text-gray-600">{returnOrderDetails.suppliers.contact_person}</p>
+                      )}
+                      {returnOrderDetails.suppliers?.phone && (
+                        <p className="text-xs text-gray-600">{returnOrderDetails.suppliers.phone}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Teslimat Tarihi (varsa) */}
+                  {returnOrderDetails.delivery_date && (
+                    <div className="flex items-center gap-2">
+                      <svg className="w-3 h-3 text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                      </svg>
+                      <p className="text-xs text-gray-600">
+                        <span className="font-medium">Teslimat:</span> {new Date(returnOrderDetails.delivery_date).toLocaleDateString('tr-TR')}
+                      </p>
+                    </div>
+                  )}
+                </div>
+
+                {/* İade Notları */}
+                {returnOrderDetails.return_notes && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <div className="flex items-start gap-2">
+                      <svg className="w-3 h-3 text-gray-500 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                      </svg>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-700">İade Nedeni:</p>
+                        <p className="text-xs text-gray-600 mt-0.5">{returnOrderDetails.return_notes}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (request as any).return_order_id ? (
+              <div className="bg-gray-50 rounded-md p-3 border-t border-gray-200">
+                <div className="flex items-center gap-2 text-gray-600">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z"></path>
+                  </svg>
+                  <span className="text-xs">Detaylar yüklenemedi</span>
+                </div>
+              </div>
+            ) : null}
+
+            {/* Talep Açıklaması */}
+            {request.description && (
+              <div className="mt-3 pt-3 border-t border-gray-200">
+                <p className="text-xs text-gray-600">{request.description}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* İade Edilen Malzemeler */}
+      <ReturnedMaterialsCard
+        request={request}
+        materialOrders={materialOrders}
+        materialSuppliers={materialSuppliers}
+        setCurrentImageGallery={setCurrentImageGallery}
+        setIsImageGalleryOpen={setIsImageGalleryOpen}
+        onReorder={(item, returnedQuantity, supplierInfo) => {
+          // İade edilen malzeme için yeniden sipariş oluştur
+          console.log('Yeniden sipariş:', item.item_name, 'İade miktarı:', returnedQuantity, 'Tedarikçi:', supplierInfo)
+          
+          // Önce bu tedarikçi için yeniden sipariş istenip istenmediğini kontrol et
+          if (supplierInfo) {
+            const supplierOrders = Array.isArray(materialOrders) 
+              ? materialOrders.filter((order: any) => 
+                  order.material_item_id === item.id && 
+                  order.supplier_id === supplierInfo.supplier_id &&
+                  (order.returned_quantity || 0) > 0
+                )
+              : []
+            
+            // Bu tedarikçi için yeniden sipariş istenmiyorsa işlemi durdur
+            const reorderNotRequested = supplierOrders.some((order: any) => order.reorder_requested === false)
+            if (reorderNotRequested) {
+              showToast('Bu tedarikçi için yeniden sipariş istenmediği belirtilmiş.', 'info')
+              return
+            }
+          }
+          
+          if (supplierInfo) {
+            // Belirtilen tedarikçi ile sipariş modalını aç
+            const supplier = {
+              id: supplierInfo.supplier_id,
+              name: supplierInfo.supplier_name,
+              contact_person: supplierInfo.contact_person || '',
+              phone: supplierInfo.phone || '',
+              email: supplierInfo.email || ''
+            }
+            
+            setSelectedSupplier(supplier)
+            setCurrentMaterialForAssignment({
+              id: item.id,
+              name: item.item_name,
+              unit: item.unit,
+              isReturnReorder: true, // İade yeniden siparişi olarak işaretle
+              supplierSpecific: true, // Tedarikçi özel siparişi
+              targetSupplierId: supplierInfo.supplier_id // Hedef tedarikçi ID'si
+            })
+            setOrderDetails({
+              deliveryDate: '',
+              amount: '',
+              currency: 'TRY',
+              quantity: returnedQuantity.toString(), // Kart üzerindeki ile aynı miktarı set et
+              documents: [],
+              documentPreviewUrls: []
+            })
+            setIsCreateOrderModalOpen(true)
+          } else {
+            // İade edilen malzeme için tedarikçi bilgisini al (eski yöntem - fallback)
+            const itemOrders = Array.isArray(materialOrders) 
+              ? materialOrders.filter((order: any) => order.material_item_id === item.id && (order.returned_quantity || 0) > 0)
+              : []
+            
+            if (itemOrders.length > 0) {
+              // Mevcut tedarikçi ile sipariş modalını aç
+              const supplier = {
+                id: itemOrders[0].supplier_id,
+                name: itemOrders[0].supplier?.name || itemOrders[0].suppliers?.name || 'Tedarikçi',
+                contact_person: itemOrders[0].supplier?.contact_person || '',
+                phone: itemOrders[0].supplier?.phone || '',
+                email: itemOrders[0].supplier?.email || ''
+              }
+              
+              setSelectedSupplier(supplier)
+              setCurrentMaterialForAssignment({
+                id: item.id,
+                name: item.item_name,
+                unit: item.unit,
+                isReturnReorder: true // İade yeniden siparişi olarak işaretle
+              })
+              setOrderDetails({
+                deliveryDate: '',
+                amount: '',
+                currency: 'TRY',
+                quantity: returnedQuantity.toString(), // İade miktarını default olarak set et
+                documents: [],
+                documentPreviewUrls: []
+              })
+              setIsCreateOrderModalOpen(true)
+            } else {
+              // Tedarikçi bulunamazsa tedarikçi atama modalını aç
+              setCurrentMaterialForAssignment({
+                id: item.id,
+                name: item.item_name,
+                unit: item.unit,
+                isReturnReorder: true // İade yeniden siparişi olarak işaretle
+              })
+              setIsAssignSupplierModalOpen(true)
+            }
+          }
+        }}
+        onAssignSupplier={(materialId, materialName, materialUnit) => {
+          // Tedarikçi atama modalını aç
+          setCurrentMaterialForAssignment({
+            id: materialId,
+            name: materialName,
+            unit: materialUnit
+          })
+          setIsAssignSupplierModalOpen(true)
+        }}
+        onCreateOrder={(supplier, material, returnedQuantity) => {
+          // Sipariş oluşturma modalını aç
+          setSelectedSupplier(supplier)
+          setCurrentMaterialForAssignment({
+            id: material.id,
+            name: material.item_name,
+            unit: material.unit,
+            isReturnReorder: true // İade yeniden siparişi olarak işaretle
+          })
+          setOrderDetails({
+            deliveryDate: '',
+            amount: '',
+            currency: 'TRY',
+            quantity: returnedQuantity.toString(), // İade miktarını default olarak set et
+            documents: [],
+            documentPreviewUrls: []
+          })
+          setIsCreateOrderModalOpen(true)
+        }}
+        onExportPDF={(material) => {
+          // PDF export fonksiyonunu çağır
+          handleExportMaterialPDF(material)
+        }}
+      />
+
+      {/* Malzeme Bazlı Tedarikçi/Sipariş Yönetimi - İade varsa gösterme */}
+      {!hasReturnedMaterials && request?.purchase_request_items && request.purchase_request_items.length > 0 && (
+        <Card className="bg-white border-0 shadow-sm">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                  <Building2 className="h-6 w-6 text-blue-600" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl font-semibold text-gray-900">
+                    Malzeme Tedarikçi Yönetimi
+                  </CardTitle>
+                  <p className="text-sm text-gray-600 mt-1">
+                    {request.purchase_request_items.filter(item => item.quantity > 0).length > 0 
+                      ? `${request.purchase_request_items.filter(item => item.quantity > 0).length} malzeme için tedarikçi ataması ve sipariş yönetimi`
+                      : 'Tüm malzemeler santiye depo tarafından gönderildi'
+                    }
+                  </p>
+                </div>
+              </div>
+              
+              {/* Multi-select controls */}
+              {(() => {
+                const activeItems = request.purchase_request_items.filter(item => {
+                  if (item.quantity > 0) return true
+                  if (item.quantity === 0) {
+                    const hasOrders = Array.isArray(materialOrders) 
+                      ? materialOrders.some(order => order.material_item_id === item.id)
+                      : false
+                    const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
+                      order.material_item_id === item.id
+                    )
+                    return !hasOrders && !hasLocalOrders
+                  }
+                  return false
+                })
+                
+                return activeItems.length > 1 && (
+                  <div className="flex items-center gap-3">
+                    {selectedMaterials.size > 0 && (
+                      <div className="flex items-center gap-2">
+                        <Badge variant="default" className="bg-green-600 text-white text-sm">
+                          {selectedMaterials.size} Seçili
+                        </Badge>
+                        <Button
+                          onClick={clearMaterialSelection}
+                          variant="outline"
+                          size="sm"
+                          className="text-xs h-7 px-2"
+                        >
+                          Seçimi Temizle
+                        </Button>
+                      </div>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={selectAllMaterials}
+                      className="text-xs h-7 px-2"
+                    >
+                      {(() => {
+                        const allMaterialIds = activeItems.map(item => item.id)
+                        const allSelected = allMaterialIds.every(id => selectedMaterials.has(id))
+                        return allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'
+                      })()}
+                    </Button>
+                  </div>
+                )
+              })()}
             </div>
           </CardHeader>
           <CardContent>
@@ -572,9 +1013,7 @@ DOVEC İnşaat
                 return activeItems.length === 0 ? (
                   // Tüm malzemeler gönderildi veya sipariş verildi
                   <div className="text-center py-4">
-                    <p className="text-sm text-gray-600">
-                      Bu talepteki tüm malzemeler santiye depo tarafından gönderildi veya sipariş verildi.
-                    </p>
+                   
                   </div>
                 ) : (
                   activeItems
@@ -582,9 +1021,31 @@ DOVEC İnşaat
                     const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
                     
                     return (
-                      <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <div 
+                        key={item.id} 
+                        className={`border border-gray-200 rounded-lg p-4 transition-colors cursor-pointer ${
+                          selectedMaterials.has(item.id) 
+                            ? 'bg-green-50 border-green-200 border-2' 
+                            : 'bg-gray-50 hover:bg-gray-100'
+                        }`}
+                        onClick={() => toggleMaterialSelection(item.id)}
+                      >
                         {/* Malzeme Header */}
                         <div className="flex items-start gap-4 mb-4">
+                          {/* Checkbox */}
+                          <div className="flex items-center justify-center pt-1">
+                            <div 
+                              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                                selectedMaterials.has(item.id)
+                                  ? 'bg-green-600 border-green-600'
+                                  : 'border-gray-300 hover:border-gray-500'
+                              }`}
+                            >
+                              {selectedMaterials.has(item.id) && (
+                                <Check className="w-3 h-3 text-white" />
+                              )}
+                            </div>
+                          </div>
                           {/* Malzeme Resmi */}
                           {item.image_urls && item.image_urls.length > 0 && (
                             <div className="flex-shrink-0">
@@ -689,7 +1150,10 @@ DOVEC İnşaat
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={() => handleExportMaterialPDF(item)}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleExportMaterialPDF(item)
+                              }}
                               className="h-8 px-3 text-xs bg-white hover:bg-gray-50 border-gray-200 text-gray-700 shadow-sm"
                               title="Satın Alma Talep Formu PDF Export"
                             >
@@ -777,61 +1241,135 @@ DOVEC İnşaat
                             <div className="space-y-2">
                               <h6 className="text-sm font-medium text-gray-700">Mevcut Tedarikçiler:</h6>
                               <div className="grid gap-3">
-                                {materialSupplier.suppliers.map((supplier: any) => (
-                                  <div key={supplier.id} className="bg-white rounded-lg p-3 border border-gray-200">
-                                    <div className="flex items-center justify-between">
-                                      <div>
-                                        <h6 className="font-medium text-gray-900">{supplier.name}</h6>
-                                        <p className="text-xs text-gray-600">{supplier.contact_person}</p>
-                                        <div className="flex items-center gap-4 mt-1">
-                                          <span className="text-xs text-gray-500">{supplier.phone}</span>
-                                          <span className="text-xs text-gray-500">{supplier.email}</span>
+                                {materialSupplier.suppliers.map((supplier: any) => {
+                                  // Bu tedarikçiden bu malzeme için sipariş var mı kontrol et
+                                  const localOrders = Object.values(localOrderTracking)
+                                    .filter((order: any) => 
+                                      order.material_item_id === item.id && 
+                                      order.supplier_id === supplier.id
+                                    )
+                                  
+                                  const dbOrders = Array.isArray(materialOrders) 
+                                    ? materialOrders.filter((order: any) => 
+                                        order.material_item_id === item.id && 
+                                        order.supplier_id === supplier.id
+                                      )
+                                    : []
+                                  
+                                  // Birleştir ve duplicate'ları önle
+                                  const supplierOrders = [...localOrders]
+                                  dbOrders.forEach((dbOrder: any) => {
+                                    const exists = localOrders.some((localOrder: any) => 
+                                      localOrder.order_id === dbOrder.id
+                                    )
+                                    if (!exists) {
+                                      supplierOrders.push({
+                                        supplier_id: dbOrder.supplier_id,
+                                        material_item_id: dbOrder.material_item_id,
+                                        delivery_date: dbOrder.delivery_date,
+                                        order_id: dbOrder.id,
+                                        supplier_name: dbOrder.suppliers?.name || 'Bilinmeyen Tedarikçi',
+                                        quantity: dbOrder.quantity || 0
+                                      })
+                                    }
+                                  })
+                                  
+                                  // Toplam sipariş miktarı
+                                  const totalOrderQuantity = supplierOrders.reduce((sum: number, order: any) => 
+                                    sum + (order.quantity || 0), 0
+                                  )
+                                  
+                                  return (
+                                    <div key={supplier.id} className="bg-white rounded-lg p-3 border border-gray-200">
+                                      <div className="flex items-center justify-between">
+                                        <div className="flex-1">
+                                          <div className="flex items-center gap-2 mb-1">
+                                            <h6 className="font-medium text-gray-900">{supplier.name}</h6>
+                                            {/* Sipariş Durumu Badge */}
+                                            {supplierOrders.length > 0 && (
+                                              <Badge className="bg-green-100 text-green-700 border-green-200 text-xs px-2 py-0.5">
+                                                ✓ Sipariş Verildi ({totalOrderQuantity} {item.unit})
+                                              </Badge>
+                                            )}
+                                          </div>
+                                          <p className="text-xs text-gray-600">{supplier.contact_person}</p>
+                                          <div className="flex items-center gap-4 mt-1">
+                                            <span className="text-xs text-gray-500">{supplier.phone}</span>
+                                            <span className="text-xs text-gray-500">{supplier.email}</span>
+                                          </div>
+                                          
+                                          {/* Sipariş Detayları */}
+                                          {supplierOrders.length > 0 && (
+                                            <div className="mt-2 pt-2 border-t border-gray-100">
+                                              <div className="text-xs text-gray-600 space-y-1">
+                                                {supplierOrders.map((order: any, orderIdx: number) => (
+                                                  <div key={`${order.order_id}_${orderIdx}`} className="flex justify-between items-center">
+                                                    <span>Sipariş #{order.order_id.toString().slice(-6)}:</span>
+                                                    <span className="font-medium text-green-700">
+                                                      {order.quantity} {item.unit} - {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
+                                                    </span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                        <div className="flex gap-2 ml-3">
+                                          <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              router.push(`/dashboard/suppliers/${supplier.id}`)
+                                            }}
+                                            className="text-gray-700 border-gray-200 hover:bg-gray-50 text-xs"
+                                          >
+                                            Detay
+                                          </Button>
+                                          
+                                          {/* Kısmi sipariş butonları - her zaman aktif (kalan miktar varsa) */}
+                                          <Button
+                                            size="sm"
+                                            onClick={(e) => {
+                                              e.stopPropagation()
+                                              setSelectedSupplier(supplier)
+                                              setCurrentMaterialForAssignment({
+                                                id: item.id,
+                                                name: item.item_name,
+                                                unit: item.unit
+                                              })
+                                              setOrderDetails({
+                                                deliveryDate: '',
+                                                amount: '',
+                                                currency: 'TRY',
+                                                quantity: '',
+                                                documents: [],
+                                                documentPreviewUrls: []
+                                              })
+                                              setIsCreateOrderModalOpen(true)
+                                            }}
+                                            disabled={item.quantity <= 0}
+                                            className={`text-xs ${
+                                              item.quantity <= 0 
+                                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
+                                                : supplierOrders.length > 0
+                                                  ? 'bg-blue-600 hover:bg-blue-700 text-white'
+                                                  : 'bg-green-600 hover:bg-green-700 text-white'
+                                            }`}
+                                          >
+                                            <Package className="h-3 w-3 mr-1" />
+                                            {item.quantity <= 0 
+                                              ? 'Tamamlandı' 
+                                              : supplierOrders.length > 0 
+                                                ? 'Ek Sipariş' 
+                                                : 'Sipariş Ver'
+                                            }
+                                          </Button>
                                         </div>
                                       </div>
-                                      <div className="flex gap-2">
-                                        <Button
-                                          variant="outline"
-                                          size="sm"
-                                          onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
-                                          className="text-gray-700 border-gray-200 hover:bg-gray-50 text-xs"
-                                        >
-                                          Detay
-                                        </Button>
-                                        
-                                        {/* Kısmi sipariş butonları - her zaman aktif (kalan miktar varsa) */}
-                                        <Button
-                                          size="sm"
-                                          onClick={() => {
-                                            setSelectedSupplier(supplier)
-                                            setCurrentMaterialForAssignment({
-                                              id: item.id,
-                                              name: item.item_name,
-                                              unit: item.unit
-                                            })
-                                            setOrderDetails({
-                                              deliveryDate: '',
-                                              amount: '',
-                                              currency: 'TRY',
-                                              quantity: '',
-                                              documents: [],
-                                              documentPreviewUrls: []
-                                            })
-                                            setIsCreateOrderModalOpen(true)
-                                          }}
-                                          disabled={item.quantity <= 0}
-                                          className={`text-xs ${
-                                            item.quantity <= 0 
-                                              ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
-                                              : 'bg-green-600 hover:bg-green-700 text-white'
-                                          }`}
-                                        >
-                                          <Package className="h-3 w-3 mr-1" />
-                                          {item.quantity <= 0 ? 'Tamamlandı' : 'Sipariş Ver'}
-                                        </Button>
-                                      </div>
                                     </div>
-                                  </div>
-                                ))}
+                                  )
+                                })}
                               </div>
                             </div>
                             
@@ -840,7 +1378,8 @@ DOVEC İnşaat
                               <Button
                                 variant="outline"
                                 size="sm"
-                                onClick={() => {
+                                onClick={(e) => {
+                                  e.stopPropagation()
                                   setCurrentMaterialForAssignment({
                                     id: item.id,
                                     name: item.item_name,
@@ -861,7 +1400,8 @@ DOVEC İnşaat
                               <p className="text-sm text-gray-600 mb-2">Bu malzeme için henüz tedarikçi atanmamış</p>
                             </div>
                             <Button
-                              onClick={() => {
+                              onClick={(e) => {
+                                e.stopPropagation()
                                 setCurrentMaterialForAssignment({
                                   id: item.id,
                                   name: item.item_name,
@@ -1808,9 +2348,56 @@ DOVEC İnşaat
                       <p className="font-medium text-gray-900">{currentMaterialForAssignment.name}</p>
                     </div>
                     <div>
-                      <span className="text-gray-600">Talep Edilen Miktar:</span>
+                      <span className="text-gray-600">
+                        {currentMaterialForAssignment?.isReturnReorder ? 
+                          (currentMaterialForAssignment?.supplierSpecific ? 'Bu Tedarikçiden İade Edilen:' : 'İade Edilen Miktar:') : 
+                          'Talep Edilen Miktar:'
+                        }
+                      </span>
                       <p className="font-medium text-gray-900">
-                        {request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0} {currentMaterialForAssignment.unit}
+                        {(() => {
+                          if (currentMaterialForAssignment?.isReturnReorder) {
+                            if (currentMaterialForAssignment?.supplierSpecific && currentMaterialForAssignment?.targetSupplierId) {
+                              // Tedarikçi özel iade için: sadece o tedarikçiden iade edilen miktarı göster
+                              const supplierReturnedQuantity = Array.isArray(materialOrders) 
+                                ? materialOrders
+                                    .filter((order: any) => 
+                                      order.material_item_id === currentMaterialForAssignment.id && 
+                                      order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                      (order.returned_quantity || 0) > 0
+                                    )
+                                    .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                                : 0
+                              
+                              const alreadyReordered = Array.isArray(materialOrders) 
+                                ? materialOrders
+                                    .filter((order: any) => 
+                                      order.material_item_id === currentMaterialForAssignment.id &&
+                                      order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                      order.is_return_reorder === true
+                                    )
+                                    .reduce((sum: number, order: any) => sum + (order.quantity || 0), 0)
+                                : 0
+                              
+                              return `${supplierReturnedQuantity} ${currentMaterialForAssignment.unit} (Kalan: ${Math.max(0, supplierReturnedQuantity - alreadyReordered)} ${currentMaterialForAssignment.unit})`
+                            } else {
+                              // Genel iade için: tüm iade edilen miktarı göster
+                              const returnedQuantity = Array.isArray(materialOrders) 
+                                ? materialOrders
+                                    .filter((order: any) => 
+                                      order.material_item_id === currentMaterialForAssignment.id && 
+                                      (order.returned_quantity || 0) > 0
+                                    )
+                                    .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                                : 0
+                              return `${returnedQuantity} ${currentMaterialForAssignment.unit}`
+                            }
+                          } else {
+                            // Normal sipariş için: purchase_request_items tablosundan quantity al
+                            const quantity = request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0
+                            return `${quantity} ${currentMaterialForAssignment.unit}`
+                          }
+                        })()}
                       </p>
                     </div>
                   </div>
@@ -1826,7 +2413,25 @@ DOVEC İnşaat
                     type="number"
                     step="0.01"
                     min="0.01"
-                    max={currentMaterialForAssignment ? request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0 : undefined}
+                    max={(() => {
+                      if (!currentMaterialForAssignment) return undefined
+                      
+                      if (currentMaterialForAssignment.isReturnReorder) {
+                        // İade yeniden siparişi için: orders tablosundan returned_quantity toplamını al
+                        const returnedQuantity = Array.isArray(materialOrders) 
+                          ? materialOrders
+                              .filter((order: any) => 
+                                order.material_item_id === currentMaterialForAssignment.id && 
+                                (order.returned_quantity || 0) > 0
+                              )
+                              .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                          : 0
+                        return returnedQuantity
+                      } else {
+                        // Normal sipariş için: purchase_request_items tablosundan quantity al
+                        return request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0
+                      }
+                    })()}
                     value={orderDetails.quantity}
                     onChange={(e) => setOrderDetails({
                       ...orderDetails,
@@ -1840,7 +2445,49 @@ DOVEC İnşaat
                   </div>
                 </div>
                 <p className="text-xs text-gray-500 mt-1">
-                  Maksimum: {currentMaterialForAssignment ? request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0 : 0} {currentMaterialForAssignment?.unit}
+                  Maksimum: {(() => {
+                    if (!currentMaterialForAssignment) return 0
+                    
+                    if (currentMaterialForAssignment.isReturnReorder) {
+                      if (currentMaterialForAssignment.supplierSpecific && currentMaterialForAssignment.targetSupplierId) {
+                        // Tedarikçi özel iade için: sadece o tedarikçiden iade edilen miktarı göster
+                        const supplierReturnedQuantity = Array.isArray(materialOrders) 
+                          ? materialOrders
+                              .filter((order: any) => 
+                                order.material_item_id === currentMaterialForAssignment.id && 
+                                order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                (order.returned_quantity || 0) > 0
+                              )
+                              .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                          : 0
+                        
+                        const alreadyReordered = Array.isArray(materialOrders) 
+                          ? materialOrders
+                              .filter((order: any) => 
+                                order.material_item_id === currentMaterialForAssignment.id &&
+                                order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                order.is_return_reorder === true
+                              )
+                              .reduce((sum: number, order: any) => sum + (order.quantity || 0), 0)
+                          : 0
+                        
+                        return Math.max(0, supplierReturnedQuantity - alreadyReordered)
+                      } else {
+                        // Genel iade için: tüm iade edilen miktarı göster
+                        return Array.isArray(materialOrders) 
+                          ? materialOrders
+                              .filter((order: any) => 
+                                order.material_item_id === currentMaterialForAssignment.id && 
+                                (order.returned_quantity || 0) > 0
+                              )
+                              .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                          : 0
+                      }
+                    } else {
+                      // Normal sipariş için
+                      return request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment.id)?.quantity || 0
+                    }
+                  })()} {currentMaterialForAssignment?.unit}
                 </p>
               </div>
 
@@ -1897,11 +2544,55 @@ DOVEC İnşaat
                     }
 
                     const orderQuantity = parseFloat(orderDetails.quantity)
-                    const currentItem = request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment?.id)
-                    const maxQuantity = currentItem?.quantity || 0
+                    
+                    // Max quantity kontrolü - iade yeniden siparişi için farklı logic
+                    const maxQuantity = (() => {
+                      if (currentMaterialForAssignment?.isReturnReorder) {
+                        if (currentMaterialForAssignment?.supplierSpecific && currentMaterialForAssignment?.targetSupplierId) {
+                          // Tedarikçi özel iade yeniden siparişi için: sadece o tedarikçiden iade edilen miktarı al
+                          const supplierReturnedQuantity = Array.isArray(materialOrders) 
+                            ? materialOrders
+                                .filter((order: any) => 
+                                  order.material_item_id === currentMaterialForAssignment.id && 
+                                  order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                  (order.returned_quantity || 0) > 0
+                                )
+                                .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                            : 0
+                          
+                          // Daha önce yeniden sipariş verilen miktarı çıkar
+                          const alreadyReordered = Array.isArray(materialOrders) 
+                            ? materialOrders
+                                .filter((order: any) => 
+                                  order.material_item_id === currentMaterialForAssignment.id &&
+                                  order.supplier_id === currentMaterialForAssignment.targetSupplierId &&
+                                  order.is_return_reorder === true
+                                )
+                                .reduce((sum: number, order: any) => sum + (order.quantity || 0), 0)
+                            : 0
+                          
+                          return Math.max(0, supplierReturnedQuantity - alreadyReordered)
+                        } else {
+                          // Genel iade yeniden siparişi için: orders tablosundan returned_quantity toplamını al
+                          return Array.isArray(materialOrders) 
+                            ? materialOrders
+                                .filter((order: any) => 
+                                  order.material_item_id === currentMaterialForAssignment.id && 
+                                  (order.returned_quantity || 0) > 0
+                                )
+                                .reduce((sum: number, order: any) => sum + (order.returned_quantity || 0), 0)
+                            : 0
+                        }
+                      } else {
+                        // Normal sipariş için: purchase_request_items tablosundan quantity al
+                        const currentItem = request?.purchase_request_items?.find(item => item.id === currentMaterialForAssignment?.id)
+                        return currentItem?.quantity || 0
+                      }
+                    })()
 
                     if (orderQuantity > maxQuantity) {
-                      showToast(`Sipariş miktarı talep edilen miktarı (${maxQuantity}) aşamaz.`, 'error')
+                      const quantityType = currentMaterialForAssignment?.isReturnReorder ? 'iade edilen miktarı' : 'talep edilen miktarı'
+                      showToast(`Sipariş miktarı ${quantityType} (${maxQuantity}) aşamaz.`, 'error')
                       return
                     }
 
@@ -1923,7 +2614,9 @@ DOVEC İnşaat
                       document_urls: uploadedUrls,
                       user_id: session.user.id,
                       material_item_id: currentMaterialForAssignment?.id || null,
-                      quantity: orderQuantity  // Sipariş miktarını kaydet
+                      quantity: orderQuantity,  // Sipariş miktarını kaydet
+                      is_return_reorder: currentMaterialForAssignment?.isReturnReorder || false, // İade yeniden siparişi flag'i
+                      status: 'pending' // Explicit status ekle
                     }
 
                     const { data: order, error: orderError } = await supabase
@@ -2292,12 +2985,16 @@ DOVEC İnşaat
         onClose={() => {
           setIsAssignSupplierModalOpen(false)
           setCurrentMaterialForAssignment(null)
+          clearMaterialSelection() // Çoklu seçimi temizle
         }}
         itemName={currentMaterialForAssignment?.name || firstItem?.item_name || ''}
         itemUnit={currentMaterialForAssignment?.unit || firstItem?.unit}
         materialClass={request?.material_class || undefined}
         materialGroup={request?.material_group || undefined}
+        selectedMaterials={selectedMaterials.size > 0 ? selectedMaterials : undefined}
+        materialItems={selectedMaterials.size > 0 ? request?.purchase_request_items : undefined}
         onSuccess={() => {
+          clearMaterialSelection() // Başarılı atama sonrası seçimi temizle
           onRefresh()
         }}
       />
@@ -2447,6 +3144,47 @@ DOVEC İnşaat
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Fixed Bulk Supplier Assignment Button */}
+      {selectedMaterials.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40">
+          <div className="bg-black rounded-2xl shadow-2xl border border-gray-800 p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
+                  <Building2 className="h-5 w-5 text-black" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-white">
+                    {selectedMaterials.size} malzeme seçildi
+                  </p>
+                  <p className="text-xs text-gray-300">
+                    Toplu tedarikçi ataması yapabilirsiniz
+                  </p>
+                </div>
+              </div>
+              
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearMaterialSelection}
+                  className="text-gray-300 border-gray-600 hover:bg-gray-800 hover:text-white"
+                >
+                  İptal
+                </Button>
+                <Button
+                  onClick={handleBulkSupplierAssignment}
+                  className="bg-white hover:bg-gray-100 text-black px-6 py-2 rounded-xl font-medium shadow-lg"
+                >
+                  <Building2 className="h-4 w-4 mr-2" />
+                  Tedarikçi Ata
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       )}

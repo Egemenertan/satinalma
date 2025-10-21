@@ -44,6 +44,9 @@ export interface PurchaseRequest {
   image_urls?: string[]
   sent_quantity?: number
   rejection_reason?: string
+  notes?: string
+  original_request_id?: string
+  return_order_id?: string
   purchase_request_items: PurchaseRequestItem[]
   profiles: {
     full_name: string

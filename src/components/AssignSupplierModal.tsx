@@ -43,6 +43,8 @@ interface AssignSupplierModalProps {
   materialClass?: string
   materialGroup?: string
   onSuccess?: () => void
+  selectedMaterials?: Set<string> // Çoklu malzeme seçimi için
+  materialItems?: any[] // Malzeme detayları için
 }
 
 export default function AssignSupplierModal({
@@ -52,7 +54,9 @@ export default function AssignSupplierModal({
   itemUnit = 'adet',
   materialClass,
   materialGroup,
-  onSuccess
+  onSuccess,
+  selectedMaterials,
+  materialItems
 }: AssignSupplierModalProps) {
   const router = useRouter()
   const { showToast } = useToast()
@@ -276,6 +280,11 @@ export default function AssignSupplierModal({
   }
 
   const assignMaterialToSupplier = async (supplierId: string, supplierName: string) => {
+    // Çoklu malzeme ataması varsa
+    if (selectedMaterials && selectedMaterials.size > 0 && materialItems) {
+      return await assignMultipleMaterialsToSupplier(supplierId, supplierName)
+    }
+
     if (!itemName) {
       showToast('Ürün bilgisi bulunamadı.', 'error')
       return
@@ -373,44 +382,125 @@ export default function AssignSupplierModal({
     }
   }
 
+  // Çoklu malzeme atama fonksiyonu
+  const assignMultipleMaterialsToSupplier = async (supplierId: string, supplierName: string) => {
+    if (!selectedMaterials || !materialItems || selectedMaterials.size === 0) {
+      showToast('Seçili malzeme bulunamadı.', 'error')
+      return
+    }
+
+    try {
+      setAssigningSupplier(true)
+      console.log('🔄 Çoklu malzeme tedarikçiye atanıyor...', { 
+        supplierId, 
+        supplierName,
+        selectedCount: selectedMaterials.size
+      })
+
+      const selectedMaterialItems = materialItems.filter(item => 
+        selectedMaterials.has(item.id)
+      )
+
+      let successCount = 0
+      let skipCount = 0
+      const errors: string[] = []
+
+      // Her malzeme için atama yap
+      for (const material of selectedMaterialItems) {
+        try {
+          // Önce bu tedarikçi-ürün ilişkisi zaten var mı kontrol et
+          const { data: existingAssignment } = await supabase
+            .from('supplier_materials')
+            .select('id')
+            .eq('supplier_id', supplierId)
+            .eq('material_item', material.item_name)
+            .eq('material_class', material.material_class || 'Genel')
+            .eq('material_group', material.material_group || 'Diğer')
+            .single()
+
+          if (existingAssignment) {
+            console.log(`⚠️ ${material.item_name} zaten bu tedarikçiye atanmış, atlanıyor`)
+            skipCount++
+            continue
+          }
+
+          // Yeni atama oluştur
+          const insertData = {
+            supplier_id: supplierId,
+            material_item: material.item_name,
+            material_class: material.material_class || 'Genel',
+            material_group: material.material_group || 'Diğer'
+          }
+
+          const { error: assignError } = await supabase
+            .from('supplier_materials')
+            .insert(insertData)
+
+          if (assignError) {
+            console.error(`❌ ${material.item_name} atama hatası:`, assignError)
+            errors.push(`${material.item_name}: ${assignError.message}`)
+          } else {
+            console.log(`✅ ${material.item_name} başarıyla atandı`)
+            successCount++
+          }
+        } catch (error: any) {
+          console.error(`❌ ${material.item_name} atama hatası:`, error)
+          errors.push(`${material.item_name}: ${error.message}`)
+        }
+      }
+
+      // Sonuç mesajı
+      if (successCount > 0) {
+        showToast(
+          `${successCount} malzeme ${supplierName} tedarikçisine başarıyla atandı!` +
+          (skipCount > 0 ? ` (${skipCount} malzeme zaten atanmıştı)` : '') +
+          (errors.length > 0 ? ` (${errors.length} hatada hata oluştu)` : ''),
+          'success'
+        )
+      }
+
+      if (errors.length > 0 && successCount === 0) {
+        showToast(`Hiçbir malzeme atanamadı. İlk hata: ${errors[0]}`, 'error')
+      }
+
+      // Modal'ı kapat ve callback çağır
+      if (successCount > 0) {
+        onClose()
+        if (onSuccess) {
+          onSuccess()
+        }
+      }
+
+    } catch (error: any) {
+      console.error('Çoklu malzeme atama hatası:', error)
+      showToast(error.message || 'Malzemeler atanırken bir hata oluştu.', 'error')
+    } finally {
+      setAssigningSupplier(false)
+    }
+  }
+
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-md z-50 flex items-center justify-center p-4">
+      <div className="bg-white/95 backdrop-blur-xl rounded-2xl max-w-7xl w-full max-h-[90vh] overflow-hidden shadow-2xl border border-white/20">
         {/* Modal Header */}
-        <div className="sticky top-0 bg-white border-b border-gray-200 p-6 rounded-t-2xl">
+        <div className="sticky top-0 bg-white/90 backdrop-blur-lg border-b border-gray-200/50 p-6 rounded-t-2xl">
           <div className="flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Tedarikçiye Ürün Ata</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {selectedMaterials && selectedMaterials.size > 1 
+                    ? 'Toplu Tedarikçi Ataması' 
+                    : 'Tedarikçiye Ürün Ata'
+                  }
+                </h2>
                 <p className="text-gray-500 mt-1">
-                  "{itemName}" ürününü bir tedarikçiye atayın
+                  {selectedMaterials && selectedMaterials.size > 1 
+                    ? `${selectedMaterials.size} malzeme için tedarikçi ataması yapın` 
+                    : `"${itemName}" ürününü bir tedarikçiye atayın`
+                  }
                 </p>
-                {loadingMaterial ? (
-                  <p className="text-blue-600 text-sm mt-2 bg-blue-50 px-3 py-2 rounded-lg">
-                    🔍 Malzeme bilgileri all_materials tablosundan yükleniyor...
-                  </p>
-                ) : (
-                  <div>
-                    {materialData ? (
-                      <div className="text-sm mt-2 bg-green-50 px-3 py-2 rounded-lg">
-                        <p className="text-green-800 font-medium">✅ All_materials tablosundan yüklendi:</p>
-                        <div className="text-green-700 mt-1 space-y-1">
-                          {materialData.material_class && (
-                            <div>Sınıf: <span className="font-medium">{materialData.material_class}</span></div>
-                          )}
-                          {materialData.material_group && (
-                            <div>Grup: <span className="font-medium">{materialData.material_group}</span></div>
-                          )}
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-yellow-600 text-sm mt-2 bg-yellow-50 px-3 py-2 rounded-lg">
-                        ℹ️ All_materials tablosunda malzeme bulunamadı. {(materialClass || materialGroup) ? 'Prop bilgileri kullanılacak.' : 'Genel kategorilerden seçim yapılacak.'}
-                      </p>
-                    )}
-                  </div>
-                )}
+               
               </div>
             <Button
               variant="ghost"
@@ -516,17 +606,15 @@ export default function AssignSupplierModal({
                       {filteredSuppliers.map((supplier, index) => (
                         <div 
                           key={supplier.id}
-                          className={`px-6 py-4 hover:bg-gray-50 transition-colors duration-200 ${
-                            index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'
+                          className={`px-6 py-4 hover:bg-white/60 transition-all duration-200 ${
+                            index % 2 === 0 ? 'bg-white/40 backdrop-blur-sm' : 'bg-gray-50/30 backdrop-blur-sm'
                           }`}
                         >
                           <div className="grid grid-cols-12 gap-4 items-center">
                             {/* Tedarikçi Bilgileri */}
                             <div className="col-span-3">
                               <div className="flex items-center gap-3">
-                                <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-yellow-600 rounded-lg flex items-center justify-center">
-                                  <Building2 className="w-5 h-5 text-white" />
-                                </div>
+                               
                                 <div>
                                   <h4 className="font-semibold text-gray-900 text-sm">
                                     {supplier.name}
@@ -567,7 +655,7 @@ export default function AssignSupplierModal({
                               <Badge className={`text-xs ${
                                 supplier.is_approved 
                                   ? 'bg-green-50 text-green-700 border-green-200'
-                                  : 'bg-yellow-50 text-yellow-700 border-yellow-200'
+                                  : 'bg-green-50 text-green-700 border-green-300'
                               }`}>
                                 <CheckCircle className="w-3 h-3 mr-1" />
                                 {supplier.is_approved ? 'Onaylı' : 'Beklemede'}
@@ -591,7 +679,7 @@ export default function AssignSupplierModal({
                                   onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
                                   disabled={assigningSupplier}
                                   size="sm"
-                                  className="h-8 px-3 text-xs bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50"
+                                  className="h-8 px-7 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
                                 >
                                   {assigningSupplier ? (
                                     <>
@@ -600,7 +688,7 @@ export default function AssignSupplierModal({
                                     </>
                                   ) : (
                                     <>
-                                      <Package className="w-3 h-3 mr-1" />
+                                      
                                       Ata
                                     </>
                                   )}
@@ -618,7 +706,7 @@ export default function AssignSupplierModal({
                     {filteredSuppliers.map((supplier, index) => (
                       <div 
                         key={supplier.id}
-                        className="p-4 hover:bg-gray-50 transition-colors duration-200"
+                        className="p-4 hover:bg-white/60 transition-all duration-200 bg-white/30 backdrop-blur-sm"
                       >
                         {/* Header */}
                         <div className="flex items-start justify-between mb-3">

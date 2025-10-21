@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Package, CheckCircle, X, Truck, Clock, Check, Edit, Trash2 } from 'lucide-react'
+import { Package, CheckCircle, X, Truck, Clock, Check, Edit, Trash2, RotateCcw } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
@@ -24,6 +24,7 @@ interface MaterialCardProps {
   canRemoveMaterial?: boolean  // Kaldırma yetkisi kontrolü
   canEditRequest?: boolean  // Talebi düzenleme yetkisi kontrolü
   onOrderDeliveryConfirmation?: (order: any, materialItem: any) => void  // Kademeli teslim alma fonksiyonu
+  onOrderReturn?: (order: any, materialItem: any) => void  // İade işlemi fonksiyonu
   hideTopDeliveryButtons?: boolean  // Sağ üstteki teslim alma butonlarını gizle
 }
 
@@ -41,6 +42,7 @@ export default function MaterialCard({
   canRemoveMaterial = false,
   canEditRequest = true,
   onOrderDeliveryConfirmation,
+  onOrderReturn,
   hideTopDeliveryButtons = false
 }: MaterialCardProps) {
   const [sendQuantities, setSendQuantities] = useState<{[key: string]: string}>({})
@@ -54,6 +56,11 @@ export default function MaterialCard({
     return request?.status === 'sipariş verildi' || 
            request?.status === 'teslim alındı' || 
            request?.status === 'kısmen teslim alındı'
+  }
+
+  // İade nedeniyle sipariş durumunda gönderim işlemleri devre dışı mı?
+  const isReturnReorderStatus = () => {
+    return request?.status === 'iade nedeniyle sipariş'
   }
 
   // Malzeme bazında teslimat kontrolleri
@@ -441,11 +448,7 @@ export default function MaterialCard({
               </>
             )}
 
-            {shouldShowTrackingSystem() && hideTopDeliveryButtons && (
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border border-blue-200">
-                📋 Malzeme Detayları
-              </Badge>
-            )}
+
           </div>
         </div>
       </div>
@@ -466,6 +469,9 @@ export default function MaterialCard({
               )
             }
 
+            // İade yeniden siparişi var mı kontrol et
+            const hasReturnReorder = itemOrders.some((order: any) => order.is_return_reorder)
+
             // Tedarikçiye göre grupla (kademeli teslim alma dahil)
             const supplierGroups = itemOrders.reduce((groups: any, order: any) => {
               const supplierId = order.supplier?.id || 'unknown'
@@ -480,13 +486,19 @@ export default function MaterialCard({
                   totalDelivered: 0,
                   remainingQuantity: 0,
                   deliveredCount: 0,
-                  totalCount: 0
+                  totalCount: 0,
+                  hasReturnReorder: false // İade yeniden siparişi var mı?
                 }
               }
               
               groups[supplierId].orders.push(order)
               groups[supplierId].totalQuantity += order.quantity || 0
               groups[supplierId].totalCount += 1
+              
+              // İade yeniden siparişi kontrolü
+              if (order.is_return_reorder) {
+                groups[supplierId].hasReturnReorder = true
+              }
               
               // Kademeli teslim alma miktarını hesapla
               const deliveredQuantity = order.delivered_quantity || 0
@@ -502,14 +514,21 @@ export default function MaterialCard({
             // Her tedarikçi için kalan miktarı hesapla
             Object.keys(supplierGroups).forEach(supplierId => {
               const group = supplierGroups[supplierId]
-              group.remainingQuantity = group.totalQuantity - group.totalDelivered
+              // İade edilen miktarı da hesaba kat
+              const totalReturned = group.orders.reduce((sum: number, order: any) => 
+                sum + (order.returned_quantity || 0), 0
+              )
+              group.totalReturned = totalReturned
+              group.remainingQuantity = group.totalQuantity - group.totalDelivered - totalReturned
             })
             
             const suppliers = Object.values(supplierGroups)
             
             return (
               <div className="space-y-3">
-                <h6 className="text-sm font-medium text-gray-700">Sipariş Bilgileri</h6>
+                <div className="flex items-center gap-2">
+                  <h6 className="text-sm font-medium text-gray-700">Sipariş Bilgileri</h6>
+                </div>
                 <div className={`grid gap-3 ${
                   suppliers.length === 1 
                     ? 'grid-cols-1' 
@@ -518,33 +537,136 @@ export default function MaterialCard({
                       : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'
                 }`}>
                   {suppliers.map((supplier: any, index: number) => (
-                    <div key={index} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="font-medium text-gray-900">{supplier.name}</div>
-                          <div className="text-sm text-gray-600 mt-1">
-                            <div className="grid grid-cols-3 gap-2 text-xs">
-                              <div>Sipariş: {supplier.totalQuantity.toFixed(2)} {item.unit}</div>
-                              <div className="text-green-600">Teslim: {supplier.totalDelivered.toFixed(2)} {item.unit}</div>
-                              <div className="text-blue-600">Kalan: {supplier.remainingQuantity.toFixed(2)} {item.unit}</div>
+                    <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-4 border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
+                            </svg>
+                          </div>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2">
+                              <h4 className="font-semibold text-gray-900">{supplier.name}</h4>
                             </div>
+                            <p className="text-sm text-gray-600">Tedarikçi</p>
                           </div>
                         </div>
                         <div className="ml-4 shrink-0">
-                          {supplier.remainingQuantity <= 0 ? (
-                            <Badge className="bg-green-100 text-green-700">
-                              Tamamı Teslim Alındı
-                            </Badge>
-                          ) : supplier.totalDelivered > 0 ? (
-                            <Badge className="bg-orange-100 text-orange-700">
-                              Kısmen Teslim Alındı
-                            </Badge>
-                          ) : (
-                            <Badge className="bg-blue-100 text-blue-700">
-                              Sipariş Verildi
-                            </Badge>
-                          )}
+                          {(() => {
+                            // Tedarikçinin tüm siparişlerinin statuslarını kontrol et
+                            const orderStatuses = supplier.orders.map((order: any) => {
+                              const returnedQty = order.returned_quantity || 0
+                              const deliveredQty = order.delivered_quantity || 0
+                              const orderQty = order.quantity || 0
+                              
+                              // Status hesaplama mantığı - önce miktarlara göre hesapla
+                              const totalProcessed = deliveredQty + returnedQty
+                              
+                              // Eğer sipariş tamamen iade edildiyse
+                              if (returnedQty >= orderQty && returnedQty > 0) {
+                                return 'iade edildi'
+                              }
+                              
+                              // Eğer sipariş tamamen teslim alındıysa
+                              if (deliveredQty >= orderQty && deliveredQty > 0) {
+                                return 'teslim alındı'
+                              }
+                              
+                              // Kısmi durumlar
+                              if (deliveredQty > 0 && returnedQty > 0) {
+                                // Hem teslim hem iade var
+                                if (totalProcessed >= orderQty) {
+                                  return 'teslim alındı' // Toplam işlem tamamlandı
+                                } else {
+                                  return 'kısmen teslim alındı'
+                                }
+                              } else if (deliveredQty > 0) {
+                                return 'kısmen teslim alındı'
+                              } else if (returnedQty > 0) {
+                                return 'iade edildi'
+                              }
+                              
+                              // Hiçbir işlem yapılmamışsa order.status'u kontrol et
+                              if (order.status) {
+                                return order.status
+                              }
+                              
+                              return 'pending'
+                            })
+                            
+                            // Öncelik sırası: iade edildi > kısmen teslim alındı > teslim alındı > pending
+                            if (orderStatuses.some(s => s === 'iade edildi')) {
+                              return (
+                                <Badge className="bg-red-100 text-red-700">
+                                  İade Edildi
+                                </Badge>
+                              )
+                            }
+                            
+                            if (orderStatuses.every(s => s === 'teslim alındı')) {
+                              return (
+                                <Badge className="bg-green-100 text-green-700">
+                                  Tamamı Teslim Alındı
+                                </Badge>
+                              )
+                            }
+                            
+                            if (orderStatuses.some(s => s === 'kısmen teslim alındı')) {
+                              return (
+                                <Badge className="bg-orange-100 text-orange-700">
+                                  Kısmen Teslim Alındı
+                                </Badge>
+                              )
+                            }
+                            
+                            return (
+                              <Badge className="bg-blue-100 text-blue-700">
+                                Sipariş Verildi
+                              </Badge>
+                            )
+                          })()}
                         </div>
+                      </div>
+
+                      {/* Miktar Bilgileri - ReturnedMaterialsCard tarzında */}
+                      <div className="grid grid-cols-2 gap-3 mb-3">
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <div className="text-center">
+                            <span className="text-xs font-medium text-gray-600 block mb-1">Sipariş Miktarı:</span>
+                            <span className="text-sm font-bold text-blue-600">
+                              {supplier.totalQuantity.toFixed(2)} {item.unit}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <div className="text-center">
+                            <span className="text-xs font-medium text-gray-600 block mb-1">Teslim Alınan:</span>
+                            <span className="text-sm font-bold text-green-600">
+                              {supplier.totalDelivered.toFixed(2)} {item.unit}
+                            </span>
+                          </div>
+                        </div>
+                        {supplier.totalReturned > 0 && (
+                          <>
+                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                              <div className="text-center">
+                                <span className="text-xs font-medium text-gray-600 block mb-1">İade Edilen:</span>
+                                <span className="text-sm font-bold text-orange-600">
+                                  {supplier.totalReturned.toFixed(2)} {item.unit}
+                                </span>
+                              </div>
+                            </div>
+                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                              <div className="text-center">
+                                <span className="text-xs font-medium text-gray-600 block mb-1">Kalan:</span>
+                                <span className="text-sm font-bold text-blue-600">
+                                  {supplier.remainingQuantity.toFixed(2)} {item.unit}
+                                </span>
+                              </div>
+                            </div>
+                          </>
+                        )}
                       </div>
                       
                       {/* İletişim Bilgileri */}
@@ -570,45 +692,96 @@ export default function MaterialCard({
                           <div className="space-y-2">
                             {supplier.orders.map((order: any) => {
                               const hasDeliveries = order.total_delivered > 0
-                              const isCompleted = order.remaining_quantity <= 0
-                              const canDeliver = !isCompleted && order.quantity > 0
+                              const returnedQuantity = order.returned_quantity || 0
+                              const deliveredQuantity = order.total_delivered || 0
+                              // Kalan miktar = Sipariş - Teslim alınan - İade edilen
+                              const remainingQuantity = (order.quantity || 0) - deliveredQuantity - returnedQuantity
+                              const isCompleted = remainingQuantity <= 0
+                              const canDeliver = remainingQuantity > 0
+                              // İade edilebilir miktar = Kalan miktar (henüz teslim alınmamış)
+                              const canReturn = remainingQuantity > 0
                               const orderStatus = order.status || 'pending'
                               
                               return (
-                                <div key={order.id} className="bg-white rounded-lg p-2 border border-gray-200">
-                                  <div className="flex items-center justify-between">
-                                    <div className="flex-1">
-                                      <div className="text-xs text-gray-600">
-                                        Sipariş: {order.quantity} {item.unit}
+                                <div key={order.id} className={`bg-white rounded-lg p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
+                                  <div className="flex items-start justify-between">
+                                    <div className="flex-1 space-y-2">
+                                      {/* Sipariş Başlığı ve Badge */}
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-sm font-medium text-gray-900">
+                                          {order.quantity} {item.unit}
+                                        </span>
+                                        <span className="text-xs text-gray-500">
+                                          {order.is_return_reorder ? 'yeniden sipariş' : 'sipariş'}
+                                        </span>
+                                       
                                       </div>
-                                      {hasDeliveries && (
-                                        <div className="text-xs text-green-600">
-                                          Teslim: {order.total_delivered || 0} {item.unit}
+
+                                      {/* Miktar Bilgileri */}
+                                      <div className="space-y-1 text-xs">
+                                        {hasDeliveries && (
+                                          <div className="flex gap-1">
+                                            <span className="text-gray-500">Teslim:</span>
+                                            <span className="font-medium text-green-600">{deliveredQuantity} {item.unit}</span>
+                                          </div>
+                                        )}
+                                        {returnedQuantity > 0 && (
+                                          <div className="flex gap-1">
+                                            <span className="text-gray-500">İade:</span>
+                                            <span className="font-medium text-orange-600">{returnedQuantity} {item.unit}</span>
+                                          </div>
+                                        )}
+                                        <div className="flex gap-1">
+                                          <span className="text-gray-500">Kalan:</span>
+                                          <span className="font-medium text-blue-600">{remainingQuantity.toFixed(2)} {item.unit}</span>
+                                        </div>
+                                      </div>
+
+                                      {/* Yeniden Sipariş Badge'i */}
+                                      {order.is_return_reorder && (
+                                        <div className="mt-2">
+                                          <Badge className="bg-purple-100 text-purple-700 text-xs px-2 py-1">
+                                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                            </svg>
+                                            İade nedeniyle yeniden sipariş
+                                          </Badge>
                                         </div>
                                       )}
-                                      <div className="text-xs text-gray-500 mt-1">
-                                        Durum: {
-                                          orderStatus === 'delivered' ? 'Teslim Alındı' :
-                                          orderStatus === 'partially_delivered' ? 'Kısmen Teslim Alındı' :
-                                          orderStatus === 'pending' ? 'Bekliyor' :
-                                          orderStatus
-                                        }
-                                      </div>
                                     </div>
-                                    {canDeliver && (
-                                      <Button
-                                        size="sm"
-                                        onClick={() => onOrderDeliveryConfirmation(order, item)}
-                                        className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white text-xs"
-                                      >
-                                        Teslim Al
-                                      </Button>
-                                    )}
-                                    {isCompleted && (
-                                      <div className="text-xs text-green-600 font-medium">
-                                        ✓ Tamamlandı
-                                      </div>
-                                    )}
+                                    <div className="flex gap-2 ml-3">
+                                      {canDeliver && (
+                                        <Button
+                                          size="sm"
+                                          onClick={() => onOrderDeliveryConfirmation(order, item)}
+                                          className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md shadow-sm"
+                                        >
+                                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                          </svg>
+                                          Teslim Al
+                                        </Button>
+                                      )}
+                                      {onOrderReturn && canReturn && (
+                                        <Button
+                                          size="sm"
+                                          onClick={() => onOrderReturn(order, item)}
+                                          className="h-8 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-md shadow-sm"
+                                          title="Malzeme İadesi - Kalan miktardan iade edilebilir"
+                                        >
+                                          <RotateCcw className="w-3 h-3 mr-1" />
+                                          İade
+                                        </Button>
+                                      )}
+                                      {isCompleted && (
+                                        <div className="text-xs text-green-600 font-medium flex items-center ml-2">
+                                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                          </svg>
+                                          Tamamlandı
+                                        </div>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               )
@@ -933,7 +1106,7 @@ export default function MaterialCard({
       {/* Gönderim İşlemleri */}
       {!shouldShowTrackingSystem() && (
         <div className="p-4">
-          {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) ? (
+          {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) && !isReturnReorderStatus() ? (
             <div className="space-y-4">
               <h6 className="text-sm font-medium text-gray-700">Gönderim İşlemleri</h6>
               <div className="flex flex-col sm:flex-row gap-3">
@@ -1011,6 +1184,20 @@ export default function MaterialCard({
                     )}
                     {processingDepotStatus[item.id] ? 'İşleniyor...' : 'Depoda Yok'}
                   </Button>
+                </div>
+              </div>
+            </div>
+          ) : isReturnReorderStatus() ? (
+            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
+                  <RotateCcw className="h-4 w-4 text-purple-600" />
+                </div>
+                <div>
+                  <h6 className="text-sm font-medium text-purple-800">İade Nedeniyle Yeniden Sipariş</h6>
+                  <p className="text-xs text-purple-600 mt-1">
+                    Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır.
+                  </p>
                 </div>
               </div>
             </div>

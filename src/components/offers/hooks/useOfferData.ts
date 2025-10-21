@@ -290,10 +290,15 @@ export function useOfferData(requestId: string) {
           created_at,
           material_item_id,
           quantity,
+          returned_quantity,
+          return_notes,
+          reorder_requested,
           is_delivered,
           delivery_confirmed_at,
           delivery_confirmed_by,
           supplier_id,
+          is_return_reorder,
+          status,
           supplier:suppliers(
             id,
             name
@@ -330,7 +335,13 @@ export function useOfferData(requestId: string) {
             created_at: order.created_at,
             material_item_id: order.material_item_id,
             quantity: order.quantity || 0,
+            returned_quantity: order.returned_quantity || 0, // İade edilen miktar
+            return_notes: order.return_notes || null, // İade nedeni
+            reorder_requested: order.reorder_requested, // İade sırasında yeniden sipariş istenip istenmediği
+            is_return_reorder: order.is_return_reorder || false, // İade yeniden siparişi mi?
             delivered_quantity: totalDelivered, // Kademeli teslim alma toplamı
+            total_delivered: totalDelivered, // Alias for compatibility
+            remaining_quantity: Math.max(0, (order.quantity || 0) - totalDelivered - (order.returned_quantity || 0)), // Kalan miktar
             is_delivered: order.is_delivered || false,
             delivery_confirmed_at: order.delivery_confirmed_at,
             delivery_confirmed_by: order.delivery_confirmed_by,
@@ -421,7 +432,7 @@ export function useOfferData(requestId: string) {
     try {
       console.log('🔍 Sipariş detayları alınıyor...', requestId)
 
-      const { data: order, error } = await supabase
+      const { data: orders, error } = await supabase
         .from('orders')
         .select(`
           *,
@@ -434,16 +445,18 @@ export function useOfferData(requestId: string) {
           )
         `)
         .eq('purchase_request_id', requestId)
-        .maybeSingle()
+        .order('created_at', { ascending: false })
+        .limit(1)
 
-      console.log('📦 Sorgu sonucu:', { order, error })
+      console.log('📦 Sorgu sonucu:', { orders, error })
 
       if (error) {
         console.error('❌ Sipariş detayları alınamadı:', error)
         return
       }
 
-      if (order) {
+      if (orders && orders.length > 0) {
+        const order = orders[0]
         console.log('✅ Sipariş bulundu:', {
           id: order.id,
           supplier: order.supplier,

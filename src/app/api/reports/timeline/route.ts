@@ -103,6 +103,9 @@ export async function GET(request: NextRequest) {
         amount,
         currency,
         quantity,
+        returned_quantity,
+        return_notes,
+        is_return_reorder,
         delivery_date,
         created_at,
         delivered_at,
@@ -358,17 +361,36 @@ export async function GET(request: NextRequest) {
         const supplierName = supplierInfo?.name || 'Tedarikçi'
         const itemName = itemInfo?.item_name || 'Malzeme'
         
+        // Sipariş detaylarını oluştur
+        let orderDetails = `${supplierName} tedarikçisine ${itemName} için ${order.quantity} ${itemInfo?.unit || 'adet'} sipariş verildi (${order.amount} ${order.currency})`
+        
+        // İade bilgilerini ekle
+        if (order.returned_quantity && order.returned_quantity > 0) {
+          orderDetails += ` - İade: ${order.returned_quantity} ${itemInfo?.unit || 'adet'}`
+          if (order.return_notes) {
+            orderDetails += ` (${order.return_notes})`
+          }
+        }
+        
+        // Yeniden sipariş kontrolü
+        if (order.is_return_reorder) {
+          orderDetails += ' - İade nedeniyle yeniden sipariş'
+        }
+
         timeline.push({
           date: order.created_at,
-          action: 'Sipariş Oluşturuldu',
+          action: order.is_return_reorder ? 'Yeniden Sipariş Oluşturuldu' : 'Sipariş Oluşturuldu',
           actor: userName,
-          details: `${supplierName} tedarikçisine ${itemName} için ${order.quantity} ${itemInfo?.unit || 'adet'} sipariş verildi (${order.amount} ${order.currency})`,
+          details: orderDetails,
           type: 'order',
           order_data: {
             supplier_name: supplierName,
             amount: order.amount,
             currency: order.currency,
             quantity: order.quantity,
+            returned_quantity: order.returned_quantity || 0,
+            return_notes: order.return_notes,
+            is_return_reorder: order.is_return_reorder || false,
             unit: itemInfo?.unit,
             delivery_date: order.delivery_date,
             item_name: itemName,
