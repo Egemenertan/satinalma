@@ -33,7 +33,8 @@ import {
   X,
   CalendarIcon,
   XCircle,
-  Check
+  Check,
+  Trash2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getCurrencySymbol } from '@/components/offers/types'
@@ -486,8 +487,8 @@ export default function OrdersPage() {
   }
 
   const handleEditInvoiceAmountChange = (value: string) => {
-    const numericValue = parseNumberFromDots(value)
-    setEditInvoiceAmount(numericValue)
+    // Kullanıcının girdiği değeri olduğu gibi sakla (formatlanmış haliyle)
+    setEditInvoiceAmount(value)
   }
 
   const handleEditFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -536,7 +537,7 @@ export default function OrdersPage() {
       const { data, error } = await supabase
         .from('invoices')
         .update({
-          amount: parseFloat(editInvoiceAmount),
+          amount: parseFloat(parseNumberFromDots(editInvoiceAmount)),
           currency: editInvoiceCurrency,
           invoice_photos: editInvoicePhotos,
           updated_at: new Date().toISOString()
@@ -562,7 +563,7 @@ export default function OrdersPage() {
         inv.id === editingInvoiceId 
           ? { 
               ...inv, 
-              amount: parseFloat(editInvoiceAmount),
+              amount: parseFloat(parseNumberFromDots(editInvoiceAmount)),
               currency: editInvoiceCurrency,
               invoice_photos: editInvoicePhotos 
             }
@@ -573,6 +574,53 @@ export default function OrdersPage() {
     } catch (error: any) {
       console.error('❌ Fatura güncelleme hatası:', error)
       showToast('Fatura güncelleme hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
+    } finally {
+      setIsUpdatingInvoice(false)
+    }
+  }
+
+  // Delete invoice function
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    // Onay al
+    if (!confirm('Bu faturayı silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.')) {
+      return
+    }
+
+    setIsUpdatingInvoice(true)
+    
+    try {
+      const supabase = createClient()
+      
+      console.log('🗑️ Fatura siliniyor:', invoiceId)
+      
+      const { data, error, count } = await supabase
+        .from('invoices')
+        .delete()
+        .eq('id', invoiceId)
+        .select()
+
+      console.log('📊 Delete Response:', { data, error, count })
+
+      if (error) {
+        console.error('❌ Fatura silme hatası:', error)
+        throw new Error(error.message || 'Fatura silinemedi')
+      }
+
+      console.log('✅ Fatura başarıyla silindi')
+      showToast('Fatura başarıyla silindi', 'success')
+      
+      // Modal'ı kapat
+      setIsInvoiceViewerOpen(false)
+      
+      // Edit state'i temizle
+      handleCancelEditInvoice()
+      
+      // Verileri yenile
+      await mutate()
+      
+    } catch (error: any) {
+      console.error('❌ Fatura silme hatası:', error)
+      showToast('Fatura silme hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
     } finally {
       setIsUpdatingInvoice(false)
     }
@@ -652,8 +700,8 @@ export default function OrdersPage() {
       const invoiceData = orderIds.map(orderId => ({
         order_id: orderId,
         amount: selectedOrderId 
-          ? parseFloat(invoiceAmount) 
-          : parseFloat(orderAmounts[orderId]),
+          ? parseFloat(parseNumberFromDots(invoiceAmount)) 
+          : parseFloat(parseNumberFromDots(orderAmounts[orderId])),
         currency: selectedOrderId 
           ? invoiceCurrency 
           : (orderCurrencies[orderId] || 'TRY'),
@@ -695,31 +743,63 @@ export default function OrdersPage() {
     setInvoicePhotos(prev => prev.filter((_, i) => i !== index))
   }
 
-  // Binlik ayırıcı fonksiyonları
+  // Binlik ayırıcı ve kuruş desteği fonksiyonları
   const formatNumberWithDots = (value: string) => {
-    // Sadece rakamları al
-    const numericValue = value.replace(/[^\d]/g, '')
+    // Boş değer kontrolü
+    if (!value) return ''
+    
+    // Virgül sayısını kontrol et (birden fazla virgül olmasın)
+    const commaCount = (value.match(/,/g) || []).length
+    if (commaCount > 1) {
+      // Fazla virgülleri kaldır, sadece ilkini bırak
+      const firstCommaIndex = value.indexOf(',')
+      value = value.slice(0, firstCommaIndex + 1) + value.slice(firstCommaIndex + 1).replace(/,/g, '')
+    }
+    
+    // Virgülden sonraki kısmı ayır (ondalık kısım)
+    const parts = value.split(',')
+    const integerPart = parts[0] || ''
+    const decimalPart = parts[1]
+    
+    // Sadece rakamları al (tam sayı kısmı için)
+    const numericValue = integerPart.replace(/[^\d]/g, '')
+    
+    // Eğer tam sayı kısmı boşsa ve ondalık kısım varsa
+    if (!numericValue && decimalPart !== undefined) {
+      return '0,' + decimalPart.replace(/[^\d]/g, '').slice(0, 2)
+    }
+    
+    // Eğer hiç rakam yoksa boş döndür
     if (!numericValue) return ''
     
     // Binlik ayırıcı ekle
-    return numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+    const formattedInteger = numericValue.replace(/\B(?=(\d{3})+(?!\d))/g, '.')
+    
+    // Ondalık kısım varsa ekle
+    if (decimalPart !== undefined) {
+      // Ondalık kısmı maksimum 2 haneli yap ve sadece rakam olmasını sağla
+      const cleanDecimal = decimalPart.replace(/[^\d]/g, '').slice(0, 2)
+      return formattedInteger + ',' + cleanDecimal
+    }
+    
+    return formattedInteger
   }
 
   const parseNumberFromDots = (value: string) => {
-    // Noktaları kaldır ve sadece rakamları döndür
-    return value.replace(/\./g, '')
+    // Noktaları kaldır (binlik ayırıcı) ve virgülü noktaya çevir (ondalık ayırıcı)
+    return value.replace(/\./g, '').replace(',', '.')
   }
 
   const handleInvoiceAmountChange = (value: string) => {
-    const numericValue = parseNumberFromDots(value)
-    setInvoiceAmount(numericValue)
+    // Kullanıcının girdiği değeri olduğu gibi sakla (formatlanmış haliyle)
+    setInvoiceAmount(value)
   }
 
   const handleOrderAmountChange = (orderId: string, value: string) => {
-    const numericValue = parseNumberFromDots(value)
+    // Kullanıcının girdiği değeri olduğu gibi sakla (formatlanmış haliyle)
     setOrderAmounts(prev => ({
       ...prev,
-      [orderId]: numericValue
+      [orderId]: value
     }))
   }
 
@@ -1851,9 +1931,12 @@ export default function OrdersPage() {
                       <div className="flex items-center gap-2">
                         <Input
                           type="text"
-                          placeholder="0"
-                          value={formatNumberWithDots(editInvoiceAmount)}
-                          onChange={(e) => handleEditInvoiceAmountChange(e.target.value)}
+                          placeholder="0,00"
+                          value={editInvoiceAmount}
+                          onChange={(e) => {
+                            const formatted = formatNumberWithDots(e.target.value)
+                            handleEditInvoiceAmountChange(formatted)
+                          }}
                           className="w-32 text-right"
                         />
                         <Select value={editInvoiceCurrency} onValueChange={setEditInvoiceCurrency}>
@@ -1879,7 +1962,7 @@ export default function OrdersPage() {
                       </div>
                     )}
                     
-                    {/* Edit/Save/Cancel Buttons */}
+                    {/* Edit/Save/Cancel/Delete Buttons */}
                     <div className="flex items-center gap-2">
                       {editingInvoiceId === invoice.id ? (
                         <>
@@ -1899,15 +1982,34 @@ export default function OrdersPage() {
                           >
                             İptal
                           </Button>
+                          <Button
+                            onClick={() => handleDeleteInvoice(invoice.id)}
+                            size="sm"
+                            disabled={isUpdatingInvoice}
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Sil
+                          </Button>
                         </>
                       ) : (
-                        <Button
-                          onClick={() => handleStartEditInvoice(invoice)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          Düzenle
-                        </Button>
+                        <>
+                          <Button
+                            onClick={() => handleStartEditInvoice(invoice)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            Düzenle
+                          </Button>
+                          <Button
+                            onClick={() => handleDeleteInvoice(invoice.id)}
+                            size="sm"
+                            className="bg-red-600 hover:bg-red-700 text-white"
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Sil
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -2034,9 +2136,12 @@ export default function OrdersPage() {
                 <Input
                   id="amount"
                   type="text"
-                  placeholder="0"
-                  value={formatNumberWithDots(invoiceAmount)}
-                  onChange={(e) => handleInvoiceAmountChange(e.target.value)}
+                  placeholder="0,00"
+                  value={invoiceAmount}
+                  onChange={(e) => {
+                    const formatted = formatNumberWithDots(e.target.value)
+                    handleInvoiceAmountChange(formatted)
+                  }}
                   className="flex-1"
                 />
                  <Select value={invoiceCurrency} onValueChange={setInvoiceCurrency}>
@@ -2081,9 +2186,12 @@ export default function OrdersPage() {
                          <Label className="text-xs text-gray-600 mb-1 block">Fatura Tutarı</Label>
                          <Input
                            type="text"
-                           placeholder="0"
-                           value={formatNumberWithDots(orderAmounts[order.id] || '')}
-                           onChange={(e) => handleOrderAmountChange(order.id, e.target.value)}
+                           placeholder="0,00"
+                           value={orderAmounts[order.id] || ''}
+                           onChange={(e) => {
+                             const formatted = formatNumberWithDots(e.target.value)
+                             handleOrderAmountChange(order.id, formatted)
+                           }}
                            className="text-sm"
                          />
                        </div>
