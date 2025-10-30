@@ -354,25 +354,26 @@ export default function Sidebar({
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div 
-          className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 lg:hidden"
+          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
           onClick={() => setIsMobileOpen(false)}
         />
       )}
 
       {/* Sidebar */}
       <div className={cn(
-        "fixed top-0 bottom-0 z-50 flex flex-col transition-all duration-300",
-        "bg-white",
-        // Desktop
-        "hidden lg:flex lg:left-0 lg:border-r border-gray-200",
-        isCollapsed ? "w-16" : "w-64",
-        // Mobile - sağ kenardan aç
-        isMobileOpen ? "flex w-64 right-0 border-l" : "hidden lg:flex",
+        "fixed z-50 flex flex-col transition-all duration-500 ease-out",
+        "bg-gradient-to-br from-white to-gray-50/50 shadow-2xl backdrop-blur-xl",
+        // Desktop - Ada tasarımı (sol tarafta)
+        "hidden lg:flex",
+        "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
+        isCollapsed ? "lg:w-16" : "lg:w-64",
+        // Mobile - Ada tasarımı (sağ tarafta)
+        isMobileOpen ? "flex top-3 bottom-3 left-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
         className
       )}>
         {/* Header with Logo */}
         <div className={cn(
-          "flex items-center border-b border-gray-100",
+          "flex items-center border-b border-gray-100/50",
           // Mobile: sadece kapatma butonu sağda
           isMobileOpen ? "justify-end px-6 py-5" : 
           // Desktop: logo ve toggle buton
@@ -394,7 +395,7 @@ export default function Sidebar({
             variant="ghost"
             size="sm"
             onClick={isMobileOpen ? () => setIsMobileOpen(false) : handleToggleCollapse}
-            className="h-8 w-8 p-0 rounded-lg hover:bg-gray-100 text-gray-600 transition-all duration-200"
+            className="h-8 w-8 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
           >
             {isMobileOpen ? (
               <X className="h-4 w-4" />

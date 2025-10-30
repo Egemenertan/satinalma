@@ -539,20 +539,20 @@ export default function MaterialCard({
                   {suppliers.map((supplier: any, index: number) => (
                     <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-4 border">
                       <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-3 flex-1">
                           <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
                             <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
                             </svg>
                           </div>
-                          <div className="flex-1">
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-gray-900">{supplier.name}</h4>
+                              <h4 className="font-semibold text-gray-900 truncate">{supplier.name}</h4>
                             </div>
                             <p className="text-sm text-gray-600">Tedarikçi</p>
                           </div>
                         </div>
-                        <div className="ml-4 shrink-0">
+                        <div className="ml-4 shrink-0 flex items-center gap-2">
                           {(() => {
                             // Tedarikçinin tüm siparişlerinin statuslarını kontrol et
                             const orderStatuses = supplier.orders.map((order: any) => {

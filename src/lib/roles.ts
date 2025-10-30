@@ -17,7 +17,7 @@ export const roleDescriptions: Record<UserRole, string> = {
   manager: 'Yönetici yetkileri ve onay süreçleri',
   admin: 'Sistem yönetimi ve kullanıcı kontrolü',
   site_personnel: 'Sadece talep görüntüleme yetkisi',
-  site_manager: 'Dashboard ve talep yönetimi yetkisi',
+  site_manager: 'Talep yönetimi ve onay yetkisi',
   warehouse_manager: 'Dashboard ve talep yönetimi yetkisi',
   purchasing_officer: 'Dashboard ve talep yönetimi yetkisi',
   santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi'
@@ -63,8 +63,16 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
     return true
   }
   
-  // Site yöneticisi ve depo yöneticisi sadece dashboard ve requests sayfalarına erişebilir
-  if (userRole === 'site_manager' || userRole === 'warehouse_manager') {
+  // Site yöneticisi sadece requests sayfasına erişebilir
+  if (userRole === 'site_manager') {
+    return page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/')
+  }
+  
+  // Depo yöneticisi dashboard ve requests sayfalarına erişebilir
+  if (userRole === 'warehouse_manager') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
            page === 'requests' || 
@@ -121,7 +129,11 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
 
 // Sidebar menü öğelerini filtreleme
 export const getAccessibleMenuItems = (userRole: UserRole) => {
-  if (userRole === 'site_manager' || userRole === 'warehouse_manager') {
+  if (userRole === 'site_manager') {
+    return ['requests'] // Sadece requests menüsü
+  }
+  
+  if (userRole === 'warehouse_manager') {
     return ['dashboard', 'requests', 'reports'] // Dashboard, requests ve reports
   }
   

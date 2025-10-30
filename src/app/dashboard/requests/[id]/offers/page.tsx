@@ -123,7 +123,7 @@ export default function OffersPage() {
           <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="h-10 w-10 text-red-500" />
           </div>
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Talep Bulunamadı</h3>
+          <h3 className="text-xl font-semibold text-white mb-2">Talep Bulunamadı</h3>
           <p className="text-gray-600 mb-6">Aradığınız talep mevcut değil veya erişim izniniz yok.</p>
           <Button 
             onClick={() => router.push('/dashboard/requests')}

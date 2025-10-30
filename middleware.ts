@@ -2,6 +2,20 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname
+
+  // Static dosyalar, public assets ve auth sayfalarını kontrol etme
+  const isPublicRoute = 
+    pathname.startsWith('/auth/') || 
+    pathname === '/' ||
+    pathname.startsWith('/_next/') ||
+    pathname.startsWith('/api/public/') ||
+    pathname.includes('.') // .css, .js, .png, .ico etc.
+    
+  if (isPublicRoute) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
     request: {
       headers: request.headers,
@@ -17,16 +31,6 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
-          request.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
           response.cookies.set({
             name,
             value,
@@ -34,16 +38,6 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove(name: string, options: any) {
-          request.cookies.set({
-            name,
-            value: '',
-            ...options,
-          })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
-          })
           response.cookies.set({
             name,
             value: '',
@@ -54,7 +48,7 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Refresh session if expired - required for Server Components
+  // Session kontrolü - sadece user bilgisini al, token refresh otomatik
   const { data: { user }, error } = await supabase.auth.getUser()
 
   // Protected routes
@@ -70,10 +64,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // If user is logged in and trying to access login page, redirect to dashboard
-  if (user && request.nextUrl.pathname === '/auth/login') {
-    return NextResponse.redirect(new URL('/dashboard', request.url))
-  }
 
   // Role-based access control
   if (user && isProtectedRoute) {
@@ -91,31 +81,33 @@ export async function middleware(request: NextRequest) {
       return NextResponse.redirect(new URL('/dashboard', request.url))
     }
 
-    // Site personnel can only access requests pages
-    if (userRole === 'site_personnel') {
+    // Site manager can only access requests pages
+    if (userRole === 'site_manager') {
       const currentPath = request.nextUrl.pathname
-      console.log(`🔒 Site personnel accessing: ${currentPath}`)
       
       // Allow all requests-related paths
       if (!currentPath.startsWith('/dashboard/requests')) {
-        console.log(`❌ Redirecting site personnel from ${currentPath} to /dashboard/requests`)
         return NextResponse.redirect(new URL('/dashboard/requests', request.url))
-      } else {
-        console.log(`✅ Site personnel allowed to access: ${currentPath}`)
+      }
+    }
+
+    // Site personnel can only access requests pages
+    if (userRole === 'site_personnel') {
+      const currentPath = request.nextUrl.pathname
+      
+      // Allow all requests-related paths
+      if (!currentPath.startsWith('/dashboard/requests')) {
+        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
       }
     }
 
     // Santiye depo can only access requests pages (same as site personnel)
     if (userRole === 'santiye_depo') {
       const currentPath = request.nextUrl.pathname
-      console.log(`🔒 Santiye depo accessing: ${currentPath}`)
       
       // Allow all requests-related paths
       if (!currentPath.startsWith('/dashboard/requests')) {
-        console.log(`❌ Redirecting santiye depo from ${currentPath} to /dashboard/requests`)
         return NextResponse.redirect(new URL('/dashboard/requests', request.url))
-      } else {
-        console.log(`✅ Santiye depo allowed to access: ${currentPath}`)
       }
     }
 

@@ -139,18 +139,15 @@ const fetchPurchaseRequests = async (key: string) => {
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
   
-  // Purchasing officer satın almaya gönderilmiş, sipariş verilmiş, teslimat sürecindeki talepleri görebilir
+  // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
   if (profile?.role === 'purchasing_officer') {
     countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+  } else {
+    // Diğer tüm roller (site_manager, site_personnel, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    if (profile?.site_id) {
+      countQuery = countQuery.eq('site_id', profile.site_id)
+    }
   }
-  
-  // Site Personnel sadece kendi oluşturduğu talepleri görebilir
-  if (profile?.role === 'site_personnel') {
-    countQuery = countQuery.eq('requested_by', user.id)
-  }
-  
-  // Santiye depo tüm talepleri görebilir
-  // Bu role için özel filtreleme yok
   
   // Önce toplam sayıyı al
   const { count, error: countError } = await countQuery
@@ -185,18 +182,15 @@ const fetchPurchaseRequests = async (key: string) => {
     .range(from, to)
     .order('created_at', { ascending: false })
   
-  // Purchasing officer satın almaya gönderilmiş, sipariş verilmiş, teslimat sürecindeki talepleri görebilir
+  // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
   if (profile?.role === 'purchasing_officer') {
     requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+  } else {
+    // Diğer tüm roller (site_manager, site_personnel, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    if (profile?.site_id) {
+      requestsQuery = requestsQuery.eq('site_id', profile.site_id)
+    }
   }
-  
-  // Site Personnel sadece kendi oluşturduğu talepleri görebilir
-  if (profile?.role === 'site_personnel') {
-    requestsQuery = requestsQuery.eq('requested_by', user.id)
-  }
-  
-  // Santiye depo tüm talepleri görebilir  
-  // Bu role için özel filtreleme yok
   
   const { data: requests, error } = await requestsQuery
   
@@ -279,13 +273,6 @@ const fetchPurchaseRequests = async (key: string) => {
       updated_at: request.created_at
       // status zaten database'den doğru geliyor, değiştirmeye gerek yok
     }
-    
-    // Debug log - status'u kontrol et
-    console.log('📊 PurchaseRequestsTable fetchPurchaseRequests:', { 
-      requestId: request.id, 
-      status: request.status,
-      formattedStatus: formattedRequest.status
-    })
     
     return formattedRequest
   })) as PurchaseRequest[]
@@ -479,9 +466,6 @@ export default function PurchaseRequestsTable() {
 
 
   const getStatusBadge = (status: string, notifications?: string[]) => {
-    // Debug log - status'u kontrol et
-    console.log('🔍 PurchaseRequestsTable getStatusBadge:', { status, userRole })
-    
     // Purchasing officer için özel görünüm - satın almaya gönderilmiş talepler "Beklemede" olarak görünür
     if (userRole === 'purchasing_officer' && 
         (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi')) {
@@ -903,14 +887,14 @@ export default function PurchaseRequestsTable() {
         {/* Tablo */}
         <div className="space-y-3">
           {/* Header - Desktop Only */}
-          <div className="hidden md:grid gap-4 px-4 py-3 bg-white rounded-2xl border border-gray-200" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr auto'}}>
+          <div className="hidden md:grid gap-4 px-4 py-3 bg-white rounded-2xl border border-gray-200" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Durum</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Başlık</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Şantiye</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep Eden</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Oluşturma Tarihi</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep No</div>
-            <div className="w-10"></div> {/* Kebab buton için dar alan */}
+            <div className="text-xs font-medium text-black uppercase tracking-wider text-right">İşlemler</div>
           </div>
 
           {/* Satırlar */}
@@ -958,7 +942,7 @@ export default function PurchaseRequestsTable() {
                   onClick={() => handleRequestClick(request)}
                 >
                   {/* Desktop Layout */}
-                  <div className="hidden md:grid gap-4 items-center" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr auto'}}>
+                  <div className="hidden md:grid gap-4 items-center" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
                     {/* Durum */}
                     <div>
                       {getStatusBadge(request.status, request.notifications)}
@@ -1047,8 +1031,32 @@ export default function PurchaseRequestsTable() {
                       </div>
                     </div>
                     
-                    {/* Kebab Menu */}
-                    <div className="relative flex justify-center">
+                    {/* Actions - Site Manager için özel buton + Kebab Menu */}
+                    <div className="relative flex justify-center items-center gap-2">
+                      {/* Site Manager için Satın Almaya Gönder butonu */}
+                      {userRole === 'site_manager' && 
+                       (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') && (
+                        <Button
+                          onClick={(e) => handleSiteManagerApproval(request.id, e)}
+                          disabled={approving === request.id}
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap"
+                        >
+                          {approving === request.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1.5"></div>
+                              Gönderiliyor...
+                            </>
+                          ) : (
+                            <>
+                              <Check className="h-3 w-3 mr-1.5" />
+                              Satın Almaya Gönder
+                            </>
+                          )}
+                        </Button>
+                      )}
+                      
+                      {/* Kebab Menu */}
                       <Button
                         variant="ghost"
                         className="h-8 w-8 p-0 hover:bg-gray-100 relative z-10"
@@ -1140,6 +1148,31 @@ export default function PurchaseRequestsTable() {
                         </div>
                       </div>
                     </div>
+                    
+                    {/* Site Manager için Satın Almaya Gönder butonu - Mobile */}
+                    {userRole === 'site_manager' && 
+                     (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') && (
+                      <div className="pt-2">
+                        <Button
+                          onClick={(e) => handleSiteManagerApproval(request.id, e)}
+                          disabled={approving === request.id}
+                          size="sm"
+                          className="w-full bg-green-600 hover:bg-green-700 text-white text-sm px-4 py-5 rounded-xl"
+                        >
+                          {approving === request.id ? (
+                            <>
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                              Gönderiliyor...
+                            </>
+                          ) : (
+                            <>
+                              <Check className="h-4 w-4 mr-2" />
+                              Satın Almaya Gönder
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    )}
 
                     {/* Info Grid */}
                     <div className="grid grid-cols-2 gap-3 text-sm">

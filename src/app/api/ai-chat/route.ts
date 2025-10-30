@@ -126,14 +126,14 @@ async function fetchDashboardData(supabase: any): Promise<DashboardData> {
       supabase.from('orders').select(`
         *,
         suppliers(id, name, contact_person, email, phone),
-        purchase_requests(id, request_number, title, site_id, total_amount)
+        purchase_requests!orders_purchase_request_id_fkey(id, request_number, title, site_id, total_amount)
       `),
       
       // Offers - tedarikçi bilgileriyle
       supabase.from('offers').select(`
         *,
         suppliers(id, name, contact_person, email),
-        purchase_requests(id, request_number, title, site_id),
+        purchase_requests!offers_request_id_fkey(id, request_number, title, site_id),
         sites(id, name)
       `),
       

@@ -69,7 +69,7 @@ export default function ReportsPage() {
           site_name, 
           material_class, 
           requested_by,
-          orders (
+          orders!orders_purchase_request_id_fkey (
             id,
             amount,
             currency,

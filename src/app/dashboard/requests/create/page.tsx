@@ -9,14 +9,18 @@ import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { Calendar as CalendarComponent } from '@/components/ui/calendar'
 import { createClient } from '@/lib/supabase/client'
 // createClientComponentClient kaldırıldı - createClient kullanılıyor
 import { useToast } from '@/components/ui/toast'
 import { createMultiMaterialPurchaseRequest } from '@/lib/actions'
+import { format } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { 
   Package, 
   Building2, 
-  Calendar, 
+  Calendar as CalendarIcon, 
   CheckCircle2, 
   ArrowLeft,
   Save,
@@ -144,6 +148,7 @@ export default function CreatePurchaseRequestPage() {
   const [materialGroups, setMaterialGroups] = useState([])
   const [materialItems, setMaterialItems] = useState([])
   const [currentStep, setCurrentStep] = useState(1)
+  const [isCheckingSite, setIsCheckingSite] = useState(true) // Kullanıcı şantiye kontrolü için
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<Array<{
     class: string
@@ -225,65 +230,10 @@ export default function CreatePurchaseRequestPage() {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Şantiyeleri çek
-        const { data: sitesData, error: sitesError } = await supabase
-          .from('sites')
-          .select('id, name')
-          .order('name')
-
-        if (sitesError) {
-          console.error('Şantiyeler yüklenirken hata:', sitesError)
-        } else {
-          setSites(sitesData || [])
-          
-          // Şantiye resimlerini storage'dan çek
-          if (sitesData && sitesData.length > 0) {
-            const imageUrls = {}
-            
-            // Proje isimleri ve dosya adları eşleştirmesi
-            const imageMapping = {
-              'courtyard': 'courtyard.webp',
-              'la casalia': 'lacasalia.webp',
-              'la isla': 'laisla.webp',
-              'natulux': 'natulux.webp',
-              'querencia': 'querencia.webp',
-              'four seasons life 3': 'fourseosonlife3.webp',
-              'fourseasons': 'fourseosonlife3.webp'
-            }
-            
-            for (const site of sitesData) {
-              try {
-                // Şantiye adını küçük harfe çevir ve eşleşme ara
-                const siteName = site.name.toLowerCase()
-                let imageFileName = null
-                
-                // Exact match veya partial match ara
-                for (const [key, fileName] of Object.entries(imageMapping)) {
-                  if (siteName.includes(key) || key.includes(siteName)) {
-                    imageFileName = fileName
-                    break
-                  }
-                }
-                
-                if (imageFileName) {
-                  const { data: imageData } = supabase.storage
-                    .from('satinalma')
-                    .getPublicUrl(imageFileName)
-                  
-                  if (imageData.publicUrl) {
-                    imageUrls[site.name] = imageData.publicUrl
-                  }
-                }
-              } catch (error) {
-                console.error(`${site.name} için resim yüklenirken hata:`, error)
-              }
-            }
-            setSiteImages(imageUrls)
-          }
-        }
-
-        // Kullanıcının şantiye bilgisini çek
+        // Önce kullanıcının şantiye bilgisini kontrol et
         const { data: { user } } = await supabase.auth.getUser()
+        let hasUserSite = false
+        
         if (user) {
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
@@ -291,9 +241,7 @@ export default function CreatePurchaseRequestPage() {
             .eq('id', user.id)
             .single()
 
-          if (profileError) {
-            console.error('Kullanıcı profili yüklenirken hata:', profileError)
-          } else if (profileData?.construction_site_id) {
+          if (!profileError && profileData?.construction_site_id) {
             // Kullanıcının şantiye bilgisini ayrı sorgu ile çek
             const { data: siteData, error: siteError } = await supabase
               .from('sites')
@@ -310,6 +258,69 @@ export default function CreatePurchaseRequestPage() {
                 construction_site_id: siteData.id
               }))
               setCurrentStep(2) // Step 1'i atla - kategori seçimine geç
+              hasUserSite = true
+            }
+          }
+        }
+        
+        // Kullanıcı şantiye kontrolü tamamlandı
+        setIsCheckingSite(false)
+
+        // Şantiyeleri çek (sadece kullanıcının şantiyesi yoksa gerekli)
+        if (!hasUserSite) {
+          const { data: sitesData, error: sitesError } = await supabase
+            .from('sites')
+            .select('id, name')
+            .order('name')
+
+          if (sitesError) {
+            console.error('Şantiyeler yüklenirken hata:', sitesError)
+          } else {
+            setSites(sitesData || [])
+            
+            // Şantiye resimlerini storage'dan çek
+            if (sitesData && sitesData.length > 0) {
+              const imageUrls = {}
+              
+              // Proje isimleri ve dosya adları eşleştirmesi
+              const imageMapping = {
+                'courtyard': 'courtyard.webp',
+                'la casalia': 'lacasalia.webp',
+                'la isla': 'laisla.webp',
+                'natulux': 'natulux.webp',
+                'querencia': 'querencia.webp',
+                'four seasons life 3': 'fourseosonlife3.webp',
+                'fourseasons': 'fourseosonlife3.webp'
+              }
+              
+              for (const site of sitesData) {
+                try {
+                  // Şantiye adını küçük harfe çevir ve eşleşme ara
+                  const siteName = site.name.toLowerCase()
+                  let imageFileName = null
+                  
+                  // Exact match veya partial match ara
+                  for (const [key, fileName] of Object.entries(imageMapping)) {
+                    if (siteName.includes(key) || key.includes(siteName)) {
+                      imageFileName = fileName
+                      break
+                    }
+                  }
+                  
+                  if (imageFileName) {
+                    const { data: imageData } = supabase.storage
+                      .from('satinalma')
+                      .getPublicUrl(imageFileName)
+                    
+                    if (imageData.publicUrl) {
+                      imageUrls[site.name] = imageData.publicUrl
+                    }
+                  }
+                } catch (error) {
+                  console.error(`${site.name} için resim yüklenirken hata:`, error)
+                }
+              }
+              setSiteImages(imageUrls)
             }
           }
         }
@@ -1069,7 +1080,7 @@ export default function CreatePurchaseRequestPage() {
       case 5:
         // Tüm seçili malzemeler için zorunlu alanlar dolu olmalı (material_name otomatik dolu olduğu için kontrol edilmez)
         return selectedMaterials.length > 0 && selectedMaterials.every(material => 
-          material.unit && material.quantity && material.purpose
+          material.unit && material.quantity && material.delivery_date
         )
       case 6:
         return true // Step 6 artık sadece özet gösteriyor, purpose her malzemede ayrı kontrol ediliyor
@@ -1084,7 +1095,7 @@ export default function CreatePurchaseRequestPage() {
     return (formData.construction_site || userSite) && 
            selectedMaterials.length > 0 &&
            selectedMaterials.every(material => 
-             material.unit && material.quantity && material.purpose
+             material.unit && material.quantity && material.delivery_date
            )
   }
 
@@ -1218,8 +1229,21 @@ export default function CreatePurchaseRequestPage() {
     if (currentStep < 2 || currentStep > 5) return null
 
     return (
-      <Card className="rounded-xl lg:rounded-2xl bg-white/20 border-0 relative z-10">
-        <CardContent className="p-2 lg:p-6">
+      <Card className="border-none shadow-none">
+          <div className="flex items-center gap-3 order-2 lg:order-1">
+                  {currentStep > 1 && (
+                    <Button 
+                      type="button"
+                      variant="outline"
+                      onClick={prevStep}
+                      className="h-0 lg:h-12 px-3 lg:px-6 rounded-lg lg:rounded-xl font-medium bg-white/30 border-white/40 hover:bg-white/50 text-sm lg:text-base flex-1 lg:flex-none"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Önceki
+                    </Button>
+                  )}
+                </div>
+        <CardContent className="p-2 lg:p-2">
           <div className="relative search-container z-20">
             <div className="flex items-center gap-3">
               <Search className="w-5 h-5 text-gray-400" />
@@ -1227,7 +1251,7 @@ export default function CreatePurchaseRequestPage() {
                 value={searchQuery}
                 onChange={(e) => handleSearchChange(e.target.value)}
                 placeholder="Malzeme ara... (örn: boru kangal, 240 amp, 2*40 rcd, elektrik kablosu)"
-                className="flex-1 h-10 lg:h-12 rounded-xl lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                className="flex-1 h-10 lg:h-10 rounded-xl lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
               />
               {isSearching && (
                 <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
@@ -1390,81 +1414,89 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const renderStepContent = () => {
+    // Kullanıcı şantiye kontrolü tamamlanmadıysa loading göster
+    if (isCheckingSite && currentStep === 1) {
+      return (
+        <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
+          <CardContent className="p-6 text-center py-12">
+            <div className="flex flex-col items-center gap-4">
+              <div className="w-12 h-12 border-4 border-gray-300 border-t-gray-900 rounded-full animate-spin" />
+              <p className="text-gray-600">Yükleniyor...</p>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+    
     switch (currentStep) {
       case 1:
+        // Kullanıcının şantiyesi varsa bu adımı hiç gösterme
+        if (userSite) {
+          return null
+        }
+        
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
             <CardHeader className="">
              
             </CardHeader>
             <CardContent className="p-2 lg:p-6 space-y-3 lg:space-y-4">
-              {userSite ? (
-                <div className="bg-green-50 border-0 border-green-200 rounded-lg p-4">
-                  <Label className="text-sm font-medium text-green-800 flex items-center gap-2 mb-2">
-                    <Building2 className="w-4 h-4" />
-                    Kayıtlı Şantiyeniz
-                  </Label>
-                  <p className="text-lg font-semibold text-green-900">{userSite.name}</p>
-                  <p className="text-sm text-green-700 mt-1">Bu talep otomatik olarak şantiyenize atanacaktır.</p>
+              <div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                  {sites.map((site) => {
+                    const hasImage = siteImages[site.name]
+                    return (
+                      <button
+                        key={site.id}
+                        type="button"
+                        onClick={() => {
+                          handleInputChange('construction_site', site.name)
+                          handleInputChange('construction_site_id', site.id)
+                          // Otomatik olarak bir sonraki adıma geç
+                          setTimeout(() => {
+                            setCurrentStep(2)
+                          }, 300)
+                        }}
+                        className={`
+                          aspect-square p-4 rounded-2xl transition-all duration-200 text-sm font-medium relative overflow-hidden
+                          ${formData.construction_site === site.name 
+                            ? 'shadow-lg ring-4 ring-black/20' 
+                            : 'hover:shadow-md'
+                          }
+                        `}
+                        style={{
+                          backgroundImage: hasImage ? `url(${siteImages[site.name]})` : 'none',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          backgroundColor: hasImage ? 'transparent' : (formData.construction_site === site.name ? '#000000' : 'rgba(255, 255, 255, 0.6)')
+                        }}
+                      >
+                        {/* Resim varsa overlay ekle */}
+                        {hasImage && (
+                          <div className={`absolute inset-0 transition-all duration-200 ${
+                            formData.construction_site === site.name 
+                              ? 'bg-black/40' 
+                              : 'bg-black/20 hover:bg-black/30'
+                          }`} />
+                        )}
+                        
+                        {/* Alt kısım gradient karartma */}
+                        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
+                        
+                        {/* İsim alt kısımda */}
+                        <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
+                          <span className={`text-center leading-tight font-light block text-lg ${
+                            hasImage ? 'text-white' : 
+                            (formData.construction_site === site.name ? 'text-white' : 'text-gray-700')
+                          }`}>
+                            {site.name}
+                          </span>
+                        </div>
+                      </button>
+                    )
+                  })}
                 </div>
-              ) : (
-                <div>
-                  <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                    {sites.map((site) => {
-                      const hasImage = siteImages[site.name]
-                      return (
-                        <button
-                          key={site.id}
-                          type="button"
-                          onClick={() => {
-                            handleInputChange('construction_site', site.name)
-                            handleInputChange('construction_site_id', site.id)
-                            // Otomatik olarak bir sonraki adıma geç
-                            setTimeout(() => {
-                              setCurrentStep(2)
-                            }, 300)
-                          }}
-                          className={`
-                            aspect-square p-4 rounded-2xl transition-all duration-200 text-sm font-medium relative overflow-hidden
-                            ${formData.construction_site === site.name 
-                              ? 'shadow-lg ring-4 ring-black/20' 
-                              : 'hover:shadow-md'
-                            }
-                          `}
-                          style={{
-                            backgroundImage: hasImage ? `url(${siteImages[site.name]})` : 'none',
-                            backgroundSize: 'cover',
-                            backgroundPosition: 'center',
-                            backgroundColor: hasImage ? 'transparent' : (formData.construction_site === site.name ? '#000000' : 'rgba(255, 255, 255, 0.6)')
-                          }}
-                        >
-                          {/* Resim varsa overlay ekle */}
-                          {hasImage && (
-                            <div className={`absolute inset-0 transition-all duration-200 ${
-                              formData.construction_site === site.name 
-                                ? 'bg-black/40' 
-                                : 'bg-black/20 hover:bg-black/30'
-                            }`} />
-                          )}
-                          
-                          {/* Alt kısım gradient karartma */}
-                          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
-                          
-                          {/* İsim alt kısımda */}
-                          <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
-                            <span className={`text-center leading-tight font-light block text-lg ${
-                              hasImage ? 'text-white' : 
-                              (formData.construction_site === site.name ? 'text-white' : 'text-gray-700')
-                            }`}>
-                              {site.name}
-                            </span>
-                          </div>
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
+              </div>
             </CardContent>
           </Card>
         )
@@ -1517,7 +1549,7 @@ export default function CreatePurchaseRequestPage() {
                       className={`
                         aspect-square p-1 lg:p-6 rounded-lg lg:rounded-2xl transition-all duration-200 text-center border flex flex-col justify-center items-center
                         ${formData.material_class === materialClass.name 
-                          ? 'border-gray-800 bg-white/40 shadow-lg scale-105' 
+                          ? 'border-gray-800 bg-white/40 shadow-lg' 
                           : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
                         }
                       `}
@@ -1606,7 +1638,7 @@ export default function CreatePurchaseRequestPage() {
                           className={`
                             aspect-square p-1 lg:p-4 rounded-lg lg:rounded-2xl transition-all duration-200 text-center border flex flex-col justify-center items-center
                             ${formData.material_group === materialGroup.name 
-                              ? 'border-blue-600 bg-blue-50/60 shadow-lg scale-105' 
+                              ? 'border-gray-800 bg-white/40 shadow-lg' 
                               : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
                             }
                           `}
@@ -1657,14 +1689,14 @@ export default function CreatePurchaseRequestPage() {
 
       case 4:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
+          <Card className="border-none shadow-none">
+            <CardHeader className="">
              
             </CardHeader>
-            <CardContent className="p-2 lg:p-6 space-y-3 lg:space-y-4">
+            <CardContent className="">
               {materialItems.length > 0 ? (
                 <div className="space-y-3">
-                  <div className="mb-4">
+                  <div className="">
                     <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4 mb-2">
                       <p className="text-sm text-gray-600">
                         <span className="font-medium">{formData.material_group}</span> grubundan malzeme seçiniz:
@@ -1767,7 +1799,7 @@ export default function CreatePurchaseRequestPage() {
                           className={`
                             aspect-square p-1 lg:p-4 rounded-lg transition-all duration-200 text-center border flex flex-col justify-center items-center relative
                             ${isSelected 
-                              ? 'border-green-600 bg-green-50/60 shadow-lg scale-105' 
+                              ? 'border-green-600 bg-green-50/60 shadow-lg' 
                               : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
                             }
                           `}
@@ -1826,15 +1858,16 @@ export default function CreatePurchaseRequestPage() {
       case 5:
         if (selectedMaterials.length === 0) {
           return (
-            <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-              <CardContent className="p-6 text-center">
-                <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                <h3 className="text-lg font-medium text-gray-900 mb-2">Henüz malzeme seçilmedi</h3>
-                <p className="text-gray-600 mb-4">Lütfen önce 4. adımdan malzeme seçin.</p>
+            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+              <CardContent className="p-6 lg:p-12 text-center">
+                <Package className="w-16 h-16 mx-auto text-gray-300 mb-4" />
+                <h3 className="text-xl font-semibold text-gray-900 mb-2">Henüz malzeme seçilmedi</h3>
+                <p className="text-gray-500 mb-6">Lütfen önce 4. adımdan malzeme seçin.</p>
                 <Button 
                   onClick={() => setCurrentStep(4)}
-                  className="bg-black hover:bg-gray-800 text-white"
+                  className="bg-black hover:bg-gray-800 text-white rounded-xl h-12 px-8"
                 >
+                  <ArrowLeft className="w-4 h-4 mr-2 rotate-180" />
                   Malzeme Seçmeye Dön
                 </Button>
               </CardContent>
@@ -1845,54 +1878,42 @@ export default function CreatePurchaseRequestPage() {
         const currentMaterial = selectedMaterials[currentMaterialIndex]
 
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4">
-                <div className="flex items-center justify-between lg:justify-start">
-                  <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
-                    <FileText className="w-4 lg:w-5 h-4 lg:h-5 text-orange-600" />
-                    Malzeme Detayları
-                  </CardTitle>
-                  <div className="flex items-center gap-2 lg:hidden">
-                    <span className="text-sm text-gray-600">
-                      {currentMaterialIndex + 1} / {selectedMaterials.length}
-                    </span>
+          <div className="space-y-4">
+            {/* Header Section */}
+            <div className="bg-white border border-gray-100 rounded-xl lg:rounded-2xl p-4 lg:p-6">
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gray-900 flex items-center justify-center flex-shrink-0">
+                    <FileText className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Malzeme Detayları</h3>
+                    <p className="text-sm text-gray-500">{currentMaterialIndex + 1} / {selectedMaterials.length} malzeme</p>
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-2 lg:gap-3">
-                  <div className="hidden lg:flex items-center gap-2">
-                    <span className="text-sm text-gray-600">
-                      {currentMaterialIndex + 1} / {selectedMaterials.length}
-                    </span>
-                  </div>
-                  <Button 
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      // 2. adıma git ama mevcut malzemeleri koru
-                      setCurrentStep(2)
-                    }}
-                    className="h-8 lg:h-10 px-3 lg:px-4 rounded-lg lg:rounded-xl font-medium bg-white/50 border-gray-200 hover:bg-white/70 text-gray-700 transition-all duration-200 text-sm lg:text-base flex items-center gap-2"
-                  >
-                    <Package className="w-4 h-4" />
-                    <span className="lg:hidden">Daha Ekle</span>
-                    <span className="hidden lg:inline">Malzeme Daha Ekle</span>
-                  </Button>
-                </div>
+                <Button 
+                  type="button"
+                  variant="outline"
+                  onClick={() => setCurrentStep(2)}
+                  className="h-10 px-4 rounded-xl border-gray-200 hover:bg-gray-50 text-sm font-medium"
+                >
+                  <Package className="w-4 h-4 mr-2" />
+                  Malzeme Ekle
+                </Button>
               </div>
               
-              {/* Malzeme Navigasyonu */}
+              {/* Material Navigation Tabs */}
               {selectedMaterials.length > 1 && (
-                <div className="flex gap-2 mt-4 overflow-x-auto">
+                <div className="flex gap-2 mt-4 overflow-x-auto pb-2">
                   {selectedMaterials.map((material, index) => (
                     <button
                       key={material.id}
                       onClick={() => setCurrentMaterialIndex(index)}
-                      className={`flex-shrink-0 px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+                      className={`flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium transition-all ${
                         index === currentMaterialIndex
-                          ? 'bg-orange-600 text-white'
-                          : 'bg-white/50 text-gray-700 hover:bg-white/70'
+                          ? 'bg-gray-900 text-white shadow-md'
+                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
                       }`}
                     >
                       {material.material_item_name}
@@ -1900,39 +1921,132 @@ export default function CreatePurchaseRequestPage() {
                   ))}
                 </div>
               )}
-            </CardHeader>
-            
-            <CardContent className="p-2 lg:p-6 space-y-4 lg:space-y-6">
-              {/* Seçilen Malzeme Bilgisi */}
-              <div className="bg-orange-50/50 border border-orange-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-2">
-                  <Package className="w-4 h-4 text-orange-600" />
-                  <span className="text-sm font-medium text-orange-800">Seçilen Malzeme</span>
-                </div>
-                <h3 className="font-semibold text-gray-900">{currentMaterial?.material_item_name}</h3>
-                <p className="text-sm text-gray-600">
-                  {currentMaterial?.material_group} → {currentMaterial?.material_class}
-                </p>
-              </div>
+            </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                    <FileText className="w-4 h-4" />
-                    Malzeme Adı
-                  </Label>
-                  <Input
-                    value={currentMaterial?.material_name || ''}
-                    readOnly
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed text-base lg:text-base"
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Seçilen malzeme adı değiştirilemez. Farklı malzeme için 4. adıma dönün.
-                  </p>
+            {/* Main Form Card */}
+            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+              <CardContent className="p-4 lg:p-8 space-y-6">
+                {/* Material Name (Read-only) */}
+                <div className="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-200 flex items-center justify-center flex-shrink-0">
+                      <Package className="w-5 h-5 text-gray-600" />
+                    </div>
+                    <div className="flex-1">
+                      <Label className="text-xs font-medium text-gray-500 mb-1 block">Malzeme Adı</Label>
+                      <p className="text-base font-semibold text-gray-900">{currentMaterial?.material_name || ''}</p>
+                    </div>
+                  </div>
                 </div>
-                
+
+                {/* Quantity & Unit Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Hash className="w-4 h-4" />
+                      Miktar <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={currentMaterial?.quantity || ''}
+                      onChange={(e) => {
+                        const updatedMaterials = [...selectedMaterials]
+                        updatedMaterials[currentMaterialIndex] = {
+                          ...updatedMaterials[currentMaterialIndex],
+                          quantity: e.target.value
+                        }
+                        setSelectedMaterials(updatedMaterials)
+                      }}
+                      placeholder="0"
+                      className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                      <Weight className="w-4 h-4" />
+                      Birim <span className="text-red-500">*</span>
+                    </Label>
+                    <Input
+                      value={currentMaterial?.unit || ''}
+                      onChange={(e) => {
+                        const updatedMaterials = [...selectedMaterials]
+                        updatedMaterials[currentMaterialIndex] = {
+                          ...updatedMaterials[currentMaterialIndex],
+                          unit: e.target.value
+                        }
+                        setSelectedMaterials(updatedMaterials)
+                      }}
+                      placeholder="kg, m³, adet, m²..."
+                      className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
+                    />
+                  </div>
+                </div>
+
+                {/* Delivery Date */}
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <CalendarIcon className="w-4 h-4" />
+                    Ne Zaman Gerekli? <span className="text-red-500">*</span>
+                  </Label>
+                  <Popover modal={false}>
+                    <PopoverTrigger asChild>
+                      <button
+                        type="button"
+                        className={`w-full h-12 px-4 rounded-xl border border-gray-200 bg-white hover:bg-gray-50 transition-colors text-left flex items-center justify-between ${
+                          currentMaterial?.delivery_date ? 'text-gray-900' : 'text-gray-500'
+                        }`}
+                      >
+                        <span>
+                          {currentMaterial?.delivery_date 
+                            ? format(new Date(currentMaterial.delivery_date), 'dd MMMM yyyy', { locale: tr })
+                            : 'Tarih seçin'
+                          }
+                        </span>
+                        <CalendarIcon className="h-4 w-4 text-gray-400" />
+                      </button>
+                    </PopoverTrigger>
+                    <PopoverContent 
+                      className="w-auto p-0 bg-white shadow-lg border border-gray-200" 
+                      align="start" 
+                      side="bottom" 
+                      sideOffset={8}
+                    >
+                      <div className="p-3">
+                        <CalendarComponent
+                          mode="single"
+                          selected={currentMaterial?.delivery_date ? new Date(currentMaterial.delivery_date) : undefined}
+                          onSelect={(date) => {
+                            if (date) {
+                              const updatedMaterials = [...selectedMaterials]
+                              updatedMaterials[currentMaterialIndex] = {
+                                ...updatedMaterials[currentMaterialIndex],
+                                delivery_date: format(date, 'yyyy-MM-dd')
+                              }
+                              setSelectedMaterials(updatedMaterials)
+                            }
+                          }}
+                          disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                          locale={tr}
+                          classNames={{
+                            day: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 [&:has([aria-selected])]:bg-transparent",
+                            day_button: "h-9 w-9 p-0 font-normal aria-selected:opacity-100 hover:bg-gray-100 rounded-md transition-colors data-[selected=true]:bg-black data-[selected=true]:text-white data-[selected=true]:hover:bg-gray-800 data-[selected=true]:focus:bg-black",
+                            day_selected: "!bg-black !text-white hover:!bg-gray-800 focus:!bg-black",
+                            day_today: "bg-gray-100 font-semibold",
+                            day_outside: "text-gray-400 opacity-50",
+                            day_disabled: "text-gray-400 opacity-50",
+                            day_hidden: "invisible",
+                          }}
+                        />
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                {/* Brand */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
                     <Tag className="w-4 h-4" />
                     Marka
                   </Label>
@@ -1947,172 +2061,90 @@ export default function CreatePurchaseRequestPage() {
                       setSelectedMaterials(updatedMaterials)
                     }}
                     placeholder="Marka/üretici..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                    className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                   />
                 </div>
-              </div>
 
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6">
+                {/* Purpose */}
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                    <Hash className="w-4 h-4" />
-                    Miktar *
+                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Kullanım Amacı
                   </Label>
                   <Input
-                    type="number"
-                    step="0.01"
-                    value={currentMaterial?.quantity || ''}
+                    value={currentMaterial?.purpose || ''}
                     onChange={(e) => {
                       const updatedMaterials = [...selectedMaterials]
                       updatedMaterials[currentMaterialIndex] = {
                         ...updatedMaterials[currentMaterialIndex],
-                        quantity: e.target.value
+                        purpose: e.target.value
                       }
                       setSelectedMaterials(updatedMaterials)
                     }}
-                    placeholder="0"
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                    placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
+                    className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                   />
                 </div>
-                
+
+                {/* Specifications */}
                 <div>
-                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                    <Weight className="w-4 h-4" />
-                    Birim *
+                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Settings className="w-4 h-4" />
+                    Teknik Özellikler
                   </Label>
-                  <Input
-                    value={currentMaterial?.unit || ''}
+                  <Textarea
+                    value={currentMaterial?.specifications || ''}
                     onChange={(e) => {
                       const updatedMaterials = [...selectedMaterials]
                       updatedMaterials[currentMaterialIndex] = {
                         ...updatedMaterials[currentMaterialIndex],
-                        unit: e.target.value
+                        specifications: e.target.value
                       }
                       setSelectedMaterials(updatedMaterials)
                     }}
-                    placeholder="kg, m³, adet, m²..."
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                    placeholder="Teknik özellikler, kalite standartları, özel notlar..."
+                    className="min-h-[100px] resize-none rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                   />
                 </div>
-              </div>
 
-              {/* Kullanım Amacı */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Target className="w-4 h-4" />
-                  Kullanım Amacı *
-                </Label>
-                <Input
-                  value={currentMaterial?.purpose || ''}
-                  onChange={(e) => {
-                    const updatedMaterials = [...selectedMaterials]
-                    updatedMaterials[currentMaterialIndex] = {
-                      ...updatedMaterials[currentMaterialIndex],
-                      purpose: e.target.value
-                    }
-                    setSelectedMaterials(updatedMaterials)
-                  }}
-                  placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
-                  className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Bu malzemenin özel kullanım amacını belirtin.
-                </p>
-              </div>
+                {/* Image Upload Section */}
+                <div className="border-t border-gray-100 pt-6">
+                  <Label className="text-sm font-medium text-gray-700 mb-4 flex items-center gap-2">
+                    <ImageIcon className="w-4 h-4" />
+                    Malzeme Fotoğrafları
+                  </Label>
+                  
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={triggerCameraCapture}
+                      disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
+                      className="h-14 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                    >
+                      <Camera className="w-5 h-5 mr-2 text-gray-600" />
+                      <span className="font-medium">Kamera</span>
+                    </Button>
 
-              {/* Gerekli Teslimat Tarihi */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Calendar className="w-4 h-4" />
-                  Ne Zaman Gerekli?
-                </Label>
-                <Input
-                  type="date"
-                  value={currentMaterial?.delivery_date || ''}
-                  onChange={(e) => {
-                    const updatedMaterials = [...selectedMaterials]
-                    updatedMaterials[currentMaterialIndex] = {
-                      ...updatedMaterials[currentMaterialIndex],
-                      delivery_date: e.target.value
-                    }
-                    setSelectedMaterials(updatedMaterials)
-                  }}
-                  className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                  min={new Date().toISOString().split('T')[0]}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Bu malzeme için gerekli teslimat tarihi.
-                </p>
-              </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={triggerGallerySelect}
+                      disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
+                      className="h-14 rounded-xl border-2 border-dashed border-gray-300 hover:border-gray-400 hover:bg-gray-50"
+                    >
+                      <Upload className="w-5 h-5 mr-2 text-gray-600" />
+                      <span className="font-medium">Galeri</span>
+                    </Button>
+                  </div>
 
-              {/* Teknik Özellikler */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Settings className="w-4 h-4" />
-                  Teknik Özellikler
-                </Label>
-                <Textarea
-                  value={currentMaterial?.specifications || ''}
-                  onChange={(e) => {
-                    const updatedMaterials = [...selectedMaterials]
-                    updatedMaterials[currentMaterialIndex] = {
-                      ...updatedMaterials[currentMaterialIndex],
-                      specifications: e.target.value
-                    }
-                    setSelectedMaterials(updatedMaterials)
-                  }}
-                  placeholder="Bu malzeme için teknik özellikler, kalite standartları, özel notlar..."
-                  className="min-h-[80px] resize-none rounded-lg border-gray-200 focus:border-black focus:ring-black/20 text-sm"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Bu malzemeye özel teknik detayları buraya girebilirsiniz.
-                </p>
-              </div>
-
-              {/* Image Upload Section */}
-              <div className="space-y-4">
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <ImageIcon className="w-4 h-4" />
-                  Malzeme Fotoğrafları (Opsiyonel)
-                </Label>
-                
-                {/* Upload Buttons */}
-                <div className="grid grid-cols-2 gap-3">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={triggerCameraCapture}
-                    disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
-                    className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
-                  >
-                    <Camera className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-700">Kamera</span>
-                  </Button>
-
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={triggerGallerySelect}
-                    disabled={(currentMaterial?.uploaded_images?.length || 0) >= 3}
-                    className="h-12 bg-white/80 backdrop-blur-sm rounded-xl border-2 border-dashed border-gray-200 hover:border-gray-300 transition-all duration-200 flex items-center justify-center gap-2"
-                  >
-                    <Upload className="w-5 h-5 text-gray-600" />
-                    <span className="text-sm font-medium text-gray-700">Galeri</span>
-                  </Button>
-                </div>
-
-                {/* Image Previews */}
-                {(currentMaterial?.image_preview_urls?.length || 0) > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-xs text-gray-600">
-                      {currentMaterial?.material_name} için Yüklenen Fotoğraflar:
-                    </p>
+                  {(currentMaterial?.image_preview_urls?.length || 0) > 0 ? (
                     <div className="grid grid-cols-3 gap-3">
                       {(currentMaterial?.image_preview_urls || []).map((url, index) => (
-                        <div key={index} className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden">
+                        <div key={index} className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden group">
                           <img
                             src={url}
-                            alt={`${currentMaterial?.material_name} Preview ${index + 1}`}
+                            alt={`Preview ${index + 1}`}
                             className="w-full h-full object-cover"
                           />
                           <Button
@@ -2120,138 +2152,128 @@ export default function CreatePurchaseRequestPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => removeImage(index)}
-                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                            className="absolute top-2 right-2 h-8 w-8 p-0 bg-black/70 hover:bg-black text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                           >
-                            <X className="h-3 w-3" />
+                            <X className="h-4 w-4" />
                           </Button>
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-gray-500">
-                      {currentMaterial?.uploaded_images?.length || 0}/3 fotoğraf yüklendi
-                    </p>
-                  </div>
-                )}
-
-                {/* Upload Instructions */}
-                {(currentMaterial?.uploaded_images?.length || 0) === 0 && (
-                  <div className="text-center py-4 px-4 bg-gray-50/50 rounded-xl">
-                    <ImageIcon className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p className="text-sm text-gray-600">
-                      {currentMaterial?.material_name} için fotoğraf ekleyebilirsiniz
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Maksimum 3 fotoğraf yükleyebilirsiniz
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Malzeme Navigasyon Butonları */}
-              {selectedMaterials.length > 1 && (
-                <div className="flex justify-between pt-4 border-t border-white/30">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setCurrentMaterialIndex(Math.max(0, currentMaterialIndex - 1))}
-                    disabled={currentMaterialIndex === 0}
-                    className="bg-white/50 hover:bg-white/70"
-                  >
-                    Önceki Malzeme
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setCurrentMaterialIndex(Math.min(selectedMaterials.length - 1, currentMaterialIndex + 1))}
-                    disabled={currentMaterialIndex === selectedMaterials.length - 1}
-                    className="bg-white/50 hover:bg-white/70"
-                  >
-                    Sonraki Malzeme
-                  </Button>
+                  ) : (
+                    <div className="text-center py-8 bg-gray-50 rounded-xl border-2 border-dashed border-gray-200">
+                      <ImageIcon className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p className="text-sm text-gray-500">Maksimum 3 fotoğraf yükleyebilirsiniz</p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </CardContent>
-          </Card>
+
+                {/* Material Navigation */}
+                {selectedMaterials.length > 1 && (
+                  <div className="flex gap-3 pt-4 border-t border-gray-100">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCurrentMaterialIndex(Math.max(0, currentMaterialIndex - 1))}
+                      disabled={currentMaterialIndex === 0}
+                      className="flex-1 h-12 rounded-xl"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Önceki
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCurrentMaterialIndex(Math.min(selectedMaterials.length - 1, currentMaterialIndex + 1))}
+                      disabled={currentMaterialIndex === selectedMaterials.length - 1}
+                      className="flex-1 h-12 rounded-xl"
+                    >
+                      Sonraki
+                      <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
+                    </Button>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         )
 
       case 6:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
-                <Target className="w-4 lg:w-5 h-4 lg:h-5 text-purple-600" />
-                Malzeme Kullanım Özeti
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-2 lg:p-6 space-y-4 lg:space-y-6">
-              <div className="bg-blue-50/50 border border-blue-200 rounded-lg p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <Package className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-800">
-                    {selectedMaterials.length} Malzeme Kullanım ve Teslimat Bilgileri
-                  </span>
+          <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+            <CardHeader className="border-b border-gray-100 pb-6">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-xl bg-gray-900 flex items-center justify-center flex-shrink-0">
+                  <Target className="w-6 h-6 text-white" />
                 </div>
-                <p className="text-sm text-blue-700">
-                  Tüm malzemeler için kullanım amacı ve teslimat tarihleri her malzeme detayında ayrı ayrı belirtildi.
-                </p>
+                <div>
+                  <CardTitle className="text-xl font-semibold text-gray-900">Kullanım & Zamanlama</CardTitle>
+                  <p className="text-sm text-gray-500 mt-1">{selectedMaterials.length} malzeme için özet bilgiler</p>
+                </div>
               </div>
-
-              {/* Malzemelerin Kullanım Amaçları Özeti */}
+            </CardHeader>
+            
+            <CardContent className="p-6 space-y-6">
+              {/* Malzeme Özet Kartları */}
               <div className="space-y-3">
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Target className="w-4 h-4" />
-                  Malzeme Kullanım Amaçları
-                </Label>
-                
-                <div className="space-y-2">
-                  {selectedMaterials.map((material, index) => (
-                    <div key={material.id} className="bg-white/30 backdrop-blur-lg rounded-lg p-3 border border-white/20">
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="bg-gray-600 text-white text-xs px-2 py-1 rounded-full font-medium">
-                              #{index + 1}
-                            </span>
-                            <h4 className="font-medium text-gray-900">{material.material_name}</h4>
-                          </div>
-                          <div className="text-sm space-y-1">
-                            <div>
-                              <span className="text-gray-600">Kullanım Amacı:</span>
-                              <span className="ml-2 font-medium text-gray-900">
-                                {material.purpose || 'Belirtilmedi'}
-                              </span>
-                            </div>
-                            {material.delivery_date && (
-                              <div>
-                                <span className="text-gray-600">Gerekli Tarih:</span>
-                                <span className="ml-2 font-medium text-gray-900">
-                                  {new Date(material.delivery_date).toLocaleDateString('tr-TR')}
-                                </span>
-                              </div>
-                            )}
-                          </div>
+                {selectedMaterials.map((material, index) => (
+                  <div key={material.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all">
+                    <div className="flex items-start gap-4">
+                      <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center flex-shrink-0">
+                        <span className="text-white text-sm font-bold">{index + 1}</span>
+                      </div>
+                      <div className="flex-1 space-y-3">
+                        <div>
+                          <h4 className="font-semibold text-gray-900 mb-1">{material.material_name}</h4>
+                          <p className="text-sm text-gray-500">{material.quantity} {material.unit}</p>
                         </div>
+                        
+                        {material.purpose && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="flex items-start gap-2">
+                              <Target className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                              <div className="flex-1">
+                                <p className="text-xs font-medium text-gray-500 mb-1">Kullanım Amacı</p>
+                                <p className="text-sm text-gray-900">{material.purpose}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                        
+                        {material.delivery_date && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="flex items-center gap-2">
+                              <CalendarIcon className="w-4 h-4 text-gray-400" />
+                              <div className="flex-1">
+                                <p className="text-xs font-medium text-gray-500">Gerekli Tarih</p>
+                                <p className="text-sm font-medium text-gray-900">
+                                  {new Date(material.delivery_date).toLocaleDateString('tr-TR', { 
+                                    day: 'numeric', 
+                                    month: 'long', 
+                                    year: 'numeric' 
+                                  })}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
 
-              {/* Ek Notlar (Opsiyonel) */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+              {/* Ek Notlar */}
+              <div className="border-t border-gray-100 pt-6">
+                <Label className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
                   <FileText className="w-4 h-4" />
-                  Ek Notlar (Opsiyonel)
+                  Genel Talep Notları (Opsiyonel)
                 </Label>
                 <Textarea
                   value={formData.specifications}
                   onChange={(e) => handleInputChange('specifications', e.target.value)}
                   placeholder="Talep ile ilgili ek notlar, özel talimatlar..."
-                  className="min-h-[80px] resize-none rounded-lg border-gray-200 focus:border-black focus:ring-black/20 text-sm"
+                  className="min-h-[120px] resize-none rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Genel talep notları (her malzeme için notlar malzeme detaylarında belirtildi).
-                </p>
               </div>
             </CardContent>
           </Card>
@@ -2259,156 +2281,230 @@ export default function CreatePurchaseRequestPage() {
 
       case 7:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-              <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
-                <CheckCircle2 className="w-4 lg:w-5 h-4 lg:h-5 text-green-600" />
-                Talep Özeti
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-2 lg:p-6 space-y-4">
-              {/* Genel Bilgiler */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 lg:gap-4 mb-6">
-                <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Şantiye</Label>
-                  <p className="text-base lg:text-lg font-semibold text-gray-900">{userSite?.name || formData.construction_site}</p>
+          <div className="space-y-4">
+            {/* Header with Submit Button */}
+            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+              <CardContent className="p-6">
+                <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 rounded-xl bg-green-600 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900">Talep Özeti</h3>
+                      <p className="text-sm text-gray-500 mt-1">Son kontrol ve gönderim</p>
+                    </div>
+                  </div>
+                  
+                  <Button 
+                    type="submit" 
+                    disabled={loading || !isFormValid()}
+                    className="w-full lg:w-auto h-12 lg:h-12 px-8 rounded-xl font-medium bg-black hover:bg-gray-800 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    {loading ? (
+                      <>
+                        <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3" />
+                        Gönderiliyor...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-5 h-5 mr-2" />
+                        Talebi Gönder
+                      </>
+                    )}
+                  </Button>
                 </div>
-                <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Toplam Malzeme Sayısı</Label>
-                  <p className="text-base lg:text-lg font-semibold text-gray-900">{selectedMaterials.length} farklı malzeme</p>
-                </div>
-                <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600">Kullanım Bilgisi</Label>
-                  <p className="text-base lg:text-lg font-semibold text-gray-900">Her malzeme için ayrı belirtildi</p>
-                </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Seçilen Malzemeler */}
-              <div className="space-y-4">
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                  <Package className="w-4 h-4" />
-                  Seçilen Malzemeler ({selectedMaterials.length})
-                </Label>
-                
-                <div className="space-y-3">
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+              <Card className="rounded-xl bg-white border border-gray-100">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <Building2 className="w-5 h-5 text-gray-700" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium text-gray-500">Şantiye</p>
+                      <p className="text-sm font-semibold text-gray-900 truncate">{userSite?.name || formData.construction_site}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="rounded-xl bg-white border border-gray-100">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <Package className="w-5 h-5 text-gray-700" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-gray-500">Toplam Malzeme</p>
+                      <p className="text-sm font-semibold text-gray-900">{selectedMaterials.length} adet</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              
+              <Card className="rounded-xl bg-white border border-gray-100">
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+                      <ImageIcon className="w-5 h-5 text-gray-700" />
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium text-gray-500">Fotoğraflar</p>
+                      <p className="text-sm font-semibold text-gray-900">
+                        {selectedMaterials.reduce((sum, m) => sum + (m.uploaded_images?.length || 0), 0)} adet
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Materials List */}
+            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+              <CardHeader className="border-b border-gray-100">
+                <CardTitle className="text-base font-semibold text-gray-900">Malzeme Listesi</CardTitle>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="space-y-4">
                   {selectedMaterials.map((material, index) => (
-                    <div key={material.id} className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-4 border border-white/20">
-                      <div className="flex items-start justify-between mb-3">
-                        <div className="flex-1">
-                          <div className="flex items-center gap-2 mb-1">
-                            <span className="bg-gray-600 text-white text-xs px-2 py-1 rounded-full font-medium">
-                              #{index + 1}
-                            </span>
-                            <h4 className="font-semibold text-gray-900">{material.material_name}</h4>
+                    <div key={material.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-all bg-gray-50/50">
+                      {/* Header */}
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex items-start gap-3 flex-1">
+                          <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center flex-shrink-0">
+                            <span className="text-white font-bold text-sm">{index + 1}</span>
                           </div>
-                          <p className="text-sm text-gray-600">
-                            {material.material_group} → {material.material_class}
-                          </p>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 mb-1">{material.material_name}</h4>
+                            <p className="text-sm text-gray-500">{material.material_group} → {material.material_class}</p>
+                          </div>
                         </div>
-                        <div className="text-right">
-                          <div className="text-lg font-semibold text-gray-900">
-                            {material.quantity} {material.unit}
-                          </div>
+                        <div className="text-right ml-4">
+                          <p className="text-xl font-bold text-gray-900">{material.quantity}</p>
+                          <p className="text-sm text-gray-500">{material.unit}</p>
                         </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3 text-sm">
+                      {/* Details Grid */}
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
                         {material.brand && (
-                          <div>
-                            <span className="text-gray-600">Marka:</span>
-                            <span className="ml-2 font-medium text-gray-900">{material.brand}</span>
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <p className="text-xs font-medium text-gray-500 mb-1">Marka</p>
+                            <p className="text-sm font-medium text-gray-900">{material.brand}</p>
                           </div>
                         )}
-                        <div>
-                          <span className="text-gray-600">Kod:</span>
-                          <span className="ml-2 font-medium text-gray-900">{material.material_item_name}</span>
+                        {material.material_item_name && (
+                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <p className="text-xs font-medium text-gray-500 mb-1">Malzeme Kodu</p>
+                            <p className="text-sm font-medium text-gray-900">{material.material_item_name}</p>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Purpose & Date */}
+                      {(material.purpose || material.delivery_date) && (
+                        <div className="space-y-3 mb-4">
+                          {material.purpose && (
+                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                              <div className="flex items-start gap-2">
+                                <Target className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-gray-500 mb-1">Kullanım Amacı</p>
+                                  <p className="text-sm text-gray-900">{material.purpose}</p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {material.delivery_date && (
+                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                              <div className="flex items-center gap-2">
+                                <CalendarIcon className="w-4 h-4 text-gray-400" />
+                                <div className="flex-1">
+                                  <p className="text-xs font-medium text-gray-500">Gerekli Tarih</p>
+                                  <p className="text-sm font-medium text-gray-900">
+                                    {new Date(material.delivery_date).toLocaleDateString('tr-TR', { 
+                                      day: 'numeric', 
+                                      month: 'long', 
+                                      year: 'numeric' 
+                                    })}
+                                  </p>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      </div>
+                      )}
                       
-                      {/* Kullanım Amacı ve Teslimat Tarihi */}
-                      <div className="mt-3 pt-3 border-t border-white/20 space-y-2">
-                        {material.purpose && (
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Kullanım Amacı:</div>
-                            <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
-                              {material.purpose}
-                            </div>
-                          </div>
-                        )}
-                        {material.delivery_date && (
-                          <div>
-                            <div className="text-xs text-gray-600 mb-1">Gerekli Teslimat Tarihi:</div>
-                            <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
-                              {new Date(material.delivery_date).toLocaleDateString('tr-TR')}
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                      
+                      {/* Specifications */}
                       {material.specifications && (
-                        <div className="mt-3 pt-3 border-t border-white/20">
-                          <div className="text-xs text-gray-600 mb-1">Teknik Özellikler:</div>
-                          <div className="text-sm text-gray-800 bg-white/20 rounded p-2">
-                            {material.specifications}
+                        <div className="bg-white rounded-lg p-3 border border-gray-200 mb-4">
+                          <div className="flex items-start gap-2">
+                            <Settings className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <p className="text-xs font-medium text-gray-500 mb-1">Teknik Özellikler</p>
+                              <p className="text-sm text-gray-900">{material.specifications}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Images */}
+                      {(material.image_preview_urls?.length || 0) > 0 && (
+                        <div className="pt-3 border-t border-gray-200">
+                          <p className="text-xs font-medium text-gray-500 mb-2 flex items-center gap-1">
+                            <ImageIcon className="w-3 h-3" />
+                            {material.uploaded_images?.length} Fotoğraf
+                          </p>
+                          <div className="grid grid-cols-3 gap-2">
+                            {(material.image_preview_urls || []).map((url, imgIndex) => (
+                              <div key={imgIndex} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
+                                <img
+                                  src={url}
+                                  alt={`${material.material_name} ${imgIndex + 1}`}
+                                  className="w-full h-full object-cover"
+                                />
+                              </div>
+                            ))}
                           </div>
                         </div>
                       )}
                     </div>
                   ))}
                 </div>
-              </div>
+              </CardContent>
+            </Card>
 
-              {/* Material Images Summary */}
-              {selectedMaterials.some(m => (m.uploaded_images?.length || 0) > 0) && (
-                <div className="bg-white/30 backdrop-blur-lg rounded-lg lg:rounded-xl p-3 lg:p-4">
-                  <Label className="text-xs lg:text-sm font-medium text-gray-600 mb-3 block">Malzeme Fotoğrafları</Label>
-                  {selectedMaterials.map((material, materialIndex) => {
-                    if ((material.uploaded_images?.length || 0) === 0) return null
-                    
-                    return (
-                      <div key={material.id} className="mb-4 last:mb-0">
-                        <p className="text-xs font-medium text-gray-700 mb-2">
-                          {material.material_name} ({material.uploaded_images?.length || 0} fotoğraf)
-                        </p>
-                        <div className="grid grid-cols-3 gap-2">
-                          {(material.image_preview_urls || []).map((url, index) => (
-                            <div key={index} className="aspect-square bg-gray-100 rounded-lg overflow-hidden">
-                              <img
-                                src={url}
-                                alt={`${material.material_name} Preview ${index + 1}`}
-                                className="w-full h-full object-cover"
-                              />
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-              
-              {/* Gönder Butonu */}
-              <div className="mt-6 lg:mt-8 pt-4 border-t border-white/30">
+            {/* Bottom Submit Button */}
+            <Card className="border-none shadow-none">
+              <CardContent className="p-6">
                 <Button 
                   type="submit" 
                   disabled={loading || !isFormValid()}
-                  className="w-full h-12 lg:h-14 px-6 lg:px-8 rounded-lg lg:rounded-xl font-medium bg-black hover:bg-gray-900 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-base lg:text-lg"
+                  className="w-full h-14 px-8 rounded-xl font-semibold bg-black hover:bg-gray-900 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
                 >
                   {loading ? (
                     <>
-                      <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin mr-3" />
+                      <div className="w-5 h-5 border-2 border-gray-300 border-t-gray-900 rounded-full animate-spin mr-3" />
                       Gönderiliyor...
                     </>
                   ) : (
                     <>
-                      <Save className="w-5 h-5 mr-3" />
+                      <Save className="w-5 h-5 mr-2" />
                       Talebi Gönder
                     </>
                   )}
                 </Button>
-              </div>
-            </CardContent>
-          </Card>
+                <p className="text-center text-xs text-gray-300 mt-3">
+                  {selectedMaterials.length} malzeme ile talep oluşturulacak
+                </p>
+              </CardContent>
+            </Card>
+          </div>
         )
 
       default:
@@ -2562,26 +2658,32 @@ export default function CreatePurchaseRequestPage() {
       </DialogContent>
     </Dialog>
 
-    <div className="min-h-screen bg-white">
-    <div className="px-0 lg:px-2 xl:px-4 pb-4 space-y-1 lg:space-y-8">
-      {/* Header */}
-      <div className="pt-2 lg:pt-0">
-        <div>
-          <div>
-            <h1 className="text-2xl lg:text-4xl font-bold text-gray-900">Yeni Satın Alma Talebi</h1>
-            <p className="text-gray-600 mt-1 lg:mt-2 text-sm lg:text-lg font-light">Malzeme ve hizmet taleplerini oluşturun</p>
-          </div>
-          <div className="mt-3 lg:mt-4">
+    <div className="min-h-screen ">
+    <div className="px-0 lg:px-2 xl:px-4 pb-4 space-y-2 lg:space-y-2">
+    <div className="mt-3 lg:mt-4">
             <Button 
               variant="ghost" 
               size="sm"
               onClick={handleBack}
-              className="bg-white/20 backdrop-blur-lg hover:bg-white/30 rounded-lg lg:rounded-xl text-sm h-8 lg:h-auto px-2 lg:px-4"
+              className="bg-white/20 border border-gray-200 backdrop-blur-lg hover:bg-white/30 rounded-lg lg:rounded-xl text-sm h-8 lg:h-auto px-4 py-2 lg:px-4"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
-              Geri Dön
+              Anasayfa
             </Button>
           </div>
+      {/* Header */}
+      <div className="pt-2 lg:pt-0">
+        <div>
+          <div>
+            <h1 className="text-2xl lg:text-3xl font-normal text-gray-900">
+              {(userSite?.name || formData.construction_site) && (
+                <span className="text-gray-500">{userSite?.name || formData.construction_site} için </span>
+              )}
+              Yeni Satın Alma Talebi
+            </h1>
+            <p className="text-gray-600 mt-1 lg:mt-2 text-sm lg:text-lg font-light">Malzeme ve hizmet taleplerini oluşturun</p>
+          </div>
+         
         </div>
       </div>
 
