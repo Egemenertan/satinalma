@@ -68,6 +68,9 @@ export default function DashboardLayout({
         // Erişim yoksa kullanıcıyı erişebileceği bir sayfaya yönlendir
         if (userRole === 'site_manager' || userRole === 'site_personnel' || userRole === 'santiye_depo') {
           router.push('/dashboard/requests')
+        } else {
+          // Diğer roller için dashboard'a yönlendir
+          router.push('/dashboard')
         }
       }
     }

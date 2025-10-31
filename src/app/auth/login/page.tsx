@@ -52,11 +52,11 @@ function LoginContent() {
         // Kullanıcının profilini kontrol et
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
-          .select('*')
+          .select('role')
           .eq('id', data.user.id)
           .single()
 
-        console.log('🔍 Profile check:', { profile: profile?.id, error: profileError })
+        console.log('🔍 Profile check:', { role: profile?.role, error: profileError })
 
         if (profile) {
           // User rolü dashboard'a erişemez

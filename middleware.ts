@@ -65,58 +65,9 @@ export async function middleware(request: NextRequest) {
   }
 
 
-  // Role-based access control
-  if (user && isProtectedRoute) {
-    // Get user details from database
-    const { data: userData } = await supabase
-      .from('profiles')
-      .select('role')
-      .eq('id', user.id)
-      .single()
-
-    const userRole = userData?.role
-
-    // Admin routes require admin role
-    if (request.nextUrl.pathname.startsWith('/admin') && userRole !== 'admin') {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-
-    // Site manager can only access requests pages
-    if (userRole === 'site_manager') {
-      const currentPath = request.nextUrl.pathname
-      
-      // Allow all requests-related paths
-      if (!currentPath.startsWith('/dashboard/requests')) {
-        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
-      }
-    }
-
-    // Site personnel can only access requests pages
-    if (userRole === 'site_personnel') {
-      const currentPath = request.nextUrl.pathname
-      
-      // Allow all requests-related paths
-      if (!currentPath.startsWith('/dashboard/requests')) {
-        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
-      }
-    }
-
-    // Santiye depo can only access requests pages (same as site personnel)
-    if (userRole === 'santiye_depo') {
-      const currentPath = request.nextUrl.pathname
-      
-      // Allow all requests-related paths
-      if (!currentPath.startsWith('/dashboard/requests')) {
-        return NextResponse.redirect(new URL('/dashboard/requests', request.url))
-      }
-    }
-
-    // User role cannot access settings
-    if (userRole === 'user' && request.nextUrl.pathname.startsWith('/dashboard/settings')) {
-      return NextResponse.redirect(new URL('/dashboard', request.url))
-    }
-  }
-
+  // Role-based access control kaldırıldı - Dashboard layout'ta kontrol ediliyor
+  // Sadece auth kontrolü yeterli, performans için role sorgusu yapılmıyor
+  
   return response
 }
 

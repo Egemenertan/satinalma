@@ -11,25 +11,26 @@ import { Package, Plus, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lu
 import { createClient } from '@/lib/supabase/client'
 import { invalidateStatsCache, invalidatePurchaseRequestsCache } from '@/lib/cache'
 
-// User info fetcher fonksiyonu
-const fetchUserInfo = async () => {
+// Optimize edilmiş tek fetcher - user info, role ve stats'ı birlikte çeker
+const fetchPageData = async () => {
   const supabase = createClient()
   
+  // 1. Auth kontrolü
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
 
+  // 2. Profile bilgisi (tek sorgu - tüm gerekli alanlar)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('full_name, email')
+    .select('full_name, email, role, site_id')
     .eq('id', user.id)
     .single()
 
+  // 3. Display name hazırla
   let displayName = profile?.full_name
-  
   if (!displayName || displayName.trim() === '') {
-    // Email'den isim oluştur
     if (profile?.email) {
       displayName = profile.email.split('@')[0]
         .replace(/[._-]/g, ' ')
@@ -40,91 +41,72 @@ const fetchUserInfo = async () => {
       displayName = 'Kullanıcı'
     }
   }
-  
-  return { displayName, email: profile?.email }
-}
 
-// Stats fetcher fonksiyonu
-const fetchStats = async () => {
-  const supabase = createClient()
-  
-  // Kullanıcı bilgilerini çek
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    throw new Error('Kullanıcı oturumu bulunamadı')
-  }
-
-  // Kullanıcı rolünü çek
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, site_id')
-    .eq('id', user.id)
-    .single()
-
-  let query = supabase
+  // 4. Stats sorgusu - Veritabanında aggregate fonksiyonlarını kullan
+  let statsQuery = supabase
     .from('purchase_requests')
-    .select('id, status, urgency_level, requested_by')
+    .select('status, urgency_level', { count: 'exact' })
   
-  // Site personeli sadece kendi taleplerini görebilir
+  // Role bazlı filtreleme
   if (profile?.role === 'site_personnel') {
-    query = query.eq('requested_by', user.id)
+    statsQuery = statsQuery.eq('requested_by', user.id)
+  } else if (profile?.role === 'purchasing_officer') {
+    statsQuery = statsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı'])
   }
   
-  // Purchasing officer sadece satın almaya gönderilmiş ve sipariş verilmiş talepleri görebilir
-  if (profile?.role === 'purchasing_officer') {
-    query = query.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı'])
-  }
-  
-  const { data: requests, error } = await query
+  const { data: requests, error, count } = await statsQuery
   
   if (error) {
-    throw new Error(error.message)
-  }
-  
-  if (requests) {
-    // Basit istatistikler - sadece database'den gelen statusları kullan
+    console.error('Stats fetch error:', error)
     return {
-      total: requests.length,
-      pending: requests.filter(r => r.status === 'pending' || r.status === 'onay bekliyor').length,
-      approved: requests.filter(r => r.status === 'onaylandı' || r.status === 'sipariş verildi' || r.status === 'gönderildi' || r.status === 'teslim alındı').length,
-      urgent: requests.filter(r => r.urgency_level === 'critical' || r.urgency_level === 'high').length
+      userInfo: { displayName, email: profile?.email },
+      role: profile?.role || '',
+      stats: { total: 0, pending: 0, approved: 0, urgent: 0 }
     }
   }
   
-  return { total: 0, pending: 0, approved: 0, urgent: 0 }
+  // Client-side stats hesaplama (artık sadece görünen kayıtlar üzerinde)
+  const stats = {
+    total: count || 0,
+    pending: requests?.filter(r => r.status === 'pending' || r.status === 'onay bekliyor').length || 0,
+    approved: requests?.filter(r => ['onaylandı', 'sipariş verildi', 'gönderildi', 'teslim alındı'].includes(r.status)).length || 0,
+    urgent: requests?.filter(r => r.urgency_level === 'critical' || r.urgency_level === 'high').length || 0
+  }
+  
+  return {
+    userInfo: { displayName, email: profile?.email },
+    role: profile?.role || '',
+    stats
+  }
 }
 
 export default function RequestsPage() {
   const router = useRouter()
   
-  // SWR ile cache'li user info
-  const { data: userInfo } = useSWR(
-    'user_info',
-    fetchUserInfo,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 300000, // 5 dakika cache
-      errorRetryCount: 3,
-      fallbackData: { displayName: 'Kullanıcı', email: '' }
-    }
-  )
-  
-  // SWR ile cache'li stats
-  const { data: stats, error: statsError, mutate: refreshStats } = useSWR(
-    'purchase_requests_stats',
-    fetchStats,
+  // Tek SWR ile tüm sayfa verisini çek - Optimize edildi!
+  const { data: pageData, error, mutate: refreshPageData } = useSWR(
+    'requests_page_data',
+    fetchPageData,
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
       dedupingInterval: 30000, // 30 saniye cache
       errorRetryCount: 3,
-      fallbackData: { total: 0, pending: 0, approved: 0, urgent: 0 }
+      fallbackData: {
+        userInfo: { displayName: 'Kullanıcı', email: '' },
+        role: '',
+        stats: { total: 0, pending: 0, approved: 0, urgent: 0 }
+      }
     }
   )
+  
+  // Destructure page data
+  const userInfo = pageData?.userInfo
+  const userRole = pageData?.role || ''
+  const stats = pageData?.stats
 
 
-  // Real-time updates için subscription
+  // Real-time updates için subscription - Optimize edildi
   useEffect(() => {
     const supabase = createClient()
     
@@ -138,8 +120,8 @@ export default function RequestsPage() {
         }, 
         () => {
           console.log('📡 Purchase requests table update triggered')
-          invalidateStatsCache()
-          // Tablo cache'ini de temizle
+          // Sadece ilgili cache'i yenile
+          refreshPageData()
           invalidatePurchaseRequestsCache()
         }
       )
@@ -151,7 +133,8 @@ export default function RequestsPage() {
         }, 
         () => {
           console.log('📡 Shipments table update triggered')
-          invalidateStatsCache()
+          // Sadece ilgili cache'i yenile
+          refreshPageData()
           invalidatePurchaseRequestsCache()
         }
       )
@@ -160,7 +143,7 @@ export default function RequestsPage() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [refreshPageData])
 
 
 
@@ -291,13 +274,13 @@ export default function RequestsPage() {
         </div>
 
         {/* Requests Table */}
-        <PurchaseRequestsTable />
+        <PurchaseRequestsTable userRole={userRole} />
       </div>
 
       {/* Mobile: Table first, then Stats Cards */}
       <div className="sm:hidden space-y-6">
         {/* Requests Table */}
-        <PurchaseRequestsTable />
+        <PurchaseRequestsTable userRole={userRole} />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-4 px-4">

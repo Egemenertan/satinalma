@@ -90,7 +90,7 @@ interface Filters {
   sortOrder: 'asc' | 'desc'
 }
 
-// SWR fetcher fonksiyonu
+// SWR fetcher fonksiyonu - Optimize edildi, sadece user bilgisi çekiliyor
 const fetcherWithAuth = async (url: string) => {
   const supabase = createClient()
   
@@ -100,38 +100,22 @@ const fetcherWithAuth = async (url: string) => {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
 
-  // Kullanıcı rolünü çek
+  // Profile bilgisini çek (site_id için gerekli)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role, site_id')
+    .select('site_id')
     .eq('id', user.id)
     .single()
 
   return { user, profile, supabase }
 }
 
-// Kullanıcı rolü için ayrı fetcher
-const fetchUserRole = async () => {
-  const supabase = createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    throw new Error('Kullanıcı oturumu bulunamadı')
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, site_id')
-    .eq('id', user.id)
-    .single()
-
-  return profile?.role || ''
-}
-
-// Purchase requests fetcher
-const fetchPurchaseRequests = async (key: string) => {
-  const [_, currentPage, pageSize] = key.split('/')
+// Purchase requests fetcher - userRole prop'u alacak şekilde güncellendi
+const fetchPurchaseRequests = async (key: string, userRole?: string) => {
+  const [_, currentPage, pageSize, role] = key.split('/')
   const page = parseInt(currentPage)
   const size = parseInt(pageSize)
+  const effectiveRole = role || userRole // Key'den veya paramdan al
   
   const { user, profile, supabase } = await fetcherWithAuth('auth')
   
@@ -139,11 +123,15 @@ const fetchPurchaseRequests = async (key: string) => {
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
   
-  // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-  if (profile?.role === 'purchasing_officer') {
+  // Rol bazlı filtreleme
+  if (effectiveRole === 'purchasing_officer') {
+    // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
     countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+  } else if (effectiveRole === 'site_personnel') {
+    // Site personnel sadece kendi oluşturduğu talepleri görebilir
+    countQuery = countQuery.eq('requested_by', user.id)
   } else {
-    // Diğer tüm roller (site_manager, site_personnel, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       countQuery = countQuery.eq('site_id', profile.site_id)
     }
@@ -177,16 +165,24 @@ const fetchPurchaseRequests = async (key: string) => {
       notifications,
       sites:site_id (
         name
+      ),
+      profiles:requested_by (
+        full_name,
+        email
       )
     `)
     .range(from, to)
     .order('created_at', { ascending: false })
   
-  // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-  if (profile?.role === 'purchasing_officer') {
+  // Rol bazlı filtreleme (aynı mantık)
+  if (effectiveRole === 'purchasing_officer') {
+    // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
     requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+  } else if (effectiveRole === 'site_personnel') {
+    // Site personnel sadece kendi oluşturduğu talepleri görebilir
+    requestsQuery = requestsQuery.eq('requested_by', user.id)
   } else {
-    // Diğer tüm roller (site_manager, site_personnel, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       requestsQuery = requestsQuery.eq('site_id', profile.site_id)
     }
@@ -205,82 +201,84 @@ const fetchPurchaseRequests = async (key: string) => {
     throw new Error('Satın alma talepleri yüklenirken hata oluştu')
   }
 
-  const formattedRequests = await Promise.all((requests || []).map(async request => {
-    // Profile bilgisini useOfferData hook'u gibi işle
-    let processedProfiles = null
+  // Profile bilgileri artık JOIN ile geliyor, sadece format işlemleri yap
+  const formattedRequests = (requests || []).map(request => {
+    // Profile bilgisi JOIN'den geldi - Supabase bazen array döndürebilir, kontrol et
+    let processedProfiles = request.profiles as any
     
-    if (request.requested_by) {
-      try {
-        // Önce profiles tablosundan dene (useOfferData hook'u gibi)
-        const { data: profileData, error: profileError } = await supabase
-          .from('profiles')
-          .select('full_name, email')
-          .eq('id', request.requested_by)
-          .single()
-
-        if (!profileError && profileData) {
-          // Eğer full_name boş ise email'den isim oluşturmaya çalış
-          let displayName = profileData.full_name
-          
-          if (!displayName || displayName.trim() === '') {
-            // Email'den isim oluştur (@ işaretinden öncesini al)
-            if (profileData.email) {
-              displayName = profileData.email.split('@')[0]
-                .replace(/[._-]/g, ' ') // . _ - karakterlerini boşlukla değiştir
-                .split(' ')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()) // Her kelimenin ilk harfini büyüt
-                .join(' ')
-            } else {
-              displayName = 'İsimsiz Kullanıcı'
-            }
-          }
-          
-          processedProfiles = {
-            full_name: displayName,
-            email: profileData.email
-          }
+    // Eğer array dönerse ilk elemanı al
+    if (Array.isArray(processedProfiles) && processedProfiles.length > 0) {
+      processedProfiles = processedProfiles[0]
+    }
+    
+    // Debug log - sadece eksik olanları göster
+    if (!processedProfiles || !processedProfiles.full_name) {
+      console.log('⚠️ Profile bilgisi eksik veya boş:', {
+        requestId: request.id.slice(0, 8),
+        requested_by: request.requested_by?.slice(0, 8),
+        profiles: processedProfiles,
+        profileType: typeof processedProfiles,
+        isArray: Array.isArray(request.profiles)
+      })
+    }
+    
+    if (processedProfiles && (processedProfiles.full_name || processedProfiles.email)) {
+      // Eğer full_name boş ise email'den isim oluştur
+      let displayName = processedProfiles.full_name
+      
+      if (!displayName || displayName.trim() === '') {
+        // Email'den isim oluştur
+        if (processedProfiles.email) {
+          displayName = processedProfiles.email.split('@')[0]
+            .replace(/[._-]/g, ' ')
+            .split(' ')
+            .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+            .join(' ')
         } else {
-          // Eğer profiles'tan bulunamazsa, fallback (useOfferData hook'u gibi olmasa da basit fallback)
-          processedProfiles = { 
-            full_name: 'Kullanıcı bulunamadı', 
-            email: '' 
-          }
+          displayName = 'İsimsiz Kullanıcı'
         }
-      } catch (error) {
-        console.error('Profile fetch error:', error)
-        processedProfiles = { full_name: 'Kullanıcı bulunamadı', email: '' }
+      }
+      
+      processedProfiles = {
+        full_name: displayName,
+        email: processedProfiles.email
       }
     } else {
-      processedProfiles = { full_name: 'Bilinmiyor', email: '' }
+      // Profile bilgisi yoksa fallback
+      processedProfiles = { 
+        full_name: request.requested_by ? 'Kullanıcı bulunamadı' : 'Bilinmiyor', 
+        email: '' 
+      }
     }
     
     // Sadece database'den gelen status'u kullan - Supabase trigger'ları otomatik güncelliyor
-    const formattedRequest = {
+    return {
       ...request,
       profiles: processedProfiles,
       request_number: request.request_number ? 
         (() => {
           const parts = request.request_number.split('-')
           if (parts.length >= 2) {
-            const lastPart = parts[parts.length - 1] // Son rakamsal kısım (1009)
-            const secondLastPart = parts[parts.length - 2] // Önceki kısım (N1ZV1O)
-            const lastTwoChars = secondLastPart.slice(-2) // Son 2 hane (VO)
-            return `${lastTwoChars}-${lastPart}` // VO-1009 (6 basamak)
+            const lastPart = parts[parts.length - 1]
+            const secondLastPart = parts[parts.length - 2]
+            const lastTwoChars = secondLastPart.slice(-2)
+            return `${lastTwoChars}-${lastPart}`
           }
           return request.request_number
         })() :
-        `REQ-${request.id.slice(-6)}`, // Fallback
+        `REQ-${request.id.slice(-6)}`,
       updated_at: request.created_at
-      // status zaten database'den doğru geliyor, değiştirmeye gerek yok
     }
-    
-    return formattedRequest
-  })) as PurchaseRequest[]
+  }) as PurchaseRequest[]
 
   return { requests: formattedRequests, totalCount: count || 0 }
 }
 
-export default function PurchaseRequestsTable() {
+interface PurchaseRequestsTableProps {
+  userRole?: string // Layout'tan gelen role prop'u
+}
+
+export default function PurchaseRequestsTable({ userRole: propUserRole }: PurchaseRequestsTableProps = {}) {
   const router = useRouter()
   const { showToast } = useToast()
   const [currentPage, setCurrentPage] = useState(1)
@@ -364,27 +362,17 @@ export default function PurchaseRequestsTable() {
     }
   }
 
-  // SWR ile kullanıcı rolünü hızlı yükle
-  const { data: userRole } = useSWR(
-    'user_role',
-    fetchUserRole,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 300000, // 5 dakika cache
-      errorRetryCount: 3,
-      fallbackData: '', // Başlangıç değeri
-    }
-  )
+  // Role prop'tan veya fallback olarak 'user' kullan
+  const userRole = propUserRole || 'user'
 
-  // SWR ile cache'li veri çekme
+  // SWR ile cache'li veri çekme - Role key'e dahil edildi
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}`,
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}`,
     fetchPurchaseRequests,
     {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 1000, // 1 saniye cache - daha hızlı güncelleme
+      dedupingInterval: 5000, // 5 saniye cache - optimize edildi (önceden 1 saniyeydi)
       errorRetryCount: 3,
       errorRetryInterval: 5000,
       refreshInterval: 30000, // 30 saniyede bir otomatik yenile
@@ -394,7 +382,7 @@ export default function PurchaseRequestsTable() {
   const requests = data?.requests || []
   const totalCount = data?.totalCount || 0
 
-  // Real-time updates için subscription
+  // Real-time updates için subscription - Optimize edildi
   useEffect(() => {
     const supabase = createClient()
     
@@ -410,18 +398,12 @@ export default function PurchaseRequestsTable() {
         (payload) => {
           console.log('📡 Real-time update received:', payload)
           
+          // Sadece ilgili cache'i temizle - tüm cache'leri temizlemeye gerek yok
           // Global cache invalidation kullan
           invalidatePurchaseRequestsCache()
           
-          // SWR cache'ini de manuel olarak temizle
-          mutate('purchase_requests_stats')
-          mutate('pending_requests_count')
-          
-          // Tüm purchase_requests cache'lerini temizle
-          mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
-          
-          // Veriyi yenile
-          refreshData()
+          // Sadece bu sayfanın cache'ini yenile - gereksiz global yenilemeleri kaldır
+          mutate(`purchase_requests/${currentPage}/${pageSize}/${userRole}`)
           
           console.log('✅ PurchaseRequestsTable cache temizlendi ve veri yenilendi')
         }
@@ -431,7 +413,7 @@ export default function PurchaseRequestsTable() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [refreshData])
+  }, [currentPage, pageSize, userRole])
 
   // Filter uygulaması
   const filteredRequests = requests.filter((req: any) => {
