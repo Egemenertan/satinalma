@@ -66,9 +66,13 @@ function LoginContent() {
             return
           }
           
-          console.log('🚀 Redirecting to dashboard...')
-          // Başarılı - Dashboard'a git
-          window.location.href = '/dashboard'
+          console.log('🚀 Redirecting based on role...')
+          // Rol bazlı yönlendirme
+          if (profile.role === 'site_manager' || profile.role === 'site_personnel' || profile.role === 'santiye_depo') {
+            window.location.href = '/dashboard/requests'
+          } else {
+            window.location.href = '/dashboard'
+          }
         } else {
           console.log('❌ Profile not found')
           setError('Kullanıcı profili bulunamadı.')
