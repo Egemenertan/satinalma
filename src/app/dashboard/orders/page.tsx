@@ -115,6 +115,54 @@ const fetchOrders = async (
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
 
+  // Arama terimi varsa, önce ilgili ID'leri bul
+  let supplierIds: string[] = []
+  let requestIds: string[] = []
+  let materialItemIds: string[] = []
+
+  if (searchTerm && searchTerm.trim()) {
+    const searchPattern = `%${searchTerm.trim()}%`
+    
+    // Tedarikçi isimlerinde ara
+    const { data: suppliers } = await supabase
+      .from('suppliers')
+      .select('id')
+      .ilike('name', searchPattern)
+    
+    if (suppliers && suppliers.length > 0) {
+      supplierIds = suppliers.map(s => s.id)
+    }
+
+    // Purchase request'lerde ara (title ve request_number)
+    const { data: requests } = await supabase
+      .from('purchase_requests')
+      .select('id')
+      .or(`title.ilike.%${searchTerm.trim()}%,request_number.ilike.%${searchTerm.trim()}%`)
+    
+    if (requests && requests.length > 0) {
+      requestIds = requests.map(r => r.id)
+    }
+
+    // Malzeme isimlerinde ara
+    const { data: materials } = await supabase
+      .from('purchase_request_items')
+      .select('id')
+      .ilike('item_name', searchPattern)
+    
+    if (materials && materials.length > 0) {
+      materialItemIds = materials.map(m => m.id)
+    }
+
+    // Hiçbir sonuç bulunamadıysa boş döndür
+    if (supplierIds.length === 0 && requestIds.length === 0 && materialItemIds.length === 0) {
+      return {
+        orders: [],
+        totalCount: 0,
+        totalPages: 0
+      }
+    }
+  }
+
   // Query builder oluştur
   let query = supabase
     .from('orders')
@@ -157,6 +205,27 @@ const fetchOrders = async (
       )
     `, { count: 'exact' })
 
+  // Arama filtresi - bulunan ID'lere göre filtrele
+  if (searchTerm && searchTerm.trim()) {
+    const conditions: string[] = []
+    
+    if (supplierIds.length > 0) {
+      conditions.push(`supplier_id.in.(${supplierIds.join(',')})`)
+    }
+    
+    if (requestIds.length > 0) {
+      conditions.push(`purchase_request_id.in.(${requestIds.join(',')})`)
+    }
+    
+    if (materialItemIds.length > 0) {
+      conditions.push(`material_item_id.in.(${materialItemIds.join(',')})`)
+    }
+    
+    if (conditions.length > 0) {
+      query = query.or(conditions.join(','))
+    }
+  }
+
   // Durum filtresi
   if (statusFilter !== 'all') {
     // Hem İngilizce hem Türkçe status değerlerini destekle
@@ -187,9 +256,6 @@ const fetchOrders = async (
     }
   }
 
-  // Arama filtresi - bu kısmı basit tutuyoruz, çünkü join'li tablolarda text search karmaşık
-  // Şimdilik sadece pagination ve diğer filtreleri uyguluyoruz
-  
   // Pagination
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
@@ -250,22 +316,14 @@ const fetchOrders = async (
     })
   )
 
-  // Arama filtresi - frontend'de uyguluyoruz çünkü join'li tablolarda backend search karmaşık
-  let filteredOrders = ordersWithInvoices
-  if (searchTerm) {
-    filteredOrders = ordersWithInvoices.filter(order => 
-      order.suppliers?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.purchase_request_items?.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.purchase_requests?.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.purchase_requests?.request_number?.toLowerCase().includes(searchTerm.toLowerCase())
-    )
-  }
-
+  // Arama filtresi - backend'de uygulandı, burada sadece sonuçları döndürüyoruz
+  // searchTerm parametresi artık backend'de işleniyor
+  
   const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / pageSize)
 
   return {
-    orders: filteredOrders,
+    orders: ordersWithInvoices,
     totalCount,
     totalPages
   }

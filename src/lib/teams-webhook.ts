@@ -241,8 +241,6 @@ export async function sendRejectionTeamsNotification(requestId: string) {
  */
 export async function sendTeamsNotification(requestId: string) {
   try {
-    console.log('🔔 Teams bildirimi gönderiliyor:', requestId)
-    
     const supabase = createClient()
     
     // Talep detaylarını al
@@ -267,19 +265,11 @@ export async function sendTeamsNotification(requestId: string) {
       return { success: false, error: 'Talep bulunamadı' }
     }
 
-    // Malzeme listesini al - tüm olası field'ları deneyelim
+    // Malzeme listesini al
     const { data: items, error: itemsError } = await supabase
       .from('purchase_request_items')
       .select('*')
       .eq('purchase_request_id', requestId)
-
-    console.log('🔍 Malzeme sorgu sonucu:', { 
-      items, 
-      itemsError, 
-      requestId,
-      itemCount: items?.length || 0,
-      firstItem: items?.[0] || null
-    })
 
     if (itemsError) {
       console.error('❌ Malzemeler alınamadı:', itemsError)
@@ -297,15 +287,11 @@ export async function sendTeamsNotification(requestId: string) {
       items: items || []
     }
 
-    console.log('📤 Webhook payload hazırlandı:', webhookPayload)
-
     // Server-side API endpoint'ine gönder (CORS sorununu çözer)
     const baseUrl = typeof window !== 'undefined' 
       ? window.location.origin 
       : process.env.NEXT_PUBLIC_APP_URL || 'https://dovac.app'
     const webhookUrl = `${baseUrl}/api/teams-webhook`
-    
-    console.log('🌐 Teams webhook URL:', webhookUrl)
     
     const response = await fetch(webhookUrl, {
       method: 'POST',
@@ -314,19 +300,10 @@ export async function sendTeamsNotification(requestId: string) {
       },
       body: JSON.stringify(webhookPayload)
     })
-    
-    console.log('📡 Fetch response:', {
-      status: response.status,
-      statusText: response.statusText,
-      ok: response.ok
-    })
 
     if (!response.ok) {
       const errorText = await response.text()
-      console.error('❌ Teams webhook API hatası:', {
-        status: response.status,
-        error: errorText
-      })
+      console.error('❌ Teams webhook API hatası:', response.status, errorText)
       return { 
         success: false, 
         error: `API hatası: ${response.status} - ${errorText}` 
@@ -334,7 +311,6 @@ export async function sendTeamsNotification(requestId: string) {
     }
 
     const result = await response.json()
-    console.log('✅ Teams bildirimi başarıyla gönderildi:', result)
     
     return { success: true, data: result }
 
@@ -352,24 +328,13 @@ export async function sendTeamsNotification(requestId: string) {
  */
 export async function handlePurchaseRequestStatusChange(
   requestId: string, 
-  newStatus: string, 
+  newStatus: string,
   oldStatus?: string
 ) {
-  console.log('🔍 handlePurchaseRequestStatusChange çağrıldı:', {
-    requestId,
-    newStatus,
-    oldStatus,
-    shouldSendApproval: newStatus === 'satın almaya gönderildi' && oldStatus !== 'satın almaya gönderildi',
-    shouldSendRejection: newStatus === 'reddedildi' && oldStatus !== 'reddedildi'
-  })
-  
   // "satın almaya gönderildi" durumunda bildirim gönder
   if (newStatus === 'satın almaya gönderildi' && oldStatus !== 'satın almaya gönderildi') {
-    console.log('🎯 Satın almaya gönderildi durumu tespit edildi, Teams bildirimi gönderiliyor...')
-    
     try {
       const result = await sendTeamsNotification(requestId)
-      console.log('📤 Teams bildirimi sonucu:', result)
       return result
     } catch (error) {
       console.error('❌ Teams bildirimi hatası:', error)
@@ -379,11 +344,8 @@ export async function handlePurchaseRequestStatusChange(
   
   // "reddedildi" durumunda bildirim gönder
   if (newStatus === 'reddedildi' && oldStatus !== 'reddedildi') {
-    console.log('🚫 Reddedildi durumu tespit edildi, Teams bildirimi gönderiliyor...')
-    
     try {
       const result = await sendRejectionTeamsNotification(requestId)
-      console.log('📤 Red bildirimi sonucu:', result)
       return result
     } catch (error) {
       console.error('❌ Red bildirimi hatası:', error)
@@ -391,6 +353,5 @@ export async function handlePurchaseRequestStatusChange(
     }
   }
   
-  console.log('ℹ️ Teams bildirimi gönderilmedi - koşul sağlanmadı')
   return { success: false, error: 'Koşul sağlanmadı' }
 }

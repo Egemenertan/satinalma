@@ -133,7 +133,8 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   } else {
     // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
-      countQuery = countQuery.eq('site_id', profile.site_id)
+      // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
+      countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
   }
   
@@ -184,7 +185,8 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   } else {
     // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
-      requestsQuery = requestsQuery.eq('site_id', profile.site_id)
+      // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
+      requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
   }
   
@@ -211,14 +213,14 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
       processedProfiles = processedProfiles[0]
     }
     
-    // Debug log - sadece eksik olanları göster
-    if (!processedProfiles || !processedProfiles.full_name) {
-      console.log('⚠️ Profile bilgisi eksik veya boş:', {
+    // Debug log - sadece eksik olanları göster (development modunda ve verbose mode açıksa)
+    if ((!processedProfiles || !processedProfiles.full_name) && process.env.NODE_ENV === 'development' && process.env.NEXT_PUBLIC_VERBOSE_LOGS === 'true') {
+      console.log('ℹ️ Profile bilgisi eksik (fallback kullanılacak):', {
         requestId: request.id.slice(0, 8),
         requested_by: request.requested_by?.slice(0, 8),
-        profiles: processedProfiles,
-        profileType: typeof processedProfiles,
-        isArray: Array.isArray(request.profiles)
+        hasProfile: !!processedProfiles,
+        hasFullName: !!processedProfiles?.full_name,
+        hasEmail: !!processedProfiles?.email
       })
     }
     
@@ -234,6 +236,23 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
             .split(' ')
             .map((word: string) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
             .join(' ')
+          
+          // Veritabanındaki full_name'i de güncelle (arka planda, sessizce)
+          if (request.requested_by && process.env.NODE_ENV === 'development') {
+            supabase
+              .from('profiles')
+              .update({ 
+                full_name: displayName,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', request.requested_by)
+              .then(({ error }) => {
+                if (error && process.env.NEXT_PUBLIC_VERBOSE_LOGS === 'true') {
+                  console.error('⚠️ Profile güncelleme hatası:', error)
+                }
+                // Başarı logu kaldırıldı - gereksiz
+              })
+          }
         } else {
           displayName = 'İsimsiz Kullanıcı'
         }
@@ -741,14 +760,13 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         throw new Error('Kullanıcı oturumu bulunamadı.')
       }
       
-      const { data: updateResult, error } = await supabase
+      const { error } = await supabase
         .from('purchase_requests')
         .update({ 
           status: 'satın almaya gönderildi',
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
-        .select()
       
       if (error) throw error
       
@@ -764,15 +782,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
 
       if (historyError) {
         console.error('⚠️ Approval history kaydı eklenirken hata:', historyError)
-      } else {
-        console.log('✅ Approval history kaydı eklendi')
       }
-      
-      console.log('✅ Status updated successfully:', {
-        requestId,
-        newStatus: 'satın almaya gönderildi',
-        updateResult
-      })
       
       // Teams bildirimi gönder
       try {

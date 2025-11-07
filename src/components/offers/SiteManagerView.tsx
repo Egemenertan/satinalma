@@ -47,61 +47,23 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
     setSiteManagerApproving(true)
     
     try {
-      console.log('🚀 Site Manager onayı başlatılıyor...', {
-        requestId: request.id,
-        currentStatus: request?.status,
-        requestSiteId: request?.site_id
-      })
-
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
-      // Kullanıcının profile bilgilerini al
-      const { data: userProfile } = await supabase
-        .from('profiles')
-        .select('role, site_id, full_name')
-        .eq('id', user.id)
-        .single();
-
-      console.log('✅ Kullanıcı bilgileri:', {
-        userId: user.id,
-        role: userProfile?.role,
-        siteId: userProfile?.site_id,
-        fullName: userProfile?.full_name
-      })
-
-      // Direkt update dene
-      const { data: updateResult, error: updateError } = await supabase
+      // Status güncelle
+      const { error: updateError } = await supabase
         .from('purchase_requests')
         .update({ 
           status: 'satın almaya gönderildi',
           updated_at: new Date().toISOString()
         })
-        .eq('id', request.id)
-        .select();
-        
-      console.log('🔍 Update sonucu:', { 
-        success: !updateError, 
-        updateResult, 
-        error: updateError,
-        errorCode: updateError?.code,
-        errorMessage: updateError?.message
-      });
+        .eq('id', request.id);
 
       if (updateError) {
-        console.error('❌ Update hatası:', updateError)
-        
-        if (updateError.message?.includes('policy') || updateError.message?.includes('permission') || updateError.code === '42501') {
-          throw new Error(`Yetki hatası: Site manager rolünüz ile bu işlemi yapmaya yetkiniz yok.\n\nDetay: ${updateError.message}\n\nKullanıcı: ${userProfile?.role} | Site: ${userProfile?.site_id}`)
-        }
-        
-        throw updateError
-      }
-
-      if (!updateResult || updateResult.length === 0) {
-        throw new Error('Status güncellendi ancak sonuç alınamadı. Sayfayı yenileyip kontrol edin.')
+        console.error('❌ Status güncelleme hatası:', updateError)
+        throw new Error('Status güncellenemedi: ' + updateError.message)
       }
 
       // Approval history ekle
@@ -115,33 +77,23 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         });
 
       if (historyError) {
-        console.error('⚠️ Approval history kaydı eklenirken hata:', historyError);
-      } else {
-        console.log('✅ Approval history kaydı eklendi');
+        console.error('⚠️ Approval history hatası:', historyError);
       }
-
-      console.log('✅ Status başarıyla güncellendi:', updateResult[0])
-      showToast('Malzemeler satın almaya gönderildi!', 'success')
       
-      // Teams bildirimi gönder
+      // Teams bildirimi gönder (arka planda, hata olsa bile devam et)
       try {
-        console.log('🔔 Teams webhook tetikleniyor...', {
-          requestId: request.id,
-          newStatus: 'satın almaya gönderildi',
-          oldStatus: request.status
-        })
-        
         const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
-        const webhookResult = await handlePurchaseRequestStatusChange(request.id, 'satın almaya gönderildi', request.status)
-        
-        console.log('✅ Teams webhook sonucu:', webhookResult)
+        await handlePurchaseRequestStatusChange(request.id, 'satın almaya gönderildi', request.status)
       } catch (webhookError) {
         console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
-        // Webhook hatası ana işlemi etkilemesin
       }
       
-      await onRefresh()
+      // Cache'i temizle ve sayfayı yenile
       invalidatePurchaseRequestsCache()
+      await onRefresh()
+      
+      // Başarı mesajını göster
+      showToast('Malzemeler satın almaya gönderildi!', 'success')
       
     } catch (error: any) {
       console.error('❌ Site Manager onay hatası:', error)

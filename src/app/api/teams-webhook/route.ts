@@ -221,10 +221,14 @@ export async function POST(request: NextRequest) {
   try {
     // Teams webhook URL kontrolü
     if (!TEAMS_WEBHOOK_URL) {
-      console.error('❌ TEAMS_WEBHOOK_URL environment variable tanımlı değil')
+      console.warn('⚠️ TEAMS_WEBHOOK_URL environment variable tanımlı değil - bildirim atlanıyor')
       return NextResponse.json(
-        { error: 'Teams webhook URL yapılandırılmamış' },
-        { status: 500 }
+        { 
+          success: true, 
+          message: 'Teams webhook URL yapılandırılmamış, bildirim atlandı',
+          skipped: true
+        },
+        { status: 200 }
       )
     }
 

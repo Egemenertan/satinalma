@@ -61,7 +61,17 @@ export async function createPurchaseRequest(data: {
     const now = new Date()
     const requestNumber = `REQ-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
     
-    // Purchase request data hazırla - direkt pending status ile oluştur
+    // Kullanıcı rolüne ve email'e göre status belirle
+    // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
+    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    let initialStatus = 'pending'
+    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+      initialStatus = 'satın almaya gönderildi'
+    } else if (user.role === 'santiye_depo') {
+      initialStatus = 'depoda mevcut değil'
+    }
+    
+    // Purchase request data hazırla
     const requestData = {
       request_number: requestNumber,
       title: data.material,
@@ -70,7 +80,7 @@ export async function createPurchaseRequest(data: {
       total_amount: 0,
       currency: 'TRY',
       urgency_level: 'normal' as const,
-      status: 'pending' as const, // Direkt pending olarak oluştur
+      status: initialStatus,
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
@@ -113,11 +123,18 @@ export async function createPurchaseRequest(data: {
     }
 
     // Approval history kaydı ekle (kritik değil)
+    let historyComment = 'Talep oluşturuldu'
+    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+      historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
+    } else if (user.role === 'santiye_depo') {
+      historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
+    }
+    
     const historyData = {
       purchase_request_id: purchaseRequest.id,
       action: 'submitted' as const,
       performed_by: user.id,
-      comments: 'Talep oluşturuldu'
+      comments: historyComment
     }
     
     await supabase
@@ -391,6 +408,16 @@ export async function createMultiMaterialPurchaseRequest(data: {
       ? `Çoklu malzeme talebi: ${data.materials.map(m => `${m.material_name} (${m.quantity} ${m.unit})`).join(', ')}`
       : `${data.materials[0]?.material_name} - ${data.materials[0]?.quantity} ${data.materials[0]?.unit}`
     
+    // Kullanıcı rolüne ve email'e göre status belirle
+    // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
+    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    let initialStatus = 'pending'
+    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+      initialStatus = 'satın almaya gönderildi'
+    } else if (user.role === 'santiye_depo') {
+      initialStatus = 'depoda mevcut değil'
+    }
+    
     // Purchase request data hazırla
     const requestData = {
       request_number: requestNumber,
@@ -400,7 +427,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       total_amount: 0,
       currency: 'TRY',
       urgency_level: 'normal' as const,
-      status: 'pending' as const,
+      status: initialStatus,
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
@@ -456,11 +483,18 @@ export async function createMultiMaterialPurchaseRequest(data: {
     console.log('✅ Purchase request items oluşturuldu')
 
     // Approval history kaydı ekle
+    let historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
+    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
+    } else if (user.role === 'santiye_depo') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
+    }
+    
     const historyData = {
       purchase_request_id: purchaseRequest.id,
       action: 'submitted' as const,
       performed_by: user.id,
-      comments: `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
+      comments: historyComment
     }
     
     await supabase
