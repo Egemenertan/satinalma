@@ -290,7 +290,9 @@ export default function CreatePurchaseRequestPage() {
                 'natulux': 'natulux.webp',
                 'querencia': 'querencia.webp',
                 'four seasons life 3': 'fourseosonlife3.webp',
-                'fourseasons': 'fourseosonlife3.webp'
+                'fourseasons': 'fourseosonlife3.webp',
+                'd-point': 'dpointhero.webp',
+                'dpoint': 'dpointhero.webp'
               }
               
               for (const site of sitesData) {
