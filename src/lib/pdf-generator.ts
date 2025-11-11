@@ -787,21 +787,6 @@ const generatePDFHTML = (data: ReportData): string => {
               <div class="order-user">Sipariş Veren: ${order.profiles?.full_name || order.profiles?.email || 'Purchasing Officer'}</div>
               ${order.delivered_at ? `<div class="order-details delivery-status">Teslim Alındı: ${formatDate(order.delivered_at)}</div>` : ''}
               ${order.delivery_notes ? `<div class="order-details">Teslimat Notu: ${order.delivery_notes}</div>` : ''}
-              ${(() => {
-                // Fatura tutarlarını hesapla - EN SONDA
-                const totalInvoiceAmount = order.invoices && order.invoices.length > 0 
-                  ? order.invoices.reduce((total, invoice) => total + invoice.amount, 0)
-                  : 0
-                
-                if (totalInvoiceAmount > 0) {
-                  // Fatura varsa fatura tutarını göster
-                  const currency = order.invoices[0].currency || order.currency
-                  return `<div class="order-amount">Fatura Tutarı: ${totalInvoiceAmount.toLocaleString('tr-TR')} ${currency}</div>`
-                } else {
-                  // Fatura yoksa sipariş tutarını göster
-                  return `<div class="order-amount">Sipariş Tutarı: ${order.amount.toLocaleString('tr-TR')} ${order.currency}</div>`
-                }
-              })()}
             </div>
           </div>
         `).join('')}
@@ -896,63 +881,24 @@ const generatePDFHTML = (data: ReportData): string => {
 
     <!-- Fatura Özeti -->
     ${(() => {
-      // Tüm fatura tutarlarını topla
+      // Sadece data.invoices'daki faturaları kullan (zaten seçilmiş olanlar)
       const allInvoices = []
       let totalAmount = 0
       let currency = 'TRY'
       
-      // Siparişlerden fatura bilgilerini çek
-      if (data.orders && data.orders.length > 0) {
-        data.orders.forEach(order => {
-          if (order.invoices && order.invoices.length > 0) {
-            order.invoices.forEach(invoice => {
-              const supplierName = order.suppliers?.name || 'Tedarikçi'
-              const itemName = order.purchase_request_items?.item_name || 'Malzeme'
-              allInvoices.push({
-                description: `${supplierName} - ${itemName}`,
-                amount: invoice.amount,
-                currency: invoice.currency
-              })
-              totalAmount += invoice.amount
-              currency = invoice.currency
-            })
-          } else {
-            // Fatura yoksa sipariş tutarını kullan
-            const supplierName = order.suppliers?.name || 'Tedarikçi'
-            const itemName = order.purchase_request_items?.item_name || 'Malzeme'
-            allInvoices.push({
-              description: `${supplierName} - ${itemName}`,
-              amount: order.amount,
-              currency: order.currency
-            })
-            totalAmount += order.amount
-            currency = order.currency
-          }
-        })
-      }
-      
-      // Ayrı faturalar varsa onları da ekle
+      // data.invoices zaten seçilen faturaları içeriyor
       if (data.invoices && data.invoices.length > 0) {
         data.invoices.forEach(invoice => {
           const supplierName = invoice.orders?.suppliers?.name || 'Tedarikçi'
           const itemName = invoice.orders?.purchase_request_items?.item_name || 'Malzeme'
           
-          // Zaten sipariş faturalarında eklenmişse tekrar ekleme
-          const alreadyAdded = allInvoices.some(inv => 
-            inv.description.includes(supplierName) && 
-            inv.description.includes(itemName) &&
-            inv.amount === invoice.amount
-          )
-          
-          if (!alreadyAdded) {
-            allInvoices.push({
-              description: `${supplierName} - ${itemName}`,
-              amount: invoice.amount,
-              currency: invoice.currency
-            })
-            totalAmount += invoice.amount
-            currency = invoice.currency
-          }
+          allInvoices.push({
+            description: `${supplierName} - ${itemName}`,
+            amount: invoice.amount,
+            currency: invoice.currency
+          })
+          totalAmount += invoice.amount
+          currency = invoice.currency
         })
       }
       

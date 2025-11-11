@@ -1,5 +1,0 @@
----
-description: When a change or modification is to be made, if it involves the database, make an MCP call to Supabase to check the relevant status.
-globs:
-alwaysApply: true
----

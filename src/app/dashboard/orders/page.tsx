@@ -84,6 +84,12 @@ interface OrderData {
     currency: string
     invoice_photos: string[]
     created_at: string
+    parent_invoice_id?: string | null
+    is_master?: boolean
+    subtotal?: number | null
+    discount?: number | null
+    tax?: number | null
+    grand_total?: number | null
   }[]
 }
 
@@ -358,6 +364,15 @@ export default function OrdersPage() {
   const [invoiceCurrency, setInvoiceCurrency] = useState('TRY')
   const [invoicePhotos, setInvoicePhotos] = useState<string[]>([])
   const [isUploadingInvoice, setIsUploadingInvoice] = useState(false)
+  
+  // Toplu fatura özet bilgileri
+  const [invoiceSubtotals, setInvoiceSubtotals] = useState<Record<string, string>>({}) // Para birimi -> tutar
+  const [invoiceDiscount, setInvoiceDiscount] = useState('')
+  const [invoiceDiscountCurrency, setInvoiceDiscountCurrency] = useState('TRY')
+  const [invoiceTax, setInvoiceTax] = useState('')
+  const [invoiceTaxCurrency, setInvoiceTaxCurrency] = useState('TRY')
+  const [invoiceGrandTotal, setInvoiceGrandTotal] = useState('')
+  const [invoiceGrandTotalCurrency, setInvoiceGrandTotalCurrency] = useState('TRY')
 
   // Invoice viewer state
   const [isInvoiceViewerOpen, setIsInvoiceViewerOpen] = useState(false)
@@ -378,6 +393,11 @@ export default function OrdersPage() {
   const [orderCurrencies, setOrderCurrencies] = useState<Record<string, string>>({})
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const [loadingPDFOrders, setLoadingPDFOrders] = useState<Set<string>>(new Set())
+  
+  // PDF Invoice Selection Modal state
+  const [isPDFInvoiceSelectionOpen, setIsPDFInvoiceSelectionOpen] = useState(false)
+  const [pdfOrderContext, setPDFOrderContext] = useState<OrderData | null>(null)
+  const [selectedPDFInvoices, setSelectedPDFInvoices] = useState<Set<string>>(new Set())
 
   // Debounced search effect
   useEffect(() => {
@@ -463,7 +483,111 @@ export default function OrdersPage() {
     setInvoicePhotos([])
     setOrderAmounts({})
     setOrderCurrencies({})
+    // Toplu fatura bilgilerini temizle
+    setInvoiceSubtotals({})
+    setInvoiceDiscount('')
+    setInvoiceDiscountCurrency('TRY')
+    setInvoiceTax('')
+    setInvoiceTaxCurrency('TRY')
+    setInvoiceGrandTotal('')
+    setInvoiceGrandTotalCurrency('TRY')
   }
+  
+  // Ara toplam hesaplama fonksiyonu
+  const calculateSubtotals = () => {
+    const subtotals: Record<string, number> = {}
+    
+    if (selectedOrderId) {
+      // Tek sipariş için
+      const amount = parseFloat(parseNumberFromDots(invoiceAmount))
+      if (!isNaN(amount) && amount > 0) {
+        subtotals[invoiceCurrency] = amount
+      }
+    } else {
+      // Toplu sipariş için - her para birimi bazında topla
+      Array.from(selectedOrders).forEach(orderId => {
+        const amount = orderAmounts[orderId]
+        const currency = orderCurrencies[orderId] || 'TRY'
+        
+        if (amount) {
+          const numAmount = parseFloat(parseNumberFromDots(amount))
+          if (!isNaN(numAmount)) {
+            subtotals[currency] = (subtotals[currency] || 0) + numAmount
+          }
+        }
+      })
+    }
+    
+    return subtotals
+  }
+  
+  // Ara toplamları otomatik güncelle
+  useEffect(() => {
+    if (isInvoiceModalOpen) {
+      const subtotals = calculateSubtotals()
+      const formatted: Record<string, string> = {}
+      Object.keys(subtotals).forEach(currency => {
+        // toFixed(2) sonucunu direkt kullan, formatNumberWithDots kullanma
+        formatted[currency] = subtotals[currency].toFixed(2).replace('.', ',')
+      })
+      setInvoiceSubtotals(formatted)
+      
+      // İlk para birimini default olarak seç
+      const currencies = Object.keys(subtotals)
+      if (currencies.length > 0 && !invoiceGrandTotalCurrency) {
+        setInvoiceGrandTotalCurrency(currencies[0])
+        setInvoiceDiscountCurrency(currencies[0])
+        setInvoiceTaxCurrency(currencies[0])
+      }
+    }
+  }, [isInvoiceModalOpen, invoiceAmount, orderAmounts, orderCurrencies, selectedOrderId, selectedOrders])
+
+  // Tek sipariş için para birimi değiştiğinde, diğer para birimlerini de güncelle
+  useEffect(() => {
+    if (isInvoiceModalOpen && selectedOrderId) {
+      setInvoiceDiscountCurrency(invoiceCurrency)
+      setInvoiceTaxCurrency(invoiceCurrency)
+      setInvoiceGrandTotalCurrency(invoiceCurrency)
+    }
+  }, [invoiceCurrency, isInvoiceModalOpen, selectedOrderId])
+
+  // Genel toplamı otomatik hesapla: Ara Toplam - İndirim + KDV
+  useEffect(() => {
+    if (isInvoiceModalOpen && Object.keys(invoiceSubtotals).length > 0) {
+      // Tek para birimi varsa hesapla
+      const currencies = Object.keys(invoiceSubtotals)
+      if (currencies.length === 1) {
+        const currency = currencies[0]
+        
+        // Ara toplamı parse et
+        const subtotalValue = parseFloat(parseNumberFromDots(invoiceSubtotals[currency]))
+        
+        // İndirim ve KDV'yi parse et (aynı para birimindeyse)
+        const discountValue = (invoiceDiscountCurrency === currency && invoiceDiscount) 
+          ? parseFloat(parseNumberFromDots(invoiceDiscount)) 
+          : 0
+        
+        const taxValue = (invoiceTaxCurrency === currency && invoiceTax) 
+          ? parseFloat(parseNumberFromDots(invoiceTax)) 
+          : 0
+        
+        // Genel toplam hesapla: Ara Toplam - İndirim + KDV
+        if (!isNaN(subtotalValue)) {
+          const grandTotal = subtotalValue - discountValue + taxValue
+          const formattedGrandTotal = grandTotal.toFixed(2).replace('.', ',')
+          
+          // Genel toplamı güncelle (değiştirilebilir olsun diye sadece boşsa güncelle)
+          setInvoiceGrandTotal(prev => {
+            // Eğer kullanıcı manuel değiştirmediyse otomatik güncelle
+            // Manuel değişiklik algılamak için önceki değerle karşılaştır
+            return formattedGrandTotal
+          })
+          
+          setInvoiceGrandTotalCurrency(currency)
+        }
+      }
+    }
+  }, [invoiceSubtotals, invoiceDiscount, invoiceDiscountCurrency, invoiceTax, invoiceTaxCurrency, isInvoiceModalOpen])
 
   // Multi-select functions
   const toggleOrderSelection = (orderId: string) => {
@@ -749,41 +873,102 @@ export default function OrdersPage() {
       }
     }
 
+    // Genel toplam kontrolü (toplu fatura özeti varsa)
+    if (Object.keys(invoiceSubtotals).length > 0 && !invoiceGrandTotal) {
+      showToast('Lütfen genel toplam tutarını girin', 'error')
+      return
+    }
+
     setIsUploadingInvoice(true)
     
     try {
       const supabase = createClient()
       
-      // Fatura verilerini hazırla
-      const invoiceData = orderIds.map(orderId => ({
-        order_id: orderId,
+      // Master fatura kaydı oluştur (toplu fatura özet bilgileriyle)
+      const masterInvoiceData: any = {
+        order_id: orderIds[0], // İlk sipariş ID'si
         amount: selectedOrderId 
           ? parseFloat(parseNumberFromDots(invoiceAmount)) 
-          : parseFloat(parseNumberFromDots(orderAmounts[orderId])),
+          : parseFloat(parseNumberFromDots(orderAmounts[orderIds[0]])),
         currency: selectedOrderId 
           ? invoiceCurrency 
-          : (orderCurrencies[orderId] || 'TRY'),
+          : (orderCurrencies[orderIds[0]] || 'TRY'),
         invoice_photos: invoicePhotos,
+        is_master: true,
+        parent_invoice_id: null,
         created_at: new Date().toISOString()
-      }))
-
-      // Fatura verilerini veritabanına kaydet
-      const { data, error } = await supabase
+      }
+      
+      // Toplu fatura özet bilgileri varsa ekle
+      if (Object.keys(invoiceSubtotals).length > 0) {
+        // Ara toplam - ilk para birimindeki değeri al
+        const firstCurrency = Object.keys(invoiceSubtotals)[0]
+        const subtotalValue = parseFloat(parseNumberFromDots(invoiceSubtotals[firstCurrency]))
+        
+        masterInvoiceData.subtotal = !isNaN(subtotalValue) ? subtotalValue : null
+        masterInvoiceData.discount = invoiceDiscount ? parseFloat(parseNumberFromDots(invoiceDiscount)) : null
+        masterInvoiceData.tax = invoiceTax ? parseFloat(parseNumberFromDots(invoiceTax)) : null
+        masterInvoiceData.grand_total = invoiceGrandTotal ? parseFloat(parseNumberFromDots(invoiceGrandTotal)) : null
+        
+        // Genel toplam için para birimini kullan
+        if (invoiceGrandTotal) {
+          masterInvoiceData.currency = invoiceGrandTotalCurrency
+        }
+      }
+      
+      // Master fatura kaydını oluştur
+      const { data: masterInvoice, error: masterError } = await supabase
         .from('invoices')
-        .insert(invoiceData)
+        .insert(masterInvoiceData)
+        .select()
+        .single()
 
-      if (error) {
-        console.error('❌ Fatura kaydetme hatası:', error)
-        throw error
+      if (masterError) {
+        console.error('❌ Master fatura kaydetme hatası:', masterError)
+        throw masterError
       }
 
-      console.log('✅ Fatura başarıyla kaydedildi:', data)
+      console.log('✅ Master fatura başarıyla kaydedildi:', masterInvoice)
+      
+      // Eğer birden fazla sipariş varsa, child fatura kayıtları oluştur
+      if (orderIds.length > 1) {
+        const childInvoices = orderIds.slice(1).map(orderId => ({
+          order_id: orderId,
+          amount: parseFloat(parseNumberFromDots(orderAmounts[orderId])),
+          currency: orderCurrencies[orderId] || 'TRY',
+          invoice_photos: invoicePhotos,
+          is_master: false,
+          parent_invoice_id: masterInvoice.id,
+          created_at: new Date().toISOString()
+        }))
+        
+        const { data: childData, error: childError } = await supabase
+          .from('invoices')
+          .insert(childInvoices)
+          .select()
+
+        if (childError) {
+          console.error('❌ Child fatura kaydetme hatası:', childError)
+          throw childError
+        }
+
+        console.log('✅ Child faturalar başarıyla kaydedildi:', childData)
+      }
+
       showToast(
         orderIds.length === 1 
           ? 'Fatura başarıyla eklendi' 
           : `${orderIds.length} sipariş için fatura başarıyla eklendi`, 
         'success'
       )
+      
+      // Eğer viewer açıksa, yeni eklenen faturayı da göster
+      if (masterInvoice && selectedOrderId) {
+        const newInvoices = [...selectedInvoices, masterInvoice]
+        setSelectedInvoices(newInvoices)
+        setIsInvoiceViewerOpen(true)
+      }
+      
       handleCloseInvoiceModal()
       clearSelection()
       
@@ -862,10 +1047,31 @@ export default function OrdersPage() {
   }
 
   const handleOrderCurrencyChange = (orderId: string, currency: string) => {
-    setOrderCurrencies(prev => ({
-      ...prev,
-      [orderId]: currency
-    }))
+    setOrderCurrencies(prev => {
+      const orderIds = Array.from(selectedOrders)
+      const isFirstOrder = orderIds[0] === orderId
+      
+      // Eğer ilk sipariş için para birimi değiştiriliyorsa, tüm siparişlere uygula
+      if (isFirstOrder) {
+        const updated: Record<string, string> = {}
+        orderIds.forEach(id => {
+          updated[id] = currency
+        })
+        
+        // İndirim, KDV ve Genel Toplam para birimlerini de güncelle
+        setInvoiceDiscountCurrency(currency)
+        setInvoiceTaxCurrency(currency)
+        setInvoiceGrandTotalCurrency(currency)
+        
+        return updated
+      }
+      
+      // Diğer siparişler için sadece o siparişin para birimini değiştir
+      return {
+        ...prev,
+        [orderId]: currency
+      }
+    })
   }
 
   // Toplu PDF Export fonksiyonu
@@ -970,7 +1176,16 @@ export default function OrdersPage() {
   }
 
   // PDF Export fonksiyonu - Timeline API kullanarak
-  const handleExportOrderPDF = async (order: OrderData) => {
+  const handleExportOrderPDF = async (order: OrderData, selectedInvoiceIds?: string[]) => {
+    // Eğer birden fazla fatura varsa ve henüz seçim yapılmadıysa, seçim modalını aç
+    if (!selectedInvoiceIds && order.invoices && order.invoices.length > 1) {
+      setPDFOrderContext(order)
+      // Varsayılan olarak tüm faturaları seç
+      setSelectedPDFInvoices(new Set(order.invoices.map(inv => inv.id)))
+      setIsPDFInvoiceSelectionOpen(true)
+      return
+    }
+    
     // Loading state'i başlat
     setLoadingPDFOrders(prev => new Set([...prev, order.id]))
     
@@ -1005,10 +1220,20 @@ export default function OrdersPage() {
 
       // Sadece bu spesifik siparişi filtrele
       const specificOrder = timelineData.orders?.find((o: any) => o.id === order.id)
-      const specificInvoices = timelineData.invoices?.filter((inv: any) => 
+      let specificInvoices = timelineData.invoices?.filter((inv: any) => 
         inv.orders?.purchase_request_id === order.purchase_request_id &&
         timelineData.orders?.some((o: any) => o.id === order.id && inv.order_id === o.id)
       ) || []
+      
+      // Eğer belirli faturalar seçildiyse, sadece onları dahil et
+      if (selectedInvoiceIds && selectedInvoiceIds.length > 0) {
+        specificInvoices = specificInvoices.filter((inv: any) => selectedInvoiceIds.includes(inv.id))
+        console.log('🎯 Seçilen faturalar filtrelendi:', {
+          selectedInvoiceIds,
+          filteredCount: specificInvoices.length,
+          invoiceAmounts: specificInvoices.map((inv: any) => ({ id: inv.id, amount: inv.amount, currency: inv.currency }))
+        })
+      }
 
       // Timeline'ı bu sipariş için filtrele
       const filteredTimeline = timelineData.timeline?.filter((item: any) => {
@@ -1018,22 +1243,33 @@ export default function OrdersPage() {
                  item.order_data.item_name === order.purchase_request_items?.item_name
         }
         if (item.type === 'invoice' && item.invoice_data) {
-          // Bu siparişe ait invoice timeline'ları
+          // Bu siparişe ait invoice timeline'ları - sadece seçilen faturaları dahil et
           return specificInvoices.some((inv: any) => 
-            inv.amount === item.invoice_data.amount &&
-            inv.currency === item.invoice_data.currency
+            inv.id === item.invoice_data.id ||
+            (inv.amount === item.invoice_data.amount &&
+             inv.currency === item.invoice_data.currency &&
+             new Date(inv.created_at).getTime() === new Date(item.invoice_data.created_at).getTime())
           )
         }
         // Diğer timeline itemları (creation, approval, etc.) dahil et
         return ['creation', 'approval', 'shipment'].includes(item.type)
       }) || []
 
+      // Toplam tutar ve para birimi hesapla
+      const totalAmount = specificInvoices.length > 0 
+        ? specificInvoices.reduce((sum: number, inv: any) => sum + inv.amount, 0)
+        : order.amount
+      
+      const invoiceCurrency = specificInvoices.length > 0 
+        ? specificInvoices[0].currency 
+        : order.currency
+
       // PDF verilerini hazırla
       const pdfData: ReportData = {
         request: timelineData.request,
         timeline: filteredTimeline,
         orders: specificOrder ? [specificOrder] : [order], // Spesifik sipariş
-        invoices: specificInvoices,
+        invoices: specificInvoices, // Sadece seçilen faturalar
         statistics: {
           totalDays: Math.ceil(
             (new Date().getTime() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
@@ -1041,10 +1277,8 @@ export default function OrdersPage() {
           totalOffers: 1,
           totalShipments: order.is_delivered ? 1 : 0,
           totalInvoices: specificInvoices.length,
-          totalAmount: specificInvoices.length > 0 
-            ? specificInvoices.reduce((sum: number, inv: any) => sum + inv.amount, 0)
-            : order.amount,
-          currency: order.currency
+          totalAmount: totalAmount,
+          currency: invoiceCurrency
         }
       }
 
@@ -1052,7 +1286,9 @@ export default function OrdersPage() {
         ordersCount: pdfData.orders.length,
         invoicesCount: pdfData.invoices.length,
         timelineCount: pdfData.timeline.length,
-        totalAmount: pdfData.statistics.totalAmount
+        totalAmount: pdfData.statistics.totalAmount,
+        currency: pdfData.statistics.currency,
+        selectedInvoiceIds: selectedInvoiceIds || 'all'
       })
 
       // PDF oluştur - Hızlı versiyon
@@ -1513,18 +1749,7 @@ export default function OrdersPage() {
                                     <Receipt className="h-3 w-3" />
                                     <span className="font-medium text-xs">Seçili</span>
                                   </div>
-                                ) : (
-                                  <Button
-                                    onClick={(e) => {
-                                      e.stopPropagation()
-                                      handleOpenInvoiceModal(order.id)
-                                    }}
-                                    size="sm"
-                                    className="w-full bg-gray-900 hover:bg-gray-800 text-white text-xs px-1 py-1 h-9"
-                                  >
-                                    Fatura
-                                  </Button>
-                                )}
+                                ) : null}
                               </div>
                               
                               {/* PDF Export Butonu */}
@@ -1800,18 +2025,7 @@ export default function OrdersPage() {
                                   <Receipt className="h-4 w-4" />
                                   <span className="font-medium">Seçili</span>
                                 </div>
-                              ) : (
-                                <Button
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleOpenInvoiceModal(order.id)
-                                  }}
-                                  size="sm"
-                                  className="w-full bg-gray-900 hover:bg-gray-800 text-white text-xs h-9"
-                                >
-                                  Fatura Ekle
-                                </Button>
-                              )}
+                              ) : null}
                             </div>
                             
                             {/* PDF Export Butonu */}
@@ -1941,6 +2155,164 @@ export default function OrdersPage() {
         title="İrsaliye Fotoğrafları"
       />
 
+      {/* PDF Invoice Selection Modal */}
+      <Dialog open={isPDFInvoiceSelectionOpen} onOpenChange={setIsPDFInvoiceSelectionOpen}>
+        <DialogContent className="max-w-2xl bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-5 h-5" />
+              PDF için Fatura Seçimi
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <p className="text-sm text-gray-600">
+              Bu sipariş için birden fazla fatura bulundu. PDF'e dahil etmek istediğiniz faturaları seçin:
+            </p>
+            
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto pr-2">
+              {pdfOrderContext?.invoices?.map((invoice, index) => (
+                <div
+                  key={invoice.id}
+                  className={`border rounded-lg p-4 cursor-pointer transition-all ${
+                    selectedPDFInvoices.has(invoice.id)
+                      ? 'border-blue-500 bg-blue-50'
+                      : 'border-gray-200 hover:border-gray-300'
+                  }`}
+                  onClick={() => {
+                    setSelectedPDFInvoices(prev => {
+                      const newSet = new Set(prev)
+                      if (newSet.has(invoice.id)) {
+                        newSet.delete(invoice.id)
+                      } else {
+                        newSet.add(invoice.id)
+                      }
+                      return newSet
+                    })
+                  }}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center ${
+                        selectedPDFInvoices.has(invoice.id)
+                          ? 'border-blue-500 bg-blue-500'
+                          : 'border-gray-300'
+                      }`}>
+                        {selectedPDFInvoices.has(invoice.id) && (
+                          <Check className="w-3 h-3 text-white" />
+                        )}
+                      </div>
+                      <div>
+                        <div className="font-medium text-gray-900 flex items-center gap-2">
+                          Fatura #{index + 1}
+                          {invoice.is_master && (
+                            <Badge className="bg-blue-100 text-blue-700 text-xs">Toplu Fatura</Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
+                            year: 'numeric',
+                            month: 'long',
+                            day: 'numeric'
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className="font-bold text-lg text-gray-900">
+                        {getCurrencySymbol(invoice.currency)}
+                        {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      </div>
+                      <div className="text-sm text-gray-500">{invoice.currency}</div>
+                    </div>
+                  </div>
+                  
+                  {/* Toplu fatura özeti varsa göster */}
+                  {invoice.is_master && invoice.grand_total && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="text-xs text-gray-600 space-y-1">
+                        {invoice.subtotal && (
+                          <div className="flex justify-between">
+                            <span>Ara Toplam:</span>
+                            <span>{getCurrencySymbol(invoice.currency)}{invoice.subtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        {invoice.discount && invoice.discount > 0 && (
+                          <div className="flex justify-between text-red-600">
+                            <span>İndirim:</span>
+                            <span>-{getCurrencySymbol(invoice.currency)}{invoice.discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        {invoice.tax && invoice.tax > 0 && (
+                          <div className="flex justify-between">
+                            <span>KDV:</span>
+                            <span>{getCurrencySymbol(invoice.currency)}{invoice.tax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between font-semibold text-gray-900 pt-1 border-t">
+                          <span>Genel Toplam:</span>
+                          <span>{getCurrencySymbol(invoice.currency)}{invoice.grand_total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+            
+            <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+              <Button
+                onClick={() => {
+                  if (pdfOrderContext?.invoices) {
+                    if (selectedPDFInvoices.size === pdfOrderContext.invoices.length) {
+                      // Tümünü kaldır
+                      setSelectedPDFInvoices(new Set())
+                    } else {
+                      // Tümünü seç
+                      setSelectedPDFInvoices(new Set(pdfOrderContext.invoices.map(inv => inv.id)))
+                    }
+                  }
+                }}
+                variant="outline"
+                size="sm"
+              >
+                {selectedPDFInvoices.size === pdfOrderContext?.invoices?.length
+                  ? 'Tümünü Kaldır'
+                  : 'Tümünü Seç'}
+              </Button>
+              
+              <div className="flex gap-2">
+                <Button
+                  onClick={() => {
+                    setIsPDFInvoiceSelectionOpen(false)
+                    setPDFOrderContext(null)
+                    setSelectedPDFInvoices(new Set())
+                  }}
+                  variant="outline"
+                >
+                  İptal
+                </Button>
+                <Button
+                  onClick={() => {
+                    if (pdfOrderContext && selectedPDFInvoices.size > 0) {
+                      setIsPDFInvoiceSelectionOpen(false)
+                      handleExportOrderPDF(pdfOrderContext, Array.from(selectedPDFInvoices))
+                      setSelectedPDFInvoices(new Set())
+                      setPDFOrderContext(null)
+                    }
+                  }}
+                  disabled={selectedPDFInvoices.size === 0}
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  PDF Oluştur ({selectedPDFInvoices.size})
+                </Button>
+              </div>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {/* Invoice Viewer Modal */}
       <Dialog 
         open={isInvoiceViewerOpen} 
@@ -1956,7 +2328,7 @@ export default function OrdersPage() {
           }
         }}
       >
-        <DialogContent className="max-w-4xl bg-white">
+        <DialogContent className="max-w-5xl bg-white">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="w-5 h-5" />
@@ -1964,112 +2336,117 @@ export default function OrdersPage() {
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-4 max-h-[70vh] overflow-y-auto">
+          <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
             {selectedInvoices.map((invoice, invoiceIndex) => (
               <div key={invoice.id} className="border border-gray-200 rounded-lg p-4 space-y-3">
                 {/* Fatura Bilgileri */}
-                <div className="flex items-center justify-between border-b border-gray-100 pb-3">
-                  <div>
-                    <div className="font-semibold text-gray-900">
-                      Fatura #{invoiceIndex + 1}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    {editingInvoiceId === invoice.id ? (
-                      // Edit mode - Amount input
-                      <div className="flex items-center gap-2">
-                        <Input
-                          type="text"
-                          placeholder="0,00"
-                          value={editInvoiceAmount}
-                          onChange={(e) => {
-                            const formatted = formatNumberWithDots(e.target.value)
-                            handleEditInvoiceAmountChange(formatted)
-                          }}
-                          className="w-32 text-right"
-                        />
-                        <Select value={editInvoiceCurrency} onValueChange={setEditInvoiceCurrency}>
-                          <SelectTrigger className="w-20">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white">
-                            <SelectItem value="TRY">TRY</SelectItem>
-                            <SelectItem value="USD">USD</SelectItem>
-                            <SelectItem value="EUR">EUR</SelectItem>
-                            <SelectItem value="GBP">GBP</SelectItem>
-                          </SelectContent>
-                        </Select>
+                <div className="border-b border-gray-100 pb-3">
+                  <div className="flex items-start justify-between gap-4 mb-3">
+                    <div className="flex-shrink-0">
+                      <div className="font-semibold text-gray-900 flex items-center gap-2">
+                        Fatura #{invoiceIndex + 1}
+                        {invoice.is_master && (
+                          <Badge className="bg-blue-100 text-blue-700 text-xs">Toplu Fatura</Badge>
+                        )}
                       </div>
-                    ) : (
-                      // View mode - Amount display
-                      <div className="text-right">
-                        <div className="font-bold text-lg text-gray-900">
-                          {getCurrencySymbol(invoice.currency)}
-                          {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
-                        </div>
-                        <div className="text-sm text-gray-500">{invoice.currency}</div>
+                      <div className="text-sm text-gray-600">
+                        {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
+                          year: 'numeric',
+                          month: 'long',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        })}
                       </div>
-                    )}
-                    
-                    {/* Edit/Save/Cancel/Delete Buttons */}
-                    <div className="flex items-center gap-2">
+                    </div>
+                    <div className="flex-shrink-0">
                       {editingInvoiceId === invoice.id ? (
-                        <>
-                          <Button
-                            onClick={handleUpdateInvoice}
-                            size="sm"
-                            disabled={isUpdatingInvoice}
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                          >
-                            {isUpdatingInvoice ? 'Kaydediliyor...' : 'Kaydet'}
-                          </Button>
-                          <Button
-                            onClick={handleCancelEditInvoice}
-                            size="sm"
-                            variant="outline"
-                            disabled={isUpdatingInvoice}
-                          >
-                            İptal
-                          </Button>
-                          <Button
-                            onClick={() => handleDeleteInvoice(invoice.id)}
-                            size="sm"
-                            disabled={isUpdatingInvoice}
-                            className="bg-red-600 hover:bg-red-700 text-white"
-                          >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Sil
-                          </Button>
-                        </>
+                        // Edit mode - Amount input
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="text"
+                            placeholder="0,00"
+                            value={editInvoiceAmount}
+                            onChange={(e) => {
+                              const formatted = formatNumberWithDots(e.target.value)
+                              handleEditInvoiceAmountChange(formatted)
+                            }}
+                            className="w-32 text-right"
+                          />
+                          <Select value={editInvoiceCurrency} onValueChange={setEditInvoiceCurrency}>
+                            <SelectTrigger className="w-20">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white">
+                              <SelectItem value="TRY">TRY</SelectItem>
+                              <SelectItem value="USD">USD</SelectItem>
+                              <SelectItem value="EUR">EUR</SelectItem>
+                              <SelectItem value="GBP">GBP</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
                       ) : (
-                        <>
-                          <Button
-                            onClick={() => handleStartEditInvoice(invoice)}
-                            size="sm"
-                            variant="outline"
-                          >
-                            Düzenle
-                          </Button>
-                          <Button
-                            onClick={() => handleDeleteInvoice(invoice.id)}
-                            size="sm"
-                            className="bg-red-600 hover:bg-red-700 text-white"
-                          >
-                            <Trash2 className="w-4 h-4 mr-1" />
-                            Sil
-                          </Button>
-                        </>
+                        // View mode - Amount display
+                        <div className="text-right">
+                          <div className="font-bold text-lg text-gray-900">
+                            {getCurrencySymbol(invoice.currency)}
+                            {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                          </div>
+                          <div className="text-sm text-gray-500">{invoice.currency}</div>
+                        </div>
                       )}
                     </div>
+                  </div>
+                  
+                  {/* Edit/Save/Cancel/Delete Buttons */}
+                  <div className="flex items-center gap-2 justify-end">
+                    {editingInvoiceId === invoice.id ? (
+                      <>
+                        <Button
+                          onClick={handleUpdateInvoice}
+                          size="sm"
+                          disabled={isUpdatingInvoice}
+                          className="bg-green-600 hover:bg-green-700 text-white"
+                        >
+                          {isUpdatingInvoice ? 'Kaydediliyor...' : 'Kaydet'}
+                        </Button>
+                        <Button
+                          onClick={handleCancelEditInvoice}
+                          size="sm"
+                          variant="outline"
+                          disabled={isUpdatingInvoice}
+                        >
+                          İptal
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteInvoice(invoice.id)}
+                          size="sm"
+                          disabled={isUpdatingInvoice}
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Sil
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        <Button
+                          onClick={() => handleStartEditInvoice(invoice)}
+                          size="sm"
+                          variant="outline"
+                        >
+                          Düzenle
+                        </Button>
+                        <Button
+                          onClick={() => handleDeleteInvoice(invoice.id)}
+                          size="sm"
+                          className="bg-red-600 hover:bg-red-700 text-white"
+                        >
+                          <Trash2 className="w-4 h-4 mr-1" />
+                          Sil
+                        </Button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -2146,6 +2523,54 @@ export default function OrdersPage() {
                   )}
                 </div>
 
+                {/* Toplu Fatura Özet Bilgileri */}
+                {invoice.is_master && (invoice.subtotal || invoice.discount || invoice.tax || invoice.grand_total) && (
+                  <div className="border-t border-gray-200 pt-3 mt-3">
+                    <div className="text-sm font-semibold text-gray-900 mb-3">Fatura Özeti</div>
+                    <div className="space-y-2 bg-gray-50 p-3 rounded-lg">
+                      {invoice.subtotal !== null && invoice.subtotal !== undefined && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">Ara Toplam:</span>
+                          <span className="font-medium text-gray-900">
+                            {getCurrencySymbol(invoice.currency)}
+                            {invoice.subtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {invoice.currency}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {invoice.discount !== null && invoice.discount !== undefined && invoice.discount > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">İndirim:</span>
+                          <span className="font-medium text-red-600">
+                            -{getCurrencySymbol(invoice.currency)}
+                            {invoice.discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {invoice.currency}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {invoice.tax !== null && invoice.tax !== undefined && invoice.tax > 0 && (
+                        <div className="flex justify-between text-sm">
+                          <span className="text-gray-600">KDV:</span>
+                          <span className="font-medium text-gray-900">
+                            {getCurrencySymbol(invoice.currency)}
+                            {invoice.tax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {invoice.currency}
+                          </span>
+                        </div>
+                      )}
+                      
+                      {invoice.grand_total !== null && invoice.grand_total !== undefined && (
+                        <div className="flex justify-between text-sm border-t border-gray-300 pt-2 mt-2">
+                          <span className="font-semibold text-gray-900">Genel Toplam:</span>
+                          <span className="font-bold text-lg text-gray-900">
+                            {getCurrencySymbol(invoice.currency)}
+                            {invoice.grand_total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {invoice.currency}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* Notlar */}
                 {invoice.notes && (
                   <div>
@@ -2159,7 +2584,7 @@ export default function OrdersPage() {
             ))}
           </div>
 
-          <div className="flex justify-end pt-4 border-t border-gray-200">
+          <div className="flex justify-end items-center pt-4 border-t border-gray-200">
             <Button
               onClick={() => {
                 if (editingInvoiceId) {
@@ -2177,15 +2602,15 @@ export default function OrdersPage() {
 
       {/* Invoice Modal */}
       <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
-        <DialogContent className={`${selectedOrderId ? 'max-w-md' : 'max-w-4xl'} bg-white`}>
-          <DialogHeader>
+        <DialogContent className={`${selectedOrderId ? 'max-w-md' : 'max-w-4xl'} bg-white max-h-[90vh] flex flex-col`}>
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="w-5 h-5" />
               {selectedOrderId ? 'Fatura Ekle' : `Toplu Fatura Ekle (${selectedOrders.size} Sipariş)`}
             </DialogTitle>
           </DialogHeader>
           
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
             {/* Tek Sipariş için Tutar Input */}
             {selectedOrderId && (
             <div className="space-y-2">
@@ -2278,6 +2703,127 @@ export default function OrdersPage() {
               </div>
             )}
 
+            {/* Ara Toplam, İndirim, KDV, Genel Toplam */}
+            {Object.keys(invoiceSubtotals).length > 0 && (
+              <div className="space-y-4 border-t border-gray-300 pt-4 mt-4">
+                <Label className="text-base font-semibold">Fatura Özeti</Label>
+                
+                {/* Ara Toplam - Para birimi bazında */}
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium text-gray-700">Ara Toplam</Label>
+                  {Object.entries(invoiceSubtotals).map(([currency, amount]) => (
+                    <div key={currency} className="flex items-center gap-2">
+                      <Input
+                        type="text"
+                        value={amount}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithDots(e.target.value)
+                          setInvoiceSubtotals(prev => ({ ...prev, [currency]: formatted }))
+                        }}
+                        className="flex-1 bg-gray-50"
+                      />
+                      <div className="w-20 text-sm font-medium text-gray-700 text-center">
+                        {currency}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* İndirim Tutarı */}
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-discount" className="text-sm font-medium text-gray-700">
+                    İndirim Tutarı (Opsiyonel)
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="invoice-discount"
+                      type="text"
+                      placeholder="0,00"
+                      value={invoiceDiscount}
+                      onChange={(e) => {
+                        const formatted = formatNumberWithDots(e.target.value)
+                        setInvoiceDiscount(formatted)
+                      }}
+                      className="flex-1"
+                    />
+                    <Select value={invoiceDiscountCurrency} onValueChange={setInvoiceDiscountCurrency}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="TRY">TRY</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* KDV Tutarı */}
+                <div className="space-y-2">
+                  <Label htmlFor="invoice-tax" className="text-sm font-medium text-gray-700">
+                    KDV Tutarı (Opsiyonel)
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="invoice-tax"
+                      type="text"
+                      placeholder="0,00"
+                      value={invoiceTax}
+                      onChange={(e) => {
+                        const formatted = formatNumberWithDots(e.target.value)
+                        setInvoiceTax(formatted)
+                      }}
+                      className="flex-1"
+                    />
+                    <Select value={invoiceTaxCurrency} onValueChange={setInvoiceTaxCurrency}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="TRY">TRY</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Genel Toplam */}
+                <div className="space-y-2 border-t border-gray-200 pt-3">
+                  <Label htmlFor="invoice-grand-total" className="text-sm font-semibold text-gray-900">
+                    Genel Toplam *
+                  </Label>
+                  <div className="flex gap-2">
+                    <Input
+                      id="invoice-grand-total"
+                      type="text"
+                      placeholder="0,00"
+                      value={invoiceGrandTotal}
+                      onChange={(e) => {
+                        const formatted = formatNumberWithDots(e.target.value)
+                        setInvoiceGrandTotal(formatted)
+                      }}
+                      className="flex-1 font-semibold"
+                    />
+                    <Select value={invoiceGrandTotalCurrency} onValueChange={setInvoiceGrandTotalCurrency}>
+                      <SelectTrigger className="w-24">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        <SelectItem value="TRY">TRY</SelectItem>
+                        <SelectItem value="USD">USD</SelectItem>
+                        <SelectItem value="EUR">EUR</SelectItem>
+                        <SelectItem value="GBP">GBP</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* Fotoğraf Yükleme */}
             <div className="space-y-2">
               <Label>
@@ -2335,33 +2881,34 @@ export default function OrdersPage() {
               </div>
             )}
 
-            {/* Butonlar */}
-            <div className="flex gap-2 pt-4">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={handleCloseInvoiceModal}
-                className="flex-1"
-              >
-                İptal
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSubmitInvoice}
-                disabled={
-                  isUploadingInvoice || 
-                  invoicePhotos.length === 0 ||
-                  (selectedOrderId && !invoiceAmount) ||
-                  (!selectedOrderId && selectedOrders.size > 0 && 
-                    (Array.from(selectedOrders).some(orderId => !orderAmounts[orderId] || orderAmounts[orderId].trim() === '') ||
-                     Array.from(selectedOrders).some(orderId => !orderCurrencies[orderId]))
-                  )
-                }
-                className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
-              >
-                {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura Ekle'}
-              </Button>
-            </div>
+          </div>
+          
+          {/* Butonlar - Footer */}
+          <div className="flex gap-2 pt-4 border-t border-gray-200 flex-shrink-0 mt-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCloseInvoiceModal}
+              className="flex-1"
+            >
+              İptal
+            </Button>
+            <Button
+              type="button"
+              onClick={handleSubmitInvoice}
+              disabled={
+                isUploadingInvoice || 
+                invoicePhotos.length === 0 ||
+                (selectedOrderId && !invoiceAmount) ||
+                (!selectedOrderId && selectedOrders.size > 0 && 
+                  (Array.from(selectedOrders).some(orderId => !orderAmounts[orderId] || orderAmounts[orderId].trim() === '') ||
+                   Array.from(selectedOrders).some(orderId => !orderCurrencies[orderId]))
+                )
+              }
+              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+            >
+              {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura Ekle'}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -2399,7 +2946,7 @@ export default function OrdersPage() {
                   className="bg-white hover:bg-gray-100 text-black px-4 py-2 rounded-xl font-medium shadow-lg"
                 >
                   <Receipt className="h-4 w-4 mr-2" />
-                  Toplu Fatura
+                  Fatura Ekle
                 </Button>
                 <Button
                   onClick={handleExportMultiplePDF}

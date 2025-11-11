@@ -45,6 +45,8 @@ interface AssignSupplierModalProps {
   onSuccess?: () => void
   selectedMaterials?: Set<string> // Çoklu malzeme seçimi için
   materialItems?: any[] // Malzeme detayları için
+  isBulkOrder?: boolean // Toplu sipariş modu için
+  onBulkOrderWithSupplier?: (supplier: any) => void // Toplu sipariş callback
 }
 
 export default function AssignSupplierModal({
@@ -56,7 +58,9 @@ export default function AssignSupplierModal({
   materialGroup,
   onSuccess,
   selectedMaterials,
-  materialItems
+  materialItems,
+  isBulkOrder = false,
+  onBulkOrderWithSupplier
 }: AssignSupplierModalProps) {
   const router = useRouter()
   const { showToast } = useToast()
@@ -675,24 +679,50 @@ export default function AssignSupplierModal({
                                   Detay
                                 </Button>
                                 
-                                <Button
-                                  onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
-                                  disabled={assigningSupplier}
-                                  size="sm"
-                                  className="h-8 px-7 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
-                                >
-                                  {assigningSupplier ? (
-                                    <>
-                                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
-                                      Atanıyor
-                                    </>
-                                  ) : (
-                                    <>
-                                      
-                                      Ata
-                                    </>
-                                  )}
-                                </Button>
+                                {isBulkOrder ? (
+                                  <Button
+                                    onClick={() => {
+                                      // Tedarikçi atama + sipariş modalı aç
+                                      if (onBulkOrderWithSupplier) {
+                                        onBulkOrderWithSupplier(supplier)
+                                      }
+                                    }}
+                                    disabled={assigningSupplier}
+                                    size="sm"
+                                    className="h-8 px-4 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                                  >
+                                    {assigningSupplier ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                        İşleniyor
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Package className="w-3 h-3 mr-1" />
+                                        Toplu Sipariş Ver
+                                      </>
+                                    )}
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
+                                    disabled={assigningSupplier}
+                                    size="sm"
+                                    className="h-8 px-7 text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                                  >
+                                    {assigningSupplier ? (
+                                      <>
+                                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1"></div>
+                                        Atanıyor
+                                      </>
+                                    ) : (
+                                      <>
+                                        
+                                        Ata
+                                      </>
+                                    )}
+                                  </Button>
+                                )}
                               </div>
                             </div>
                           </div>
@@ -761,24 +791,50 @@ export default function AssignSupplierModal({
                             Detayları Gör
                           </Button>
                           
-                          <Button
-                            onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
-                            disabled={assigningSupplier}
-                            size="sm"
-                            className="flex-1 h-9 text-sm bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50"
-                          >
-                            {assigningSupplier ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                Atanıyor...
-                              </>
-                            ) : (
-                              <>
-                                <Package className="w-4 h-4 mr-2" />
-                                Bu Tedarikçiye Ata
-                              </>
-                            )}
-                          </Button>
+                          {isBulkOrder ? (
+                            <Button
+                              onClick={() => {
+                                // Tedarikçi atama + sipariş modalı aç
+                                if (onBulkOrderWithSupplier) {
+                                  onBulkOrderWithSupplier(supplier)
+                                }
+                              }}
+                              disabled={assigningSupplier}
+                              size="sm"
+                              className="flex-1 h-9 text-sm bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                            >
+                              {assigningSupplier ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                  İşleniyor...
+                                </>
+                              ) : (
+                                <>
+                                  <Package className="w-4 h-4 mr-2" />
+                                  Toplu Sipariş Ver
+                                </>
+                              )}
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => assignMaterialToSupplier(supplier.id, supplier.name)}
+                              disabled={assigningSupplier}
+                              size="sm"
+                              className="flex-1 h-9 text-sm bg-yellow-600 hover:bg-yellow-700 text-white disabled:opacity-50"
+                            >
+                              {assigningSupplier ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                  Atanıyor...
+                                </>
+                              ) : (
+                                <>
+                                  <Package className="w-4 h-4 mr-2" />
+                                  Bu Tedarikçiye Ata
+                                </>
+                              )}
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}

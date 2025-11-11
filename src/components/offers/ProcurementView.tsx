@@ -69,6 +69,7 @@ export default function ProcurementView({
     isReturnReorder?: boolean; // İade yeniden siparişi flag'i
     supplierSpecific?: boolean; // Tedarikçi özel siparişi
     targetSupplierId?: string; // Hedef tedarikçi ID'si
+    isBulkOrder?: boolean; // Toplu sipariş flag'i
   } | null>(null)
   const [isOfferFormOpen, setIsOfferFormOpen] = useState(false)
   const [isPDFModalOpen, setIsPDFModalOpen] = useState(false)
@@ -87,6 +88,15 @@ export default function ProcurementView({
   // Multi-select state for bulk supplier assignment
   const [selectedMaterials, setSelectedMaterials] = useState<Set<string>>(new Set())
   const [isMultiSelectMode, setIsMultiSelectMode] = useState(false)
+  const [assigningSupplier, setAssigningSupplier] = useState(false)
+
+  // Bulk order state
+  const [isBulkOrderModalOpen, setIsBulkOrderModalOpen] = useState(false)
+  const [bulkOrderSupplier, setBulkOrderSupplier] = useState<any | null>(null)
+  const [bulkOrderDetails, setBulkOrderDetails] = useState<Record<string, {
+    quantity: string
+    deliveryDate: string
+  }>>({})
 
   // Multi-select functions
   const toggleMaterialSelection = (materialId: string) => {
@@ -142,6 +152,65 @@ export default function ProcurementView({
     setIsMultiSelectMode(false)
   }
 
+  // Helper function: Ortak tedarikçi bul
+  const findCommonSupplier = (allSuppliers: any[][]): any | null => {
+    if (allSuppliers.length === 0) return null
+    
+    // İlk malzemenin tedarikçileri
+    const firstSuppliers = allSuppliers[0] || []
+    if (firstSuppliers.length === 0) return null
+    
+    // Her tedarikçiyi kontrol et
+    for (const supplier of firstSuppliers) {
+      const isCommon = allSuppliers.every(materialSuppliers => 
+        materialSuppliers.some(s => s.id === supplier.id)
+      )
+      
+      if (isCommon) {
+        return supplier
+      }
+    }
+    
+    return null
+  }
+
+  // Helper function: Toplu sipariş detaylarını güncelle
+  const updateBulkOrderDetail = (materialId: string, field: 'quantity' | 'deliveryDate', value: string) => {
+    setBulkOrderDetails(prev => {
+      const updated = {
+        ...prev,
+        [materialId]: {
+          ...prev[materialId],
+          [field]: value
+        }
+      }
+      
+      // Eğer ilk malzeme için tarih seçiliyorsa, diğer malzemelere de uygula
+      if (field === 'deliveryDate' && value) {
+        const selectedMaterialsData = request?.purchase_request_items?.filter(
+          item => selectedMaterials.has(item.id)
+        ) || []
+        
+        const firstMaterialId = selectedMaterialsData[0]?.id
+        
+        // İlk malzeme için tarih seçiliyorsa
+        if (materialId === firstMaterialId) {
+          selectedMaterialsData.forEach(material => {
+            if (material.id !== firstMaterialId) {
+              // Diğer malzemelerin tarihini de güncelle
+              updated[material.id] = {
+                ...updated[material.id],
+                deliveryDate: value
+              }
+            }
+          })
+        }
+      }
+      
+      return updated
+    })
+  }
+
   const handleBulkSupplierAssignment = () => {
     if (selectedMaterials.size === 0) {
       showToast('Lütfen en az bir malzeme seçin', 'error')
@@ -160,6 +229,202 @@ export default function ProcurementView({
         unit: firstSelectedMaterial.unit
       })
       setIsAssignSupplierModalOpen(true)
+    }
+  }
+
+  // Toplu Sipariş Handler
+  const handleBulkOrderClick = async () => {
+    if (selectedMaterials.size === 0) {
+      showToast('Lütfen en az bir malzeme seçin', 'error')
+      return
+    }
+
+    console.log('🚀 Toplu sipariş işlemi başlatılıyor...', {
+      selectedCount: selectedMaterials.size
+    })
+
+    // Seçili malzemeleri al
+    const selectedMaterialsData = request?.purchase_request_items?.filter(
+      item => selectedMaterials.has(item.id)
+    ) || []
+
+    if (selectedMaterialsData.length === 0) {
+      showToast('Seçili malzeme bulunamadı', 'error')
+      return
+    }
+
+    // Her malzeme için tedarikçi kontrolü
+    const materialSupplierMap = new Map()
+    selectedMaterialsData.forEach(material => {
+      const suppliers = materialSuppliers[material.id]?.suppliers || []
+      materialSupplierMap.set(material.id, suppliers)
+    })
+
+    console.log('📊 Malzeme-Tedarikçi Haritası:', Array.from(materialSupplierMap.entries()).map(([id, suppliers]) => ({
+      materialId: id,
+      supplierCount: suppliers.length,
+      suppliers: suppliers.map((s: any) => s.name)
+    })))
+
+    // Ortak tedarikçi kontrolü
+    const allSuppliers = Array.from(materialSupplierMap.values())
+    const commonSupplier = findCommonSupplier(allSuppliers)
+
+    if (commonSupplier) {
+      console.log('✅ Ortak tedarikçi bulundu:', commonSupplier.name)
+      // Ortak tedarikçi var, direkt sipariş modalı aç
+      openBulkOrderModal(commonSupplier, selectedMaterialsData)
+    } else {
+      console.log('⚠️ Ortak tedarikçi bulunamadı, tedarikçi seçim modalı açılıyor')
+      // Tedarikçi seçimi gerekli
+      setCurrentMaterialForAssignment({
+        id: 'bulk',
+        name: `${selectedMaterials.size} malzeme seçildi`,
+        unit: selectedMaterialsData[0]?.unit,
+        isBulkOrder: true
+      })
+      setIsAssignSupplierModalOpen(true)
+    }
+  }
+
+  // Toplu sipariş modalını aç
+  const openBulkOrderModal = (supplier: any, materials: any[]) => {
+    console.log('📋 Toplu sipariş modalı açılıyor:', {
+      supplier: supplier.name,
+      materialsCount: materials.length
+    })
+    
+    setBulkOrderSupplier(supplier)
+    
+    // Her malzeme için default değerleri set et
+    const defaultDetails: Record<string, { quantity: string; deliveryDate: string }> = {}
+    materials.forEach(material => {
+      defaultDetails[material.id] = {
+        quantity: material.quantity.toString(),
+        deliveryDate: ''
+      }
+    })
+    
+    setBulkOrderDetails(defaultDetails)
+    setIsBulkOrderModalOpen(true)
+  }
+
+  // Toplu sipariş submit
+  const handleBulkOrderSubmit = async () => {
+    try {
+      console.log('📦 Toplu sipariş oluşturma başladı')
+      
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession()
+      
+      if (sessionError || !session?.user?.id) {
+        throw new Error('Aktif bir oturum bulunamadı. Lütfen tekrar giriş yapın.')
+      }
+
+      const orderPromises = Array.from(selectedMaterials).map(async (materialId) => {
+        const material = request.purchase_request_items.find(m => m.id === materialId)
+        const details = bulkOrderDetails[materialId]
+        
+        // Validasyon
+        if (!details?.quantity || !details?.deliveryDate) {
+          throw new Error(`${material?.item_name || 'Bilinmeyen malzeme'} için eksik bilgi`)
+        }
+
+        const orderQuantity = parseFloat(details.quantity)
+        
+        if (orderQuantity <= 0) {
+          throw new Error(`${material?.item_name} için geçersiz miktar`)
+        }
+
+        if (orderQuantity > material.quantity) {
+          throw new Error(`${material?.item_name} için sipariş miktarı, kalan miktarı (${material.quantity}) aşamaz`)
+        }
+        
+        console.log(`📋 Sipariş oluşturuluyor: ${material?.item_name} - ${orderQuantity} ${material?.unit}`)
+        
+        // Sipariş oluştur
+        const orderData = {
+          purchase_request_id: request.id,
+          supplier_id: bulkOrderSupplier.id,
+          material_item_id: materialId,
+          quantity: orderQuantity,
+          delivery_date: details.deliveryDate,
+          amount: 0,
+          currency: 'TRY',
+          status: 'pending',
+          user_id: session.user.id
+        }
+        
+        const { data: order, error } = await supabase
+          .from('orders')
+          .insert(orderData)
+          .select()
+          .single()
+        
+        if (error) throw error
+        
+        console.log(`✅ Sipariş oluşturuldu: ${material?.item_name}`)
+        
+        // Miktar güncelle
+        const newQuantity = Math.max(0, material.quantity - orderQuantity)
+        
+        const { error: rpcError } = await supabase
+          .rpc('update_purchase_request_item_quantity', {
+            item_id: materialId,
+            new_quantity: newQuantity
+          })
+
+        if (rpcError) {
+          console.log('⚠️ RPC başarısız, direkt update deneniyor:', rpcError)
+          
+          const { error: updateError } = await supabase
+            .from('purchase_request_items')
+            .update({ 
+              quantity: newQuantity,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', materialId)
+
+          if (updateError) {
+            console.error('⚠️ Miktar güncellenirken hata:', updateError)
+          } else {
+            console.log(`✅ Malzeme miktarı güncellendi (direkt): ${material?.item_name}`)
+          }
+        } else {
+          console.log(`✅ Malzeme miktarı güncellendi (RPC): ${material?.item_name}`)
+        }
+
+        // Local tracking güncelle
+        const orderInfo = {
+          supplier_id: bulkOrderSupplier.id,
+          material_item_id: materialId,
+          delivery_date: details.deliveryDate,
+          order_id: order.id,
+          supplier_name: bulkOrderSupplier.name,
+          quantity: orderQuantity
+        }
+        
+        const materialBasedKey = `${materialId}_${bulkOrderSupplier.id}_${Date.now()}`
+        
+        setLocalOrderTracking(prev => ({
+          ...prev,
+          [materialBasedKey]: orderInfo
+        }))
+        
+        return order
+      })
+      
+      await Promise.all(orderPromises)
+      
+      showToast(`${selectedMaterials.size} malzeme için sipariş başarıyla oluşturuldu!`, 'success')
+      clearMaterialSelection()
+      setIsBulkOrderModalOpen(false)
+      setBulkOrderSupplier(null)
+      setBulkOrderDetails({})
+      await onRefresh()
+      
+    } catch (error: any) {
+      console.error('❌ Toplu sipariş hatası:', error)
+      showToast(`Hata: ${error.message}`, 'error')
     }
   }
 
@@ -2993,6 +3258,64 @@ DOVEC İnşaat
         materialGroup={request?.material_group || undefined}
         selectedMaterials={selectedMaterials.size > 0 ? selectedMaterials : undefined}
         materialItems={selectedMaterials.size > 0 ? request?.purchase_request_items : undefined}
+        isBulkOrder={currentMaterialForAssignment?.isBulkOrder || false}
+        onBulkOrderWithSupplier={async (supplier) => {
+          console.log('🔄 Toplu sipariş için tedarikçi seçildi:', supplier.name)
+          
+          // Önce tedarikçi atamasını yap
+          if (selectedMaterials.size > 0 && request?.purchase_request_items) {
+            const selectedMaterialsData = request.purchase_request_items.filter(
+              item => selectedMaterials.has(item.id)
+            )
+
+            try {
+              setAssigningSupplier(true)
+              
+              // Her malzeme için tedarikçi ataması yap
+              for (const material of selectedMaterialsData) {
+                // Önce bu tedarikçi-ürün ilişkisi zaten var mı kontrol et
+                const materialData = material as any // Type assertion for extended properties
+                const { data: existingAssignment } = await supabase
+                  .from('supplier_materials')
+                  .select('id')
+                  .eq('supplier_id', supplier.id)
+                  .eq('material_item', material.item_name)
+                  .eq('material_class', materialData.material_class || 'Genel')
+                  .eq('material_group', materialData.material_group || 'Diğer')
+                  .single()
+
+                if (!existingAssignment) {
+                  // Yeni atama oluştur
+                  const insertData = {
+                    supplier_id: supplier.id,
+                    material_item: material.item_name,
+                    material_class: materialData.material_class || 'Genel',
+                    material_group: materialData.material_group || 'Diğer'
+                  }
+
+                  await supabase
+                    .from('supplier_materials')
+                    .insert(insertData)
+                }
+              }
+
+              console.log('✅ Tedarikçi atamaları tamamlandı')
+              
+              // Modal'ı kapat
+              setIsAssignSupplierModalOpen(false)
+              setCurrentMaterialForAssignment(null)
+              
+              // Sipariş modalını aç
+              openBulkOrderModal(supplier, selectedMaterialsData)
+              
+            } catch (error: any) {
+              console.error('❌ Tedarikçi atama hatası:', error)
+              showToast(`Hata: ${error.message}`, 'error')
+            } finally {
+              setAssigningSupplier(false)
+            }
+          }
+        }}
         onSuccess={() => {
           clearMaterialSelection() // Başarılı atama sonrası seçimi temizle
           onRefresh()
@@ -3183,7 +3506,161 @@ DOVEC İnşaat
                   <Building2 className="h-4 w-4 mr-2" />
                   Tedarikçi Ata
                 </Button>
+                <Button
+                  onClick={handleBulkOrderClick}
+                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-medium shadow-lg"
+                >
+                  <Package className="h-4 w-4 mr-2" />
+                  Toplu Sipariş Ver
+                </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toplu Sipariş Modal */}
+      {isBulkOrderModalOpen && bulkOrderSupplier && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-5xl w-full max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-semibold text-gray-900">Toplu Sipariş Oluştur</h2>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Tedarikçi: {bulkOrderSupplier.name} • {selectedMaterials.size} malzeme
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => {
+                    setIsBulkOrderModalOpen(false)
+                    setBulkOrderSupplier(null)
+                    setBulkOrderDetails({})
+                  }}
+                  className="h-8 w-8"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 180px)' }}>
+              <div className="space-y-4">
+                {(() => {
+                  const selectedMaterialsData = request?.purchase_request_items?.filter(
+                    item => selectedMaterials.has(item.id)
+                  ) || []
+
+                  return selectedMaterialsData.map((material, index) => (
+                    <div key={material.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                      <div className="flex items-start gap-4">
+                        {/* Malzeme Görseli */}
+                        {material.image_urls && material.image_urls.length > 0 && (
+                          <div className="flex-shrink-0">
+                            <div className="w-16 h-16 bg-gray-100 rounded-lg overflow-hidden border border-gray-200">
+                              <img
+                                src={material.image_urls[0]}
+                                alt={material.item_name}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          </div>
+                        )}
+                        
+                        <div className="flex-1">
+                          {/* Malzeme Bilgileri */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                              {index + 1}
+                            </div>
+                            <h4 className="font-semibold text-gray-900">{material.item_name}</h4>
+                          </div>
+
+                          {material.brand && (
+                            <p className="text-sm text-gray-600 mb-2">Marka: {material.brand}</p>
+                          )}
+
+                          {/* Miktar ve Teslimat Tarihi */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Sipariş Miktarı *
+                              </label>
+                              <div className="relative">
+                                <Input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  max={material.quantity}
+                                  value={bulkOrderDetails[material.id]?.quantity || ''}
+                                  onChange={(e) => updateBulkOrderDetail(material.id, 'quantity', e.target.value)}
+                                  placeholder="Miktar"
+                                  className="h-11 bg-white rounded-lg border-gray-300 pr-16"
+                                />
+                                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                                  {material.unit}
+                                </div>
+                              </div>
+                              <p className="text-xs text-gray-500 mt-1">
+                                Kalan: {material.quantity} {material.unit}
+                              </p>
+                            </div>
+
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">
+                                Teslimat Tarihi *
+                              </label>
+                              <Input
+                                type="date"
+                                value={bulkOrderDetails[material.id]?.deliveryDate || ''}
+                                onChange={(e) => updateBulkOrderDetail(material.id, 'deliveryDate', e.target.value)}
+                                min={new Date().toISOString().split('T')[0]}
+                                className="h-11 bg-white rounded-lg border-gray-300"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                })()}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-6 border-t border-gray-200 flex justify-end gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsBulkOrderModalOpen(false)
+                  setBulkOrderSupplier(null)
+                  setBulkOrderDetails({})
+                }}
+              >
+                İptal
+              </Button>
+              <Button
+                onClick={handleBulkOrderSubmit}
+                disabled={(() => {
+                  // Tüm malzemeler için miktar ve teslimat tarihi girilmiş mi kontrol et
+                  const selectedMaterialsData = request?.purchase_request_items?.filter(
+                    item => selectedMaterials.has(item.id)
+                  ) || []
+
+                  return selectedMaterialsData.some(material => {
+                    const details = bulkOrderDetails[material.id]
+                    return !details?.quantity || !details?.deliveryDate || parseFloat(details.quantity) <= 0
+                  })
+                })()}
+                className="bg-green-600 hover:bg-green-700 text-white"
+              >
+                <Package className="h-4 w-4 mr-2" />
+                Siparişleri Oluştur
+              </Button>
             </div>
           </div>
         </div>

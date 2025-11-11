@@ -2,6 +2,9 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { fixMissingProfileNames } from '@/lib/fix-profiles'
 
+// Force dynamic rendering
+export const dynamic = 'force-dynamic'
+
 /**
  * Admin endpoint - Eksik profile isimlerini düzelt
  * GET /api/admin/fix-profiles
