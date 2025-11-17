@@ -820,47 +820,112 @@ export default function ProcurementView({
     closeApprovalModal()
   }
 
-  // PDF Export fonksiyonu - Modal açar
-  const handleExportMaterialPDF = async (material: any) => {
+  // PDF Export fonksiyonu - Modal açar (Tekli veya Çoklu)
+  const handleExportMaterialPDF = async (material: any, isMultiple: boolean = false) => {
     try {
-      console.log('🔍 PDF modal açılıyor:', material)
+      console.log('🔍 PDF modal açılıyor:', isMultiple ? 'Çoklu Malzeme' : material.item_name)
       
-      // Malzeme için tedarikçileri al
-      const materialSupplier = materialSuppliers[material.id] || { isRegistered: false, suppliers: [] }
-      
-      // PDF data'sını hazırla
-      const pdfData: MaterialPurchaseRequest = {
-        request: {
-          id: request.id,
-          title: request.title,
-          created_at: request.created_at,
-          site_name: request.site_name || request.sites?.name || 'Belirtilmemiş',
-          description: request.description,
-          urgency_level: request.urgency_level || 'medium',
-          profiles: request.profiles
-        },
-        material: {
-          id: material.id,
-          item_name: material.item_name,
-          quantity: material.quantity,
-          unit: material.unit,
-          brand: material.brand,
-          specifications: material.specifications,
-          description: material.description,
-          image_urls: material.image_urls || []
-        },
-        suppliers: materialSupplier.suppliers || []
+      if (isMultiple) {
+        // Çoklu malzeme için PDF oluştur
+        const selectedMaterialsData = request?.purchase_request_items?.filter(
+          item => selectedMaterials.has(item.id)
+        ) || []
+
+        if (selectedMaterialsData.length === 0) {
+          showToast('Seçili malzeme bulunamadı', 'error')
+          return
+        }
+
+        console.log(`📋 ${selectedMaterialsData.length} malzeme için kompakt PDF oluşturuluyor`)
+
+        // Çoklu malzeme için yeni interface kullan
+        const multiMaterialData = {
+          request: {
+            id: request.id,
+            title: request.title,
+            created_at: request.created_at,
+            site_name: request.site_name || request.sites?.name || 'Belirtilmemiş',
+            description: request.description,
+            urgency_level: request.urgency_level || 'medium',
+            profiles: request.profiles
+          },
+          materials: selectedMaterialsData.map(mat => ({
+            id: mat.id,
+            item_name: mat.item_name,
+            quantity: mat.quantity,
+            unit: mat.unit,
+            brand: mat.brand,
+            specifications: mat.specifications,
+            image_urls: mat.image_urls || []
+          }))
+        }
+
+        // HTML content oluştur
+        const htmlContent = getMaterialPurchaseHTML(multiMaterialData)
+
+        // Modal'ı aç
+        setCurrentPDFData({
+          request: {
+            id: request.id,
+            title: request.title,
+            created_at: request.created_at,
+            site_name: request.site_name || request.sites?.name || 'Belirtilmemiş',
+            description: request.description,
+            urgency_level: request.urgency_level || 'medium',
+            profiles: request.profiles
+          },
+          material: {
+            id: 'bulk',
+            item_name: `${selectedMaterialsData.length} Malzeme`,
+            quantity: 0,
+            unit: '',
+            brand: '',
+            specifications: '',
+            description: '',
+            image_urls: []
+          },
+          suppliers: []
+        })
+        setPdfHtmlContent(htmlContent)
+        setIsPDFModalOpen(true)
+
+      } else {
+        // Tekli malzeme için PDF oluştur (mevcut kod)
+        const materialSupplier = materialSuppliers[material.id] || { isRegistered: false, suppliers: [] }
+        
+        const pdfData: MaterialPurchaseRequest = {
+          request: {
+            id: request.id,
+            title: request.title,
+            created_at: request.created_at,
+            site_name: request.site_name || request.sites?.name || 'Belirtilmemiş',
+            description: request.description,
+            urgency_level: request.urgency_level || 'medium',
+            profiles: request.profiles
+          },
+          material: {
+            id: material.id,
+            item_name: material.item_name,
+            quantity: material.quantity,
+            unit: material.unit,
+            brand: material.brand,
+            specifications: material.specifications,
+            description: material.description,
+            image_urls: material.image_urls || []
+          },
+          suppliers: materialSupplier.suppliers || []
+        }
+        
+        console.log('📄 PDF verisi hazırlandı:', pdfData)
+        
+        // HTML content oluştur
+        const htmlContent = getMaterialPurchaseHTML(pdfData)
+        
+        // Modal'ı aç
+        setCurrentPDFData(pdfData)
+        setPdfHtmlContent(htmlContent)
+        setIsPDFModalOpen(true)
       }
-      
-      console.log('📄 PDF verisi hazırlandı:', pdfData)
-      
-      // HTML content oluştur
-      const htmlContent = getMaterialPurchaseHTML(pdfData)
-      
-      // Modal'ı aç
-      setCurrentPDFData(pdfData)
-      setPdfHtmlContent(htmlContent)
-      setIsPDFModalOpen(true)
       
     } catch (error) {
       console.error('❌ PDF modal hatası:', error)
@@ -890,21 +955,44 @@ export default function ProcurementView({
   // WhatsApp Paylaş fonksiyonu
   const handleShareWhatsApp = () => {
     if (currentPDFData) {
-      const message = `
+      let message = ''
+      
+      if (currentPDFData.material.id === 'bulk') {
+        // Çoklu malzeme için mesaj
+        const selectedMaterialsData = request?.purchase_request_items?.filter(
+          item => selectedMaterials.has(item.id)
+        ) || []
+        
+        const materialList = selectedMaterialsData.map((mat, index) => 
+          `${index + 1}. *${mat.item_name}*\n   📏 Miktar: ${mat.quantity} ${mat.unit}${mat.brand ? `\n   🏷️ Marka: ${mat.brand}` : ''}`
+        ).join('\n\n')
+        
+        message = `
+*Toplu Malzeme Teklif Talebi*
+
+Sayın Tedarikçimiz, aşağıda belirtilen malzemeler için teklif talebinde bulunmaktayız:
+
+
+
+Lütfen tüm malzemeler için en uygun fiyat ve teslimat sürenizi bize bildirin.
+
+Teşekkürler,
+DOVEC GROUP
+        `.trim()
+      } else {
+        // Tekli malzeme için mesaj
+        message = `
 *Malzeme Teklif Talebi*
 
 Sayın Tedarikçimiz, aşağıda belirtilen malzeme için teklif talebinde bulunmaktayız:
 
-📦 *Malzeme:* ${currentPDFData.material.item_name}
-📏 *Miktar:* ${currentPDFData.material.quantity} ${currentPDFData.material.unit}
-${currentPDFData.material.brand ? `🏷️ *Marka:* ${currentPDFData.material.brand}` : ''}
-${currentPDFData.material.specifications ? `📋 *Özellikler:* ${currentPDFData.material.specifications}` : ''}
 
 Lütfen en uygun fiyat ve teslimat sürenizi bize bildirin.
 
 Teşekkürler,
-DOVEC İnşaat
-      `.trim()
+DOVEC GROUP
+        `.trim()
+      }
 
       const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`
       window.open(whatsappUrl, '_blank')
@@ -3329,9 +3417,17 @@ DOVEC İnşaat
             {/* Modal Header */}
             <div className="sticky top-0 bg-white border-b border-gray-200 p-6 rounded-t-2xl flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Malzeme Teklif Formu</h2>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  {currentPDFData?.material.id === 'bulk' 
+                    ? 'Toplu Malzeme Teklif Formu' 
+                    : 'Malzeme Teklif Formu'
+                  }
+                </h2>
                 <p className="text-gray-500 mt-1">
-                  {currentPDFData?.material.item_name} - PDF Önizleme
+                  {currentPDFData?.material.id === 'bulk'
+                    ? `${currentPDFData?.material.item_name} - PDF Önizleme`
+                    : `${currentPDFData?.material.item_name} - PDF Önizleme`
+                  }
                 </p>
               </div>
               <Button
@@ -3485,7 +3581,7 @@ DOVEC İnşaat
                     {selectedMaterials.size} malzeme seçildi
                   </p>
                   <p className="text-xs text-gray-300">
-                    Toplu tedarikçi ataması yapabilirsiniz
+                    Toplu işlemler yapabilirsiniz
                   </p>
                 </div>
               </div>
@@ -3505,6 +3601,13 @@ DOVEC İnşaat
                 >
                   <Building2 className="h-4 w-4 mr-2" />
                   Tedarikçi Ata
+                </Button>
+                <Button
+                  onClick={() => handleExportMaterialPDF(null, true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-medium shadow-lg"
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  PDF İndir
                 </Button>
                 <Button
                   onClick={handleBulkOrderClick}

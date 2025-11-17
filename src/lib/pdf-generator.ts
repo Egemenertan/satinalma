@@ -144,6 +144,10 @@ export interface ReportData {
     totalInvoices: number
     totalAmount: number
     currency: string
+    subtotal?: number
+    discount?: number
+    tax?: number
+    grandTotal?: number
   }
 }
 
@@ -910,13 +914,33 @@ const generatePDFHTML = (data: ReportData): string => {
               ${allInvoices.map(invoice => `
                 <div class="invoice-summary-item">
                   <span>${invoice.description}</span>
-                  <span>${invoice.amount.toLocaleString('tr-TR')} ${invoice.currency}</span>
+                  <span>${invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${invoice.currency}</span>
                 </div>
               `).join('')}
             </div>
             <div class="invoice-summary-total">
-              <div class="total-label">Toplam Tutar</div>
-              <div class="total-amount">${totalAmount.toLocaleString('tr-TR')} ${currency}</div>
+              ${data.statistics.subtotal !== undefined ? `
+                <div class="invoice-summary-item" style="border-top: 1px solid #e0e0e0; padding-top: 8px; margin-top: 8px;">
+                  <span style="font-weight: 500;">Ara Toplam:</span>
+                  <span style="font-weight: 500;">${data.statistics.subtotal.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}</span>
+                </div>
+              ` : ''}
+              ${data.statistics.discount !== undefined && data.statistics.discount > 0 ? `
+                <div class="invoice-summary-item">
+                  <span style="color: #dc2626;">İndirim:</span>
+                  <span style="color: #dc2626;">-${data.statistics.discount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}</span>
+                </div>
+              ` : ''}
+              ${data.statistics.tax !== undefined && data.statistics.tax > 0 ? `
+                <div class="invoice-summary-item">
+                  <span>KDV:</span>
+                  <span>+${data.statistics.tax.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}</span>
+                </div>
+              ` : ''}
+              <div class="invoice-summary-item" style="border-top: 2px solid #000000; padding-top: 12px; margin-top: 8px;">
+                <div class="total-label" style="font-size: 14px;">Genel Toplam</div>
+                <div class="total-amount" style="font-size: 20px;">${(data.statistics.grandTotal !== undefined ? data.statistics.grandTotal : totalAmount).toLocaleString('tr-TR', { minimumFractionDigits: 2 })} ${currency}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -964,16 +988,8 @@ export interface MaterialPurchaseRequest {
   }>
 }
 
-// Material-specific PDF template
+// Material-specific PDF template - Compact Design
 const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => {
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('tr-TR', {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric'
-    })
-  }
-
   const getCurrentDate = () => {
     return new Date().toLocaleDateString('tr-TR', {
       year: 'numeric',
@@ -992,218 +1008,170 @@ const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => 
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Malzeme Detayları - ${data.material.item_name}</title>
+  <title>Malzeme Teklif Formu</title>
   ${getPDFStyles()}
   <style>
-    .purchase-form {
+    .compact-form {
       max-width: 180mm;
       margin: 0 auto;
-      padding: 30px;
+      padding: 20px 30px;
     }
     
-    .header-section {
+    .header-compact {
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 50px;
-      padding-bottom: 20px;
-      border-bottom: 1px solid #cccccc;
-    }
-    
-    .logo-area {
-      flex-shrink: 0;
-    }
-    
-    .form-section {
-      margin-bottom: 0;
-    }
-    
-    .section-title {
-      font-size: 14px;
-      font-weight: 700;
-      color: #000000;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      margin-bottom: 25px;
-      padding-bottom: 8px;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
       border-bottom: 2px solid #000000;
     }
     
-    .form-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 25px;
-      margin-bottom: 20px;
+    .logo-small {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
     }
     
-    .form-grid.single {
-      grid-template-columns: 1fr;
-    }
-    
-    .form-grid.with-image {
-      grid-template-columns: 2fr 1fr;
-      gap: 30px;
-      align-items: start;
-    }
-    
-    .form-field {
-      margin-bottom: 20px;
-    }
-    
-    .form-label {
-      display: block;
+    .date-compact {
+      text-align: right;
       font-size: 10px;
-      font-weight: 600;
-      color: #333333;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
-      margin-bottom: 8px;
-    }
-    
-    .form-value {
-      font-size: 12px;
-      color: #000000;
-      padding: 12px 0;
-      border-bottom: 1px solid #cccccc;
-      min-height: 28px;
-      line-height: 1.5;
-    }
-    
-    .form-value.large {
-      min-height: 60px;
-    }
-    
-    .material-image {
-      width: 100%;
-      max-width: 200px;
-      height: auto;
-      border: 1px solid #dddddd;
-      border-radius: 8px;
-      object-fit: cover;
-    }
-    
-    .image-container {
-      text-align: center;
-      padding: 20px;
-    }
-    
-    .image-label {
-      font-size: 9px;
       color: #666666;
-      margin-top: 8px;
-      text-transform: uppercase;
-      letter-spacing: 0.3px;
     }
     
-    .clean-layout {
-      background: white;
+    .intro-text {
+      font-size: 11px;
+      color: #333333;
+      line-height: 1.5;
+      margin-bottom: 25px;
+      padding: 12px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .material-item {
+      margin-bottom: 20px;
+      padding: 15px;
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    
+    .material-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 12px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #cccccc;
+    }
+    
+    .material-number {
+      background: #000000;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    
+    .material-name {
+      font-size: 13px;
+      font-weight: 700;
       color: #000000;
+      flex: 1;
+    }
+    
+    .material-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+      gap: 10px;
+      font-size: 10px;
+    }
+    
+    .detail-item {
+      display: flex;
+      gap: 8px;
+    }
+    
+    .detail-label {
+      font-weight: 600;
+      color: #666666;
+      min-width: 60px;
+    }
+    
+    .detail-value {
+      color: #000000;
+      font-weight: 500;
+    }
+    
+    .material-image-small {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border: 1px solid #cccccc;
+      border-radius: 4px;
+      margin-left: auto;
+    }
+    
+    .specs-box {
+      margin-top: 10px;
+      padding: 8px;
+      background: white;
+      border-left: 3px solid #000000;
+      font-size: 9px;
+      color: #333333;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
-  <div class="page clean-layout">
-    <div class="purchase-form">
+  <div class="page">
+    <div class="compact-form">
       <!-- Header -->
-      <div class="header-section">
-        <div class="logo-area">
-          <img src="${getLogoUrl()}" alt="DOVEC Logo" style="width: 80px; height: 80px; object-fit: contain;" onerror="this.onerror=null; this.src='/d.png';" />
-        </div>
-        
-        <div style="text-align: right; font-size: 11px; color: #666666;">
-          <div style="font-weight: 600; margin-bottom: 4px;">Tarih:</div>
+      <div class="header-compact">
+        <img src="${getLogoUrl()}" alt="DOVEC Logo" class="logo-small" onerror="this.onerror=null; this.src='/d.png';" />
+        <div class="date-compact">
+          <div style="font-weight: 600; margin-bottom: 2px;">Tarih:</div>
           <div>${getCurrentDate()}</div>
         </div>
       </div>
       
-      <!-- Açıklama Metni -->
-      <div style="margin-bottom: 40px; padding: 15px 0;">
-        <p style="font-size: 13px; color: #333333; line-height: 1.6; margin: 0; font-weight: 500; text-align: left;">
-          Sayın Tedarikçimiz, Şantiyemizden tarafımıza iletilen ihtiyaç ve talepler ekte bilgilerinize sunulmustur. ilgili konularda gerekli aksiyonların alınmasını rica eder, desteginiz igin şimdiden teşekkür ederiz.
-        </p>
+      <!-- Açıklama -->
+      <div class="intro-text">
+        Sayın Tedarikçimiz, Şantiyemizden tarafımıza iletilen ihtiyaç ve talepler ekte bilgilerinize sunulmustur. ilgili konularda gerekli aksiyonların alınmasını rica eder, desteğiniz için şimdiden teşekkür ederiz.
       </div>
       
-      <!-- Malzeme Detayları -->
-      <div class="form-section">
-        <div class="section-title">Malzeme Detayları</div>
-        
-        ${data.material.image_urls && data.material.image_urls.length > 0 ? `
-        <div class="form-grid with-image">
-          <div>
-            <div class="form-field">
-              <label class="form-label">Malzeme Adı</label>
-              <div class="form-value">${data.material.item_name}</div>
-            </div>
-            
-            <div class="form-field">
-              <label class="form-label">Talep Edilen Miktar</label>
-              <div class="form-value">${data.material.quantity} ${data.material.unit}</div>
-            </div>
-            
-            <div class="form-field">
-              <label class="form-label">Birim</label>
-              <div class="form-value">${data.material.unit}</div>
-            </div>
-            
-            ${data.material.brand ? `
-            <div class="form-field">
-              <label class="form-label">Marka</label>
-              <div class="form-value">${data.material.brand}</div>
-            </div>
-            ` : ''}
-          </div>
-          
-          <div class="image-container">
-            <img src="${data.material.image_urls[0]}" alt="Malzeme Resmi" class="material-image" />
-            <div class="image-label">Malzeme Resmi</div>
-          </div>
-        </div>
-        ` : `
-        <div class="form-grid">
-          <div class="form-field">
-            <label class="form-label">Malzeme Adı</label>
-            <div class="form-value">${data.material.item_name}</div>
-          </div>
-          <div class="form-field">
-            <label class="form-label">Talep Edilen Miktar</label>
-            <div class="form-value">${data.material.quantity} ${data.material.unit}</div>
-          </div>
+      <!-- Malzeme Kartı -->
+      <div class="material-item">
+        <div class="material-header">
+          <div class="material-number">1</div>
+          <div class="material-name">${data.material.item_name}</div>
+          ${data.material.image_urls && data.material.image_urls.length > 0 ? `
+            <img src="${data.material.image_urls[0]}" alt="Malzeme" class="material-image-small" />
+          ` : ''}
         </div>
         
-        <div class="form-grid">
-          <div class="form-field">
-            <label class="form-label">Birim</label>
-            <div class="form-value">${data.material.unit}</div>
+        <div class="material-details">
+          <div class="detail-item">
+            <span class="detail-label">Miktar:</span>
+            <span class="detail-value">${data.material.quantity} ${data.material.unit}</span>
           </div>
           ${data.material.brand ? `
-          <div class="form-field">
-            <label class="form-label">Marka</label>
-            <div class="form-value">${data.material.brand}</div>
+          <div class="detail-item">
+            <span class="detail-label">Marka:</span>
+            <span class="detail-value">${data.material.brand}</span>
           </div>
-          ` : `
-          <div class="form-field">
-            <label class="form-label">Marka</label>
-            <div class="form-value">Belirtilmemiş</div>
-          </div>
-          `}
+          ` : ''}
         </div>
-        `}
         
         ${data.material.specifications ? `
-        <div class="form-grid single">
-          <div class="form-field">
-            <label class="form-label">Teknik Özellikler</label>
-            <div class="form-value large">${data.material.specifications}</div>
-          </div>
-        </div>
-        ` : ''}
-        
-        ${data.material.description ? `
-        <div class="form-grid single">
-          <div class="form-field">
-            <label class="form-label">Malzeme Açıklaması</label>
-            <div class="form-value large">${data.material.description}</div>
-          </div>
+        <div class="specs-box">
+          <strong>Teknik Özellikler:</strong> ${data.material.specifications}
         </div>
         ` : ''}
       </div>
@@ -1214,9 +1182,236 @@ const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => 
   `
 }
 
-// Material Purchase Request HTML Generator (for modal)
-export const getMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => {
-  return generateMaterialPurchaseHTML(data)
+// Multi-Material Purchase Request Interface
+export interface MultiMaterialPurchaseRequest {
+  request: {
+    id: string
+    title: string
+    created_at: string
+    site_name: string
+    description?: string
+    urgency_level: string
+    profiles?: {
+      full_name?: string
+      email?: string
+      role?: string
+    }
+  }
+  materials: Array<{
+    id: string
+    item_name: string
+    quantity: number
+    unit: string
+    brand?: string
+    specifications?: string
+    image_urls?: string[]
+  }>
+}
+
+// Multi-Material Compact PDF Template
+const generateMultiMaterialPurchaseHTML = (data: MultiMaterialPurchaseRequest): string => {
+  const getCurrentDate = () => {
+    return new Date().toLocaleDateString('tr-TR', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  const getLogoUrl = () => {
+    return 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+  }
+
+  return `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Malzeme Teklif Formu</title>
+  ${getPDFStyles()}
+  <style>
+    .compact-form {
+      max-width: 180mm;
+      margin: 0 auto;
+      padding: 20px 30px;
+    }
+    
+    .header-compact {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #000000;
+    }
+    
+    .logo-small {
+      width: 60px;
+      height: 60px;
+      object-fit: contain;
+    }
+    
+    .date-compact {
+      text-align: right;
+      font-size: 10px;
+      color: #666666;
+    }
+    
+    .intro-text {
+      font-size: 11px;
+      color: #333333;
+      line-height: 1.5;
+      margin-bottom: 25px;
+      padding: 12px 0;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .material-item {
+      margin-bottom: 15px;
+      padding: 12px;
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+      border-radius: 6px;
+      page-break-inside: avoid;
+    }
+    
+    .material-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #cccccc;
+    }
+    
+    .material-number {
+      background: #000000;
+      color: white;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+    
+    .material-name {
+      font-size: 12px;
+      font-weight: 700;
+      color: #000000;
+      flex: 1;
+    }
+    
+    .material-details {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 8px;
+      font-size: 10px;
+    }
+    
+    .detail-item {
+      display: flex;
+      gap: 6px;
+    }
+    
+    .detail-label {
+      font-weight: 600;
+      color: #666666;
+      min-width: 55px;
+    }
+    
+    .detail-value {
+      color: #000000;
+      font-weight: 500;
+    }
+    
+    .material-image-small {
+      width: 80px;
+      height: 80px;
+      object-fit: cover;
+      border: 1px solid #cccccc;
+      border-radius: 4px;
+      margin-left: auto;
+    }
+    
+    .specs-box {
+      margin-top: 8px;
+      padding: 6px 8px;
+      background: white;
+      border-left: 2px solid #000000;
+      font-size: 9px;
+      color: #333333;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="compact-form">
+      <!-- Header -->
+      <div class="header-compact">
+        <img src="${getLogoUrl()}" alt="DOVEC Logo" class="logo-small" onerror="this.onerror=null; this.src='/d.png';" />
+        <div class="date-compact">
+          <div style="font-weight: 600; margin-bottom: 2px;">Tarih:</div>
+          <div>${getCurrentDate()}</div>
+        </div>
+      </div>
+      
+      <!-- Açıklama -->
+      <div class="intro-text">
+        Sayın Tedarikçimiz, Şantiyemizden tarafımıza iletilen ihtiyaç ve talepler ekte bilgilerinize sunulmuştur. İlgili konularda gerekli aksiyonların alınmasını rica eder, desteğiniz için şimdiden teşekkür ederiz.
+      </div>
+      
+      <!-- Malzeme Listesi -->
+      ${data.materials.map((material, index) => `
+        <div class="material-item">
+          <div class="material-header">
+            <div class="material-number">${index + 1}</div>
+            <div class="material-name">${material.item_name}</div>
+            ${material.image_urls && material.image_urls.length > 0 ? `
+              <img src="${material.image_urls[0]}" alt="Malzeme" class="material-image-small" />
+            ` : ''}
+          </div>
+          
+          <div class="material-details">
+            <div class="detail-item">
+              <span class="detail-label">Miktar:</span>
+              <span class="detail-value">${material.quantity} ${material.unit}</span>
+            </div>
+            ${material.brand ? `
+            <div class="detail-item">
+              <span class="detail-label">Marka:</span>
+              <span class="detail-value">${material.brand}</span>
+            </div>
+            ` : ''}
+          </div>
+          
+          ${material.specifications ? `
+          <div class="specs-box">
+            <strong>Teknik Özellikler:</strong> ${material.specifications}
+          </div>
+          ` : ''}
+        </div>
+      `).join('')}
+    </div>
+  </div>
+</body>
+</html>
+  `
+}
+
+// Material Purchase Request HTML Generator (for modal) - Single or Multiple
+export const getMaterialPurchaseHTML = (data: MaterialPurchaseRequest | MultiMaterialPurchaseRequest): string => {
+  // Check if it's multi-material request
+  if ('materials' in data && Array.isArray(data.materials)) {
+    return generateMultiMaterialPurchaseHTML(data as MultiMaterialPurchaseRequest)
+  }
+  // Single material request
+  return generateMaterialPurchaseHTML(data as MaterialPurchaseRequest)
 }
 
 // Material Purchase Request PDF Generator
