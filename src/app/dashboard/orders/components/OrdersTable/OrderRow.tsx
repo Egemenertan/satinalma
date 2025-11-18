@@ -13,6 +13,7 @@ interface OrderRowProps {
   isSelected: boolean
   onToggleSelect: () => void
   onViewInvoices: () => void
+  onViewDeliveryPhotos: () => void
   onExportPDF: () => void
   isLoadingPDF: boolean
 }
@@ -22,6 +23,7 @@ export function OrderRow({
   isSelected,
   onToggleSelect,
   onViewInvoices,
+  onViewDeliveryPhotos,
   onExportPDF,
   isLoadingPDF,
 }: OrderRowProps) {
@@ -109,7 +111,7 @@ export function OrderRow({
             <button
               onClick={(e) => {
                 e.stopPropagation()
-                // Parent'tan gelen handleViewDeliveryPhotos çağrısı yapılacak
+                onViewDeliveryPhotos()
               }}
               className="w-8 h-8 rounded border-2 border-blue-200 hover:border-blue-400 transition-all duration-200 overflow-hidden bg-white"
             >
@@ -176,6 +178,7 @@ export function OrderRow({
     </div>
   )
 }
+
 
 
 

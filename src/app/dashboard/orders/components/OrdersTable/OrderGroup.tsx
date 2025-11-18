@@ -11,6 +11,7 @@ interface OrderGroupProps {
   onToggleOrderSelect: (orderId: string) => void
   onSelectAllInGroup: (groupOrders: any[]) => void
   onViewInvoices: (invoices: any[], index: number) => void
+  onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
 }
 
@@ -21,6 +22,7 @@ export function OrderGroup({
   onToggleOrderSelect,
   onSelectAllInGroup,
   onViewInvoices,
+  onViewDeliveryPhotos,
   onExportPDF,
 }: OrderGroupProps) {
   const allSelected = group.orders.every(order => selectedOrders.has(order.id))
@@ -64,6 +66,7 @@ export function OrderGroup({
             isSelected={selectedOrders.has(order.id)}
             onToggleSelect={() => onToggleOrderSelect(order.id)}
             onViewInvoices={() => onViewInvoices(order.invoices || [], 0)}
+            onViewDeliveryPhotos={() => onViewDeliveryPhotos(order.delivery_image_urls || [], 0)}
             onExportPDF={() => onExportPDF(order)}
             isLoadingPDF={loadingPDFOrders.has(order.id)}
           />
@@ -72,6 +75,7 @@ export function OrderGroup({
     </div>
   )
 }
+
 
 
 

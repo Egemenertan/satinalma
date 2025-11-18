@@ -66,6 +66,7 @@ export function OrdersTable({
         onToggleOrderSelect={onToggleOrderSelect}
         onSelectAllInGroup={onSelectAllInGroup}
         onViewInvoices={onViewInvoices}
+        onViewDeliveryPhotos={onViewDeliveryPhotos}
         onExportPDF={onExportPDF}
       />
 
@@ -94,6 +95,7 @@ export function OrdersTable({
     </>
   )
 }
+
 
 
 

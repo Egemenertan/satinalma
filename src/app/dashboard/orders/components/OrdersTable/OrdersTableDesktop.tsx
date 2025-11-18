@@ -11,6 +11,7 @@ interface OrdersTableDesktopProps {
   onToggleOrderSelect: (orderId: string) => void
   onSelectAllInGroup: (groupOrders: any[]) => void
   onViewInvoices: (invoices: any[], index: number) => void
+  onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
 }
 
@@ -21,6 +22,7 @@ export function OrdersTableDesktop({
   onToggleOrderSelect,
   onSelectAllInGroup,
   onViewInvoices,
+  onViewDeliveryPhotos,
   onExportPDF,
 }: OrdersTableDesktopProps) {
   const sortedGroups = sortGroupedOrders(groupedOrders)
@@ -51,6 +53,7 @@ export function OrdersTableDesktop({
             onToggleOrderSelect={onToggleOrderSelect}
             onSelectAllInGroup={onSelectAllInGroup}
             onViewInvoices={onViewInvoices}
+            onViewDeliveryPhotos={onViewDeliveryPhotos}
             onExportPDF={onExportPDF}
           />
         ))}
@@ -58,6 +61,7 @@ export function OrdersTableDesktop({
     </div>
   )
 }
+
 
 
 
