@@ -170,11 +170,6 @@ export function OrdersTableMobile({
                     <div className="font-medium text-gray-900 text-sm">
                       {order.quantity} {order.purchase_request_items?.unit || ''}
                     </div>
-                    {order.returned_quantity && order.returned_quantity > 0 && (
-                      <div className="text-xs text-orange-600 mt-1">
-                        İade: {order.returned_quantity} {order.purchase_request_items?.unit || ''}
-                      </div>
-                    )}
                   </div>
                   <div>
                     <div className="text-xs text-gray-500 mb-1">Tutar</div>

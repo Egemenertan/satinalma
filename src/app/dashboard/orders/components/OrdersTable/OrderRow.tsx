@@ -80,11 +80,6 @@ export function OrderRow({
         <div className="font-medium text-gray-900 text-sm">
           {order.quantity} {order.purchase_request_items?.unit || ''}
         </div>
-        {order.returned_quantity && order.returned_quantity > 0 && (
-          <div className="text-xs text-orange-600">
-            İade: {order.returned_quantity} {order.purchase_request_items?.unit || ''}
-          </div>
-        )}
       </div>
       
       {/* Şantiye */}
