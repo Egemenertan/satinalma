@@ -104,7 +104,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     }
   }
 
-  // Query builder oluştur
+  // Query builder oluştur - İLİŞKİLİ VERİLERİ TEK SORGUDA ÇEK
   let query = supabase
     .from('orders')
     .select(`
@@ -140,6 +140,25 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
         unit,
         brand,
         specifications
+      ),
+      invoices (
+        id,
+        amount,
+        currency,
+        invoice_photos,
+        created_at,
+        parent_invoice_id,
+        is_master,
+        subtotal,
+        discount,
+        tax,
+        grand_total,
+        invoice_group_id,
+        notes
+      ),
+      order_deliveries (
+        delivery_photos,
+        delivered_at
       )
     `, { count: 'exact' })
 
@@ -217,49 +236,28 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   
   console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
 
-  // Her sipariş için fatura ve teslimat verilerini çek
-  const ordersWithInvoices = await Promise.all(
-    (data || []).map(async (order: any) => {
-      // Fatura verilerini çek
-      const { data: invoicesData, error: invoicesError } = await supabase
-        .from('invoices')
-        .select('id, amount, currency, invoice_photos, created_at, parent_invoice_id, is_master, subtotal, discount, tax, grand_total, invoice_group_id, notes')
-        .eq('order_id', order.id)
+  // ✅ VERİLER ZATEN TEK SORGUDA GELDİ - Sadece formatla
+  const ordersWithInvoices = (data || []).map((order: any) => {
+    // Teslimat fotoğraflarını düzleştir
+    const deliveryPhotosArrays: string[][] = (order.order_deliveries || [])
+      .map((d: { delivery_photos?: string[] | null }) => d.delivery_photos || [])
+    const flattenedDeliveryPhotos: string[] = deliveryPhotosArrays.flat().filter(Boolean)
 
-      if (invoicesError) {
-        console.error('Fatura verileri çekilirken hata:', invoicesError)
-      }
+    // En son teslimat tarihini al
+    const lastDeliveredAt = order.order_deliveries?.[0]?.delivered_at || order.delivered_at
 
-      // İrsaliye fotoğraflarını order_deliveries tablosundan çek
-      const { data: deliveriesData, error: deliveriesError } = await supabase
-        .from('order_deliveries')
-        .select('delivery_photos, delivered_at')
-        .eq('order_id', order.id)
-        .order('delivered_at', { ascending: false })
-
-      if (deliveriesError) {
-        console.error('Teslimat verileri çekilirken hata:', deliveriesError)
-      }
-
-      // Teslimat fotoğraflarını düzleştir (sadece order_deliveries'den)
-      const deliveryPhotosArrays: string[][] = (deliveriesData || [])
-        .map((d: { delivery_photos?: string[] | null }) => d.delivery_photos || [])
-      const flattenedDeliveryPhotos: string[] = deliveryPhotosArrays.flat().filter(Boolean)
-
-      // En son teslimat tarihini al
-      const lastDeliveredAt = deliveriesData?.[0]?.delivered_at || order.delivered_at
-
-      return {
-        ...order,
-        suppliers: order.suppliers || null,
-        purchase_requests: order.purchase_requests || null,
-        purchase_request_items: order.purchase_request_items || null,
-        invoices: invoicesData || [],
-        delivery_image_urls: flattenedDeliveryPhotos,
-        delivered_at: lastDeliveredAt
-      } as OrderData
-    })
-  )
+    return {
+      ...order,
+      suppliers: order.suppliers || null,
+      purchase_requests: order.purchase_requests || null,
+      purchase_request_items: order.purchase_request_items || null,
+      invoices: order.invoices || [],
+      delivery_image_urls: flattenedDeliveryPhotos,
+      delivered_at: lastDeliveredAt,
+      // order_deliveries field'ini kaldır (artık gerek yok)
+      order_deliveries: undefined
+    } as OrderData
+  })
 
   // Arama yapıldıysa, toplam sayıyı arama sonuçlarından al
   const totalCount = orderIdsFromSearch.length > 0 ? orderIdsFromSearch.length : (count || 0)

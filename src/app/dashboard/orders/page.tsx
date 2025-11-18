@@ -13,6 +13,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loading } from '@/components/ui/loading'
@@ -49,6 +50,7 @@ import { formatNumberWithDots, parseNumberFromDots, parseToNumber } from './util
 export default function OrdersPage() {
   const router = useRouter()
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
 
   // Filters Hook
   const {
@@ -550,7 +552,8 @@ export default function OrdersPage() {
       showToast('Fatura başarıyla güncellendi', 'success')
       handleCancelEditInvoice()
       setIsInvoiceViewerOpen(false)
-      window.location.reload()
+      // React Query cache'i yenile
+      await queryClient.invalidateQueries({ queryKey: ['orders'] })
     } catch (error) {
       console.error('Fatura güncelleme hatası:', error)
       showToast('Fatura güncellenirken hata oluştu', 'error')
@@ -565,16 +568,54 @@ export default function OrdersPage() {
     const supabase = createClient()
 
     try {
-      const { error } = await supabase
+      // 1. Önce invoice'ın grup bilgisini al
+      const { data: invoiceData, error: fetchError } = await supabase
+        .from('invoices')
+        .select('invoice_group_id')
+        .eq('id', invoiceId)
+        .single()
+
+      if (fetchError) throw fetchError
+
+      const invoiceGroupId = invoiceData?.invoice_group_id
+
+      // 2. Invoice'ı sil
+      const { error: deleteError } = await supabase
         .from('invoices')
         .delete()
         .eq('id', invoiceId)
 
-      if (error) throw error
+      if (deleteError) throw deleteError
+
+      // 3. Eğer invoice_group_id varsa, grupta başka invoice kaldı mı kontrol et
+      if (invoiceGroupId) {
+        const { data: remainingInvoices, error: checkError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('invoice_group_id', invoiceGroupId)
+          .limit(1)
+
+        if (checkError) {
+          console.warn('Grup kontrolü yapılamadı:', checkError)
+        } else if (!remainingInvoices || remainingInvoices.length === 0) {
+          // Grup boş kaldı, grubu da sil
+          const { error: groupDeleteError } = await supabase
+            .from('invoice_groups')
+            .delete()
+            .eq('id', invoiceGroupId)
+
+          if (groupDeleteError) {
+            console.warn('Boş invoice group silinemedi:', groupDeleteError)
+          } else {
+            console.log('✅ Boş invoice group başarıyla silindi:', invoiceGroupId)
+          }
+        }
+      }
 
       showToast('Fatura başarıyla silindi', 'success')
       setIsInvoiceViewerOpen(false)
-      window.location.reload()
+      // React Query cache'i yenile
+      await queryClient.invalidateQueries({ queryKey: ['orders'] })
     } catch (error) {
       console.error('Fatura silme hatası:', error)
       showToast('Fatura silinirken hata oluştu', 'error')
@@ -646,7 +687,8 @@ export default function OrdersPage() {
         setInvoiceNotes('')
         clearSelection()
         
-        window.location.reload()
+        // React Query cache'i yenile
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
         return
       }
 
@@ -679,8 +721,8 @@ export default function OrdersPage() {
         setInvoicePhotos([])
         setInvoiceNotes('')
         
-        // Orders'ı yenile
-        window.location.reload()
+        // React Query cache'i yenile
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
       } else {
         // Toplu sipariş için fatura - invoice_groups kullan
         if (selectedOrders.size === 0) {
@@ -762,8 +804,8 @@ export default function OrdersPage() {
         setInvoiceNotes('')
         clearSelection()
         
-        // Orders'ı yenile
-        window.location.reload()
+        // React Query cache'i yenile
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
       }
     } catch (error) {
       console.error('Fatura kaydetme hatası:', error)
