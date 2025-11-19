@@ -11,7 +11,7 @@ import type { OrderData } from '../../types'
 interface OrderRowProps {
   order: OrderData
   isSelected: boolean
-  onToggleSelect: () => void
+  onToggleSelect: (order: OrderData) => void
   onViewInvoices: () => void
   onViewDeliveryPhotos: () => void
   onExportPDF: () => void
@@ -35,7 +35,7 @@ export function OrderRow({
           : 'hover:bg-gray-50'
       }`}
       style={{gridTemplateColumns: '40px minmax(160px, 1.8fr) minmax(160px, 1.8fr) minmax(90px, 1fr) minmax(70px, 0.9fr) minmax(70px, 0.9fr) minmax(70px, 0.9fr) minmax(50px, 0.7fr) minmax(120px, 1.3fr)'}}
-      onClick={onToggleSelect}
+      onClick={() => onToggleSelect(order)}
     >
       {/* Checkbox */}
       <div className="flex items-center justify-center">

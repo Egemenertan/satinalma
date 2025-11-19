@@ -8,7 +8,7 @@ interface OrdersTableDesktopProps {
   groupedOrders: Record<string, GroupedOrder>
   selectedOrders: Set<string>
   loadingPDFOrders: Set<string>
-  onToggleOrderSelect: (orderId: string) => void
+  onToggleOrderSelect: (orderId: string, orderData?: any) => void
   onSelectAllInGroup: (groupOrders: any[]) => void
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void

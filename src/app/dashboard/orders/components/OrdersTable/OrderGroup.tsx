@@ -2,13 +2,13 @@
 
 import { Button } from '@/components/ui/button'
 import { OrderRow } from './OrderRow'
-import type { GroupedOrder } from '../../types'
+import type { GroupedOrder, OrderData } from '../../types'
 
 interface OrderGroupProps {
   group: GroupedOrder
   selectedOrders: Set<string>
   loadingPDFOrders: Set<string>
-  onToggleOrderSelect: (orderId: string) => void
+  onToggleOrderSelect: (orderId: string, orderData?: OrderData) => void
   onSelectAllInGroup: (groupOrders: any[]) => void
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
@@ -64,7 +64,7 @@ export function OrderGroup({
             key={order.id}
             order={order}
             isSelected={selectedOrders.has(order.id)}
-            onToggleSelect={() => onToggleOrderSelect(order.id)}
+            onToggleSelect={(orderData) => onToggleOrderSelect(orderData.id, orderData)}
             onViewInvoices={() => onViewInvoices(order.invoices || [], 0)}
             onViewDeliveryPhotos={() => onViewDeliveryPhotos(order.delivery_image_urls || [], 0)}
             onExportPDF={() => onExportPDF(order)}

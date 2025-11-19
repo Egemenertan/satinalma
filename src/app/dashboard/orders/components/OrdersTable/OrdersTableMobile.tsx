@@ -13,7 +13,7 @@ interface OrdersTableMobileProps {
   groupedOrders: Record<string, GroupedOrder>
   selectedOrders: Set<string>
   loadingPDFOrders: Set<string>
-  onToggleOrderSelect: (orderId: string) => void
+  onToggleOrderSelect: (orderId: string, orderData?: any) => void
   onSelectAllInGroup: (groupOrders: any[]) => void
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
@@ -114,7 +114,7 @@ export function OrdersTableMobile({
                     ? 'bg-gray-100 border-l-4 border-gray-900' 
                     : 'hover:bg-gray-50'
                 }`}
-                onClick={() => onToggleOrderSelect(order.id)}
+                onClick={() => onToggleOrderSelect(order.id, order)}
               >
                 {/* Checkbox - Mobile */}
                 <div className="flex items-center gap-3 mb-3">

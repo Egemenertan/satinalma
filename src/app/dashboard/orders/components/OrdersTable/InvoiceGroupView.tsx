@@ -13,7 +13,7 @@ interface InvoiceGroupViewProps {
   noInvoiceOrders: any[]
   selectedOrders: Set<string>
   loadingPDFOrders: Set<string>
-  onToggleOrderSelect: (orderId: string) => void
+  onToggleOrderSelect: (orderId: string, orderData?: any) => void
   onViewInvoices: (invoices: any[]) => void
   onExportPDF: (order: any) => void
   onExportGroupPDF: (orders: any[]) => void
@@ -138,7 +138,7 @@ export function InvoiceGroupView({
       {/* Fatura Grupları */}
       {totalGroups === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-gray-200">
-          <Receipt className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+          
           <p className="text-gray-600 font-medium">Fatura grubu bulunamadı</p>
           <p className="text-sm text-gray-500 mt-1">
             Toplu fatura oluşturulduğunda burada görünecektir

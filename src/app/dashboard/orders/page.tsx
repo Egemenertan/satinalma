@@ -24,9 +24,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Textarea } from '@/components/ui/textarea'
-import { Receipt, Upload, X, Eye, Edit, Trash2 } from 'lucide-react'
-import { InlineLoading } from '@/components/ui/loading'
+import { Receipt, Eye, Edit, Trash2, Upload, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { getCurrencySymbol } from '@/components/offers/types'
 
@@ -36,6 +34,7 @@ import { OrderStatsCards } from './components/OrderStats'
 import { OrdersTable } from './components/OrdersTable'
 import { InvoiceGroupView } from './components/OrdersTable/InvoiceGroupView'
 import { MultiSelectActions } from './components/MultiSelect'
+import { InvoiceModal } from './components/InvoiceModal'
 
 // Hooks
 import { useOrders, useOrderFilters, useMultiSelect, usePDFExport } from './hooks'
@@ -43,9 +42,8 @@ import { useOrders, useOrderFilters, useMultiSelect, usePDFExport } from './hook
 // Utils
 import { formatNumberWithDots, parseNumberFromDots, parseToNumber } from './utils'
 
-// Note: Invoice Modal ve diğer büyük modal'lar geçici olarak
-// orijinal page.tsx'ten alınacak (çok büyük oldukları için)
-// İlerleyen aşamada bunlar da ayrı component'lere çevrilebilir
+// Modern, refactored architecture
+// Invoice Modal artık ayrı bir component olarak organize edildi
 
 export default function OrdersPage() {
   const router = useRouter()
@@ -215,7 +213,17 @@ export default function OrdersPage() {
       showToast('Lütfen en az bir sipariş seçin', 'error')
       return
     }
+    // State'leri temizle
     setSelectedOrderId(null)
+    setEditingInvoiceGroupId(null)
+    setOrderAmounts({})
+    setOrderCurrencies({})
+    setInvoicePhotos([])
+    setInvoiceSubtotals({})
+    setInvoiceDiscount('')
+    setInvoiceTax('')
+    setInvoiceGrandTotal('')
+    setInvoiceNotes('')
     setIsInvoiceModalOpen(true)
   }
 
@@ -393,16 +401,15 @@ export default function OrdersPage() {
     fetchInvoiceGroupInfo()
   }, [isInvoiceViewerOpen, selectedInvoices])
 
-  // Yeşil fatura butonuna basıldığında - toplu fatura düzenleme modalını aç
+  // Yeşil fatura butonuna basıldığında - HER ZAMAN toplu fatura düzenleme modalını aç
   const handleOpenInvoiceEditModal = async (invoices: any[]) => {
     if (invoices.length === 0) return
 
+    const supabase = createClient()
     const firstInvoice = invoices[0]
     
-    // Eğer invoice_group_id varsa, toplu fatura düzenleme modu
+    // Eğer invoice_group_id varsa, mevcut grubu düzenle
     if (firstInvoice.invoice_group_id) {
-      const supabase = createClient()
-      
       // Invoice group bilgilerini çek
       const { data: groupData, error: groupError } = await supabase
         .from('invoice_groups_with_orders')
@@ -463,14 +470,52 @@ export default function OrdersPage() {
       orderIds.forEach(orderId => {
         toggleOrderSelection(orderId)
       })
-
-      // Modal'ı aç
-      setIsInvoiceModalOpen(true)
     } else {
-      // Tek fatura - eski davranış
-      setSelectedInvoices(invoices)
-      setIsInvoiceViewerOpen(true)
+      // Invoice group yok - Tek fatura için de düzenleme modal'ını aç
+      // İlk invoice'ın bilgilerini al
+      const invoice = invoices[0]
+      
+      // Order bilgilerini bul
+      const order = orders.find(o => {
+        return o.invoices?.some(inv => inv.id === invoice.id)
+      })
+
+      if (!order) {
+        showToast('Sipariş bilgisi bulunamadı', 'error')
+        return
+      }
+
+      // Tek sipariş için tutarları ayarla
+      const amounts: Record<string, string> = {}
+      const currencies: Record<string, string> = {}
+      
+      amounts[order.id] = invoice.amount?.toFixed(2).replace('.', ',') || '0,00'
+      currencies[order.id] = invoice.currency || 'TRY'
+      
+      setOrderAmounts(amounts)
+      setOrderCurrencies(currencies)
+
+      // Özet bilgileri doldur (tek sipariş için)
+      const subtotals: Record<string, string> = {}
+      subtotals[invoice.currency] = invoice.amount?.toFixed(2).replace('.', ',') || '0,00'
+      setInvoiceSubtotals(subtotals)
+      
+      // Diğer alanları temizle
+      setInvoiceDiscount('')
+      setInvoiceTax('')
+      
+      setInvoiceNotes(invoice.notes || '')
+      setInvoicePhotos(invoice.invoice_photos || [])
+
+      // Siparişi seç
+      toggleOrderSelection(order.id)
+
+      // Düzenleme modu - mevcut invoice'ı düzenliyoruz
+      setEditingInvoiceGroupId(null) // Grup yok, ama düzenleme yapılacak
     }
+
+    // Modal'ı aç
+    setIsInvoiceModalOpen(true)
   }
 
   // Invoice edit handlers
@@ -628,7 +673,7 @@ export default function OrdersPage() {
     setIsUploadingInvoice(true)
 
     try {
-      // DÜZENLEME MODU - Toplu fatura güncelleme
+      // DÜZENLEME MODU - Toplu fatura güncelleme (invoice_group_id varsa)
       if (editingInvoiceGroupId) {
         const firstCurrency = Object.keys(invoiceSubtotals)[0] || 'TRY'
         const subtotal = parseToNumber(invoiceSubtotals[firstCurrency] || '0')
@@ -677,6 +722,42 @@ export default function OrdersPage() {
         showToast('Toplu fatura başarıyla güncellendi', 'success')
         setIsInvoiceModalOpen(false)
         setEditingInvoiceGroupId(null)
+        setOrderAmounts({})
+        setOrderCurrencies({})
+        setInvoicePhotos([])
+        setInvoiceSubtotals({})
+        setInvoiceDiscount('')
+        setInvoiceTax('')
+        setInvoiceGrandTotal('')
+        setInvoiceNotes('')
+        clearSelection()
+        
+        // React Query cache'i yenile
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
+        return
+      }
+
+      // DÜZENLEME MODU - Tek fatura güncelleme (invoice_group_id yok ama selectedOrders dolu)
+      if (!selectedOrderId && selectedOrders.size === 1 && Object.keys(orderAmounts).length === 1) {
+        const orderId = Array.from(selectedOrders)[0]
+        const amount = parseToNumber(orderAmounts[orderId] || '0')
+        const currency = orderCurrencies[orderId] || 'TRY'
+
+        // Mevcut invoice'ı güncelle
+        const { error: updateError } = await supabase
+          .from('invoices')
+          .update({
+            amount: amount,
+            currency: currency,
+            invoice_photos: invoicePhotos,
+            notes: invoiceNotes || null,
+          })
+          .eq('order_id', orderId)
+
+        if (updateError) throw updateError
+
+        showToast('Fatura başarıyla güncellendi', 'success')
+        setIsInvoiceModalOpen(false)
         setOrderAmounts({})
         setOrderCurrencies({})
         setInvoicePhotos([])
@@ -940,330 +1021,65 @@ export default function OrdersPage() {
         title="İrsaliye Fotoğrafları"
       />
 
-      {/* Invoice Modal */}
-      <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
-        <DialogContent className={`${selectedOrderId ? 'max-w-md' : 'max-w-4xl'} bg-white max-h-[90vh] flex flex-col`}>
-            <DialogHeader className="flex-shrink-0">
-              <DialogTitle className="flex items-center gap-2">
-                <Receipt className="w-5 h-5" />
-                {editingInvoiceGroupId 
-                  ? 'Toplu Fatura Düzenle' 
-                  : selectedOrderId 
-                    ? 'Fatura Ekle' 
-                    : `Toplu Fatura Ekle (${selectedOrders.size} Sipariş)`
-                }
-              </DialogTitle>
-            </DialogHeader>
-          
-          <div className="space-y-4 overflow-y-auto flex-1 pr-2">
-            {/* Tek Sipariş için Tutar Input */}
-            {selectedOrderId && (
-              <div className="space-y-2">
-                <Label htmlFor="amount">Fatura Tutarı</Label>
-                <div className="flex gap-2">
-                  <Input
-                    id="amount"
-                    type="text"
-                    placeholder="0,00"
-                    value={invoiceAmount}
-                    onChange={(e) => {
-                      const formatted = formatNumberWithDots(e.target.value)
-                      handleInvoiceAmountChange(formatted)
-                    }}
-                    className="flex-1"
-                  />
-                  <Select value={invoiceCurrency} onValueChange={setInvoiceCurrency}>
-                    <SelectTrigger className="w-24">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      <SelectItem value="TRY">TRY</SelectItem>
-                      <SelectItem value="USD">USD</SelectItem>
-                      <SelectItem value="EUR">EUR</SelectItem>
-                      <SelectItem value="GBP">GBP</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            )}
+      {/* Invoice Modal - Modern Component */}
+      <InvoiceModal
+        isOpen={isInvoiceModalOpen}
+        onClose={() => {
+          setIsInvoiceModalOpen(false)
+          // Modal kapandığında state'leri temizle
+          setSelectedOrderId(null)
+          setEditingInvoiceGroupId(null)
+          setOrderAmounts({})
+          setOrderCurrencies({})
+          setInvoicePhotos([])
+          setInvoiceSubtotals({})
+          setInvoiceDiscount('')
+          setInvoiceTax('')
+          setInvoiceGrandTotal('')
+          setInvoiceNotes('')
+          clearSelection()
+        }}
+        onSave={handleSaveInvoice}
+        selectedOrderId={selectedOrderId}
+        editingInvoiceGroupId={editingInvoiceGroupId}
+        selectedOrdersCount={selectedOrders.size}
+        invoiceAmount={invoiceAmount}
+        invoiceCurrency={invoiceCurrency}
+        onInvoiceAmountChange={handleInvoiceAmountChange}
+        onInvoiceCurrencyChange={setInvoiceCurrency}
+        selectedOrders={getSelectedOrdersData(orders)}
+        orderAmounts={orderAmounts}
+        orderCurrencies={orderCurrencies}
+        onOrderAmountChange={handleOrderAmountChange}
+        onOrderCurrencyChange={handleOrderCurrencyChange}
+        invoiceSubtotals={invoiceSubtotals}
+        invoiceDiscount={invoiceDiscount}
+        invoiceTax={invoiceTax}
+        invoiceGrandTotal={invoiceGrandTotal}
+        invoiceGrandTotalCurrency={invoiceGrandTotalCurrency}
+        onSubtotalChange={(currency, value) => setInvoiceSubtotals({ [currency]: value })}
+        onSubtotalCurrencyChange={(newCurrency) => {
+          const currentAmount = Object.values(invoiceSubtotals)[0] || '0,00'
+          setInvoiceSubtotals({ [newCurrency]: currentAmount })
+          setInvoiceDiscountCurrency(newCurrency)
+          setInvoiceTaxCurrency(newCurrency)
+          setInvoiceGrandTotalCurrency(newCurrency)
+          const updatedCurrencies: Record<string, string> = {}
+          Object.keys(orderCurrencies).forEach(orderId => {
+            updatedCurrencies[orderId] = newCurrency
+          })
+          setOrderCurrencies(updatedCurrencies)
+        }}
+        onDiscountChange={setInvoiceDiscount}
+        onTaxChange={setInvoiceTax}
+        invoicePhotos={invoicePhotos}
+        onPhotoUpload={handleInvoicePhotoUpload}
+        onPhotoRemove={handleRemoveInvoicePhoto}
+        isUploadingInvoice={isUploadingInvoice}
+        invoiceNotes={invoiceNotes}
+        onNotesChange={setInvoiceNotes}
+      />
 
-            {/* Çoklu Sipariş için Her Sipariş Tutarı */}
-            {(!selectedOrderId && (selectedOrders.size > 0 || editingInvoiceGroupId)) && (
-              <div className="space-y-4">
-                <Label>Sipariş Fatura Tutarları</Label>
-                
-                <div className="max-h-96 overflow-y-auto space-y-3 border border-gray-200 rounded-lg p-4">
-                  {getSelectedOrdersData(orders).map((order) => (
-                    <div key={order.id} className="grid grid-cols-12 gap-4 p-4 bg-gray-50 rounded-lg items-center">
-                      {/* Sipariş Bilgileri */}
-                      <div className="col-span-5 min-w-0">
-                        <div className="font-medium text-sm text-gray-900 mb-1">
-                          {order.purchase_request_items?.item_name || 'Malzeme belirtilmemiş'}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          <div>Tedarikçi: {order.suppliers?.name || 'Belirtilmemiş'}</div>
-                          <div>Miktar: {order.quantity} {order.purchase_request_items?.unit || ''}</div>
-                          {order.purchase_request_items?.brand && (
-                            <div>Marka: {order.purchase_request_items.brand}</div>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Tutar Input */}
-                      <div className="col-span-4">
-                        <Label className="text-xs text-gray-600 mb-1 block">Fatura Tutarı</Label>
-                        <Input
-                          type="text"
-                          placeholder="0,00"
-                          value={orderAmounts[order.id] || ''}
-                          onChange={(e) => {
-                            const formatted = formatNumberWithDots(e.target.value)
-                            handleOrderAmountChange(order.id, formatted)
-                          }}
-                          className="text-sm"
-                        />
-                      </div>
-                      
-                      {/* Para Birimi */}
-                      <div className="col-span-3">
-                        <Label className="text-xs text-gray-600 mb-1 block">Para Birimi</Label>
-                        <Select 
-                          value={orderCurrencies[order.id] || 'TRY'} 
-                          onValueChange={(currency) => handleOrderCurrencyChange(order.id, currency)}
-                        >
-                          <SelectTrigger className="w-full">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent className="bg-white">
-                            <SelectItem value="TRY">TRY</SelectItem>
-                            <SelectItem value="USD">USD</SelectItem>
-                            <SelectItem value="EUR">EUR</SelectItem>
-                            <SelectItem value="GBP">GBP</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Ara Toplam, İndirim, KDV, Genel Toplam */}
-            {Object.keys(invoiceSubtotals).length > 0 && (
-              <div className="space-y-4 border-t border-gray-300 pt-4 mt-4">
-                <Label className="text-base font-semibold">Fatura Özeti</Label>
-                
-                {/* Ara Toplam - Tek para birimi */}
-                <div className="space-y-2">
-                  <Label htmlFor="invoice-subtotal" className="text-sm font-medium text-gray-700">
-                    Ara Toplam
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invoice-subtotal"
-                      type="text"
-                      value={Object.values(invoiceSubtotals)[0] || '0,00'}
-                      onChange={(e) => {
-                        const formatted = formatNumberWithDots(e.target.value)
-                        const currentCurrency = Object.keys(invoiceSubtotals)[0] || 'TRY'
-                        setInvoiceSubtotals({ [currentCurrency]: formatted })
-                      }}
-                      className="flex-1 bg-gray-50"
-                    />
-                    <Select 
-                      value={Object.keys(invoiceSubtotals)[0] || 'TRY'} 
-                      onValueChange={(newCurrency) => {
-                        const currentAmount = Object.values(invoiceSubtotals)[0] || '0,00'
-                        setInvoiceSubtotals({ [newCurrency]: currentAmount })
-                        // Tüm para birimlerini güncelle
-                        setInvoiceDiscountCurrency(newCurrency)
-                        setInvoiceTaxCurrency(newCurrency)
-                        setInvoiceGrandTotalCurrency(newCurrency)
-                        // Tüm sipariş para birimlerini de güncelle
-                        const updatedCurrencies: Record<string, string> = {}
-                        Object.keys(orderCurrencies).forEach(orderId => {
-                          updatedCurrencies[orderId] = newCurrency
-                        })
-                        setOrderCurrencies(updatedCurrencies)
-                      }}
-                    >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white">
-                        <SelectItem value="TRY">TRY</SelectItem>
-                        <SelectItem value="USD">USD</SelectItem>
-                        <SelectItem value="EUR">EUR</SelectItem>
-                        <SelectItem value="GBP">GBP</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {/* İndirim Tutarı */}
-                <div className="space-y-2">
-                  <Label htmlFor="invoice-discount" className="text-sm font-medium text-gray-700">
-                    İndirim Tutarı (Opsiyonel)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invoice-discount"
-                      type="text"
-                      placeholder="0,00"
-                      value={invoiceDiscount}
-                      onChange={(e) => {
-                        const formatted = formatNumberWithDots(e.target.value)
-                        setInvoiceDiscount(formatted)
-                      }}
-                      className="flex-1"
-                    />
-                    <div className="w-24 flex items-center justify-center text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-md">
-                      {Object.keys(invoiceSubtotals)[0] || 'TRY'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* KDV Tutarı */}
-                <div className="space-y-2">
-                  <Label htmlFor="invoice-tax" className="text-sm font-medium text-gray-700">
-                    KDV Tutarı (Opsiyonel)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invoice-tax"
-                      type="text"
-                      placeholder="0,00"
-                      value={invoiceTax}
-                      onChange={(e) => {
-                        const formatted = formatNumberWithDots(e.target.value)
-                        setInvoiceTax(formatted)
-                      }}
-                      className="flex-1"
-                    />
-                    <div className="w-24 flex items-center justify-center text-sm font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-md">
-                      {Object.keys(invoiceSubtotals)[0] || 'TRY'}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Genel Toplam */}
-                <div className="space-y-2 border-t border-gray-200 pt-3">
-                  <Label htmlFor="invoice-grand-total" className="text-sm font-semibold text-gray-900">
-                    Genel Toplam (Otomatik)
-                  </Label>
-                  <div className="flex gap-2">
-                    <Input
-                      id="invoice-grand-total"
-                      type="text"
-                      placeholder="0,00"
-                      value={invoiceGrandTotal}
-                      readOnly
-                      className="flex-1 font-semibold bg-green-50 border-green-200"
-                    />
-                    <div className="w-24 flex items-center justify-center text-sm font-semibold text-gray-700 bg-gray-50 border border-gray-200 rounded-md">
-                      {invoiceGrandTotalCurrency}
-                    </div>
-                  </div>
-                  <p className="text-xs text-gray-500 italic">
-                    Ara Toplam - İndirim + KDV
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Fatura Fotoğrafları */}
-            <div className="space-y-2">
-              <Label>Fatura Fotoğrafları</Label>
-              <div className="flex gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="flex-1"
-                  onClick={() => document.getElementById('invoice-upload')?.click()}
-                  disabled={isUploadingInvoice}
-                >
-                  <Upload className="w-4 h-4 mr-2" />
-                  {isUploadingInvoice ? 'Yükleniyor...' : 'Dosya Seç'}
-                </Button>
-              </div>
-              
-              <input
-                id="invoice-upload"
-                type="file"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    handleInvoicePhotoUpload(e.target.files)
-                    e.target.value = ''
-                  }
-                }}
-              />
-
-              {invoicePhotos.length > 0 && (
-                <div className="space-y-2">
-                  <Label>Yüklenen Fotoğraflar ({invoicePhotos.length})</Label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {invoicePhotos.map((photo, index) => (
-                      <div key={index} className="relative">
-                        <img
-                          src={photo}
-                          alt={`Fatura ${index + 1}`}
-                          className="w-full h-20 object-cover rounded border"
-                        />
-                        <button
-                          onClick={() => handleRemoveInvoicePhoto(index)}
-                          className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
-                          type="button"
-                        >
-                          <X className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Notlar */}
-            <div className="space-y-2">
-              <Label htmlFor="invoice-notes">Notlar (Opsiyonel)</Label>
-              <Textarea
-                id="invoice-notes"
-                placeholder="Fatura ile ilgili notlar..."
-                value={invoiceNotes}
-                onChange={(e) => setInvoiceNotes(e.target.value)}
-                rows={3}
-              />
-            </div>
-          </div>
-
-          <div className="flex justify-end gap-2 pt-4 border-t border-gray-200 flex-shrink-0">
-            <Button
-              variant="outline"
-              onClick={() => setIsInvoiceModalOpen(false)}
-              disabled={isUploadingInvoice}
-            >
-              İptal
-            </Button>
-            <Button
-              onClick={handleSaveInvoice}
-              disabled={isUploadingInvoice}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isUploadingInvoice ? (
-                <>
-                  <InlineLoading className="mr-2" />
-                  Kaydediliyor...
-                </>
-              ) : (
-                'Kaydet'
-              )}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
 
       {/* Invoice Viewer Modal */}
       <Dialog open={isInvoiceViewerOpen} onOpenChange={setIsInvoiceViewerOpen}>
