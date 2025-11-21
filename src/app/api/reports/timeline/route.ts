@@ -8,6 +8,7 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
     const requestId = searchParams.get('requestId')
+    const specificInvoiceGroupId = searchParams.get('invoiceGroupId') // Yeni parametre
 
     if (!requestId) {
       return NextResponse.json(
@@ -15,6 +16,11 @@ export async function GET(request: NextRequest) {
         { status: 400 }
       )
     }
+
+    console.log('📊 Timeline API Request:', {
+      requestId,
+      specificInvoiceGroupId: specificInvoiceGroupId || 'none'
+    })
 
     const supabase = createClient()
     
@@ -112,6 +118,7 @@ export async function GET(request: NextRequest) {
         delivery_date,
         created_at,
         delivered_at,
+        delivery_confirmed_by,
         status,
         delivery_receipt_photos,
         delivery_notes,
@@ -161,12 +168,36 @@ export async function GET(request: NextRequest) {
           .select('id, amount, currency, created_at')
           .eq('order_id', order.id)
         
+        // Teslimat bilgisi - order_deliveries tablosundan (received_by kullan)
+        const { data: deliveries } = await supabase
+          .from('order_deliveries')
+          .select('delivered_at, received_by, delivery_photos')
+          .eq('order_id', order.id)
+          .order('delivered_at', { ascending: false })
+        
+        // En son teslimat
+        const lastDelivery = deliveries?.[0]
+        
+        // Teslimat alan kullanıcı bilgisi (received_by)
+        let deliveredByUser = null
+        if (lastDelivery?.received_by) {
+          const { data: deliveryUser } = await supabase
+            .from('profiles')
+            .select('full_name, email, role')
+            .eq('id', lastDelivery.received_by)
+            .single()
+          deliveredByUser = deliveryUser
+        }
+        
         ordersWithJoins.push({
           ...order,
           suppliers: supplier,
           profiles: profile,
           purchase_request_items: material,
-          invoices: invoices || []
+          invoices: invoices || [],
+          // Teslimat bilgileri - order_deliveries'dan
+          actual_delivered_at: lastDelivery?.delivered_at || order.delivered_at,
+          delivered_by_user: deliveredByUser
         })
       }
     }
@@ -551,38 +582,84 @@ export async function GET(request: NextRequest) {
 
     // Invoice group bilgilerini çek (eğer varsa)
     let invoiceGroupData = null
+    let invoicesWithGroups = null
+    let uniqueGroupIds: any[] = []
+    
     if (finalInvoices && finalInvoices.length > 0) {
       // Tüm invoice'ların invoice_group_id'lerini kontrol et
       const invoiceIds = finalInvoices.map(inv => inv.id)
-      const { data: invoicesWithGroups } = await supabase
+      const result = await supabase
         .from('invoices')
         .select('id, invoice_group_id')
         .in('id', invoiceIds)
       
-      // Eğer tüm invoice'lar aynı group'a aitse
-      const groupIds = invoicesWithGroups?.map(inv => inv.invoice_group_id).filter(Boolean)
-      const uniqueGroupIds = [...new Set(groupIds)]
+      invoicesWithGroups = result.data
       
-      if (uniqueGroupIds.length === 1 && uniqueGroupIds[0]) {
+      // Eğer specific invoice_group_id belirtilmişse, onu kullan
+      if (specificInvoiceGroupId) {
+        console.log('🎯 Specific invoice group ID kullanılıyor:', specificInvoiceGroupId)
         const { data: groupInfo } = await supabase
           .from('invoice_groups')
           .select('subtotal, discount, tax, grand_total, currency')
-          .eq('id', uniqueGroupIds[0])
+          .eq('id', specificInvoiceGroupId)
           .single()
         
         if (groupInfo) {
-          invoiceGroupData = groupInfo
-          console.log('✅ Invoice group bilgileri alındı:', {
-            groupId: uniqueGroupIds[0],
+          // Convert snake_case to camelCase for frontend
+          invoiceGroupData = {
             subtotal: groupInfo.subtotal,
             discount: groupInfo.discount,
             tax: groupInfo.tax,
             grandTotal: groupInfo.grand_total,
             currency: groupInfo.currency
+          }
+          console.log('✅ Specific invoice group bilgileri alındı:', {
+            groupId: specificInvoiceGroupId,
+            subtotal: invoiceGroupData.subtotal,
+            discount: invoiceGroupData.discount,
+            tax: invoiceGroupData.tax,
+            grandTotal: invoiceGroupData.grandTotal,
+            currency: invoiceGroupData.currency
           })
         }
-      } else if (uniqueGroupIds.length > 1) {
-        console.log('⚠️ Birden fazla invoice group bulundu, grup bilgileri kullanılmayacak')
+      } else {
+        // Otomatik tespit: Eğer tüm invoice'lar aynı group'a aitse
+        const groupIds = invoicesWithGroups?.map(inv => inv.invoice_group_id).filter(Boolean)
+        uniqueGroupIds = [...new Set(groupIds)]
+        
+        if (uniqueGroupIds.length === 1 && uniqueGroupIds[0]) {
+          const { data: groupInfo } = await supabase
+            .from('invoice_groups')
+            .select('subtotal, discount, tax, grand_total, currency')
+            .eq('id', uniqueGroupIds[0])
+            .single()
+          
+          if (groupInfo) {
+            // Convert snake_case to camelCase for frontend
+            invoiceGroupData = {
+              subtotal: groupInfo.subtotal,
+              discount: groupInfo.discount,
+              tax: groupInfo.tax,
+              grandTotal: groupInfo.grand_total,
+              currency: groupInfo.currency
+            }
+            console.log('✅ Auto-detected invoice group bilgileri alındı:', {
+              groupId: uniqueGroupIds[0],
+              subtotal: invoiceGroupData.subtotal,
+              discount: invoiceGroupData.discount,
+              tax: invoiceGroupData.tax,
+              grandTotal: invoiceGroupData.grandTotal,
+              currency: invoiceGroupData.currency
+            })
+          }
+        } else if (uniqueGroupIds.length > 1) {
+          console.log('⚠️ Birden fazla invoice group bulundu, grup bilgileri kullanılmayacak:', {
+            groupCount: uniqueGroupIds.length,
+            groupIds: uniqueGroupIds
+          })
+        } else {
+          console.log('ℹ️ Hiç invoice group bulunamadı')
+        }
       }
     }
 
@@ -602,11 +679,11 @@ export async function GET(request: NextRequest) {
         totalInvoices: finalInvoices?.length || 0,
         totalAmount: finalOrders?.[0]?.amount || 0,
         currency: finalOrders?.[0]?.currency || 'TRY',
-        // Invoice group bilgilerini ekle (varsa)
+        // Invoice group bilgilerini ekle (varsa) - already in camelCase
         subtotal: invoiceGroupData?.subtotal,
         discount: invoiceGroupData?.discount,
         tax: invoiceGroupData?.tax,
-        grandTotal: invoiceGroupData?.grand_total,
+        grandTotal: invoiceGroupData?.grandTotal,
       },
       debug: {
         ordersFound: finalOrders?.length || 0,
@@ -616,7 +693,12 @@ export async function GET(request: NextRequest) {
         shipmentsError: shipmentsError?.message,
         invoicesError: invoicesError?.message,
         requestId,
-        timelineLength: timeline.length
+        timelineLength: timeline.length,
+        // Invoice group debug bilgileri
+        invoiceGroupData: invoiceGroupData,
+        hasInvoiceGroup: !!invoiceGroupData,
+        invoiceGroupId: uniqueGroupIds?.[0] || null,
+        invoicesWithGroupIds: invoicesWithGroups
       }
     }
 
@@ -630,6 +712,16 @@ export async function GET(request: NextRequest) {
       hasOrderInTimeline: response.timeline.some(t => t.type === 'order'),
       hasShipmentInTimeline: response.timeline.some(t => t.type === 'shipment'),
       hasInvoiceInTimeline: response.timeline.some(t => t.type === 'invoice')
+    })
+
+    console.log('💰 Statistics Response:', {
+      hasInvoiceGroup: !!invoiceGroupData,
+      subtotal: response.statistics.subtotal,
+      discount: response.statistics.discount,
+      tax: response.statistics.tax,
+      grandTotal: response.statistics.grandTotal,
+      currency: response.statistics.currency,
+      invoiceGroupData
     })
 
     return NextResponse.json(response)

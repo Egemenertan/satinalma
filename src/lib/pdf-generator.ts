@@ -1455,6 +1455,16 @@ export const generatePurchaseRequestReportFast = async (data: ReportData): Promi
   try {
     console.log('⚡ Hızlı PDF oluşturma başlatılıyor...')
     
+    console.log('💰 PDF Generator - Statistics Debug:', {
+      hasStatistics: !!data.statistics,
+      subtotal: data.statistics?.subtotal,
+      discount: data.statistics?.discount,
+      tax: data.statistics?.tax,
+      grandTotal: data.statistics?.grandTotal,
+      currency: data.statistics?.currency,
+      fullStatistics: data.statistics
+    })
+    
     // HTML content oluştur
     const htmlContent = generatePDFHTML(data)
     

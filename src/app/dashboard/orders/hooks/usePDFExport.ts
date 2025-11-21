@@ -1,10 +1,11 @@
 /**
  * usePDFExport Hook
  * PDF export işlemleri state yönetimi
+ * Updated to use new modular PDF generator
  */
 
 import { useState } from 'react'
-import { generatePurchaseRequestReportFast, type ReportData } from '@/lib/pdf-generator'
+import { generatePDFReport } from '@/lib/pdf'
 import type { OrderData } from '../types'
 
 export function usePDFExport() {
@@ -43,14 +44,52 @@ export function usePDFExport() {
         itemName: order.purchase_request_items?.item_name
       })
 
-      // Timeline API'sini kullan
-      const response = await fetch(`/api/reports/timeline?requestId=${order.purchase_request_id}`)
+      // Önce invoice_group_id'yi al (eğer varsa)
+      const { createClient: createClientEarly } = await import('@/lib/supabase/client')
+      const supabaseEarly = createClientEarly()
+      
+      let specificInvoiceGroupId = null
+      if (order.invoices && order.invoices.length > 0) {
+        const { data: invoiceWithGroup } = await supabaseEarly
+          .from('invoices')
+          .select('invoice_group_id')
+          .eq('order_id', order.id)
+          .single()
+        
+        specificInvoiceGroupId = invoiceWithGroup?.invoice_group_id || null
+      }
+
+      // Timeline API'sini kullan - invoice_group_id'yi de gönder
+      const apiUrl = new URL(`/api/reports/timeline`, window.location.origin)
+      apiUrl.searchParams.set('requestId', order.purchase_request_id)
+      if (specificInvoiceGroupId) {
+        apiUrl.searchParams.set('invoiceGroupId', specificInvoiceGroupId)
+      }
+      
+      const response = await fetch(apiUrl.toString())
       
       if (!response.ok) {
         throw new Error('Timeline verileri alınamadı')
       }
       
       const timelineData = await response.json()
+
+      console.log('📊 Timeline API Response:', {
+        hasStatistics: !!timelineData.statistics,
+        statistics: timelineData.statistics,
+        invoicesCount: timelineData.invoices?.length || 0,
+        ordersCount: timelineData.orders?.length || 0,
+        debug: timelineData.debug
+      })
+
+      console.log('💰 Invoice Group Data from API:', {
+        hasInvoiceGroup: timelineData.debug?.hasInvoiceGroup,
+        invoiceGroupData: timelineData.debug?.invoiceGroupData,
+        subtotal: timelineData.statistics?.subtotal,
+        discount: timelineData.statistics?.discount,
+        tax: timelineData.statistics?.tax,
+        grandTotal: timelineData.statistics?.grandTotal
+      })
 
       // Bu siparişin faturasının invoice_group_id'sini kontrol et
       const { createClient } = await import('@/lib/supabase/client')
@@ -137,10 +176,10 @@ export function usePDFExport() {
         ? specificInvoices[0].currency 
         : (specificOrders.length > 0 ? specificOrders[0].currency : 'TRY')
 
-      // PDF verilerini hazırla
-      const pdfData: ReportData = {
+      // Prepare data for new PDF generator
+      const pdfApiData = {
         request: timelineData.request,
-        timeline: filteredTimeline,
+        timeline: filteredTimeline,  // ← Timeline'ı ekle!
         orders: specificOrders.length > 0 ? specificOrders : [order],
         invoices: specificInvoices,
         statistics: {
@@ -152,8 +191,7 @@ export function usePDFExport() {
           totalInvoices: specificInvoices.length,
           totalAmount: totalAmount,
           currency: invoiceCurrency,
-          // API'den gelen invoice group bilgilerini kullan (varsa)
-          // Eğer invoice group varsa, bu değerler API'den gelecek
+          // Use statistics from API (includes invoice group data)
           subtotal: timelineData.statistics?.subtotal,
           discount: timelineData.statistics?.discount,
           tax: timelineData.statistics?.tax,
@@ -161,17 +199,15 @@ export function usePDFExport() {
         }
       }
       
-      console.log('📄 PDF Data hazırlandı:', {
-        ordersCount: pdfData.orders.length,
-        invoicesCount: pdfData.invoices.length,
-        hasGroupData: !!(pdfData.statistics.subtotal || pdfData.statistics.discount || pdfData.statistics.tax),
-        subtotal: pdfData.statistics.subtotal,
-        discount: pdfData.statistics.discount,
-        tax: pdfData.statistics.tax,
-        grandTotal: pdfData.statistics.grandTotal
+      console.log('📄 PDF Data Ready:', {
+        ordersCount: pdfApiData.orders.length,
+        invoicesCount: pdfApiData.invoices.length,
+        hasInvoiceGroupData: !!(pdfApiData.statistics.subtotal || pdfApiData.statistics.discount || pdfApiData.statistics.tax),
+        statistics: pdfApiData.statistics
       })
 
-      await generatePurchaseRequestReportFast(pdfData)
+      // Generate PDF using new generator
+      await generatePDFReport(pdfApiData)
       
     } catch (error: any) {
       console.error('PDF export error:', error)
@@ -243,10 +279,10 @@ export function usePDFExport() {
         (new Date().getTime() - new Date(filteredOrders[filteredOrders.length - 1]?.created_at || new Date()).getTime()) / (1000 * 60 * 60 * 24)
       )
 
-      // PDF verilerini hazırla - API'den gelen statistics'i kullan
-      const pdfData: ReportData = {
+      // Prepare data for new PDF generator
+      const pdfApiData = {
         request: timelineData.request,
-        timeline: filteredTimeline,
+        timeline: filteredTimeline,  // ← Timeline'ı ekle!
         orders: filteredOrders,
         invoices: filteredInvoices,
         statistics: {
@@ -256,7 +292,7 @@ export function usePDFExport() {
           totalInvoices: filteredOrders.reduce((sum: number, order: any) => sum + (order.invoices?.length || 0), 0),
           totalAmount: totalAmount,
           currency: filteredOrders[0]?.currency || 'TRY',
-          // API'den gelen invoice group bilgilerini kullan (varsa)
+          // Use statistics from API (includes invoice group data)
           subtotal: timelineData.statistics?.subtotal,
           discount: timelineData.statistics?.discount,
           tax: timelineData.statistics?.tax,
@@ -264,7 +300,14 @@ export function usePDFExport() {
         }
       }
 
-      await generatePurchaseRequestReportFast(pdfData)
+      console.log('📄 Multi-Order PDF Data Ready:', {
+        ordersCount: pdfApiData.orders.length,
+        invoicesCount: pdfApiData.invoices.length,
+        statistics: pdfApiData.statistics
+      })
+
+      // Generate PDF using new generator
+      await generatePDFReport(pdfApiData)
       
     } catch (error) {
       console.error('Toplu PDF export error:', error)
