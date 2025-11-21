@@ -213,6 +213,49 @@ export default function OrdersPage() {
       showToast('Lütfen en az bir sipariş seçin', 'error')
       return
     }
+
+    console.log('➕ Fatura ekleme modalı açılıyor:', {
+      selectedCount: selectedOrders.size,
+      selectedOrderIds: Array.from(selectedOrders)
+    })
+
+    // Eğer sadece 1 sipariş seçiliyse, tek sipariş modu
+    if (selectedOrders.size === 1) {
+      const orderId = Array.from(selectedOrders)[0]
+      const order = orders.find(o => o.id === orderId)
+      
+      if (order) {
+        console.log('➕ Tek sipariş için fatura ekleme modalı açılıyor:', {
+          orderId: order.id,
+          supplierName: order.suppliers?.name,
+          itemName: order.purchase_request_items?.item_name
+        })
+        
+        // Tek sipariş modu - selectedOrderId'yi set et
+        setSelectedOrderId(order.id)
+        setEditingInvoiceGroupId(null)
+        setInvoiceAmount('')
+        setInvoiceCurrency(order.currency || 'TRY')
+        setInvoicePhotos([])
+        setInvoiceNotes('')
+        setOrderAmounts({})
+        setOrderCurrencies({})
+        // Tek sipariş için de ara toplam başlat (fatura tutarı girilince otomatik güncellenecek)
+        setInvoiceSubtotals({ [order.currency || 'TRY']: '0,00' })
+        setInvoiceDiscount('')
+        setInvoiceTax('')
+        setInvoiceGrandTotal('0,00')
+        setInvoiceGrandTotalCurrency(order.currency || 'TRY')
+        setIsInvoiceModalOpen(true)
+        return
+      }
+    }
+
+    // Toplu sipariş modu
+    console.log('➕ Toplu fatura ekleme modalı açılıyor:', {
+      selectedCount: selectedOrders.size
+    })
+    
     // State'leri temizle
     setSelectedOrderId(null)
     setEditingInvoiceGroupId(null)
@@ -263,6 +306,11 @@ export default function OrdersPage() {
   // Invoice handlers
   const handleInvoiceAmountChange = (formatted: string) => {
     setInvoiceAmount(formatted)
+    
+    // Tek sipariş için ara toplamı da güncelle
+    if (selectedOrderId) {
+      setInvoiceSubtotals({ [invoiceCurrency]: formatted })
+    }
   }
 
   const handleOrderAmountChange = (orderId: string, formatted: string) => {
@@ -673,6 +721,33 @@ export default function OrdersPage() {
     setIsUploadingInvoice(true)
 
     try {
+      // Kullanıcı bilgilerini kontrol et
+      const { data: { user }, error: authError } = await supabase.auth.getUser()
+      if (authError || !user) {
+        console.error('❌ Authentication hatası:', authError)
+        showToast('Oturum hatası. Lütfen tekrar giriş yapın.', 'error')
+        return
+      }
+
+      // Kullanıcı profilini ve rolünü kontrol et
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, role, full_name, email')
+        .eq('id', user.id)
+        .single()
+
+      if (profileError || !profile) {
+        console.error('❌ Profil hatası:', profileError)
+        showToast('Kullanıcı profili bulunamadı', 'error')
+        return
+      }
+
+      console.log('👤 Kullanıcı bilgileri:', {
+        id: user.id,
+        email: user.email,
+        role: profile.role,
+        full_name: profile.full_name
+      })
       // DÜZENLEME MODU - Toplu fatura güncelleme (invoice_group_id varsa)
       if (editingInvoiceGroupId) {
         const firstCurrency = Object.keys(invoiceSubtotals)[0] || 'TRY'
@@ -782,18 +857,96 @@ export default function OrdersPage() {
 
         const numAmount = parseToNumber(invoiceAmount)
         
-        const { error } = await supabase
-          .from('invoices')
-          .insert({
-            order_id: selectedOrderId,
-            amount: numAmount,
-            currency: invoiceCurrency,
-            invoice_photos: invoicePhotos,
-            notes: invoiceNotes || null,
-            invoice_group_id: null,
-          })
+        // Ara toplam, indirim, KDV ve genel toplam hesapla
+        const firstCurrency = Object.keys(invoiceSubtotals)[0] || invoiceCurrency
+        const subtotal = invoiceSubtotals[firstCurrency] ? parseToNumber(invoiceSubtotals[firstCurrency]) : numAmount
+        const discount = invoiceDiscount ? parseToNumber(invoiceDiscount) : null
+        const tax = invoiceTax ? parseToNumber(invoiceTax) : null
+        const grandTotal = invoiceGrandTotal ? parseToNumber(invoiceGrandTotal) : subtotal
+        
+        console.log('💾 Tek fatura kaydediliyor:', {
+          order_id: selectedOrderId,
+          amount: numAmount,
+          currency: invoiceCurrency,
+          invoice_photos_count: invoicePhotos.length,
+          notes: invoiceNotes,
+          hasInvoiceGroup: !!(discount || tax || (grandTotal !== subtotal)),
+          subtotal,
+          discount,
+          tax,
+          grandTotal
+        })
 
-        if (error) throw error
+        // Eğer indirim veya KDV girilmişse, invoice_group oluştur
+        if (discount || tax || (grandTotal !== subtotal)) {
+          // 1. Invoice group oluştur
+          const invoiceGroupData = {
+            created_by: user?.id || null,
+            group_name: `Fatura - ${new Date().toLocaleDateString('tr-TR')}`,
+            notes: invoiceNotes || null,
+            subtotal: subtotal,
+            discount: discount,
+            tax: tax,
+            grand_total: grandTotal,
+            currency: invoiceGrandTotalCurrency || firstCurrency,
+            invoice_photos: invoicePhotos,
+          }
+
+          const { data: invoiceGroup, error: groupError } = await supabase
+            .from('invoice_groups')
+            .insert(invoiceGroupData)
+            .select()
+            .single()
+
+          if (groupError) {
+            console.error('❌ Invoice group kaydetme hatası:', groupError)
+            throw groupError
+          }
+
+          console.log('✅ Invoice group kaydedildi:', invoiceGroup.id)
+
+          // 2. Invoice kaydı oluştur (group ile)
+          const { data: insertedInvoice, error } = await supabase
+            .from('invoices')
+            .insert({
+              order_id: selectedOrderId,
+              amount: numAmount,
+              currency: invoiceCurrency,
+              invoice_photos: invoicePhotos,
+              notes: invoiceNotes || null,
+              invoice_group_id: invoiceGroup.id,
+            })
+            .select()
+
+          if (error) {
+            console.error('❌ Fatura kaydetme hatası:', error)
+            // Invoice group'u geri al
+            await supabase.from('invoice_groups').delete().eq('id', invoiceGroup.id)
+            throw error
+          }
+
+          console.log('✅ Fatura başarıyla kaydedildi (invoice group ile):', insertedInvoice)
+        } else {
+          // Basit fatura (invoice group olmadan)
+          const { data: insertedInvoice, error } = await supabase
+            .from('invoices')
+            .insert({
+              order_id: selectedOrderId,
+              amount: numAmount,
+              currency: invoiceCurrency,
+              invoice_photos: invoicePhotos,
+              notes: invoiceNotes || null,
+              invoice_group_id: null,
+            })
+            .select()
+
+          if (error) {
+            console.error('❌ Fatura kaydetme hatası:', error)
+            throw error
+          }
+
+          console.log('✅ Fatura başarıyla kaydedildi:', insertedInvoice)
+        }
 
         showToast('Fatura başarıyla kaydedildi', 'success')
         setIsInvoiceModalOpen(false)
@@ -801,6 +954,10 @@ export default function OrdersPage() {
         setInvoiceCurrency('TRY')
         setInvoicePhotos([])
         setInvoiceNotes('')
+        setInvoiceSubtotals({})
+        setInvoiceDiscount('')
+        setInvoiceTax('')
+        setInvoiceGrandTotal('')
         
         // React Query cache'i yenile
         await queryClient.invalidateQueries({ queryKey: ['orders'] })
@@ -862,16 +1019,38 @@ export default function OrdersPage() {
           invoice_group_id: invoiceGroup.id,
         }))
 
-        const { error: invoicesError } = await supabase
+        console.log('💾 Toplu faturalar kaydediliyor:', {
+          invoiceCount: invoices.length,
+          groupId: invoiceGroup.id,
+          invoices: invoices.map(inv => ({
+            order_id: inv.order_id.slice(0, 8),
+            amount: inv.amount,
+            currency: inv.currency
+          }))
+        })
+
+        const { data: insertedInvoices, error: invoicesError } = await supabase
           .from('invoices')
           .insert(invoices)
+          .select()
 
         if (invoicesError) {
           console.error('❌ Faturalar kaydetme hatası:', invoicesError)
+          console.error('❌ Hata detayları:', {
+            message: invoicesError.message,
+            details: invoicesError.details,
+            hint: invoicesError.hint,
+            code: invoicesError.code
+          })
           // Invoice group'u geri al
           await supabase.from('invoice_groups').delete().eq('id', invoiceGroup.id)
           throw invoicesError
         }
+
+        console.log('✅ Toplu faturalar başarıyla kaydedildi:', {
+          count: insertedInvoices?.length,
+          invoices: insertedInvoices
+        })
 
         showToast(`${selectedOrders.size} sipariş için fatura başarıyla kaydedildi`, 'success')
         setIsInvoiceModalOpen(false)
@@ -888,9 +1067,20 @@ export default function OrdersPage() {
         // React Query cache'i yenile
         await queryClient.invalidateQueries({ queryKey: ['orders'] })
       }
-    } catch (error) {
-      console.error('Fatura kaydetme hatası:', error)
-      showToast('Fatura kaydedilirken hata oluştu', 'error')
+    } catch (error: any) {
+      console.error('❌ Fatura kaydetme hatası:', error)
+      console.error('❌ Hata detayları:', {
+        message: error?.message,
+        details: error?.details,
+        hint: error?.hint,
+        code: error?.code,
+        stack: error?.stack
+      })
+      
+      // Kullanıcıya daha detaylı hata mesajı göster
+      const errorMessage = error?.message || 'Fatura kaydedilirken hata oluştu'
+      const errorHint = error?.hint ? ` (${error.hint})` : ''
+      showToast(`${errorMessage}${errorHint}`, 'error')
     } finally {
       setIsUploadingInvoice(false)
     }
@@ -1047,6 +1237,7 @@ export default function OrdersPage() {
         invoiceCurrency={invoiceCurrency}
         onInvoiceAmountChange={handleInvoiceAmountChange}
         onInvoiceCurrencyChange={setInvoiceCurrency}
+        selectedOrder={selectedOrderId ? orders.find(o => o.id === selectedOrderId) : undefined}
         selectedOrders={getSelectedOrdersData(orders)}
         orderAmounts={orderAmounts}
         orderCurrencies={orderCurrencies}

@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { Calendar as CalendarComponent } from '@/components/ui/calendar'
 import { createClient } from '@/lib/supabase/client'
@@ -48,6 +47,8 @@ import {
   Loader2,
   TreePine
 } from 'lucide-react'
+import { CreateMaterialModal } from '@/components/CreateMaterialModal'
+import { MaterialSearchBar } from '@/components/MaterialSearchBar'
 
 
 
@@ -150,17 +151,12 @@ export default function CreatePurchaseRequestPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [isCheckingSite, setIsCheckingSite] = useState(true) // Kullanıcı şantiye kontrolü için
   const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{
+  const [displayedSearchResults, setDisplayedSearchResults] = useState<Array<{
     class: string
     group: string
     item_name: string
     display_text: string
-    score?: number
-    highlightCount?: number
   }>>([])
-  
-  const [isSearching, setIsSearching] = useState(false)
-  const [showSearchResults, setShowSearchResults] = useState(false)
   const [formData, setFormData] = useState({
     construction_site: '',
     construction_site_id: '',
@@ -200,7 +196,6 @@ export default function CreatePurchaseRequestPage() {
     group: '',
     item_name: ''
   })
-  const [isCreatingMaterial, setIsCreatingMaterial] = useState(false)
 
   // Cleanup URL objects when component unmounts
   useEffect(() => {
@@ -211,20 +206,6 @@ export default function CreatePurchaseRequestPage() {
     }
   }, [selectedMaterials])
 
-  // Dış tıklamada arama sonuçlarını kapat
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as Element
-      if (!target.closest('.search-container')) {
-        setShowSearchResults(false)
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside)
-    }
-  }, [])
 
   // Şantiyeleri ve kullanıcı bilgilerini çek
   useEffect(() => {
@@ -232,54 +213,57 @@ export default function CreatePurchaseRequestPage() {
       try {
         // Önce kullanıcının şantiye bilgisini kontrol et
         const { data: { user } } = await supabase.auth.getUser()
-        let hasUserSite = false
+        let userSiteIds: string[] = []
         
         if (user) {
           const { data: profileData, error: profileError } = await supabase
             .from('profiles')
-            .select('construction_site_id')
+            .select('site_id, construction_site_id')
             .eq('id', user.id)
             .single()
 
-          if (!profileError && profileData?.construction_site_id) {
-            // Kullanıcının şantiye bilgisini ayrı sorgu ile çek
+          if (!profileError && profileData) {
+            // site_id array'ini al (kullanıcının erişim izni olan siteler)
+            if (profileData.site_id && Array.isArray(profileData.site_id) && profileData.site_id.length > 0) {
+              userSiteIds = profileData.site_id
+            } else if (profileData.construction_site_id) {
+              // Eski sistem: construction_site_id varsa onu kullan
+              userSiteIds = [profileData.construction_site_id]
+            }
+
+            // Kullanıcının erişim izni olan site sayısını kontrol et
+            if (userSiteIds.length === 1) {
+              // TEK SİTE: Otomatik seç ve step 1'i atla
             const { data: siteData, error: siteError } = await supabase
               .from('sites')
               .select('id, name')
-              .eq('id', profileData.construction_site_id)
+                .eq('id', userSiteIds[0])
               .single()
 
             if (!siteError && siteData) {
-              // Kullanıcının şantiyesi var, otomatik seç ve step 1'i atla
               setUserSite(siteData)
               setFormData(prev => ({
                 ...prev,
                 construction_site: siteData.name,
                 construction_site_id: siteData.id
               }))
-              setCurrentStep(2) // Step 1'i atla - kategori seçimine geç
-              hasUserSite = true
-            }
-          }
-        }
-        
-        // Kullanıcı şantiye kontrolü tamamlandı
-        setIsCheckingSite(false)
-
-        // Şantiyeleri çek (sadece kullanıcının şantiyesi yoksa gerekli)
-        if (!hasUserSite) {
-          const { data: sitesData, error: sitesError } = await supabase
+                setCurrentStep(2) // Step 1'i atla - doğrudan kategori seçimine geç
+              }
+            } else if (userSiteIds.length > 1) {
+              // ÇOKLU SİTE: Sadece kullanıcının sitelerini göster
+              const { data: userSitesData, error: sitesError } = await supabase
             .from('sites')
             .select('id, name')
+                .in('id', userSiteIds)
             .order('name')
 
           if (sitesError) {
-            console.error('Şantiyeler yüklenirken hata:', sitesError)
+                console.error('Kullanıcı şantiyeleri yüklenirken hata:', sitesError)
           } else {
-            setSites(sitesData || [])
+                setSites(userSitesData || [])
             
             // Şantiye resimlerini storage'dan çek
-            if (sitesData && sitesData.length > 0) {
+                if (userSitesData && userSitesData.length > 0) {
               const imageUrls = {}
               
               // Proje isimleri ve dosya adları eşleştirmesi
@@ -295,7 +279,7 @@ export default function CreatePurchaseRequestPage() {
                 'dpoint': 'dpointhero.webp'
               }
               
-              for (const site of sitesData) {
+                  for (const site of userSitesData) {
                 try {
                   // Şantiye adını küçük harfe çevir ve eşleşme ara
                   const siteName = site.name.toLowerCase()
@@ -323,9 +307,14 @@ export default function CreatePurchaseRequestPage() {
                 }
               }
               setSiteImages(imageUrls)
+                }
+              }
             }
           }
         }
+        
+        // Kullanıcı şantiye kontrolü tamamlandı
+        setIsCheckingSite(false)
 
         // Malzeme sınıflarını çek (all_materials tablosundan farklı class değerleri)
         const { data: classesData, error: classesError } = await supabase
@@ -685,136 +674,6 @@ export default function CreatePurchaseRequestPage() {
     return averageScore * completeness
   }
 
-  // Gelişmiş arama fonksiyonu
-  const performSearch = async (query: string) => {
-    if (!query.trim()) {
-      setSearchResults([])
-      setShowSearchResults(false)
-      return
-    }
-
-    setIsSearching(true)
-    try {
-      // Sinonim genişletmesi ile sorgu varyasyonları oluştur
-      const expandedQueries = expandQueryWithSynonyms(query)
-      const searchConditions: string[] = []
-      
-      // Her genişletilmiş sorgu için arama koşulları ekle
-      expandedQueries.forEach(expandedQuery => {
-        const queryWords = expandedQuery.trim().toLowerCase().split(/\s+/)
-        
-        // Full query search
-        searchConditions.push(`class.ilike.%${expandedQuery}%`)
-        searchConditions.push(`group.ilike.%${expandedQuery}%`)
-        searchConditions.push(`item_name.ilike.%${expandedQuery}%`)
-        
-        // Individual word searches
-        for (const word of queryWords) {
-          if (word.length >= 2) { // En az 2 karakter
-            searchConditions.push(`class.ilike.%${word}%`)
-            searchConditions.push(`group.ilike.%${word}%`)
-            searchConditions.push(`item_name.ilike.%${word}%`)
-          }
-        }
-      })
-
-      const { data: searchData, error } = await supabase
-        .from('all_materials')
-        .select('class, group, item_name')
-        .or(searchConditions.join(','))
-        .not('class', 'is', null)
-        .not('group', 'is', null)
-        .not('item_name', 'is', null)
-        .limit(100) // Daha fazla sonuç çek, sonra filtreleyip sırala
-
-      if (error) {
-        console.error('Arama hatası:', error)
-      } else {
-        // Helper function to count highlights
-        const countHighlights = (text: string, query: string): number => {
-          if (!query.trim()) return 0
-          
-          const queryWords = query.toLowerCase().split(/\s+/)
-          let totalMatches = 0
-          
-          queryWords.forEach(word => {
-            if (word.length >= 2) {
-              const regex = new RegExp(word, 'gi')
-              const matches = text.match(regex)
-              if (matches) {
-                totalMatches += matches.length
-              }
-            }
-          })
-          
-          return totalMatches
-        }
-
-        // Sonuçları score ve highlight count'a göre sırala ve filtrele
-        const scoredResults = searchData?.map(item => {
-          const itemNameScore = calculateSimilarity(item.item_name, query)
-          const groupScore = calculateSimilarity(item.group, query)
-          const classScore = calculateSimilarity(item.class, query)
-          
-          // Combined text for comprehensive scoring
-          const combinedText = `${item.item_name} ${item.group} ${item.class}`
-          const combinedScore = calculateSimilarity(combinedText, query)
-          
-          // Count highlights in each field
-          const itemNameHighlights = countHighlights(item.item_name, query)
-          const groupHighlights = countHighlights(item.group, query)
-          const classHighlights = countHighlights(item.class, query)
-          const totalHighlights = itemNameHighlights + groupHighlights + classHighlights
-          
-          // Weighted scoring: item_name is most important
-          const baseScore = Math.max(
-            itemNameScore * 1.0,
-            groupScore * 0.7,
-            classScore * 0.5,
-            combinedScore * 0.8
-          )
-          
-          // Boost score based on highlight count (more highlights = higher priority)
-          const highlightBonus = totalHighlights * 5 // 5 points per highlight
-          const finalScore = baseScore + highlightBonus
-          
-          return {
-          class: item.class,
-          group: item.group,
-          item_name: item.item_name,
-            display_text: `${item.item_name} (${item.group} - ${item.class})`,
-            score: finalScore,
-            highlightCount: totalHighlights
-          }
-        }) || []
-        
-        // Minimum score threshold ve sıralama
-        const filteredResults = scoredResults
-          .filter(result => result.score > 25) // Minimum relevance threshold
-          .sort((a, b) => {
-            // Primary sort: highlight count (descending)
-            if (b.highlightCount !== a.highlightCount) {
-              return b.highlightCount - a.highlightCount
-            }
-            // Secondary sort: score (descending)
-            return b.score - a.score
-          })
-          .slice(0, 15) // En iyi 15 sonucu göster
-          
-        // Remove duplicates based on item_name
-        const uniqueResults = filteredResults.filter((item, index, self) =>
-          index === self.findIndex(t => t.item_name === item.item_name)
-        )
-        
-        setSearchResults(uniqueResults)
-        setShowSearchResults(true)
-      }
-    } catch (error) {
-      console.error('Arama sırasında hata:', error)
-    } finally {
-      setIsSearching(false)
-    }
-  }
 
   // Arama sonucuna tıklandığında - çoklu seçim desteği
   const handleSearchResultClick = async (result: any) => {
@@ -857,120 +716,11 @@ export default function CreatePurchaseRequestPage() {
     // Son eklenen malzemeyi seç
     setCurrentMaterialIndex(selectedMaterials.length)
     
-    // Arama sonuçlarını gizle
-    setShowSearchResults(false)
+    // Arama query'sini temizle
     setSearchQuery('')
   }
 
-  // Arama input değişikliği
-  const handleSearchChange = (value: string) => {
-    setSearchQuery(value)
-    
-    // Önceki timeout'u temizle
-    if (searchTimeoutRef.current) {
-      clearTimeout(searchTimeoutRef.current)
-    }
-    
-    // Yeni timeout ayarla
-    searchTimeoutRef.current = setTimeout(() => {
-      performSearch(value)
-    }, 300)
-  }
 
-  // Yeni malzeme oluşturma fonksiyonu
-  const handleCreateMaterial = async () => {
-    console.log('🚀 handleCreateMaterial başlatıldı')
-    console.log('📋 Form data:', createMaterialData)
-    
-    if (!createMaterialData.class || !createMaterialData.group || !createMaterialData.item_name) {
-      console.log('❌ Eksik alan tespit edildi:', {
-        class: createMaterialData.class,
-        group: createMaterialData.group,
-        item_name: createMaterialData.item_name
-      })
-      showToast('Lütfen tüm alanları doldurun', 'error')
-      return
-    }
-
-    setIsCreatingMaterial(true)
-    try {
-      console.log('📡 Server action import ediliyor...')
-      // Server action'ı kullan
-      const { createMaterialItem } = await import('@/lib/actions')
-      
-      console.log('📤 Server action çağrılıyor:', {
-        class: createMaterialData.class,
-        group: createMaterialData.group,
-        item_name: createMaterialData.item_name
-      })
-      
-      const result = await createMaterialItem({
-        class: createMaterialData.class,
-        group: createMaterialData.group,
-        item_name: createMaterialData.item_name
-      })
-
-      console.log('📥 Server action sonucu:', result)
-
-      if (!result.success) {
-        console.log('❌ Server action hatası:', result.error)
-        showToast(`Hata: ${result.error}`, 'error')
-        return
-      }
-
-      console.log('✅ Malzeme başarıyla oluşturuldu:', result.data)
-      showToast('Yeni malzeme başarıyla oluşturuldu!', 'success')
-      
-      // Yeni malzeme objesi oluştur
-      const newMaterial = {
-        id: Math.random().toString(36).substring(2, 15),
-        material_class: createMaterialData.class,
-        material_group: createMaterialData.group,
-        material_item_name: createMaterialData.item_name,
-        material_name: createMaterialData.item_name,
-        material_description: '',
-        unit: '',
-        quantity: '',
-        brand: '',
-        specifications: '',
-        purpose: '',         // Her malzeme için ayrı kullanım amacı
-        delivery_date: '',   // Her malzeme için ayrı teslimat tarihi
-        image_urls: [],
-        uploaded_images: [],
-        image_preview_urls: []
-      }
-
-      // Seçili malzemeler listesine ekle
-      setSelectedMaterials(prev => [...prev, newMaterial])
-
-      // Form data'yı güncelle
-      setFormData(prev => ({
-        ...prev,
-        material_class: createMaterialData.class,
-        material_group: createMaterialData.group
-      }))
-
-      // Modal'ı kapat ve state'i temizle
-      setShowCreateMaterialModal(false)
-      setCreateMaterialData({ class: '', group: '', item_name: '' })
-      
-      // Arama sonuçlarını gizle
-      setShowSearchResults(false)
-      setSearchQuery('')
-
-      // 5. adıma git (malzeme detayları)
-      setCurrentStep(5)
-      
-      // Son eklenen malzemeyi seç
-      setCurrentMaterialIndex(selectedMaterials.length)
-      
-    } catch (error) {
-      console.error('💥 Malzeme oluşturma sırasında beklenmeyen hata:', error)
-      showToast('Beklenmeyen bir hata oluştu', 'error')
-    } finally {
-      setIsCreatingMaterial(false)
-    }
-  }
 
   // Yeni malzeme modal'ını aç
   const openCreateMaterialModal = () => {
@@ -1231,187 +981,17 @@ export default function CreatePurchaseRequestPage() {
     if (currentStep < 2 || currentStep > 5) return null
 
     return (
-      <Card className="border-none shadow-none">
-          <div className="flex items-center gap-3 order-2 lg:order-1">
-                  {currentStep > 1 && (
-                    <Button 
-                      type="button"
-                      variant="outline"
-                      onClick={prevStep}
-                      className="h-0 lg:h-12 px-3 lg:px-6 rounded-lg lg:rounded-xl font-medium bg-white/30 border-white/40 hover:bg-white/50 text-sm lg:text-base flex-1 lg:flex-none"
-                    >
-                      <ArrowLeft className="w-4 h-4 mr-2" />
-                      Önceki
-                    </Button>
-                  )}
-                </div>
-        <CardContent className="p-2 lg:p-2">
-          <div className="relative search-container z-20">
-            <div className="flex items-center gap-3">
-              <Search className="w-5 h-5 text-gray-400" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => handleSearchChange(e.target.value)}
-                placeholder="Malzeme ara... (örn: boru kangal, 240 amp, 2*40 rcd, elektrik kablosu)"
-                className="flex-1 h-10 lg:h-10 rounded-xl lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-              />
-              {isSearching && (
-                <Loader2 className="w-5 h-5 text-gray-400 animate-spin" />
-              )}
-            </div>
-            
-            {/* Search Results Dropdown */}
-            {showSearchResults && searchResults.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 max-h-60 overflow-y-auto z-[9999]">
-                {searchResults.map((result, index) => {
-                  // Relevance indicator based on score
-                  const getRelevanceColor = (score: number) => {
-                    if (score >= 80) return 'bg-green-500'
-                    if (score >= 60) return 'bg-yellow-500'
-                    if (score >= 40) return 'bg-orange-500'
-                    return 'bg-gray-400'
-                  }
-                  
-                  const getRelevanceText = (score: number) => {
-                    if (score >= 80) return 'Yüksek eşleşme'
-                    if (score >= 60) return 'İyi eşleşme'
-                    if (score >= 40) return 'Kısmi eşleşme'
-                    return 'Düşük eşleşme'
-                  }
-
-                  // Text highlighting function with match counting
-                  const highlightText = (text: string, query: string) => {
-                    if (!query.trim()) return { html: text, matchCount: 0 }
-                    
-                    const queryWords = query.toLowerCase().split(/\s+/)
-                    let highlightedText = text
-                    let totalMatches = 0
-                    
-                    queryWords.forEach(word => {
-                      if (word.length >= 2) {
-                        const regex = new RegExp(`(${word})`, 'gi')
-                        const matches = text.match(regex)
-                        if (matches) {
-                          totalMatches += matches.length
-                          highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-200 px-1 rounded">$1</mark>')
-                        }
-                      }
-                    })
-                    
-                    return { html: highlightedText, matchCount: totalMatches }
-                  }
-
-                  // Calculate highlight counts for better sorting
-                  const itemNameHighlight = highlightText(result.item_name, searchQuery)
-                  const groupHighlight = highlightText(result.group, searchQuery)
-                  const classHighlight = highlightText(result.class, searchQuery)
-                  const totalHighlights = itemNameHighlight.matchCount + groupHighlight.matchCount + classHighlight.matchCount
-
-                  return (
-                  <button
-                    key={index}
-                    type="button"
-                    onClick={() => handleSearchResultClick(result)}
-                      className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0 transition-colors group"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="flex-1 min-w-0">
-                          <div 
-                            className="font-medium text-gray-900 text-sm truncate"
-                            dangerouslySetInnerHTML={{ 
-                              __html: itemNameHighlight.html
-                            }}
-                          />
-                    <div className="text-xs text-gray-500 mt-1">
-                            <span 
-                              dangerouslySetInnerHTML={{ 
-                                __html: groupHighlight.html
-                              }} 
-                            />
-                            {' → '}
-                            <span 
-                              dangerouslySetInnerHTML={{ 
-                                __html: classHighlight.html
-                              }} 
-                            />
-                          </div>
-                        </div>
-                        <div className="flex flex-col items-end ml-3 flex-shrink-0">
-                          <div className={`w-2 h-2 rounded-full ${getRelevanceColor(result.score || 0)}`} />
-                          <div className="text-xs text-gray-400 mt-1 hidden group-hover:block">
-                            {getRelevanceText(result.score || 0)}
-                            {totalHighlights > 0 && (
-                              <div className="text-xs text-blue-600 font-medium">
-                                {totalHighlights} eşleşme
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                    </div>
-                  </button>
-                  )
-                })}
-                
-                {/* Create New Material Button */}
-                <div className="border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={openCreateMaterialModal}
-                    className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center gap-3 text-blue-600"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Package className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-sm">Aradığınızı bulamadınız mı?</div>
-                      <div className="text-xs text-blue-500">
-                        "{searchQuery}" için yeni malzeme öğesi oluşturun
-                      </div>
-                    </div>
-                  </button>
-                </div>
-                
-                <div className="px-4 py-2 bg-gray-50 text-xs text-gray-500">
-                  {searchResults.length} sonuç bulundu • Eşleşme sayısına göre sıralanmış
-                </div>
-              </div>
-            )}
-
-            {/* No Results */}
-            {showSearchResults && searchResults.length === 0 && !isSearching && searchQuery.trim() && (
-              <div className="absolute top-full left-0 right-0 bg-white rounded-md shadow-xl border border-gray-200 z-[9999]">
-                <div className="text-center text-gray-500 text-sm p-4">
-                  <Search className="w-8 h-8 mx-auto  text-gray-300" />
-                  "{searchQuery}" için sonuç bulunamadı
-                </div>
-                
-                {/* Create New Material Button for No Results */}
-                <div className="border-t border-gray-100">
-                  <button
-                    type="button"
-                    onClick={openCreateMaterialModal}
-                    className="w-full px-4 py-3 text-left hover:bg-blue-50 transition-colors flex items-center gap-3 text-blue-600"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
-                      <Package className="w-4 h-4 text-blue-600" />
-                    </div>
-                    <div>
-                      <div className="font-medium text-sm">Yeni malzeme öğesi oluşturun</div>
-                      <div className="text-xs text-blue-500">
-                        "{searchQuery}" malzemesini sisteme ekleyin
-                      </div>
-                    </div>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-          
-          <p className="text-xs text-gray-500">
-           
-          </p>
-        </CardContent>
-      </Card>
+      <MaterialSearchBar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        onResultClick={handleSearchResultClick}
+        onCreateNewClick={openCreateMaterialModal}
+        onEnterSearch={(results) => {
+          // Enter'a basıldığında sonuçları göster
+          setDisplayedSearchResults(results)
+        }}
+        className="mb-4"
+      />
     )
   }
 
@@ -1505,21 +1085,19 @@ export default function CreatePurchaseRequestPage() {
 
       case 2:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-             
-            </CardHeader>
-            <CardContent className="p-2 lg:p-6 space-y-3 lg:space-y-4">
+          <div className="w-full">
               {materialClasses.length === 0 ? (
-                <div className="text-center py-8">
-                  <Grid3X3 className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600">Malzeme sınıfları yükleniyor...</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Eğer sınıflar görünmüyorsa, sayfayı yenileyin veya konsolu kontrol edin
-                  </p>
+              <div className="flex items-center justify-center py-24 bg-white rounded-3xl border border-gray-100">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-50 flex items-center justify-center">
+                    <Grid3X3 className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="text-base font-medium text-gray-900 mb-1">Yükleniyor</p>
+                  <p className="text-sm text-gray-500">Malzeme sınıfları getiriliyor...</p>
+                </div>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-1 lg:gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
                   {materialClasses.map((materialClass) => {
                   const IconComponent = {
                     'Wrench': Wrench,
@@ -1533,53 +1111,56 @@ export default function CreatePurchaseRequestPage() {
                     'Palette': Palette
                   }[materialClass.icon] || Package
 
+                  const isSelected = formData.material_class === materialClass.name
+
                   return (
                     <button
                       key={materialClass.id}
                       type="button"
                       onClick={async () => {
                         handleInputChange('material_class', materialClass.name)
-                        
-                        // Seçilen sınıfa ait grupları çek
                         await fetchMaterialGroups(materialClass.name)
-                        
-                        // Otomatik olarak bir sonraki adıma geç
-                        setTimeout(() => {
-                          setCurrentStep(3)
-                        }, 300)
+                        setTimeout(() => setCurrentStep(3), 300)
                       }}
                       className={`
-                        aspect-square p-1 lg:p-6 rounded-lg lg:rounded-2xl transition-all duration-200 text-center border flex flex-col justify-center items-center
-                        ${formData.material_class === materialClass.name 
-                          ? 'border-gray-800 bg-white/40 shadow-lg' 
-                          : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
+                        group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
+                        flex flex-col items-center justify-center p-4 lg:p-6
+                        ${isSelected 
+                          ? 'bg-black text-white shadow-xl scale-[0.98]' 
+                          : 'bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100'
                         }
                       `}
                     >
-                      <div className="flex flex-col items-center justify-center text-center h-full">
-                        <div 
-                          className="p-1 lg:p-3 rounded-lg mb-2"
-                          style={{ backgroundColor: materialClass.color + '20' }}
-                        >
+                      {/* Icon Container */}
+                      <div className={`
+                        w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl mb-3 lg:mb-4
+                        flex items-center justify-center transition-all duration-300
+                        ${isSelected 
+                          ? 'bg-white/10' 
+                          : 'bg-gray-50 group-hover:bg-gray-100'
+                        }
+                      `}>
                           <IconComponent 
-                            className="w-5 lg:w-8 h-5 lg:h-8" 
-                            style={{ color: materialClass.color }}
+                          className={`
+                            w-6 h-6 lg:w-8 lg:h-8 transition-colors duration-300
+                            ${isSelected ? 'text-white' : 'text-gray-700'}
+                          `}
                           />
                         </div>
-                        <div className="flex flex-col justify-center items-center text-center">
-                          <h3 className="font-semibold text-gray-900 text-xs lg:text-base leading-tight mb-1 line-clamp-2">
+
+                      {/* Text */}
+                      <h3 className={`
+                        font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
+                        transition-colors duration-300
+                        ${isSelected ? 'text-white' : 'text-gray-900'}
+                      `}>
                             {materialClass.name}
                           </h3>
-                          <p className="text-gray-600 text-xs lg:text-sm leading-tight line-clamp-2">
-                            {materialClass.description}
-                          </p>
-                        </div>
-                      </div>
-                      
-                      {formData.material_class === materialClass.name && (
-                        <div className="mt-3 flex items-center gap-2 text-green-600">
-                          <CheckCircle2 className="w-4 h-4" />
-                          <span className="text-sm font-medium">Seçildi</span>
+
+                      {/* Selected Indicator */}
+                      {isSelected && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                          <CheckCircle2 className="w-4 h-4 text-black" />
                         </div>
                       )}
                     </button>
@@ -1587,25 +1168,20 @@ export default function CreatePurchaseRequestPage() {
                 })}
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         )
 
       case 3:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
-             
-            </CardHeader>
-            <CardContent className="p-2 lg:p-6 space-y-3 lg:space-y-4">
+          <div className="w-full">
               {materialGroups.length > 0 ? (
-                <div>
-                  <div className="mb-4">
-                    <p className="text-sm text-gray-600">
-                      <span className="font-medium">{formData.material_class}</span> sınıfından grup seçiniz:
+              <>
+                <div className="mb-4 px-1">
+                  <p className="text-sm text-gray-500">
+                    <span className="font-semibold text-gray-900">{formData.material_class}</span> kategorisinden seçim yapın
                     </p>
                   </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1 lg:gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
                     {materialGroups.map((materialGroup) => {
                       const IconComponent = {
                         'Truck': Truck,
@@ -1622,87 +1198,92 @@ export default function CreatePurchaseRequestPage() {
                         'TreePine': TreePine
                       }[materialGroup.icon] || Package
 
+                    const isSelected = formData.material_group === materialGroup.name
+
                       return (
                         <button
                           key={materialGroup.id}
                           type="button"
                           onClick={async () => {
                             handleInputChange('material_group', materialGroup.name)
-                            
-                            // Seçilen gruba ait malzeme öğelerini çek
                             await fetchMaterialItems(formData.material_class, materialGroup.name)
-                            
-                            // Otomatik olarak bir sonraki adıma geç
-                            setTimeout(() => {
-                              setCurrentStep(4)
-                            }, 300)
+                          setTimeout(() => setCurrentStep(4), 300)
                           }}
                           className={`
-                            aspect-square p-1 lg:p-4 rounded-lg lg:rounded-2xl transition-all duration-200 text-center border flex flex-col justify-center items-center
-                            ${formData.material_group === materialGroup.name 
-                              ? 'border-gray-800 bg-white/40 shadow-lg' 
-                              : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
-                            }
-                          `}
-                        >
-                          <div className="flex flex-col items-center justify-center text-center h-full">
-                            <div 
-                              className="p-1 lg:p-3 rounded-lg mb-2"
-                              style={{ backgroundColor: materialGroup.color + '20' }}
-                            >
+                          group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
+                          flex flex-col items-center justify-center p-4 lg:p-6
+                          ${isSelected 
+                            ? 'bg-black text-white shadow-xl scale-[0.98]' 
+                            : 'bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100'
+                          }
+                        `}
+                      >
+                        <div className={`
+                          w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
+                          flex items-center justify-center transition-all duration-300
+                          ${isSelected ? 'bg-white/10' : 'bg-gray-50 group-hover:bg-gray-100'}
+                        `}>
                               <IconComponent 
-                                className="w-4 lg:w-6 h-4 lg:h-6" 
-                                style={{ color: materialGroup.color }}
+                            className={`
+                              w-5 h-5 lg:w-7 lg:h-7 transition-colors duration-300
+                              ${isSelected ? 'text-white' : 'text-gray-700'}
+                            `}
                               />
                             </div>
-                            <div className="flex flex-col justify-center items-center text-center">
-                              <h3 className="font-semibold text-gray-900 text-xs lg:text-sm leading-tight mb-1 line-clamp-2">
+
+                        <h3 className={`
+                          font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
+                          transition-colors duration-300
+                          ${isSelected ? 'text-white' : 'text-gray-900'}
+                        `}>
                                 {materialGroup.name}
                               </h3>
-                              <p className="text-gray-600 text-xs leading-tight line-clamp-2">
-                                {materialGroup.description}
-                              </p>
-                            </div>
-                          </div>
-                          
-                          {formData.material_group === materialGroup.name && (
-                            <div className="mt-2 flex items-center justify-center gap-1 text-blue-600">
-                              <CheckCircle2 className="w-3 h-3" />
-                              <span className="text-xs font-medium">Seçildi</span>
+
+                        {isSelected && (
+                          <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                            <CheckCircle2 className="w-4 h-4 text-black" />
                             </div>
                           )}
                         </button>
                       )
                     })}
                   </div>
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-24 bg-white rounded-3xl border border-gray-100">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-50 flex items-center justify-center">
+                    <List className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="text-base font-medium text-gray-900 mb-1">Yükleniyor</p>
+                  <p className="text-sm text-gray-500">Alt kategoriler getiriliyor...</p>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <List className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600">Malzeme grupları yükleniyor...</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Eğer gruplar görünmüyorsa, önce bir malzeme sınıfı seçtiğinizden emin olun
-                  </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         )
 
       case 4:
         return (
-          <Card className="border-none shadow-none">
-            <CardHeader className="">
-             
-            </CardHeader>
-            <CardContent className="">
+          <div className="w-full space-y-4">
               {materialItems.length > 0 ? (
-                <div className="space-y-3">
-                  <div className="">
-                    <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4 mb-2">
-                      <p className="text-sm text-gray-600">
-                        <span className="font-medium">{formData.material_group}</span> grubundan malzeme seçiniz:
-                      </p>
+              <>
+                {/* Header */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-1">
+                  <div>
+                    <p className="text-sm text-gray-500">
+                      <span className="font-semibold text-gray-900">{formData.material_group}</span> grubundan seçim yapın
+                    </p>
+                    {selectedMaterials.length > 0 && (
+                      <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full border border-green-100">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        <span className="text-xs font-medium text-green-900">
+                          {selectedMaterials.length} malzeme seçildi
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                  
                       {selectedMaterials.length > 0 && (
                         <Button 
                           type="button"
@@ -1710,30 +1291,16 @@ export default function CreatePurchaseRequestPage() {
                             setCurrentMaterialIndex(0)
                             setCurrentStep(5)
                           }}
-                          className="lg:w-auto w-full h-8 lg:h-10 px-4 lg:px-6 rounded-lg lg:rounded-xl font-medium bg-black hover:bg-gray-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-sm lg:text-base flex items-center justify-center gap-2"
+                      className="w-full sm:w-auto h-10 px-6 rounded-xl font-medium bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-sm"
                         >
-                          <span className="lg:hidden">Seçilen {selectedMaterials.length} Malzeme ile</span>
-                          <span className="hidden lg:inline">İleri</span>
-                          <ArrowLeft className="w-4 h-4 rotate-180" />
+                      Devam Et
+                      <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
                         </Button>
                       )}
                     </div>
-                    {selectedMaterials.length > 0 && (
-                      <div className="flex justify-start mb-2">
-                        <div className="bg-green-100 px-3 py-1 rounded-full">
-                          <span className="text-xs font-medium text-green-800">
-                            {selectedMaterials.length} malzeme seçildi
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                    {selectedMaterials.length > 0 && (
-                      <div className="text-xs text-gray-500">
-                        Birden fazla malzeme seçebilirsiniz. Sonraki adımda her malzeme için detayları gireceksiniz.
-                      </div>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-1 lg:gap-3">
+
+                {/* Grid */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
                     {/* Yeni Malzeme Oluştur Butonu */}
                     <button
                       type="button"
@@ -1746,21 +1313,19 @@ export default function CreatePurchaseRequestPage() {
                         }))
                         setShowCreateMaterialModal(true)
                       }}
-                      className="aspect-square p-1 lg:p-4 rounded-lg transition-all duration-200 text-center border border-dashed border-blue-300 bg-blue-50/40 hover:bg-blue-50/60 hover:border-blue-400 flex flex-col justify-center items-center"
-                    >
-                      <div className="flex flex-col items-center justify-center text-center h-full">
-                        <div className="p-2 bg-blue-100/60 rounded-lg mb-2">
-                          <Package className="w-4 h-4 text-blue-600" />
+                    className="group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
+                      flex flex-col items-center justify-center p-4 lg:p-6
+                      bg-white text-gray-700 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg 
+                      border-2 border-dashed border-gray-300 hover:border-gray-400"
+                  >
+                    <div className="w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
+                      flex items-center justify-center transition-all duration-300
+                      bg-gray-100 group-hover:bg-gray-200">
+                      <Package className="w-5 h-5 lg:w-7 lg:h-7 text-gray-600" />
                         </div>
-                        <div className="flex flex-col justify-center items-center text-center">
-                          <h3 className="font-semibold text-blue-700 text-xs leading-tight mb-1 line-clamp-3">
-                            Yeni Malzeme Oluştur
+                    <h3 className="font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2 text-gray-700">
+                      Yeni Ekle
                           </h3>
-                          <p className="text-blue-600 text-xs leading-tight line-clamp-2">
-                            Bulamadınız mı?
-                          </p>
-                        </div>
-                      </div>
                     </button>
 
                     {materialItems.map((item) => {
@@ -1772,12 +1337,10 @@ export default function CreatePurchaseRequestPage() {
                           type="button"
                           onClick={() => {
                             if (isSelected) {
-                              // Malzeme zaten seçili - kaldır
                               setSelectedMaterials(prev => 
                                 prev.filter(mat => mat.material_item_name !== item.name)
                               )
                             } else {
-                              // Yeni malzeme ekle
                               const newMaterial = {
                                 id: Math.random().toString(36).substring(2, 15),
                                 material_class: formData.material_class,
@@ -1789,8 +1352,8 @@ export default function CreatePurchaseRequestPage() {
                                 quantity: '',
                                 brand: '',
                                 specifications: '',
-                                purpose: '',         // Her malzeme için ayrı kullanım amacı
-                                delivery_date: '',   // Her malzeme için ayrı teslimat tarihi
+                              purpose: '',
+                              delivery_date: '',
                                 image_urls: [],
                                 uploaded_images: [],
                                 image_preview_urls: []
@@ -1799,62 +1362,74 @@ export default function CreatePurchaseRequestPage() {
                             }
                           }}
                           className={`
-                            aspect-square p-1 lg:p-4 rounded-lg transition-all duration-200 text-center border flex flex-col justify-center items-center relative
+                          group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
+                          flex flex-col items-center justify-center p-4 lg:p-6
                             ${isSelected 
-                              ? 'border-green-600 bg-green-50/60 shadow-lg' 
-                              : 'border-gray-200 bg-white/80 hover:bg-white hover:border-gray-300 hover:shadow-md'
-                            }
-                          `}
-                        >
-                          <div className="flex flex-col items-center justify-center text-center h-full">
-                            <div className={`p-2 rounded-lg mb-2 ${isSelected ? 'bg-green-100' : 'bg-gray-100'}`}>
-                              <Package className={`w-4 h-4 ${isSelected ? 'text-green-600' : 'text-gray-600'}`} />
+                            ? 'bg-green-600 text-white shadow-xl scale-[0.98]' 
+                            : 'bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100'
+                          }
+                        `}
+                      >
+                        <div className={`
+                          w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
+                          flex items-center justify-center transition-all duration-300
+                          ${isSelected ? 'bg-white/20' : 'bg-gray-50 group-hover:bg-gray-100'}
+                        `}>
+                          <Package 
+                            className={`
+                              w-5 h-5 lg:w-7 lg:h-7 transition-colors duration-300
+                              ${isSelected ? 'text-white' : 'text-gray-700'}
+                            `}
+                          />
                             </div>
-                            <div className="flex flex-col justify-center items-center text-center">
-                              <h3 className="font-semibold text-gray-900 text-xs leading-tight mb-1 line-clamp-3">
+
+                        <h3 className={`
+                          font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
+                          transition-colors duration-300
+                          ${isSelected ? 'text-white' : 'text-gray-900'}
+                        `}>
                                 {item.name}
                               </h3>
-                            </div>
                             
                             {isSelected && (
-                              <div className="absolute top-1 right-1 w-5 h-5 bg-green-600 rounded-full flex items-center justify-center">
-                                <CheckCircle2 className="w-3 h-3 text-white" />
+                          <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                            <CheckCircle2 className="w-4 h-4 text-green-600" />
                               </div>
                             )}
-                          </div>
                         </button>
                       )
                     })}
                   </div>
                   
-                  {/* Seçilen Malzemelerle İlerle Butonu */}
+                {/* Bottom Action Button - Mobile */}
                   {selectedMaterials.length > 0 && (
-                    <div className="mt-6 pt-4 border-t border-white/30">
+                  <div className="lg:hidden pt-4">
                       <Button
                         type="button"
                         onClick={() => {
                           setCurrentMaterialIndex(0)
                           setCurrentStep(5)
                         }}
-                        className="w-full bg-green-600 hover:bg-green-700 text-white h-12 rounded-xl font-medium"
+                      className="w-full bg-green-600 hover:bg-green-700 text-white h-12 rounded-xl font-medium shadow-lg"
                       >
                         <CheckCircle2 className="w-5 h-5 mr-2" />
-                        Seçilen {selectedMaterials.length} Malzeme ile Devam Et
+                      {selectedMaterials.length} Malzeme ile Devam Et
                       </Button>
                     </div>
                   )}
+              </>
+            ) : (
+              <div className="flex items-center justify-center py-24 bg-white rounded-3xl border border-gray-100">
+                <div className="text-center">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-50 flex items-center justify-center">
+                    <Package className="w-8 h-8 text-gray-300" />
+                  </div>
+                  <p className="text-base font-medium text-gray-900 mb-1">Yükleniyor</p>
+                  <p className="text-sm text-gray-500">Malzemeler getiriliyor...</p>
                 </div>
-              ) : (
-                <div className="text-center py-8">
-                  <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600">Malzemeler yükleniyor...</p>
-                  <p className="text-sm text-gray-500 mt-1">
-                    Eğer malzemeler görünmüyorsa, önce bir malzeme grubu seçtiğinizden emin olun
-                  </p>
                 </div>
               )}
-            </CardContent>
-          </Card>
+          </div>
         )
 
       case 5:
@@ -2517,148 +2092,18 @@ export default function CreatePurchaseRequestPage() {
   return (
     <>
     {/* Create New Material Modal */}
-    <Dialog open={showCreateMaterialModal} onOpenChange={setShowCreateMaterialModal}>
-      <DialogContent className="sm:max-w-[550px] bg-white border border-gray-200 shadow-2xl">
-        {/* Content */}
-        <div className="relative z-10">
-          <DialogHeader className="pb-6">
-            <DialogTitle className="flex items-center gap-3 text-xl font-bold text-gray-900">
-              
-              Yeni Malzeme Öğesi Oluştur
-            </DialogTitle>
-            <p className="text-sm text-gray-600 mt-2">
-              Aradığınız malzemeyi sisteme ekleyin ve hemen kullanmaya başlayın
-            </p>
-          </DialogHeader>
-          
-          <div className="space-y-6 py-2">
-            {/* Class Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <Grid3X3 className="w-4 h-4 text-gray-600" />
-                Malzeme Sınıfı *
-              </Label>
-              <Select 
-                value={createMaterialData.class} 
-                onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, class: value }))}
-              >
-                <SelectTrigger className="w-full h-12 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 text-base">
-                  <SelectValue placeholder="Sınıf seçin veya yeni sınıf adı yazın..." />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-200 shadow-2xl">
-                  {materialClasses.map((cls) => (
-                    <SelectItem 
-                      key={cls.id} 
-                      value={cls.name}
-                      className="hover:bg-gray-50/80 focus:bg-gray-50/80 transition-colors"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="w-3 h-3 rounded-full bg-gray-300" />
-                        {cls.name}
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Group Selection */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <List className="w-4 h-4 text-gray-600" />
-                Malzeme Grubu *
-              </Label>
-              <Select 
-                value={createMaterialData.group} 
-                onValueChange={(value) => setCreateMaterialData(prev => ({ ...prev, group: value }))}
-                disabled={!createMaterialData.class}
-              >
-                <SelectTrigger className={`w-full h-12 bg-white border border-gray-300 rounded-xl transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 text-base ${
-                  !createMaterialData.class 
-                    ? 'opacity-50 cursor-not-allowed' 
-                    : 'hover:bg-gray-50'
-                }`}>
-                  <SelectValue placeholder="Grup seçin veya yeni grup adı yazın..." />
-                </SelectTrigger>
-                <SelectContent className="bg-white border border-gray-200 shadow-2xl">
-                  {materialGroups.length === 0 ? (
-                    <SelectItem value="no-groups" disabled>
-                      Grup bulunamadı
-                    </SelectItem>
-                  ) : (
-                    materialGroups.map((group) => (
-                      <SelectItem 
-                        key={group.id} 
-                        value={group.name}
-                        className="hover:bg-gray-50/80 focus:bg-gray-50/80 transition-colors"
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className="w-3 h-3 rounded-full bg-gray-300" />
-                          {group.name}
-                        </div>
-                      </SelectItem>
-                    ))
-                  )}
-                </SelectContent>
-              </Select>
-              
-              {!createMaterialData.class ? (
-                <div className="flex items-center gap-2 text-xs text-gray-600 bg-gray-50 px-3 py-2 rounded-lg border border-gray-200">
-                  <Settings className="w-3 h-3" />
-                  Önce bir sınıf seçin
-                </div>
-              ) : (
-                <div className="text-xs text-gray-500">
-                  {materialGroups.length} mevcut grup bulundu
-                </div>
-              )}
-            </div>
-
-            {/* Item Name Input */}
-            <div className="space-y-3">
-              <Label className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                <Package className="w-4 h-4 text-gray-600" />
-                Malzeme Adı *
-              </Label>
-              <Input
-                value={createMaterialData.item_name}
-                onChange={(e) => setCreateMaterialData(prev => ({ ...prev, item_name: e.target.value }))}
-                placeholder="Malzeme adını girin..."
-                className="w-full h-12 bg-white border border-gray-300 rounded-xl hover:bg-gray-50 transition-all duration-200 focus:ring-2 focus:ring-gray-500/30 focus:border-gray-500 placeholder:text-gray-500 text-base"
-              />
-            </div>
-          </div>
-
-          <DialogFooter className="pt-6 gap-3">
-            <Button 
-              variant="outline" 
-              onClick={() => setShowCreateMaterialModal(false)}
-              disabled={isCreatingMaterial}
-              className="h-12 px-6 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-xl transition-all duration-200"
-            >
-              İptal
-            </Button>
-            <Button 
-              onClick={handleCreateMaterial}
-              disabled={isCreatingMaterial || !createMaterialData.class || !createMaterialData.group || !createMaterialData.item_name}
-              className="h-12 px-6 bg-black hover:bg-gray-800 text-white rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isCreatingMaterial ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin mr-2" />
-                  Oluşturuluyor...
-                </>
-              ) : (
-                <>
-                  
-                  Oluştur
-                </>
-              )}
-            </Button>
-          </DialogFooter>
-        </div>
-      </DialogContent>
-    </Dialog>
+    <CreateMaterialModal
+      open={showCreateMaterialModal}
+      onOpenChange={setShowCreateMaterialModal}
+      initialClass={createMaterialData.class}
+      initialGroup={createMaterialData.group}
+      onMaterialCreated={(material) => {
+        // Malzeme oluşturulduktan sonra malzeme listesini yeniden yükle
+        if (material.class && material.group) {
+          fetchMaterialItems(material.class, material.group)
+        }
+      }}
+    />
 
     <div className="min-h-screen ">
     <div className="px-0 lg:px-2 xl:px-4 pb-4 space-y-2 lg:space-y-2">
@@ -2692,7 +2137,9 @@ export default function CreatePurchaseRequestPage() {
       {/* Progress Bar */}
       <div className="bg-white/20 rounded-xl lg:rounded-2xl ">
         <div className=" ">
-          <h3 className="text-base lg:text-lg font-semibold text-gray-900">Adım {currentStep} / {steps.length}</h3>
+          <h3 className="text-base lg:text-lg font-semibold text-gray-900">
+            Adım {userSite ? currentStep - 1 : currentStep} / {userSite ? steps.length - 1 : steps.length}
+          </h3>
         </div>
 
 
@@ -2701,12 +2148,19 @@ export default function CreatePurchaseRequestPage() {
         <div className="text-center">
           <h4 className="text-lg lg:text-xl font-bold text-gray-900">{steps[currentStep - 1]?.title}</h4>
           <div className="lg:hidden text-sm text-gray-600 ">
-            %{Math.round((currentStep / steps.length) * 100)} tamamlandı
+            %{userSite 
+              ? Math.round(((currentStep - 1) / (steps.length - 1)) * 100) 
+              : Math.round((currentStep / steps.length) * 100)
+            } tamamlandı
           </div>
           <div className="w-full bg-gray-200 rounded-full h-1.5 lg:h-2 mt-2 lg:mt-3">
             <div 
               className="bg-gradient-to-r from-green-500 to-green-600 h-1.5 lg:h-2 rounded-full transition-all duration-500 ease-out"
-              style={{ width: `${(currentStep / steps.length) * 100}%` }}
+              style={{ 
+                width: userSite 
+                  ? `${((currentStep - 1) / (steps.length - 1)) * 100}%` 
+                  : `${(currentStep / steps.length) * 100}%` 
+              }}
             />
           </div>
         </div>
@@ -2715,12 +2169,60 @@ export default function CreatePurchaseRequestPage() {
       {/* Step Content */}
       <div>
         <div className="w-full">
-          <form onSubmit={handleSubmit} className="space-y-1 lg:space-y-2">
+          <form onSubmit={handleSubmit} className="space-y-3 lg:space-y-4">
             {/* Search Bar */}
             {renderSearchBar()}
             
+            {/* Search Results Grid */}
+            {displayedSearchResults.length > 0 && (
+              <div className="w-full">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-medium text-gray-900">
+                    "{searchQuery}" için {displayedSearchResults.length} sonuç bulundu
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => setDisplayedSearchResults([])}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Temizle
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
+                  {displayedSearchResults.map((result, index) => (
+                    <button
+                      key={index}
+                      type="button"
+                      onClick={() => {
+                        handleSearchResultClick(result)
+                        setDisplayedSearchResults([])
+                      }}
+                      className="group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
+                        flex flex-col items-center justify-center p-4 lg:p-6
+                        bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100"
+                    >
+                      <div className="w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
+                        flex items-center justify-center transition-all duration-300
+                        bg-gray-50 group-hover:bg-gray-100">
+                        <Package className="w-5 h-5 lg:w-7 lg:h-7 text-gray-700" />
+                      </div>
+                      
+                      <div className="text-center">
+                        <h3 className="font-semibold text-xs lg:text-sm text-gray-900 leading-tight line-clamp-2 mb-1">
+                          {result.item_name}
+                        </h3>
+                        <p className="text-xs text-gray-500 line-clamp-1">
+                          {result.group}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {/* Step Content */}
-            <div className="min-h-[250px] lg:min-h-[400px]">
+            <div>
               {renderStepContent()}
             </div>
 
@@ -2728,7 +2230,8 @@ export default function CreatePurchaseRequestPage() {
             <div className="bg-white/20 lg:backdrop-blur-lg border-0 rounded-xl lg:rounded-2xl p-2 lg:p-6">
               <div className="flex flex-col lg:flex-row justify-between lg:items-center gap-4 lg:gap-0">
                 <div className="flex items-center gap-3 order-2 lg:order-1">
-                  {currentStep > 1 && (
+                  {/* Kullanıcının tek sitesi varsa step 2'den başladığı için önceki butonu gösterme */}
+                  {currentStep > 1 && !(userSite && currentStep === 2) && (
                     <Button 
                       type="button"
                       variant="outline"

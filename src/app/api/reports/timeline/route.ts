@@ -549,6 +549,43 @@ export async function GET(request: NextRequest) {
     // Timeline'ı tarihe göre sırala
     timeline.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
+    // Invoice group bilgilerini çek (eğer varsa)
+    let invoiceGroupData = null
+    if (finalInvoices && finalInvoices.length > 0) {
+      // Tüm invoice'ların invoice_group_id'lerini kontrol et
+      const invoiceIds = finalInvoices.map(inv => inv.id)
+      const { data: invoicesWithGroups } = await supabase
+        .from('invoices')
+        .select('id, invoice_group_id')
+        .in('id', invoiceIds)
+      
+      // Eğer tüm invoice'lar aynı group'a aitse
+      const groupIds = invoicesWithGroups?.map(inv => inv.invoice_group_id).filter(Boolean)
+      const uniqueGroupIds = [...new Set(groupIds)]
+      
+      if (uniqueGroupIds.length === 1 && uniqueGroupIds[0]) {
+        const { data: groupInfo } = await supabase
+          .from('invoice_groups')
+          .select('subtotal, discount, tax, grand_total, currency')
+          .eq('id', uniqueGroupIds[0])
+          .single()
+        
+        if (groupInfo) {
+          invoiceGroupData = groupInfo
+          console.log('✅ Invoice group bilgileri alındı:', {
+            groupId: uniqueGroupIds[0],
+            subtotal: groupInfo.subtotal,
+            discount: groupInfo.discount,
+            tax: groupInfo.tax,
+            grandTotal: groupInfo.grand_total,
+            currency: groupInfo.currency
+          })
+        }
+      } else if (uniqueGroupIds.length > 1) {
+        console.log('⚠️ Birden fazla invoice group bulundu, grup bilgileri kullanılmayacak')
+      }
+    }
+
     const response = {
       request: requestData,
       timeline,
@@ -564,7 +601,12 @@ export async function GET(request: NextRequest) {
         totalShipments: shipmentsWithUsers?.length || 0,
         totalInvoices: finalInvoices?.length || 0,
         totalAmount: finalOrders?.[0]?.amount || 0,
-        currency: finalOrders?.[0]?.currency || 'TRY'
+        currency: finalOrders?.[0]?.currency || 'TRY',
+        // Invoice group bilgilerini ekle (varsa)
+        subtotal: invoiceGroupData?.subtotal,
+        discount: invoiceGroupData?.discount,
+        tax: invoiceGroupData?.tax,
+        grandTotal: invoiceGroupData?.grand_total,
       },
       debug: {
         ordersFound: finalOrders?.length || 0,

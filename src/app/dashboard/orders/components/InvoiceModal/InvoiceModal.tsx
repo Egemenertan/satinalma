@@ -41,6 +41,9 @@ interface InvoiceModalProps {
   onInvoiceAmountChange: (value: string) => void
   onInvoiceCurrencyChange: (value: string) => void
   
+  // Single Order Data (for display)
+  selectedOrder?: any
+  
   // Multiple Orders State
   selectedOrders: any[]
   orderAmounts: Record<string, string>
@@ -81,6 +84,7 @@ export function InvoiceModal({
   invoiceCurrency,
   onInvoiceAmountChange,
   onInvoiceCurrencyChange,
+  selectedOrder,
   selectedOrders,
   orderAmounts,
   orderCurrencies,
@@ -151,6 +155,12 @@ export function InvoiceModal({
         {/* Body - Geniş ve ferah */}
         <div className="overflow-y-auto flex-1 px-8 py-6">
           <div className="max-w-[1200px] mx-auto space-y-8">
+          
+          {/* TEK SİPARİŞ BİLGİLERİ */}
+          {selectedOrderId && selectedOrder && (
+            <OrderInfoCard order={selectedOrder} />
+          )}
+
           {/* TEK SİPARİŞ İÇİN TUTAR */}
           {selectedOrderId && (
             <SingleOrderInvoice
@@ -172,8 +182,8 @@ export function InvoiceModal({
             />
           )}
 
-          {/* FATURA ÖZETİ */}
-          {Object.keys(invoiceSubtotals).length > 0 && (
+          {/* FATURA ÖZETİ - Hem tek hem toplu fatura için göster */}
+          {(selectedOrderId || Object.keys(invoiceSubtotals).length > 0) && (
             <InvoiceSummary
               invoiceSubtotals={invoiceSubtotals}
               invoiceDiscount={invoiceDiscount}
@@ -246,6 +256,90 @@ export function InvoiceModal({
 // ============================================
 // SUB-COMPONENTS
 // ============================================
+
+// Sipariş Bilgi Kartı - Tek sipariş için
+function OrderInfoCard({ order }: { order: any }) {
+  return (
+    <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 p-6">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 space-y-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-blue-200">
+            <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
+              <Receipt className="w-5 h-5 text-white" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-gray-900 text-lg">Sipariş Bilgileri</h3>
+              <p className="text-sm text-gray-600">Fatura eklenecek sipariş detayları</p>
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4">
+            {/* Sol Kolon */}
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Malzeme</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {order.purchase_request_items?.item_name || 'Belirtilmemiş'}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tedarikçi</div>
+                <div className="text-base font-medium text-gray-900">
+                  {order.suppliers?.name || 'Belirtilmemiş'}
+                </div>
+              </div>
+              
+              {order.purchase_request_items?.brand && (
+                <div>
+                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Marka</div>
+                  <div className="text-base font-medium text-gray-900">
+                    {order.purchase_request_items.brand}
+                  </div>
+                </div>
+              )}
+            </div>
+            
+            {/* Sağ Kolon */}
+            <div className="space-y-3">
+              <div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Miktar</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {order.quantity} {order.purchase_request_items?.unit || 'adet'}
+                </div>
+              </div>
+              
+              <div>
+                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Sipariş Tutarı</div>
+                <div className="text-base font-semibold text-gray-900">
+                  {order.amount?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {order.currency}
+                </div>
+              </div>
+              
+              {order.delivery_date && (
+                <div>
+                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Teslimat Tarihi</div>
+                  <div className="text-base font-medium text-gray-900">
+                    {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+          
+          {order.purchase_request_items?.description && (
+            <div className="pt-3 border-t border-blue-200">
+              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Açıklama</div>
+              <div className="text-sm text-gray-700">
+                {order.purchase_request_items.description}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
 
 // Tek Sipariş Fatura Formu - Siyah Beyaz, Düzgün Input
 function SingleOrderInvoice({
