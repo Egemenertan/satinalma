@@ -1,6 +1,6 @@
 'use client'
 
-import { X, Upload } from 'lucide-react'
+import { X, Upload, ZoomIn } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Label } from '@/components/ui/label'
 
@@ -8,6 +8,7 @@ interface InvoicePhotoUploadProps {
   photos: string[]
   onPhotoAdd: (files: FileList) => void
   onPhotoRemove: (index: number) => void
+  onPhotoClick?: (index: number) => void
   isUploading?: boolean
   label?: string
   inputId: string
@@ -18,6 +19,7 @@ export function InvoicePhotoUpload({
   photos,
   onPhotoAdd,
   onPhotoRemove,
+  onPhotoClick,
   isUploading = false,
   label = "Fatura Fotoğrafları",
   inputId,
@@ -66,15 +68,31 @@ export function InvoicePhotoUpload({
           <Label>Yüklenen Fotoğraflar ({photos.length})</Label>
           <div className="grid grid-cols-3 gap-2">
             {photos.map((photo, index) => (
-              <div key={index} className="relative">
+              <div key={index} className="relative group">
                 <img
                   src={photo}
                   alt={`Fatura ${index + 1}`}
-                  className="w-full h-20 object-cover rounded border"
+                  className="w-full h-20 object-cover rounded border cursor-pointer hover:border-gray-400 transition-colors"
+                  onClick={() => onPhotoClick?.(index)}
                 />
+                
+                {/* Hover overlay - Büyütme ikonu */}
+                {onPhotoClick && (
+                  <div 
+                    className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all rounded flex items-center justify-center cursor-pointer"
+                    onClick={() => onPhotoClick(index)}
+                  >
+                    <ZoomIn className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </div>
+                )}
+                
+                {/* Remove button */}
                 <button
-                  onClick={() => onPhotoRemove(index)}
-                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPhotoRemove(index)
+                  }}
+                  className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 z-10"
                   type="button"
                 >
                   <X className="w-3 h-3" />
@@ -87,6 +105,7 @@ export function InvoicePhotoUpload({
     </div>
   )
 }
+
 
 
 

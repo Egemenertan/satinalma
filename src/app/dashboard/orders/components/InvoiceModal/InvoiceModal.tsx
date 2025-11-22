@@ -12,16 +12,17 @@
  * - Apple'ın tasarım dilini yansıtan renk paleti
  */
 
-import React from 'react'
+import React, { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Receipt, Upload, X, Image as ImageIcon, FileText } from 'lucide-react'
+import { Receipt, Upload, X, Image as ImageIcon, FileText, ZoomIn } from 'lucide-react'
 import { InlineLoading } from '@/components/ui/loading'
 import { formatNumberWithDots } from '../../utils'
+import FullScreenImageViewer from '@/components/FullScreenImageViewer'
 
 // Types
 interface InvoiceModalProps {
@@ -107,6 +108,10 @@ export function InvoiceModal({
   onNotesChange,
 }: InvoiceModalProps) {
   
+  // Image viewer state
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
+  const [selectedImageIndex, setSelectedImageIndex] = useState(0)
+  
   // Modal başlığını belirle
   const getModalTitle = () => {
     if (editingInvoiceGroupId) return 'Fatura Düzenle'
@@ -118,6 +123,12 @@ export function InvoiceModal({
     if (editingInvoiceGroupId) return 'Mevcut fatura bilgilerini güncelleyin'
     if (selectedOrderId) return 'Sipariş için fatura bilgilerini girin'
     return `${selectedOrdersCount} sipariş için fatura oluşturun`
+  }
+  
+  // Handle photo click to open viewer
+  const handlePhotoClick = (index: number) => {
+    setSelectedImageIndex(index)
+    setIsImageViewerOpen(true)
   }
 
   return (
@@ -202,6 +213,7 @@ export function InvoiceModal({
             invoicePhotos={invoicePhotos}
             onPhotoUpload={onPhotoUpload}
             onPhotoRemove={onPhotoRemove}
+            onPhotoClick={handlePhotoClick}
             isUploadingInvoice={isUploadingInvoice}
           />
 
@@ -249,6 +261,15 @@ export function InvoiceModal({
           </div>
         </div>
       </DialogContent>
+      
+      {/* Full Screen Image Viewer */}
+      <FullScreenImageViewer
+        isOpen={isImageViewerOpen}
+        onClose={() => setIsImageViewerOpen(false)}
+        images={invoicePhotos}
+        initialIndex={selectedImageIndex}
+        title="Fatura Fotoğrafları"
+      />
     </Dialog>
   )
 }
@@ -667,11 +688,13 @@ function InvoicePhotos({
   invoicePhotos,
   onPhotoUpload,
   onPhotoRemove,
+  onPhotoClick,
   isUploadingInvoice,
 }: {
   invoicePhotos: string[]
   onPhotoUpload: (files: FileList) => Promise<void>
   onPhotoRemove: (index: number) => void
+  onPhotoClick?: (index: number) => void
   isUploadingInvoice: boolean
 }) {
   return (
@@ -724,16 +747,29 @@ function InvoicePhotos({
           <div className="grid grid-cols-4 gap-4">
             {invoicePhotos.map((photo, index) => (
               <div key={index} className="relative group">
-                <div className="aspect-square rounded-xl overflow-hidden border-2 border-gray-200 group-hover:border-gray-400 transition-all shadow-sm group-hover:shadow-md">
+                <div 
+                  className="aspect-square rounded-xl overflow-hidden border-2 border-gray-200 group-hover:border-gray-400 transition-all shadow-sm group-hover:shadow-md cursor-pointer"
+                  onClick={() => onPhotoClick?.(index)}
+                >
                   <img
                     src={photo}
                     alt={`Fatura ${index + 1}`}
                     className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                   />
+                  
+                  {/* Hover overlay - Büyütme ikonu */}
+                  {onPhotoClick && (
+                    <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                      <ZoomIn className="w-8 h-8 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                  )}
                 </div>
                 <button
-                  onClick={() => onPhotoRemove(index)}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-red-600 hover:scale-110 transition-all shadow-lg"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onPhotoRemove(index)
+                  }}
+                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-red-600 hover:scale-110 transition-all shadow-lg z-10"
                   type="button"
                 >
                   <X className="w-4 h-4" />
