@@ -1120,7 +1120,16 @@ export default function CreatePurchaseRequestPage() {
                 </div>
               ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
-                  {materialClasses.map((materialClass) => {
+                  {materialClasses
+                    .filter((materialClass) => {
+                      // Kırtasiye Malzemeleri sadece Genel Merkez Ofisi kullanıcılarına göster
+                      if (materialClass.name === 'Kırtasiye Malzemeleri') {
+                        return isGenelMerkezUser
+                      }
+                      // Diğer sınıflar sadece Genel Merkez Ofisi OLMAYAN kullanıcılara göster
+                      return !isGenelMerkezUser
+                    })
+                    .map((materialClass) => {
                   const IconComponent = {
                     'Wrench': Wrench,
                     'Ruler': Ruler,
@@ -1151,17 +1160,18 @@ export default function CreatePurchaseRequestPage() {
                       }}
                       className={`
                         group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
-                        flex flex-col items-center justify-end p-4 lg:p-6 overflow-hidden
+                        ${categoryImage ? 'flex flex-col items-center justify-end' : 'flex flex-col items-center justify-center'} 
+                        p-4 lg:p-6 overflow-hidden
                         ${isSelected 
                           ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
                           : 'hover:scale-[1.02] hover:shadow-lg'
                         }
+                        ${!categoryImage && (isSelected ? 'bg-gray-900' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200')}
                       `}
                       style={{
                         backgroundImage: categoryImage ? `url(${categoryImage})` : 'none',
                         backgroundSize: 'cover',
                         backgroundPosition: 'center',
-                        backgroundColor: categoryImage ? 'transparent' : (isSelected ? '#000000' : '#ffffff')
                       }}
                     >
                       {/* Image Overlay */}
@@ -1173,8 +1183,10 @@ export default function CreatePurchaseRequestPage() {
                         }`} />
                       )}
 
-                      {/* Gradient Bottom */}
-                      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                      {/* Gradient Bottom - sadece image varsa */}
+                      {categoryImage && (
+                        <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                      )}
 
                       {/* Content */}
                       <div className="relative z-10 flex flex-col items-center">
@@ -1184,8 +1196,8 @@ export default function CreatePurchaseRequestPage() {
                             w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl mb-3 lg:mb-4
                             flex items-center justify-center transition-all duration-300
                             ${isSelected 
-                              ? 'bg-white/10' 
-                              : 'bg-gray-50 group-hover:bg-gray-100'
+                              ? 'bg-white/20' 
+                              : 'bg-white group-hover:bg-gray-50 border border-gray-200'
                             }
                           `}>
                             <IconComponent 
@@ -1201,7 +1213,7 @@ export default function CreatePurchaseRequestPage() {
                         <h3 className={`
                           font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
                           transition-colors duration-300
-                          ${categoryImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-900')}
+                          ${categoryImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-700')}
                         `}>
                           {materialClass.name}
                         </h3>
@@ -1270,17 +1282,18 @@ export default function CreatePurchaseRequestPage() {
                           }}
                           className={`
                           group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
-                          flex flex-col items-center justify-end p-4 lg:p-6 overflow-hidden
+                          ${groupImage ? 'flex flex-col items-center justify-end' : 'flex flex-col items-center justify-center'}
+                          p-4 lg:p-6 overflow-hidden
                           ${isSelected 
                             ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
                             : 'hover:scale-[1.02] hover:shadow-lg'
                           }
+                          ${!groupImage && (isSelected ? 'bg-gray-900' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200')}
                         `}
                         style={{
                           backgroundImage: groupImage ? `url(${groupImage})` : 'none',
                           backgroundSize: 'cover',
                           backgroundPosition: 'center',
-                          backgroundColor: groupImage ? 'transparent' : (isSelected ? '#000000' : '#ffffff')
                         }}
                       >
                         {/* Image Overlay */}
@@ -1292,8 +1305,10 @@ export default function CreatePurchaseRequestPage() {
                           }`} />
                         )}
 
-                        {/* Gradient Bottom */}
-                        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                        {/* Gradient Bottom - sadece image varsa */}
+                        {groupImage && (
+                          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                        )}
 
                         {/* Content */}
                         <div className="relative z-10 flex flex-col items-center">
@@ -1302,7 +1317,10 @@ export default function CreatePurchaseRequestPage() {
                             <div className={`
                               w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
                               flex items-center justify-center transition-all duration-300
-                              ${isSelected ? 'bg-white/10' : 'bg-gray-50 group-hover:bg-gray-100'}
+                              ${isSelected 
+                                ? 'bg-white/20' 
+                                : 'bg-white group-hover:bg-gray-50 border border-gray-200'
+                              }
                             `}>
                               <IconComponent 
                                 className={`
@@ -1317,7 +1335,7 @@ export default function CreatePurchaseRequestPage() {
                           <h3 className={`
                             font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
                             transition-colors duration-300
-                            ${groupImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-900')}
+                            ${groupImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-700')}
                           `}>
                             {materialGroup.name}
                           </h3>
