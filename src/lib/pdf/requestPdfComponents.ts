@@ -90,10 +90,6 @@ export const buildRequestDetails = (request: PDFRequestData): string => `
         <span class="info-value">${request.site_name || 'Belirtilmemiş'}</span>
       </div>
       <div class="info-item">
-        <span class="info-label">Talep Eden:</span>
-        <span class="info-value">${request.requester_name || request.requester_email || 'Bilinmiyor'}</span>
-      </div>
-      <div class="info-item">
         <span class="info-label">Oluşturulma Tarihi:</span>
         <span class="info-value">${formatDate(request.created_at)}</span>
       </div>

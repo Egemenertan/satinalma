@@ -52,11 +52,27 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
+      // Özel site ID'si kontrolü - eğer onay_bekliyor statusundaysa 'pending' yap, değilse 'satın almaya gönderildi'
+      const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+      const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
+      const isAwaitingApproval = request?.status === 'onay_bekliyor'
+      
+      let newStatus = 'satın almaya gönderildi'
+      let successMessage = 'Malzemeler satın almaya gönderildi!'
+      let historyComment = 'Site Manager tarafından satın almaya gönderildi'
+      
+      if (isSpecialSite && isAwaitingApproval) {
+        newStatus = 'pending'
+        successMessage = 'Talep onaylandı!'
+        historyComment = 'Site Manager tarafından onaylandı'
+        console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
+      }
+
       // Status güncelle
       const { error: updateError } = await supabase
         .from('purchase_requests')
         .update({ 
-          status: 'satın almaya gönderildi',
+          status: newStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', request.id);
@@ -73,7 +89,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
           purchase_request_id: request.id,
           action: 'approved',
           performed_by: user.id,
-          comments: 'Site Manager tarafından satın almaya gönderildi'
+          comments: historyComment
         });
 
       if (historyError) {
@@ -83,7 +99,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       // Teams bildirimi gönder (arka planda, hata olsa bile devam et)
       try {
         const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
-        await handlePurchaseRequestStatusChange(request.id, 'satın almaya gönderildi', request.status)
+        await handlePurchaseRequestStatusChange(request.id, newStatus, request.status)
       } catch (webhookError) {
         console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
       }
@@ -93,7 +109,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       await onRefresh()
       
       // Başarı mesajını göster
-      showToast('Malzemeler satın almaya gönderildi!', 'success')
+      showToast(successMessage, 'success')
       
     } catch (error: any) {
       console.error('❌ Site Manager onay hatası:', error)
@@ -221,7 +237,13 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
   }
 
   // Site Manager için satın almaya gönder butonu gösterilecek durumlar
-  const showApprovalButton = request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil'
+  // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için sadece onay_bekliyor statusunda göster
+  const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+  const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
+  
+  const showApprovalButton = isSpecialSite 
+    ? request?.status === 'onay_bekliyor'  // Özel site: sadece onay_bekliyor
+    : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil')  // Normal siteler
 
   // materialOrders'ı array formatına çevir (backward compatibility)
   const materialOrdersArray = Array.isArray(props.materialOrders) 
@@ -256,9 +278,11 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
               </div>
               <h3 className="text-xl font-semibold text-gray-900 mb-2">Site Manager İşlemleri</h3>
               <p className="text-gray-600 mb-6">
-                {request?.status === 'kısmen gönderildi' 
-                  ? 'Kısmen gönderilen malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
-                  : 'Depoda mevcut olmayan malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
+                {request?.status === 'onay_bekliyor'
+                  ? 'Bu talep onayınızı bekliyor. Onaylayarak talebi ilerletebilir veya reddedebilirsiniz.'
+                  : request?.status === 'kısmen gönderildi' 
+                    ? 'Kısmen gönderilen malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
+                    : 'Depoda mevcut olmayan malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
                 }
               </p>
               
@@ -295,7 +319,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                   )}
                 </Button>
                 
-                {/* Satın Almaya Gönder Butonu */}
+                {/* Satın Almaya Gönder / Onayla Butonu */}
                 <Button
                   onClick={handleSiteManagerApproval}
                   disabled={siteManagerApproving}
@@ -304,10 +328,10 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                   {siteManagerApproving ? (
                     <>
                       <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      Gönderiliyor...
+                      {request?.status === 'onay_bekliyor' ? 'Onaylanıyor...' : 'Gönderiliyor...'}
                     </>
                   ) : (
-                    'Satın Almaya Gönder'
+                    request?.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'
                   )}
                 </Button>
               </div>

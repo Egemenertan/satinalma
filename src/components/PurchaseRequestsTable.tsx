@@ -119,6 +119,9 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   
   const { user, profile, supabase } = await fetcherWithAuth('auth')
   
+  // Özel site ID'si için ek statuslar
+  const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+  
   let countQuery = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
@@ -126,12 +129,23 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   // Rol bazlı filtreleme
   if (effectiveRole === 'purchasing_officer') {
     // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-    countQuery = countQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için 'kısmen gönderildi' ve 'depoda mevcut değil' statusları da dahil
+    const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
+    
+    // Özel site için ek statuslar ekle
+    countQuery = countQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     countQuery = countQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'santiye_depo') {
+    // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
+    if (profile?.site_id) {
+      countQuery = countQuery
+        .in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
+        .neq('status', 'onay_bekliyor')
+    }
   } else {
-    // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
@@ -178,12 +192,23 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   // Rol bazlı filtreleme (aynı mantık)
   if (effectiveRole === 'purchasing_officer') {
     // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-    requestsQuery = requestsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered'])
+    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için 'kısmen gönderildi' ve 'depoda mevcut değil' statusları da dahil
+    const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
+    
+    // Özel site için ek statuslar ekle
+    requestsQuery = requestsQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     requestsQuery = requestsQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'santiye_depo') {
+    // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
+    if (profile?.site_id) {
+      requestsQuery = requestsQuery
+        .in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
+        .neq('status', 'onay_bekliyor')
+    }
   } else {
-    // Diğer roller (site_manager, santiye_depo) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
@@ -331,6 +356,33 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [requestToDelete, setRequestToDelete] = useState<PurchaseRequest | null>(null)
   const [isDeleting, setIsDeleting] = useState(false)
+  
+  // Kullanıcı site bilgisi
+  const [userSiteIds, setUserSiteIds] = useState<string[]>([])
+
+  // Kullanıcı site bilgisini çek
+  useEffect(() => {
+    const fetchUserSites = async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('site_id')
+            .eq('id', user.id)
+            .single()
+          
+          if (profile?.site_id) {
+            setUserSiteIds(Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
+          }
+        }
+      } catch (error) {
+        console.error('Kullanıcı site bilgisi alınamadı:', error)
+      }
+    }
+    fetchUserSites()
+  }, [])
 
   // activeTab değiştiğinde localStorage'a kaydet
   useEffect(() => {
@@ -466,14 +518,16 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
 
 
 
-  const getStatusBadge = (status: string, notifications?: string[]) => {
-    // Purchasing officer için özel görünüm - satın almaya gönderilmiş talepler "Beklemede" olarak görünür
-    if (userRole === 'purchasing_officer' && 
-        (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi')) {
+  const getStatusBadge = (status: string, notifications?: string[], requestSiteId?: string) => {
+    const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    const isSpecialSiteUser = userSiteIds.includes(SPECIAL_SITE_ID)
+    
+    // Özel site kullanıcıları için: pending -> "Onaylandı" olarak göster
+    if (isSpecialSiteUser && status === 'pending') {
       return (
         <div className="flex flex-col gap-1">
-          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
-            Beklemede
+          <Badge variant="outline" className="bg-green-100 text-green-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+            Onaylandı
           </Badge>
         {notifications && notifications.includes('iade var') && (
           <div className="flex flex-wrap gap-1">
@@ -491,12 +545,64 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         </div>
       )
     }
+    
+    // Purchasing officer için özel görünüm
+    if (userRole === 'purchasing_officer') {
+      // satın almaya gönderildi ve eksik malzemeler -> "Beklemede"
+      if (status === 'satın almaya gönderildi' || status === 'eksik malzemeler talep edildi') {
+        return (
+          <div className="flex flex-col gap-1">
+            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+              Beklemede
+            </Badge>
+          {notifications && notifications.includes('iade var') && (
+            <div className="flex flex-wrap gap-1">
+              <Badge 
+                variant="outline" 
+                className=" text-red-700 border-0 rounded-full text-xs font-medium px-1 py-0.5"
+              >
+                <span className="flex items-center gap-1">
+                  <RotateCcw className="w-3 h-3 text-red-600" />
+                  İade Var
+                </span>
+              </Badge>
+            </div>
+          )}
+          </div>
+        )
+      }
+      
+      // kısmen gönderildi ve depoda yok -> "Beklemede"
+      if (status === 'kısmen gönderildi' || status === 'depoda mevcut değil' || status === 'depoda yok') {
+        return (
+          <div className="flex flex-col gap-1">
+            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+              Beklemede
+            </Badge>
+          {notifications && notifications.includes('iade var') && (
+            <div className="flex flex-wrap gap-1">
+              <Badge 
+                variant="outline" 
+                className=" text-red-700 border-0 rounded-full text-xs font-medium px-1 py-0.5"
+              >
+                <span className="flex items-center gap-1">
+                  <RotateCcw className="w-3 h-3 text-red-600" />
+                  İade Var
+                </span>
+              </Badge>
+            </div>
+          )}
+          </div>
+        )
+      }
+    }
 
     const statusConfig = {
       // Temel statuslar
       draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-700 border-0' },
       pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
       'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      'onay_bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
       'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
       'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
@@ -506,6 +612,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
       'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
+      'depoda yok': { label: 'Depoda Yok', className: 'bg-red-100 text-red-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
       'iade var': { label: 'İade Var', className: 'bg-orange-100 text-orange-800 border-0' },
       'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
@@ -738,20 +845,6 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     try {
       setApproving(requestId)
       
-      // Optimistic update - UI'ı hemen güncelle
-      const optimisticUpdate = data ? {
-        ...data,
-        requests: data.requests.map((req: any) => 
-          req.id === requestId 
-            ? { ...req, status: 'satın almaya gönderildi' }
-            : req
-        )
-      } : null
-      
-      if (optimisticUpdate) {
-        mutate(`purchase_requests/${currentPage}/${pageSize}`, optimisticUpdate, false)
-      }
-      
       const supabase = createClient()
       
       // Kullanıcı bilgisini al
@@ -760,10 +853,51 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         throw new Error('Kullanıcı oturumu bulunamadı.')
       }
       
+      // Request bilgisini al (site_id ve status için)
+      const { data: requestData, error: requestError } = await supabase
+        .from('purchase_requests')
+        .select('site_id, status')
+        .eq('id', requestId)
+        .single()
+      
+      if (requestError || !requestData) {
+        throw new Error('Talep bilgisi alınamadı.')
+      }
+      
+      // Özel site ID'si kontrolü - eğer onay_bekliyor statusundaysa 'pending' yap, değilse 'satın almaya gönderildi'
+      const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+      const isSpecialSite = requestData.site_id === SPECIAL_SITE_ID
+      const isAwaitingApproval = requestData.status === 'onay_bekliyor'
+      
+      let newStatus = 'satın almaya gönderildi'
+      let successMessage = 'Talep satın almaya gönderildi!'
+      let historyComment = 'Site Manager tarafından satın almaya gönderildi'
+      
+      if (isSpecialSite && isAwaitingApproval) {
+        newStatus = 'pending'
+        successMessage = 'Talep onaylandı!'
+        historyComment = 'Site Manager tarafından onaylandı'
+        console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
+      }
+      
+      // Optimistic update - UI'ı hemen güncelle
+      const optimisticUpdate = data ? {
+        ...data,
+        requests: data.requests.map((req: any) => 
+          req.id === requestId 
+            ? { ...req, status: newStatus }
+            : req
+        )
+      } : null
+      
+      if (optimisticUpdate) {
+        mutate(`purchase_requests/${currentPage}/${pageSize}`, optimisticUpdate, false)
+      }
+      
       const { error } = await supabase
         .from('purchase_requests')
         .update({ 
-          status: 'satın almaya gönderildi',
+          status: newStatus,
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
@@ -777,7 +911,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
           purchase_request_id: requestId,
           action: 'approved',
           performed_by: user.id,
-          comments: 'Site Manager tarafından satın almaya gönderildi'
+          comments: historyComment
         })
 
       if (historyError) {
@@ -787,7 +921,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       // Teams bildirimi gönder
       try {
         const { handlePurchaseRequestStatusChange } = await import('../lib/teams-webhook')
-        await handlePurchaseRequestStatusChange(requestId, 'satın almaya gönderildi')
+        await handlePurchaseRequestStatusChange(requestId, newStatus)
       } catch (webhookError) {
         console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
         // Webhook hatası ana işlemi etkilemesin
@@ -808,6 +942,9 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       setTimeout(() => {
         refreshData()
       }, 300)
+      
+      // Başarı mesajını göster
+      showToast(successMessage, 'success')
       
     } catch (error: any) {
       console.error('❌ Site Manager Onay Hatası:', {
@@ -882,7 +1019,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
           <div className="hidden md:grid gap-4 px-4 py-3 bg-white rounded-2xl border border-gray-200" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Durum</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Başlık</div>
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Şantiye</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Lokasyon</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep Eden</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Oluşturma Tarihi</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep No</div>
@@ -937,7 +1074,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                   <div className="hidden md:grid gap-4 items-center" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
                     {/* Durum */}
                     <div>
-                      {getStatusBadge(request.status, request.notifications)}
+                      {getStatusBadge(request.status, request.notifications, request.site_id)}
                     </div>
 
                     {/* Başlık */}
@@ -963,7 +1100,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                       )}
                     </div>
                     
-                    {/* Şantiye */}
+                    {/* Lokasyon */}
                     <div>
                       <div className="flex items-center gap-2">
                         <div className="p-1.5 bg-gray-100 rounded-2xl">
@@ -971,7 +1108,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                         </div>
                         <div>
                           <div className="font-medium text-sm text-gray-800">
-                            {request.sites?.[0]?.name || request.site_name || 'Şantiye Atanmamış'}
+                            {request.sites?.[0]?.name || request.site_name || 'Atanmamış'}
                           </div>
                           {request.site_id && (
                             <div className="text-xs text-gray-500">
@@ -1025,9 +1162,19 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                     
                     {/* Actions - Site Manager için özel buton + Kebab Menu */}
                     <div className="relative flex justify-center items-center gap-2">
-                      {/* Site Manager için Satın Almaya Gönder butonu */}
-                      {userRole === 'site_manager' && 
-                       (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') && (
+                      {/* Site Manager için Satın Almaya Gönder / Onayla butonu */}
+                      {userRole === 'site_manager' && (() => {
+                        const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+                        const isSpecialSite = request.site_id === SPECIAL_SITE_ID
+                        
+                        // Özel site: sadece onay_bekliyor statusunda göster
+                        if (isSpecialSite) {
+                          return request.status === 'onay_bekliyor'
+                        }
+                        
+                        // Normal siteler: kısmen gönderildi veya depoda mevcut değil
+                        return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil'
+                      })() && (
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
                           disabled={approving === request.id}
@@ -1037,12 +1184,12 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                           {approving === request.id ? (
                             <>
                               <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white mr-1.5"></div>
-                              Gönderiliyor...
+                              {request.status === 'onay_bekliyor' ? 'Onaylanıyor...' : 'Gönderiliyor...'}
                             </>
                           ) : (
                             <>
                               <Check className="h-3 w-3 mr-1.5" />
-                              Satın Almaya Gönder
+                              {request.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'}
                             </>
                           )}
                         </Button>
@@ -1104,7 +1251,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {getStatusBadge(request.status, request.notifications)}
+                        {getStatusBadge(request.status, request.notifications, request.site_id)}
                         
                         {/* Kebab Menu */}
                         <div className="relative">
@@ -1141,9 +1288,19 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                       </div>
                     </div>
                     
-                    {/* Site Manager için Satın Almaya Gönder butonu - Mobile */}
-                    {userRole === 'site_manager' && 
-                     (request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil') && (
+                    {/* Site Manager için Satın Almaya Gönder / Onayla butonu - Mobile */}
+                    {userRole === 'site_manager' && (() => {
+                      const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+                      const isSpecialSite = request.site_id === SPECIAL_SITE_ID
+                      
+                      // Özel site: sadece onay_bekliyor statusunda göster
+                      if (isSpecialSite) {
+                        return request.status === 'onay_bekliyor'
+                      }
+                      
+                      // Normal siteler: kısmen gönderildi veya depoda mevcut değil
+                      return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil'
+                    })() && (
                       <div className="pt-2">
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
@@ -1154,12 +1311,12 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                           {approving === request.id ? (
                             <>
                               <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                              Gönderiliyor...
+                              {request.status === 'onay_bekliyor' ? 'Onaylanıyor...' : 'Gönderiliyor...'}
                             </>
                           ) : (
                             <>
                               <Check className="h-4 w-4 mr-2" />
-                              Satın Almaya Gönder
+                              {request.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'}
                             </>
                           )}
                         </Button>
@@ -1168,9 +1325,9 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
 
                     {/* Info Grid */}
                     <div className="grid grid-cols-2 gap-3 text-sm">
-                      {/* Şantiye */}
+                      {/* Lokasyon */}
                       <div>
-                        <div className="text-xs text-gray-500 mb-1">Şantiye</div>
+                        <div className="text-xs text-gray-500 mb-1">Lokasyon</div>
                         <div className="flex items-center gap-2">
                           <div className="p-1 bg-gray-100 rounded-lg">
                             <Building2 className="w-3 h-3 text-gray-600" />

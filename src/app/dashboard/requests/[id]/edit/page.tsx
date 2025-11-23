@@ -46,7 +46,7 @@ import {
 } from 'lucide-react'
 
 const steps = [
-  { id: 1, title: 'Şantiye Bilgileri', icon: Building2 },
+  { id: 1, title: 'Lokasyon Bilgileri', icon: Building2 },
   { id: 2, title: 'Malzeme Sınıfı', icon: Grid3X3 },
   { id: 3, title: 'Alt Kategori', icon: List },
   { id: 4, title: 'Malzeme Seçimi', icon: Package },
@@ -882,19 +882,19 @@ export default function EditPurchaseRequestPage() {
             <CardHeader>
               <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
                 <Building2 className="w-4 lg:w-5 h-4 lg:h-5 text-blue-600" />
-                Şantiye Bilgileri
+                Lokasyon Bilgileri
               </CardTitle>
             </CardHeader>
             <CardContent className="p-2 lg:p-6 space-y-3 lg:space-y-4">
               <div>
-                <Label className="text-sm font-medium text-gray-700 mb-2 block">Mevcut Şantiye</Label>
+                <Label className="text-sm font-medium text-gray-700 mb-2 block">Mevcut Lokasyon</Label>
                 <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
                   <div className="flex items-center gap-2 mb-2">
                     <Building2 className="w-4 h-4 text-blue-600" />
-                    <span className="text-sm font-medium text-blue-800">Seçili Şantiye</span>
+                    <span className="text-sm font-medium text-blue-800">Seçili Lokasyon</span>
                   </div>
                   <p className="text-lg font-semibold text-blue-900">{formData.construction_site}</p>
-                  <p className="text-sm text-blue-700 mt-1">Şantiye değişikliği için yeni talep oluşturun.</p>
+                  <p className="text-sm text-blue-700 mt-1">Lokasyon değişikliği için yeni talep oluşturun.</p>
                 </div>
               </div>
             </CardContent>

@@ -411,11 +411,18 @@ export async function createMultiMaterialPurchaseRequest(data: {
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
     // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için site_personnel kullanıcıları "onay_bekliyor" statusu ile oluşturur
     let initialStatus = 'pending'
+    const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
     } else if (user.role === 'santiye_depo') {
       initialStatus = 'depoda mevcut değil'
+    } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
+      // Özel site için site_personnel kullanıcıları onay bekliyor statusu ile oluşturur
+      initialStatus = 'onay_bekliyor'
+      console.log('🔐 Özel site için onay bekliyor statusu atandı:', { siteId: data.site_id, userRole: user.role })
     }
     
     // Purchase request data hazırla

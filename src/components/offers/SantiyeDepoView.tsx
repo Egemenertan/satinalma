@@ -116,6 +116,17 @@ export default function SantiyeDepoView({
 
   // PDF export butonu gösterilmeli mi?
   const shouldShowPDFExportButton = () => {
+    const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
+    
+    // Özel site için: pending, kısmen gönderildi ve sipariş verildi statuslarında göster
+    if (isSpecialSite) {
+      return request?.status === 'pending' || 
+             request?.status === 'kısmen gönderildi' ||
+             request?.status === 'sipariş verildi'
+    }
+    
+    // Genel Merkez Ofisi için: pending ve kısmen gönderildi
     return isGenelMerkezUser && (
       request?.status === 'pending' || 
       request?.status === 'kısmen gönderildi'

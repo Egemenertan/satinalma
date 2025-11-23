@@ -53,7 +53,7 @@ import { MaterialSearchBar } from '@/components/MaterialSearchBar'
 
 
 const steps = [
-  { id: 1, title: 'Şantiye Bilgileri', icon: Building2 },
+  { id: 1, title: 'Lokasyon Bilgileri', icon: Building2 },
   { id: 2, title: 'Malzeme Sınıfı', icon: Grid3X3 },
   { id: 3, title: 'Alt Kategori', icon: List },
   { id: 4, title: 'Malzeme Seçimi', icon: Package },
@@ -2012,7 +2012,7 @@ export default function CreatePurchaseRequestPage() {
                       <Building2 className="w-5 h-5 text-gray-700" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium text-gray-500">Şantiye</p>
+                      <p className="text-xs font-medium text-gray-500">Lokasyon</p>
                       <p className="text-sm font-semibold text-gray-900 truncate">{userSite?.name || formData.construction_site}</p>
                     </div>
                   </div>

@@ -261,7 +261,7 @@ export default function OffersPage() {
       <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
         <div className="space-y-4 sm:space-y-8">
           
-          {/* Şantiye Bilgisi - Sade */}
+          {/* Lokasyon Bilgisi - Sade */}
           <div className="mb-4 sm:mb-8">
             {request.site_name ? (
               <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.site_name}</h2>
@@ -270,7 +270,7 @@ export default function OffersPage() {
             ) : request.construction_sites ? (
               <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.construction_sites.name}</h2>
             ) : (
-              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.department} Şantiyesi</h2>
+              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.department}</h2>
             )}
           </div>
 
