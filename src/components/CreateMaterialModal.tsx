@@ -58,12 +58,42 @@ export function CreateMaterialModal({
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        const { data: classesData, error } = await supabase
+        // Genel Merkez Ofisi kullanıcısı kontrolü
+        const { data: genelMerkezSite } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('name', 'Genel Merkez Ofisi')
+          .single()
+
+        const { data: { user } } = await supabase.auth.getUser()
+        let isGenelMerkezUser = false
+
+        if (user && genelMerkezSite) {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('site_id')
+            .eq('id', user.id)
+            .single()
+
+          if (profileData?.site_id && Array.isArray(profileData.site_id)) {
+            isGenelMerkezUser = profileData.site_id.includes(genelMerkezSite.id)
+          }
+        }
+
+        let classQuery = supabase
           .from('all_materials')
           .select('class')
           .not('class', 'is', null)
           .not('class', 'eq', '')
           .order('class')
+
+        // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
+        if (isGenelMerkezUser) {
+          console.log('🔒 Genel Merkez Ofisi kullanıcısı - Sadece Kırtasiye Malzemeleri gösteriliyor')
+          classQuery = classQuery.eq('class', 'Kırtasiye Malzemeleri')
+        }
+
+        const { data: classesData, error } = await classQuery
 
         if (!error && classesData) {
           const classNames = classesData
@@ -283,8 +313,7 @@ export function CreateMaterialModal({
               <Input
                 value={formData.item_name}
                 onChange={(e) => setFormData(prev => ({ ...prev, item_name: e.target.value }))}
-                placeholder="Örn: Beton Çimentosu"
-                className="w-full h-12 bg-gray-50 border-0 rounded-xl hover:bg-gray-100 transition-all duration-200 focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 placeholder:text-gray-400 text-sm"
+                className="w-full h-12 bg-gray-50 border-0 rounded-xl hover:bg-gray-100 transition-all duration-200 focus:ring-2 focus:ring-gray-900 focus:ring-offset-0 text-sm"
               />
             </div>
           </div>

@@ -22,6 +22,7 @@ interface MaterialSearchBarProps {
   onEnterSearch?: (results: SearchResult[]) => void
   placeholder?: string
   className?: string
+  restrictToStationery?: boolean  // Genel Merkez Ofisi için kırtasiye filtresi
 }
 
 export function MaterialSearchBar({
@@ -30,8 +31,9 @@ export function MaterialSearchBar({
   onResultClick,
   onCreateNewClick,
   onEnterSearch,
-  placeholder = 'Malzeme ara... (örn: boru kangal, 240 amp, elektrik kablosu)',
-  className = ''
+  placeholder = 'Malzeme, ürün ara',
+  className = '',
+  restrictToStationery = false
 }: MaterialSearchBarProps) {
   const [isSearching, setIsSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
@@ -63,11 +65,18 @@ export function MaterialSearchBar({
     setShowResults(true)
 
     try {
-      const { data, error } = await supabase
+      let searchQuery = supabase
         .from('all_materials')
         .select('class, group, item_name')
         .or(`item_name.ilike.%${query}%,group.ilike.%${query}%,class.ilike.%${query}%`)
-        .limit(10)
+      
+      // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
+      if (restrictToStationery) {
+        searchQuery = searchQuery.eq('class', 'Kırtasiye Malzemeleri')
+        console.log('🔍 Arama kırtasiye malzemeleri ile sınırlandırıldı')
+      }
+      
+      const { data, error } = await searchQuery.limit(10)
 
       if (!error && data) {
         const results = data.map(item => ({

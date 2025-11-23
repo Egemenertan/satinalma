@@ -935,12 +935,9 @@ export default function EditPurchaseRequestPage() {
 
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-            <CardHeader className="pb-3 lg:pb-4">
+            <CardHeader className="pb-0 lg:pb-0">
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4">
-                <CardTitle className="text-base lg:text-lg font-medium text-gray-900 flex items-center gap-2">
-                  <FileText className="w-4 lg:w-5 h-4 lg:h-5 text-orange-600" />
-                  Malzeme Detayları Düzenleme
-                </CardTitle>
+               
                 
                 <div className="flex items-center gap-2 lg:gap-3">
                   <div className="flex items-center gap-2">
@@ -1005,7 +1002,7 @@ export default function EditPurchaseRequestPage() {
             
             <CardContent className="p-2 lg:p-6 space-y-4 lg:space-y-6">
               {/* Seçilen Malzeme Bilgisi */}
-              <div className="bg-orange-50/50 border border-orange-200 rounded-lg p-4">
+              <div className="bg-orange-50/50 border border-orange-200 rounded-3xl p-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Package className="w-4 h-4 text-orange-600" />
                   <span className="text-sm font-medium text-orange-800">Düzenlenen Malzeme</span>
@@ -1351,14 +1348,14 @@ export default function EditPurchaseRequestPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen rounded-3xl bg-white">
       <div className="px-0 lg:px-2 xl:px-4 pb-4 space-y-1 lg:space-y-8">
         {/* Header */}
-        <div className="pt-2 lg:pt-0">
+        <div className="pt-0 lg:pt-4">
           <div>
             <div>
-              <h1 className="text-2xl lg:text-4xl font-bold text-gray-900">Satın Alma Talebi Düzenleme</h1>
-              <p className="text-gray-600 mt-1 lg:mt-2 text-sm lg:text-lg font-light">Mevcut talep bilgilerini güncelleyin</p>
+              <h1 className="text-2xl lg:text-4xl font-normal text-gray-900">Satın Alma Talebi Düzenleme</h1>
+              <p className="text-gray-600 mt-0 lg:mt-0 text-sm lg:text-lg font-light">Mevcut talep bilgilerini güncelleyin</p>
             </div>
             <div className="mt-3 lg:mt-4">
               <Button 

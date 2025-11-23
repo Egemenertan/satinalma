@@ -190,7 +190,7 @@ export default function OffersPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sade Header */}
-      <div className="bg-white border-b border-gray-200">
+      <div className="bg-white rounded-3xl border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
           {/* Desktop Layout */}
           <div className="hidden sm:flex items-center justify-between h-16">
@@ -249,7 +249,7 @@ export default function OffersPage() {
                   <span className="text-sm font-medium">Geri</span>
                 </Button>
                 <div>
-                  <h1 className="text-base font-semibold text-gray-900">Teklif Girişi</h1>
+                  
                   <p className="text-xs text-gray-500">{request.request_number}</p>
                 </div>
               </div>
@@ -298,7 +298,7 @@ export default function OffersPage() {
 
           {/* Talep Detayları - Tek Kolon */}
           <div className="mb-4 sm:mb-8">
-            <div className="bg-white border-0 shadow-sm rounded-lg">
+            <div className="bg-white border-0 shadow-sm rounded-3xl">
               <div className="p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-6">Talep Detayları</h3>
               </div>

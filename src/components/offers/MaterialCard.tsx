@@ -26,6 +26,7 @@ interface MaterialCardProps {
   onOrderDeliveryConfirmation?: (order: any, materialItem: any) => void  // Kademeli teslim alma fonksiyonu
   onOrderReturn?: (order: any, materialItem: any) => void  // İade işlemi fonksiyonu
   hideTopDeliveryButtons?: boolean  // Sağ üstteki teslim alma butonlarını gizle
+  onShipmentSuccess?: () => void  // Gönderim başarılı olduğunda tetiklenecek callback
 }
 
 export default function MaterialCard({ 
@@ -43,7 +44,8 @@ export default function MaterialCard({
   canEditRequest = true,
   onOrderDeliveryConfirmation,
   onOrderReturn,
-  hideTopDeliveryButtons = false
+  hideTopDeliveryButtons = false,
+  onShipmentSuccess
 }: MaterialCardProps) {
   const [sendQuantities, setSendQuantities] = useState<{[key: string]: string}>({})
   const [sendingItem, setSendingItem] = useState(false)
@@ -272,6 +274,11 @@ export default function MaterialCard({
 
       await onRefresh()
       invalidatePurchaseRequestsCache()
+      
+      // Gönderim başarılı olduğunda callback'i tetikle
+      if (onShipmentSuccess) {
+        onShipmentSuccess()
+      }
 
     } catch (error: any) {
       console.error('❌ Gönderim hatası:', error)
@@ -295,7 +302,7 @@ export default function MaterialCard({
   const shouldHideEditButtons = isDepotUnavailable || isPartiallyShipped || isFullyShipped
 
   return (
-    <div className="border border-gray-200 rounded-lg bg-white">
+    <div className="border border-gray-200 rounded-3xl bg-white">
       {/* Malzeme Header */}
       <div className="p-4 border-b border-gray-100">
         <div className="flex items-start justify-between">
@@ -336,7 +343,7 @@ export default function MaterialCard({
             </div>
             
             {item.specifications && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+              <div className="mt-3 p-3 bg-gray-50 rounded-3xl">
                 <span className="text-sm text-gray-600">{item.specifications}</span>
               </div>
             )}
@@ -352,7 +359,7 @@ export default function MaterialCard({
                     size="sm"
                     variant="outline"
                     onClick={() => router.push(`/dashboard/requests/${request.id}/edit`)}
-                    className="h-8 px-3 bg-white/80 hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1"
+                    className="h-8 px-3 bg-white/80 rounded-2xl hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1"
                     title="Talebi Düzenle"
                   >
                     <Edit className="h-3 w-3 text-gray-600" />
@@ -366,7 +373,7 @@ export default function MaterialCard({
                     size="sm"
                     variant="outline"
                     onClick={() => onRemoveMaterial(item.id)}
-                    className="h-8 px-3 bg-red-50 hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1"
+                    className="h-8 px-3 bg-red-50 rounded-2xl hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1"
                     title="Malzemeyi Kaldır"
                   >
                     <Trash2 className="h-3 w-3 text-red-600" />
@@ -540,7 +547,7 @@ export default function MaterialCard({
                     <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-4 border">
                       <div className="flex items-center justify-between mb-3">
                         <div className="flex items-center gap-3 flex-1">
-                          <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
+                          <div className="w-10 h-10 bg-blue-100 rounded-3xl flex items-center justify-center">
                             <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
                             </svg>
@@ -631,7 +638,7 @@ export default function MaterialCard({
 
                       {/* Miktar Bilgileri - ReturnedMaterialsCard tarzında */}
                       <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                        <div className="bg-white rounded-3xl p-3 border border-gray-200">
                           <div className="text-center">
                             <span className="text-xs font-medium text-gray-600 block mb-1">Sipariş Miktarı:</span>
                             <span className="text-sm font-bold text-blue-600">
@@ -639,7 +646,7 @@ export default function MaterialCard({
                             </span>
                           </div>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border border-gray-200">
+                        <div className="bg-white rounded-3xl p-3 border border-gray-200">
                           <div className="text-center">
                             <span className="text-xs font-medium text-gray-600 block mb-1">Teslim Alınan:</span>
                             <span className="text-sm font-bold text-green-600">
@@ -649,7 +656,7 @@ export default function MaterialCard({
                         </div>
                         {supplier.totalReturned > 0 && (
                           <>
-                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="bg-white rounded-3xl p-3 border border-gray-200">
                               <div className="text-center">
                                 <span className="text-xs font-medium text-gray-600 block mb-1">İade Edilen:</span>
                                 <span className="text-sm font-bold text-orange-600">
@@ -657,7 +664,7 @@ export default function MaterialCard({
                                 </span>
                               </div>
                             </div>
-                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="bg-white rounded-3xl p-3 border border-gray-200">
                               <div className="text-center">
                                 <span className="text-xs font-medium text-gray-600 block mb-1">Kalan:</span>
                                 <span className="text-sm font-bold text-blue-600">
@@ -703,7 +710,7 @@ export default function MaterialCard({
                               const orderStatus = order.status || 'pending'
                               
                               return (
-                                <div key={order.id} className={`bg-white rounded-lg p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
+                                <div key={order.id} className={`bg-white rounded-3xl p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
                                   <div className="flex items-start justify-between">
                                     <div className="flex-1 space-y-2">
                                       {/* Sipariş Başlığı ve Badge */}
@@ -754,7 +761,7 @@ export default function MaterialCard({
                                         <Button
                                           size="sm"
                                           onClick={() => onOrderDeliveryConfirmation(order, item)}
-                                          className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-md shadow-sm"
+                                          className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-3xl shadow-sm"
                                         >
                                           <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
@@ -766,7 +773,7 @@ export default function MaterialCard({
                                         <Button
                                           size="sm"
                                           onClick={() => onOrderReturn(order, item)}
-                                          className="h-8 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-md shadow-sm"
+                                          className="h-8 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-3xl shadow-sm"
                                           title="Malzeme İadesi - Kalan miktardan iade edilebilir"
                                         >
                                           <RotateCcw className="w-3 h-3 mr-1" />
@@ -852,7 +859,7 @@ export default function MaterialCard({
           <h6 className="text-sm font-medium text-gray-700 mb-4">Durum Takibi</h6>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             {/* İlk Talep */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">İlk Talep</div>
               <div className="text-lg font-bold text-gray-900">
                 {(() => {
@@ -863,7 +870,7 @@ export default function MaterialCard({
             </div>
             
             {/* Depodan Gönderilen */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">Depodan Gönderilen</div>
               <div className="text-lg font-bold text-green-600">
                 {(() => {
@@ -887,7 +894,7 @@ export default function MaterialCard({
             </div>
             
             {/* Sipariş Verildi */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">Sipariş Verildi</div>
               <div className="text-lg font-bold text-green-600">
                 {(() => {
@@ -931,7 +938,7 @@ export default function MaterialCard({
             </div>
             
             {/* Teslimat Tarihi */}
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">Teslimat</div>
               <div className="text-lg font-bold text-gray-900">
                 {(() => {
@@ -1019,17 +1026,17 @@ export default function MaterialCard({
         <div className="p-4 border-b border-gray-100">
           <h6 className="text-sm font-medium text-gray-700 mb-4">Miktar Durumu</h6>
           <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">İlk Talep</div>
               <div className="text-lg font-bold text-gray-900">{originalQuantity} {item.unit}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">Gönderilen</div>
               <div className="text-lg font-bold text-green-600">{totalShipped.toFixed(2)} {item.unit}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-lg p-3 border border-gray-200">
+            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
               <div className="text-xs font-medium text-gray-600 mb-1">Kalan</div>
               <div className="text-lg font-bold text-red-600">
                 {Math.max(0, remainingQuantity).toFixed(2)} {item.unit}
@@ -1127,9 +1134,9 @@ export default function MaterialCard({
                       }))}
                       onWheel={(e) => e.preventDefault()}
                       placeholder="Miktar girin"
-                      className="h-10 bg-white"
+                      className="h-10 rounded-3xl bg-white"
                     />
-                    <div className="flex items-center px-3 bg-gray-50 rounded-md border">
+                    <div className="flex items-center px-3 bg-gray-50 rounded-3xl border">
                       <span className="text-sm text-gray-600">{item.unit}</span>
                     </div>
                   </div>
@@ -1162,7 +1169,7 @@ export default function MaterialCard({
                       }
                     }}
                     disabled={!sendQuantities[item.id]?.trim() || parseFloat(sendQuantities[item.id] || '0') <= 0 || sendingItem}
-                    className="h-10 px-4 bg-green-600 hover:bg-green-700 text-white"
+                    className="h-10 px-4 bg-green-600 rounded-3xl hover:bg-green-700 text-white"
                   >
                     {sendingItem ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
@@ -1175,7 +1182,7 @@ export default function MaterialCard({
                     onClick={() => handleSingleItemDepotNotAvailable(item)}
                     variant="outline"
                     disabled={processingDepotStatus[item.id]}
-                    className="h-10 px-4 border-red-200 text-red-700 hover:bg-red-50"
+                    className="h-10 px-4 border-red-200 rounded-3xl text-red-700 hover:bg-red-50"
                   >
                     {processingDepotStatus[item.id] ? (
                       <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
@@ -1188,7 +1195,7 @@ export default function MaterialCard({
               </div>
             </div>
           ) : isReturnReorderStatus() ? (
-            <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+            <div className="bg-purple-50 rounded-3xl p-4 border border-purple-200">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center">
                   <RotateCcw className="h-4 w-4 text-purple-600" />
@@ -1202,7 +1209,7 @@ export default function MaterialCard({
               </div>
             </div>
           ) : !isShipped && (itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) ? (
-            <div className="bg-red-50 rounded-lg p-4 border border-red-200">
+            <div className="bg-red-50 rounded-3xl p-4 border border-red-200">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center">
                   <X className="h-4 w-4 text-red-600" />
@@ -1216,7 +1223,7 @@ export default function MaterialCard({
               </div>
             </div>
           ) : isShipped ? (
-            <div className="bg-green-50 rounded-lg p-4 border border-green-200">
+            <div className="bg-green-50 rounded-3xl p-4 border border-green-200">
               <div className="flex items-center gap-3">
                 <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
                   <CheckCircle className="h-4 w-4 text-green-600" />

@@ -150,6 +150,7 @@ export default function CreatePurchaseRequestPage() {
   const [materialItems, setMaterialItems] = useState([])
   const [currentStep, setCurrentStep] = useState(1)
   const [isCheckingSite, setIsCheckingSite] = useState(true) // Kullanıcı şantiye kontrolü için
+  const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false) // Genel Merkez Ofisi kullanıcısı mı?
   const [searchQuery, setSearchQuery] = useState('')
   const [displayedSearchResults, setDisplayedSearchResults] = useState<Array<{
     class: string
@@ -317,12 +318,30 @@ export default function CreatePurchaseRequestPage() {
         setIsCheckingSite(false)
 
         // Malzeme sınıflarını çek (all_materials tablosundan farklı class değerleri)
-        const { data: classesData, error: classesError } = await supabase
+        // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
+        let classQuery = supabase
           .from('all_materials')
           .select('class')
           .not('class', 'is', null)
           .not('class', 'eq', '')
-          .order('class')
+        
+        // Genel Merkez Ofisi kontrolü
+        const { data: genelMerkezSite } = await supabase
+          .from('sites')
+          .select('id')
+          .eq('name', 'Genel Merkez Ofisi')
+          .single()
+        
+        const isGenelMerkez = genelMerkezSite && userSiteIds.includes(genelMerkezSite.id)
+        setIsGenelMerkezUser(isGenelMerkez)
+        
+        if (isGenelMerkez) {
+          // Sadece Kırtasiye Malzemeleri
+          classQuery = classQuery.eq('class', 'Kırtasiye Malzemeleri')
+          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Sadece Kırtasiye Malzemeleri gösteriliyor')
+        }
+        
+        const { data: classesData, error: classesError } = await classQuery.order('class')
 
         if (classesError) {
           console.error('Malzeme sınıfları yüklenirken hata:', classesError)
@@ -851,9 +870,11 @@ export default function CreatePurchaseRequestPage() {
            )
   }
 
-  const nextStep = () => {
-    if (isStepValid(currentStep) && currentStep < steps.length) {
+  const nextStep = (skipValidation = false) => {
+    if ((skipValidation || isStepValid(currentStep)) && currentStep < steps.length) {
       setCurrentStep(currentStep + 1)
+    } else if (!skipValidation && !isStepValid(currentStep)) {
+      showToast('Lütfen zorunlu alanları doldurun', 'error')
     }
   }
 
@@ -991,6 +1012,7 @@ export default function CreatePurchaseRequestPage() {
           setDisplayedSearchResults(results)
         }}
         className="mb-4"
+        restrictToStationery={isGenelMerkezUser}
       />
     )
   }
@@ -1111,6 +1133,11 @@ export default function CreatePurchaseRequestPage() {
                     'Palette': Palette
                   }[materialClass.icon] || Package
 
+                  // Kırtasiye Malzemeleri için görsel
+                  const categoryImage = materialClass.name === 'Kırtasiye Malzemeleri' 
+                    ? 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=800&q=80' 
+                    : null
+
                   const isSelected = formData.material_class === materialClass.name
 
                   return (
@@ -1124,42 +1151,65 @@ export default function CreatePurchaseRequestPage() {
                       }}
                       className={`
                         group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
-                        flex flex-col items-center justify-center p-4 lg:p-6
+                        flex flex-col items-center justify-end p-4 lg:p-6 overflow-hidden
                         ${isSelected 
-                          ? 'bg-black text-white shadow-xl scale-[0.98]' 
-                          : 'bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100'
+                          ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
+                          : 'hover:scale-[1.02] hover:shadow-lg'
                         }
                       `}
+                      style={{
+                        backgroundImage: categoryImage ? `url(${categoryImage})` : 'none',
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        backgroundColor: categoryImage ? 'transparent' : (isSelected ? '#000000' : '#ffffff')
+                      }}
                     >
-                      {/* Icon Container */}
-                      <div className={`
-                        w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl mb-3 lg:mb-4
-                        flex items-center justify-center transition-all duration-300
-                        ${isSelected 
-                          ? 'bg-white/10' 
-                          : 'bg-gray-50 group-hover:bg-gray-100'
-                        }
-                      `}>
-                          <IconComponent 
-                          className={`
-                            w-6 h-6 lg:w-8 lg:h-8 transition-colors duration-300
-                            ${isSelected ? 'text-white' : 'text-gray-700'}
-                          `}
-                          />
-                        </div>
+                      {/* Image Overlay */}
+                      {categoryImage && (
+                        <div className={`absolute inset-0 transition-all duration-300 ${
+                          isSelected 
+                            ? 'bg-black/50' 
+                            : 'bg-black/30 group-hover:bg-black/40'
+                        }`} />
+                      )}
 
-                      {/* Text */}
-                      <h3 className={`
-                        font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
-                        transition-colors duration-300
-                        ${isSelected ? 'text-white' : 'text-gray-900'}
-                      `}>
-                            {materialClass.name}
-                          </h3>
+                      {/* Gradient Bottom */}
+                      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+
+                      {/* Content */}
+                      <div className="relative z-10 flex flex-col items-center">
+                        {/* Icon Container - sadece görsel yoksa göster */}
+                        {!categoryImage && (
+                          <div className={`
+                            w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl mb-3 lg:mb-4
+                            flex items-center justify-center transition-all duration-300
+                            ${isSelected 
+                              ? 'bg-white/10' 
+                              : 'bg-gray-50 group-hover:bg-gray-100'
+                            }
+                          `}>
+                            <IconComponent 
+                              className={`
+                                w-6 h-6 lg:w-8 lg:h-8 transition-colors duration-300
+                                ${isSelected ? 'text-white' : 'text-gray-700'}
+                              `}
+                            />
+                          </div>
+                        )}
+
+                        {/* Text */}
+                        <h3 className={`
+                          font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
+                          transition-colors duration-300
+                          ${categoryImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-900')}
+                        `}>
+                          {materialClass.name}
+                        </h3>
+                      </div>
 
                       {/* Selected Indicator */}
                       {isSelected && (
-                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg z-20">
                           <CheckCircle2 className="w-4 h-4 text-black" />
                         </div>
                       )}
@@ -1198,7 +1248,16 @@ export default function CreatePurchaseRequestPage() {
                         'TreePine': TreePine
                       }[materialGroup.icon] || Package
 
-                    const isSelected = formData.material_group === materialGroup.name
+                      // Kırtasiye alt kategorileri için görseller
+                      const groupImages: Record<string, string> = {
+                        'Defter ve Ajandalar': 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=800&q=80',
+                        'Kalemler': 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800&q=80',
+                        'Zarflar': 'https://images.unsplash.com/photo-1526554850534-7c78330d5f90?w=800&q=80',
+                        'Genel Kırtasiye': 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=800&q=80'
+                      }
+                      
+                      const groupImage = groupImages[materialGroup.name]
+                      const isSelected = formData.material_group === materialGroup.name
 
                       return (
                         <button
@@ -1211,40 +1270,66 @@ export default function CreatePurchaseRequestPage() {
                           }}
                           className={`
                           group relative aspect-square rounded-2xl lg:rounded-3xl transition-all duration-300 
-                          flex flex-col items-center justify-center p-4 lg:p-6
+                          flex flex-col items-center justify-end p-4 lg:p-6 overflow-hidden
                           ${isSelected 
-                            ? 'bg-black text-white shadow-xl scale-[0.98]' 
-                            : 'bg-white text-gray-900 hover:bg-gray-50 hover:scale-[1.02] hover:shadow-lg border border-gray-100'
+                            ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
+                            : 'hover:scale-[1.02] hover:shadow-lg'
                           }
                         `}
+                        style={{
+                          backgroundImage: groupImage ? `url(${groupImage})` : 'none',
+                          backgroundSize: 'cover',
+                          backgroundPosition: 'center',
+                          backgroundColor: groupImage ? 'transparent' : (isSelected ? '#000000' : '#ffffff')
+                        }}
                       >
-                        <div className={`
-                          w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
-                          flex items-center justify-center transition-all duration-300
-                          ${isSelected ? 'bg-white/10' : 'bg-gray-50 group-hover:bg-gray-100'}
-                        `}>
+                        {/* Image Overlay */}
+                        {groupImage && (
+                          <div className={`absolute inset-0 transition-all duration-300 ${
+                            isSelected 
+                              ? 'bg-black/50' 
+                              : 'bg-black/30 group-hover:bg-black/40'
+                          }`} />
+                        )}
+
+                        {/* Gradient Bottom */}
+                        <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+
+                        {/* Content */}
+                        <div className="relative z-10 flex flex-col items-center">
+                          {/* Icon Container - sadece görsel yoksa göster */}
+                          {!groupImage && (
+                            <div className={`
+                              w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
+                              flex items-center justify-center transition-all duration-300
+                              ${isSelected ? 'bg-white/10' : 'bg-gray-50 group-hover:bg-gray-100'}
+                            `}>
                               <IconComponent 
-                            className={`
-                              w-5 h-5 lg:w-7 lg:h-7 transition-colors duration-300
-                              ${isSelected ? 'text-white' : 'text-gray-700'}
-                            `}
+                                className={`
+                                  w-5 h-5 lg:w-7 lg:h-7 transition-colors duration-300
+                                  ${isSelected ? 'text-white' : 'text-gray-700'}
+                                `}
                               />
                             </div>
-
-                        <h3 className={`
-                          font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
-                          transition-colors duration-300
-                          ${isSelected ? 'text-white' : 'text-gray-900'}
-                        `}>
-                                {materialGroup.name}
-                              </h3>
-
-                        {isSelected && (
-                          <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg">
-                            <CheckCircle2 className="w-4 h-4 text-black" />
-                            </div>
                           )}
-                        </button>
+
+                          {/* Text */}
+                          <h3 className={`
+                            font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
+                            transition-colors duration-300
+                            ${groupImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-900')}
+                          `}>
+                            {materialGroup.name}
+                          </h3>
+                        </div>
+
+                        {/* Selected Indicator */}
+                        {isSelected && (
+                          <div className="absolute -top-1 -right-1 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg z-20">
+                            <CheckCircle2 className="w-4 h-4 text-black" />
+                          </div>
+                        )}
+                      </button>
                       )
                     })}
                   </div>
@@ -1744,27 +1829,33 @@ export default function CreatePurchaseRequestPage() {
                   )}
                 </div>
 
-                {/* Material Navigation */}
+                {/* Material Navigation - Validation kontrolü YOK */}
                 {selectedMaterials.length > 1 && (
                   <div className="flex gap-3 pt-4 border-t border-gray-100">
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setCurrentMaterialIndex(Math.max(0, currentMaterialIndex - 1))}
+                      onClick={() => {
+                        // Malzemeler arası geçişte validation kontrolü yapma
+                        setCurrentMaterialIndex(Math.max(0, currentMaterialIndex - 1))
+                      }}
                       disabled={currentMaterialIndex === 0}
                       className="flex-1 h-12 rounded-xl"
                     >
                       <ArrowLeft className="w-4 h-4 mr-2" />
-                      Önceki
+                      Önceki Malzeme
                     </Button>
                     <Button
                       type="button"
                       variant="outline"
-                      onClick={() => setCurrentMaterialIndex(Math.min(selectedMaterials.length - 1, currentMaterialIndex + 1))}
+                      onClick={() => {
+                        // Malzemeler arası geçişte validation kontrolü yapma
+                        setCurrentMaterialIndex(Math.min(selectedMaterials.length - 1, currentMaterialIndex + 1))
+                      }}
                       disabled={currentMaterialIndex === selectedMaterials.length - 1}
                       className="flex-1 h-12 rounded-xl"
                     >
-                      Sonraki
+                      Sonraki Malzeme
                       <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
                     </Button>
                   </div>
@@ -2248,7 +2339,7 @@ export default function CreatePurchaseRequestPage() {
                   {currentStep < steps.length && (
                     <Button 
                       type="button"
-                      onClick={nextStep}
+                      onClick={() => nextStep()}
                       disabled={!isStepValid(currentStep)}
                       className="h-8 lg:h-12 px-4 lg:px-8 rounded-lg lg:rounded-xl font-medium bg-black hover:bg-gray-800 text-white shadow-lg hover:shadow-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed text-sm lg:text-base flex-1 lg:flex-none"
                     >

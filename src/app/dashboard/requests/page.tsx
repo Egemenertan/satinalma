@@ -196,7 +196,7 @@ export default function RequestsPage() {
       <div className="hidden sm:block space-y-8">
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 px-4">
-          <Card className="bg-white border-0 shadow-sm">
+          <Card className="bg-white rounded-3xl border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -215,7 +215,7 @@ export default function RequestsPage() {
             </CardContent>
           </Card>
           
-          <Card className="bg-white border-0 shadow-sm">
+          <Card className="bg-white rounded-3xl border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -234,7 +234,7 @@ export default function RequestsPage() {
             </CardContent>
           </Card>
           
-          <Card className="bg-white border-0 shadow-sm">
+          <Card className="bg-white rounded-3xl border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>
@@ -253,7 +253,7 @@ export default function RequestsPage() {
             </CardContent>
           </Card>
           
-          <Card className="bg-white border-0 shadow-sm">
+          <Card className="bg-white rounded-3xl border-0 shadow-sm">
             <CardContent className="p-6">
               <div className="flex items-center justify-between">
                 <div>

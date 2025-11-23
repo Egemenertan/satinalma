@@ -111,7 +111,7 @@ export async function createPurchaseRequest(data: {
       original_quantity: Math.round(data.quantity), // İlk talep edilen miktar
       unit: data.unit,
       unit_price: 0,
-      specifications: data.purpose || 'Şantiye ihtiyacı'
+      specifications: data.purpose || ''
     }
     
     const { error: itemError } = await supabase
@@ -460,7 +460,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       original_quantity: Math.round(material.quantity), // İlk talep edilen miktar - ASLA değişmez
       unit: material.unit,
       unit_price: 0,
-      specifications: material.specifications || 'Şantiye ihtiyacı', // Her malzeme için ayrı teknik özellikler
+      specifications: material.specifications || '', // Her malzeme için ayrı teknik özellikler
       purpose: material.purpose || null, // Her malzeme için ayrı kullanım amacı
       delivery_date: material.delivery_date || null, // Her malzeme için ayrı teslimat tarihi
       brand: material.brand || null,

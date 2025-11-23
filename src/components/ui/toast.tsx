@@ -71,7 +71,7 @@ function ToastContainer({
   if (typeof window === 'undefined') return null
 
   return createPortal(
-    <div className="fixed top-4 right-4 z-50 pointer-events-none">
+    <div className="fixed top-4 right-4 z-[60] pointer-events-none lg:top-4 lg:right-4 top-20">
       <div className="flex flex-col gap-3">
         {toasts.map((toast, index) => (
           <Toast

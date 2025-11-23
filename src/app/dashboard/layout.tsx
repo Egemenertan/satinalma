@@ -122,16 +122,19 @@ export default function DashboardLayout({
 
   return (
     <div className="relative min-h-screen bg-gray-50">
-      {/* Mobile Header */}
-      <header className="fixed top-0 left-0 right-0 h-16 bg-white border-b border-gray-200 z-50 lg:hidden">
-        <div className="flex items-center justify-between h-full px-4">
-          <div className="flex items-center">
+      {/* Mobile Header - Ada Tasarımı */}
+      <header className="fixed top-3 left-3 right-3 h-16 bg-white rounded-3xl border border-gray-100/50 shadow-lg z-50 lg:hidden">
+        <div className="flex items-center justify-between h-full px-5">
+          <button 
+            onClick={() => router.push('/dashboard/requests')}
+            className="flex items-center hover:opacity-80 transition-opacity"
+          >
             <img 
               src="/d.png" 
               alt="Logo" 
               className="h-8 w-auto filter brightness-0"
             />
-          </div>
+          </button>
           <div className="flex items-center gap-2">
             {/* Mobile Notification Button */}
             <NotificationPanel 
@@ -143,7 +146,7 @@ export default function DashboardLayout({
               variant="ghost"
               size="sm"
               onClick={() => handleSidebarMobileChange(!isMobileMenuOpen)}
-              className="h-10 w-10 p-0 rounded-lg bg-transparent hover:bg-gray-100 text-gray-600 transition-all duration-200"
+              className="h-10 w-10 p-0 rounded-xl bg-transparent hover:bg-gray-100 text-gray-600 transition-all duration-200"
             >
               {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
@@ -177,8 +180,8 @@ export default function DashboardLayout({
       </main>
 
       {/* Mobile Layout */}
-      <main className="min-h-screen pt-16 lg:hidden">
-        <div className="min-h-[calc(100vh-4rem)]">
+      <main className="min-h-screen pt-[4.75rem] lg:hidden">
+        <div className="min-h-[calc(100vh-4.75rem)]">
           <div className="p-4 sm:p-6">
             {children}
           </div>

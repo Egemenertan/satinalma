@@ -1,12 +1,13 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Package, Truck, Trash2 } from 'lucide-react'
+import { Package, Truck, Trash2, FileText } from 'lucide-react'
 import { OffersPageProps } from './types'
 import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 import PartialDeliveryModal from '@/components/PartialDeliveryModal'
 import ReturnModal from '@/components/ReturnModal'
+import RequestPDFExportModal from '@/components/RequestPDFExportModal'
 import MaterialCard from './MaterialCard'
 import StatusSummary from './StatusSummary'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
@@ -37,7 +38,73 @@ export default function SantiyeDepoView({
   // Malzeme silme onayı için state'ler
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
   const [materialToDelete, setMaterialToDelete] = useState<any>(null)
+  
+  // PDF export modal state
+  const [showPDFExportModal, setShowPDFExportModal] = useState(false)
+  
+  // User site check
+  const [userSiteId, setUserSiteId] = useState<string | null>(null)
+  const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
+  const [genelMerkezSiteId, setGenelMerkezSiteId] = useState<string | null>(null)
+  
   const supabase = createClient()
+
+  // Check if user is from "Genel Merkez Ofisi" site
+  useEffect(() => {
+    const checkUserSite = async () => {
+      try {
+        // Get current user
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          console.log('❌ Kullanıcı bulunamadı')
+          return
+        }
+
+        console.log('👤 Kullanıcı ID:', user.id)
+
+        // Get user profile with site_id
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('site_id')
+          .eq('id', user.id)
+          .single()
+
+        console.log('📋 Kullanıcı profili:', profile)
+
+        if (profile?.site_id && profile.site_id.length > 0) {
+          const firstSiteId = profile.site_id[0]
+          setUserSiteId(firstSiteId)
+          console.log('🏢 Kullanıcı site ID:', firstSiteId)
+
+          // Get "Genel Merkez Ofisi" site ID
+          const { data: genelMerkezSite } = await supabase
+            .from('sites')
+            .select('id')
+            .eq('name', 'Genel Merkez Ofisi')
+            .single()
+
+          console.log('🏢 Genel Merkez Ofisi site:', genelMerkezSite)
+
+          if (genelMerkezSite) {
+            setGenelMerkezSiteId(genelMerkezSite.id)
+            const isGenel = firstSiteId === genelMerkezSite.id
+            setIsGenelMerkezUser(isGenel)
+            console.log('✅ Site kontrolü tamamlandı:', {
+              userSiteId: firstSiteId,
+              genelMerkezSiteId: genelMerkezSite.id,
+              isGenelMerkezUser: isGenel
+            })
+          }
+        } else {
+          console.log('⚠️ Kullanıcının site_id bilgisi yok')
+        }
+      } catch (error) {
+        console.error('❌ User site check error:', error)
+      }
+    }
+
+    checkUserSite()
+  }, [])
 
   // Takip sistemi gösterilmeli mi kontrolü
   const shouldShowTrackingSystem = () => {
@@ -45,6 +112,14 @@ export default function SantiyeDepoView({
            request?.status === 'teslim alındı' || 
            request?.status === 'kısmen teslim alındı' ||
            request?.status === 'iade var'
+  }
+
+  // PDF export butonu gösterilmeli mi?
+  const shouldShowPDFExportButton = () => {
+    return isGenelMerkezUser && (
+      request?.status === 'pending' || 
+      request?.status === 'kısmen gönderildi'
+    )
   }
 
   // İade nedeniyle sipariş durumunda mı?
@@ -176,30 +251,41 @@ export default function SantiyeDepoView({
 
   return (
     <>
-    <Card className="bg-white border-0 shadow-sm">
+    <Card className="bg-white border-0 shadow-sm rounded-3xl">
       <CardHeader>
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-            <Package className="h-6 w-6 text-blue-600" />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+           
+            <div>
+              <CardTitle className="text-xl font-semibold text-gray-900">
+                {isReturnReorderStatus()
+                  ? 'İade Nedeniyle Yeniden Sipariş'
+                  : shouldShowTrackingSystem()
+                    ? 'Malzeme Takip Sistemi' 
+                    : 'Depo İşlemleri'
+                }
+              </CardTitle>
+              <p className="text-sm text-gray-600 mt-1">
+                {isReturnReorderStatus()
+                  ? 'Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır ve sadece görüntüleme yapabilirsiniz.'
+                  : shouldShowTrackingSystem()
+                    ? 'Her malzeme için talep, gönderim ve teslimat durumu. İade sebepli yeni siparişler mor renkle işaretlenmiştir.'
+                    : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
+                }
+              </p>
+            </div>
           </div>
-          <div>
-            <CardTitle className="text-xl font-semibold text-gray-900">
-              {isReturnReorderStatus()
-                ? 'İade Nedeniyle Yeniden Sipariş'
-                : shouldShowTrackingSystem()
-                  ? 'Malzeme Takip Sistemi' 
-                  : 'Depo İşlemleri'
-              }
-            </CardTitle>
-            <p className="text-sm text-gray-600 mt-1">
-              {isReturnReorderStatus()
-                ? 'Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır ve sadece görüntüleme yapabilirsiniz.'
-                : shouldShowTrackingSystem()
-                  ? 'Her malzeme için talep, gönderim ve teslimat durumu. İade sebepli yeni siparişler mor renkle işaretlenmiştir.'
-                  : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
-              }
-            </p>
-          </div>
+
+          {/* PDF Export Button - Only for Genel Merkez Ofisi users on pending requests */}
+          {shouldShowPDFExportButton() && (
+            <Button
+              onClick={() => setShowPDFExportModal(true)}
+              className="bg-gray-900 rounded-xl hover:bg-gray-800 text-white"
+            >
+              <FileText className="w-4 h-4 mr-2" />
+              Talep PDF'i
+            </Button>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -233,6 +319,22 @@ export default function SantiyeDepoView({
                   onOrderDeliveryConfirmation={handleOrderDeliveryConfirmation}
                   onOrderReturn={handleOrderReturn}
                   hideTopDeliveryButtons={true}  // Sağ üstteki teslim alma butonlarını gizle
+                  onShipmentSuccess={() => {
+                    // Gönderim başarılı olduğunda PDF export modalını aç (sadece Genel Merkez Ofisi kullanıcıları için)
+                    console.log('🎯 Gönderim başarılı callback tetiklendi:', {
+                      isGenelMerkezUser,
+                      userSiteId,
+                      genelMerkezSiteId,
+                      willOpenModal: isGenelMerkezUser
+                    })
+                    
+                    if (isGenelMerkezUser) {
+                      console.log('✅ PDF Export modalı açılıyor...')
+                      setShowPDFExportModal(true)
+                    } else {
+                      console.log('❌ Kullanıcı Genel Merkez Ofisi\'nden değil, modal açılmıyor')
+                    }
+                  }}
                 />
               )
             })}
@@ -257,7 +359,7 @@ export default function SantiyeDepoView({
         </DialogHeader>
         
         <div className="py-4">
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+          <div className="bg-red-50 border border-red-200 rounded-3xl p-4 mb-4">
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <Trash2 className="w-4 h-4 text-red-600" />
@@ -389,6 +491,14 @@ export default function SantiyeDepoView({
           console.error('Cache temizleme hatası:', error)
         }
       }}
+      showToast={showToast}
+    />
+
+    {/* PDF Export Modal */}
+    <RequestPDFExportModal
+      isOpen={showPDFExportModal}
+      onClose={() => setShowPDFExportModal(false)}
+      request={request}
       showToast={showToast}
     />
     </>

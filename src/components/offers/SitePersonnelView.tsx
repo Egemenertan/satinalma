@@ -139,21 +139,16 @@ export default function SitePersonnelView({
 
   return (
     <>
-      <Card className="bg-white border-0 shadow-sm">
-        <CardHeader>
+      <Card className="border-none bg-white rounded-3xl shadow-none">
+        <CardHeader className="pb-8">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                <Truck className="h-6 w-6 text-blue-600" />
-              </div>
-              <div>
-                <CardTitle className="text-xl font-semibold text-gray-900">
-                  Malzeme Takip Sistemi
-                </CardTitle>
-                <p className="text-sm text-gray-600 mt-1">
-                  Her malzeme için talep, gönderim ve kalan miktar durumu
-                </p>
-              </div>
+            <div>
+              <CardTitle className="text-2xl font-semibold text-gray-900 tracking-tight">
+                Malzeme Takip
+              </CardTitle>
+              <p className="text-sm text-gray-500 mt-2 font-normal">
+                Talep, gönderim ve teslimat durumu
+              </p>
             </div>
             
             {/* Site Personnel Edit Butonu */}
@@ -162,162 +157,152 @@ export default function SitePersonnelView({
                 onClick={handleEditRequest}
                 variant="outline"
                 size="sm"
-                className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50"
+                className="h-9 px-4 rounded-full border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium"
               >
-                <Edit className="h-4 w-4" />
-                Talebi Düzenle
+                Düzenle
               </Button>
             )}
           </div>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
+          <div className="space-y-6">
             {request.purchase_request_items.map((item, index) => {
               const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
               
               return (
-                <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-gray-50">
+                <div key={item.id} className="border border-gray-200/80 rounded-2xl p-6 bg-white hover:shadow-sm transition-shadow duration-300">
                   {/* Malzeme Header */}
-                  <div className="flex items-start justify-between mb-4">
+                  <div className="flex items-start justify-between mb-6 pb-6 border-b border-gray-100">
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-3 mb-3">
                         {request.purchase_request_items.length > 1 && (
-                          <div className="w-6 h-6 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs font-medium">
+                          <div className="w-7 h-7 bg-black text-white rounded-full flex items-center justify-center text-xs font-semibold">
                             {index + 1}
                           </div>
                         )}
-                        <h4 className="text-lg font-semibold text-gray-900">{item.item_name}</h4>
+                        <h4 className="text-xl font-semibold text-gray-900 tracking-tight">{item.item_name}</h4>
                       </div>
-                      {item.brand && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-gray-700">Marka:</span>
-                          <span className="text-sm font-medium text-gray-900">{item.brand}</span>
-                        </div>
-                      )}
                       
-                      {/* Kullanım Amacı */}
-                      {item.purpose && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-gray-700">Kullanım Amacı:</span>
-                          <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
-                        </div>
-                      )}
-                      
-                      {/* Gerekli Teslimat Tarihi */}
-                      {item.delivery_date && (
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-sm font-medium text-gray-700">Gerekli Tarih:</span>
-                          <span className="text-sm font-medium text-gray-900">
-                            {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
-                          </span>
-                        </div>
-                      )}
-                      <div className="text-sm text-gray-600 space-y-1">
-                        <div className="flex items-center gap-4">
-                          <span>Miktar: <strong>{item.quantity} {item.unit}</strong></span>
+                      <div className="space-y-2 ml-10">
+                        {item.brand && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-500 w-32">Marka</span>
+                            <span className="text-sm font-medium text-gray-900">{item.brand}</span>
+                          </div>
+                        )}
+                        
+                        {item.purpose && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-500 w-32">Kullanım Amacı</span>
+                            <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
+                          </div>
+                        )}
+                        
+                        {item.delivery_date && (
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm text-gray-500 w-32">Gerekli Tarih</span>
+                            <span className="text-sm font-medium text-gray-900">
+                              {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
+                            </span>
+                          </div>
+                        )}
+                        
+                        <div className="flex items-center gap-3">
+                          <span className="text-sm text-gray-500 w-32">Miktar</span>
+                          <span className="text-sm font-semibold text-gray-900">{item.quantity} {item.unit}</span>
                           {item.specifications && (
-                            <span className="text-sm text-gray-600">• {item.specifications}</span>
+                            <span className="text-sm text-gray-500">• {item.specifications}</span>
                           )}
                         </div>
                       </div>
                     </div>
                     
-                    {/* Teslimat Durumu ve Buton */}
-                    <div className="text-right">
+                    {/* Teslimat Durumu */}
+                    <div className="text-right ml-6">
                       {(() => {
                         const deliveryStatus = getMaterialDeliveryStatus(item)
                         
                         if (!deliveryStatus.hasOrders) {
-                          // Sipariş yok
                           return (
-                            <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                              Sipariş yok
+                            <div className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
+                              Sipariş Yok
                             </div>
                           )
                         }
                         
                         if (deliveryStatus.allDelivered) {
-                          // Tüm siparişler teslim alındı
                           return (
-                            <div className="flex items-center gap-1 text-xs font-semibold text-green-800 bg-green-50 px-3 py-2 rounded-lg border-2 border-green-300 shadow-sm">
-                              <Check className="h-3 w-3" />
-                              Tamamı Teslim Alındı
+                            <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded-full">
+                              Teslim Alındı
                             </div>
                           )
                         }
                         
                         if (deliveryStatus.someDelivered) {
-                          // Kısmen teslim alındı
                           return (
-                            <div className="flex flex-col gap-1 items-end">
-                              <div className="flex items-center gap-1 text-xs text-gray-600 bg-gray-100 px-2 py-1 rounded-full">
-                                <Clock className="h-3 w-3" />
-                                {deliveryStatus.deliveredCount}/{deliveryStatus.totalCount} Teslim
-                              </div>
+                            <div className="text-xs font-medium text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full">
+                              {deliveryStatus.deliveredCount}/{deliveryStatus.totalCount} Teslim
                             </div>
                           )
                         }
                         
-                        // Hiç teslim alınmadı
                         return (
-                          <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full border border-blue-200">
-                            📋 Görüntüleme
+                          <div className="text-xs font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full">
+                            Beklemede
                           </div>
                         )
                       })()}
                     </div>
                   </div>
 
-                  {/* Gönderim Durumu */}
-                  <div className="bg-gray-50 rounded-lg p-4">
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                      {/* İlk Talep */}
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-medium text-blue-600 mb-1 uppercase tracking-wide">İlk Talep</div>
-                        <div className="text-lg font-bold text-blue-900">
-                          {(() => {
-                            const originalRequest = item.original_quantity ?? item.quantity
-                            return `${originalRequest.toFixed(2)} ${item.unit}`
-                          })()}
-                        </div>
+                  {/* Gönderim Durumu - Apple Style Grid */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* İlk Talep */}
+                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
+                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">İlk Talep</div>
+                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                        {(() => {
+                          const originalRequest = item.original_quantity ?? item.quantity
+                          return `${originalRequest.toFixed(2)}`
+                        })()}
                       </div>
-                      
-                      {/* Depodan Gönderilen */}
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-medium text-green-600 mb-1 uppercase tracking-wide">Depodan Gönderilen</div>
-                        <div className="text-lg font-bold text-green-900">
-                          {(() => {
-                            const itemShipments = shipmentData[item.id]
-                            const depoShipped = itemShipments?.total_shipped || 0
-                            return `${depoShipped.toFixed(2)} ${item.unit}`
-                          })()}
-                        </div>
+                      <div className="text-sm text-gray-500 mt-1 font-medium">{item.unit}</div>
+                    </div>
+                    
+                    {/* Depodan Gönderilen */}
+                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
+                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Depodan Gönderilen</div>
+                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                        {(() => {
+                          const itemShipments = shipmentData[item.id]
+                          const depoShipped = itemShipments?.total_shipped || 0
+                          return `${depoShipped.toFixed(2)}`
+                        })()}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1 font-medium">
                         {(() => {
                           const itemShipments = shipmentData[item.id]
                           const shipmentCount = itemShipments?.shipments?.length || 0
                           if (shipmentCount > 0) {
-                            return (
-                              <div className="text-xs text-green-700 mt-1">
-                                {shipmentCount} gönderim
-                              </div>
-                            )
+                            return `${item.unit} · ${shipmentCount} gönderim`
                           }
-                          return <div className="text-xs text-gray-500 mt-1">-</div>
+                          return item.unit
                         })()}
                       </div>
-                      
-                      {/* Sipariş Verildi */}
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Sipariş Verildi</div>
-                        <div className="text-lg font-bold text-gray-800">
-                          {(() => {
-                            // Orders tablosundan bu malzeme için verilen siparişlerin toplam miktarı
-                            const totalOrdered = materialOrders
-                              .filter((order: any) => order.material_item_id === item.id)
-                              .reduce((sum: number, order: any) => sum + (order.quantity || 0), 0)
-                            return `${totalOrdered.toFixed(2)} ${item.unit}`
-                          })()}
-                        </div>
+                    </div>
+                    
+                    {/* Sipariş Verildi */}
+                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
+                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Sipariş Verildi</div>
+                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                        {(() => {
+                          const totalOrdered = materialOrders
+                            .filter((order: any) => order.material_item_id === item.id)
+                            .reduce((sum: number, order: any) => sum + (order.quantity || 0), 0)
+                          return `${totalOrdered.toFixed(2)}`
+                        })()}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1 font-medium">
                         {(() => {
                           const orderCount = materialOrders.filter((order: any) => 
                             order.material_item_id === item.id
@@ -328,74 +313,29 @@ export default function SitePersonnelView({
                           
                           if (orderCount > 0) {
                             if (deliveredCount === orderCount) {
-                              return (
-                                <div className="text-xs text-green-700 mt-1">
-                                  {orderCount} sipariş teslim alındı
-                                </div>
-                              )
+                              return `${item.unit} · Tamamlandı`
                             } else if (deliveredCount > 0) {
-                              return (
-                                <div className="text-xs text-gray-600 mt-1">
-                                  {deliveredCount}/{orderCount} sipariş teslim alındı
-                                </div>
-                              )
+                              return `${item.unit} · ${deliveredCount}/${orderCount} teslim`
                             } else {
-                              return (
-                                <div className="text-xs text-gray-600 mt-1">
-                                  {orderCount} sipariş bekleniyor
-                                </div>
-                              )
+                              return `${item.unit} · ${orderCount} bekliyor`
                             }
                           }
-                          return <div className="text-xs text-gray-500 mt-1">Sipariş yok</div>
+                          return item.unit
                         })()}
                       </div>
-                      
-                      {/* Teslimat Tarihi */}
-                      <div className="bg-white rounded-lg p-3 border border-gray-200">
-                        <div className="text-xs font-medium text-gray-600 mb-1 uppercase tracking-wide">Teslimat Tarihi</div>
-                        <div className="text-lg font-bold text-gray-800">
-                          {(() => {
-                            // Bu malzeme için siparişleri al
-                            const itemOrders = materialOrders.filter((order: any) => 
-                              order.material_item_id === item.id
-                            )
-                            
-                            if (itemOrders.length === 0) {
-                              return "Sipariş yok"
-                            }
-                            
-                            // En yakın teslimat tarihini bul
-                            const nearestDeliveryDate = itemOrders
-                              .map((order: any) => order.delivery_date)
-                              .filter(Boolean)
-                              .sort()[0] // İlk tarih (en yakın)
-                              
-                            if (!nearestDeliveryDate) {
-                              return "Tarih belirtilmemiş"
-                            }
-                            
-                            const deliveryDate = new Date(nearestDeliveryDate)
-                            const today = new Date()
-                            today.setHours(0, 0, 0, 0)
-                            deliveryDate.setHours(0, 0, 0, 0)
-                            
-                            const formattedDate = deliveryDate.toLocaleDateString('tr-TR', {
-                              day: '2-digit',
-                              month: '2-digit',
-                              year: 'numeric'
-                            })
-                            
-                            return formattedDate
-                          })()}
-                        </div>
+                    </div>
+                    
+                    {/* Teslimat Tarihi */}
+                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
+                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Teslimat Tarihi</div>
+                      <div className="text-base font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const itemOrders = materialOrders.filter((order: any) => 
                             order.material_item_id === item.id
                           )
                           
                           if (itemOrders.length === 0) {
-                            return <div className="text-xs text-gray-500 mt-1">-</div>
+                            return "—"
                           }
                           
                           const nearestDeliveryDate = itemOrders
@@ -404,7 +344,36 @@ export default function SitePersonnelView({
                             .sort()[0]
                             
                           if (!nearestDeliveryDate) {
-                            return <div className="text-xs text-gray-500 mt-1">-</div>
+                            return "Belirtilmemiş"
+                          }
+                          
+                          const deliveryDate = new Date(nearestDeliveryDate)
+                          const formattedDate = deliveryDate.toLocaleDateString('tr-TR', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })
+                          
+                          return formattedDate
+                        })()}
+                      </div>
+                      <div className="text-sm text-gray-500 mt-1 font-medium">
+                        {(() => {
+                          const itemOrders = materialOrders.filter((order: any) => 
+                            order.material_item_id === item.id
+                          )
+                          
+                          if (itemOrders.length === 0) {
+                            return "Sipariş yok"
+                          }
+                          
+                          const nearestDeliveryDate = itemOrders
+                            .map((order: any) => order.delivery_date)
+                            .filter(Boolean)
+                            .sort()[0]
+                            
+                          if (!nearestDeliveryDate) {
+                            return "—"
                           }
                           
                           const deliveryDate = new Date(nearestDeliveryDate)
@@ -416,37 +385,21 @@ export default function SitePersonnelView({
                           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
                           
                           if (diffDays < 0) {
-                            return (
-                              <div className="text-xs text-red-600 mt-1">
-                                {Math.abs(diffDays)} gün geçti
-                              </div>
-                            )
+                            return `${Math.abs(diffDays)} gün geçti`
                           } else if (diffDays === 0) {
-                            return (
-                              <div className="text-xs text-orange-600 mt-1">Bugün</div>
-                            )
-                          } else if (diffDays <= 3) {
-                            return (
-                              <div className="text-xs text-orange-600 mt-1">
-                                {diffDays} gün kaldı
-                              </div>
-                            )
+                            return "Bugün"
                           } else {
-                            return (
-                              <div className="text-xs text-gray-600 mt-1">
-                                {diffDays} gün kaldı
-                              </div>
-                            )
+                            return `${diffDays} gün kaldı`
                           }
                         })()}
                       </div>
                     </div>
                   </div>
 
-                  {/* Tedarikçi Bilgileri - Site Manager için */}
+                  {/* Tedarikçi Bilgileri - Apple Style */}
                   {(request?.status === 'sipariş verildi' || request?.status === 'kısmen teslim alındı' || request?.status === 'teslim alındı') && (
-                    <div className="mt-4">
-                      <div className="text-sm font-medium text-gray-700 mb-3">📋 Tedarikçi Bilgileri</div>
+                    <div className="mt-6 pt-6 border-t border-gray-100">
+                      <div className="text-xs font-medium text-gray-500 mb-4 uppercase tracking-wider">Tedarikçi Bilgileri</div>
                       {(() => {
                         const itemOrders = materialOrders.filter((order: any) => 
                           order.material_item_id === item.id
@@ -454,8 +407,8 @@ export default function SitePersonnelView({
                         
                         if (itemOrders.length === 0) {
                           return (
-                            <div className="bg-gray-50 rounded-lg p-4 text-center text-gray-500 text-sm border border-gray-200">
-                              Bu malzeme için henüz sipariş verilmemiş
+                            <div className="bg-gray-50/50 rounded-xl p-6 text-center text-gray-400 text-sm border border-gray-100/50">
+                              Henüz sipariş verilmemiş
                             </div>
                           )
                         }
@@ -483,7 +436,6 @@ export default function SitePersonnelView({
                             groups[supplierId].deliveredCount += 1
                           }
                           
-                          // Kademeli teslim alma miktarını hesapla
                           const deliveredQuantity = order.delivered_quantity || 0
                           groups[supplierId].totalDelivered += deliveredQuantity
                           
@@ -493,41 +445,39 @@ export default function SitePersonnelView({
                         const suppliers = Object.values(supplierGroups)
                         
                         return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {suppliers.map((supplier: any, index: number) => (
-                              <div key={index} className="bg-white rounded-lg p-4 border border-gray-200 shadow-sm">
-                                <div className="flex items-start justify-between mb-3">
+                              <div key={index} className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
+                                <div className="flex items-start justify-between mb-4">
                                   <div className="flex-1">
-                                    <div className="font-semibold text-gray-900 mb-1">{supplier.name}</div>
-                                    <div className="text-sm text-gray-600">
-                                      <div className="space-y-1">
-                                        <div className="flex justify-between">
-                                          <span>Sipariş:</span>
-                                          <span className="font-medium">{supplier.totalQuantity.toFixed(2)} {item.unit}</span>
-                                        </div>
-                                        <div className="flex justify-between text-green-600">
-                                          <span>Teslim:</span>
-                                          <span className="font-medium">{supplier.totalDelivered.toFixed(2)} {item.unit}</span>
-                                        </div>
-                                        <div className="flex justify-between text-blue-600">
-                                          <span>Kalan:</span>
-                                          <span className="font-medium">{(supplier.totalQuantity - supplier.totalDelivered).toFixed(2)} {item.unit}</span>
-                                        </div>
+                                    <div className="font-semibold text-gray-900 text-base tracking-tight mb-3">{supplier.name}</div>
+                                    <div className="space-y-2">
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">Sipariş</span>
+                                        <span className="font-semibold text-gray-900">{supplier.totalQuantity.toFixed(2)} {item.unit}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">Teslim</span>
+                                        <span className="font-semibold text-gray-900">{supplier.totalDelivered.toFixed(2)} {item.unit}</span>
+                                      </div>
+                                      <div className="flex items-center justify-between text-sm">
+                                        <span className="text-gray-500">Kalan</span>
+                                        <span className="font-semibold text-gray-900">{(supplier.totalQuantity - supplier.totalDelivered).toFixed(2)} {item.unit}</span>
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="ml-3 shrink-0">
+                                  <div className="ml-4 shrink-0">
                                     {supplier.totalDelivered >= supplier.totalQuantity ? (
-                                      <div className="text-xs font-medium text-green-700 bg-green-100 px-2 py-1 rounded-full">
-                                        ✓ Tamamlandı
+                                      <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded-full">
+                                        Tamamlandı
                                       </div>
                                     ) : supplier.totalDelivered > 0 ? (
-                                      <div className="text-xs font-medium text-orange-700 bg-orange-100 px-2 py-1 rounded-full">
-                                        ⏳ Kısmen
+                                      <div className="text-xs font-medium text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200">
+                                        Kısmen
                                       </div>
                                     ) : (
-                                      <div className="text-xs font-medium text-blue-700 bg-blue-100 px-2 py-1 rounded-full">
-                                        📦 Bekliyor
+                                      <div className="text-xs font-medium text-gray-500 bg-white px-3 py-1.5 rounded-full border border-gray-200">
+                                        Bekliyor
                                       </div>
                                     )}
                                   </div>
@@ -535,18 +485,18 @@ export default function SitePersonnelView({
                                 
                                 {/* İletişim Bilgileri */}
                                 {(supplier.supplier?.contact_person || supplier.supplier?.phone) && (
-                                  <div className="border-t border-gray-100 pt-3 mt-3">
-                                    <div className="text-xs text-gray-500 mb-2 uppercase tracking-wide">İletişim</div>
-                                    <div className="space-y-1 text-sm">
+                                  <div className="border-t border-gray-200/50 pt-4 mt-4">
+                                    <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">İletişim</div>
+                                    <div className="space-y-2">
                                       {supplier.supplier?.contact_person && (
-                                        <div className="flex justify-between">
-                                          <span className="text-gray-600">Kişi:</span>
+                                        <div className="flex items-center justify-between text-sm">
+                                          <span className="text-gray-500">Kişi</span>
                                           <span className="text-gray-900 font-medium">{supplier.supplier.contact_person}</span>
                                         </div>
                                       )}
                                       {supplier.supplier?.phone && (
-                                        <div className="flex justify-between">
-                                          <span className="text-gray-600">Telefon:</span>
+                                        <div className="flex items-center justify-between text-sm">
+                                          <span className="text-gray-500">Telefon</span>
                                           <span className="text-gray-900 font-medium">{supplier.supplier.phone}</span>
                                         </div>
                                       )}
@@ -565,17 +515,17 @@ export default function SitePersonnelView({
             })}
           </div>
           
-          {/* Genel Bilgilendirme */}
-          <div className="mt-6 bg-blue-50 border border-blue-200 rounded-lg p-4">
-            <div className="flex gap-3">
-              <div className="w-5 h-5 bg-blue-600 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                <span className="text-white text-xs">i</span>
+          {/* Genel Bilgilendirme - Apple Style */}
+          <div className="mt-8 bg-gray-50/50 border border-gray-100/50 rounded-2xl p-6">
+            <div className="flex gap-4">
+              <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-white text-xs font-semibold">i</span>
               </div>
               <div>
-                <h4 className="text-sm font-medium text-blue-800">
+                <h4 className="text-sm font-semibold text-gray-900 tracking-tight">
                   Malzeme Akış Sistemi
                 </h4>
-                <p className="text-sm text-blue-700 mt-1">
+                <p className="text-sm text-gray-500 mt-2 leading-relaxed">
                   Her malzemenin 4 aşaması: İlk Talep → Depodan Gönderilen → Sipariş Verildi → Teslimat Tarihi
                 </p>
               </div>

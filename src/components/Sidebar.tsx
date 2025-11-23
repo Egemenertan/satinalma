@@ -367,27 +367,30 @@ export default function Sidebar({
         "hidden lg:flex",
         "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
         isCollapsed ? "lg:w-16" : "lg:w-64",
-        // Mobile - Ada tasarımı (sağ tarafta)
-        isMobileOpen ? "flex top-3 bottom-3 left-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
+        // Mobile - Ada tasarımı (SAĞDA)
+        isMobileOpen ? "flex top-3 bottom-3 right-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
         className
       )}>
         {/* Header with Logo */}
         <div className={cn(
           "flex items-center border-b border-gray-100/50",
-          // Mobile: sadece kapatma butonu sağda
-          isMobileOpen ? "justify-end px-6 py-5" : 
+          // Mobile ve Desktop: logo ve buton
+          isMobileOpen ? "justify-between px-6 py-5" : 
           // Desktop: logo ve toggle buton
           isCollapsed ? "justify-center px-4 py-5" : "justify-between px-6 py-5"
         )}>
-          {/* Logo - sadece desktop'ta göster */}
-          {!isMobileOpen && !isCollapsed && (
-            <div className="flex items-center space-x-2">
+          {/* Logo - mobile ve desktop'ta göster (collapsed değilse) */}
+          {!isCollapsed && (
+            <button 
+              onClick={() => router.push('/dashboard/requests')}
+              className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
+            >
               <img 
                 src="/d.png" 
                 alt="Logo" 
                 className="h-8 w-auto filter brightness-0"
               />
-            </div>
+            </button>
           )}
           
           {/* Desktop: Collapse Toggle, Mobile: Close Button */}

@@ -147,3 +147,4 @@ COMMENT ON COLUMN invoices.invoice_group_id IS 'Bu faturanın ait olduğu toplu 
 
 
 
+

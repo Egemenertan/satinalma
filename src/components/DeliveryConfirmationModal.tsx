@@ -276,7 +276,7 @@ export default function DeliveryConfirmationModal({
         <div className="space-y-6 pt-4">
           {/* Material Info */}
           {materialItem && (
-            <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+            <div className="bg-gray-50 border border-gray-200 rounded-3xl p-4">
               <div className="flex items-center gap-2 mb-2">
                 <Package className="h-5 w-5 text-gray-600" />
                 <p className="text-sm font-medium text-gray-900">Malzeme Bilgisi</p>
@@ -333,7 +333,7 @@ export default function DeliveryConfirmationModal({
           </div>
 
           {/* Delivery Date Info */}
-          <div className="bg-white border border-gray-200 rounded-lg p-4">
+          <div className="bg-white border border-gray-200 rounded-3xl p-4">
             <p className="text-sm text-gray-600 mb-1">Teslimat Tarihi</p>
             <p className="text-lg font-medium text-gray-900">
               {new Date().toLocaleDateString('tr-TR')}
@@ -388,7 +388,7 @@ export default function DeliveryConfirmationModal({
                     <img
                       src={url}
                       alt={`İrsaliye fotoğrafı ${index + 1}`}
-                      className="w-full h-32 object-cover rounded-lg border border-gray-200"
+                      className="w-full h-32 object-cover rounded-3xl border border-gray-200"
                     />
                     <Button
                       type="button"
