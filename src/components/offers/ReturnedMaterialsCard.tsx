@@ -35,7 +35,9 @@ export default function ReturnedMaterialsCard({
     if (typeof window !== 'undefined') {
       // İade talebi PDF'i oluştur - pdf-generator.ts stilinde
       const getLogoUrl = () => {
-        return 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+        const storageBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || 
+          `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`
+        return `${storageBaseUrl}/dovecbb.png`
       }
 
       const formatDate = (dateString: string) => {

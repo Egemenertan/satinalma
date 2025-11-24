@@ -685,7 +685,9 @@ const generatePDFHTML = (data: ReportData): string => {
   // Supabase storage'dan logo URL'i oluştur
   const getLogoUrl = () => {
     // Doğru Supabase URL'i
-    const publicUrl = 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+    const storageBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || 
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`
+    const publicUrl = `${storageBaseUrl}/dovecbb.png`
     
     // Fallback: Local public klasöründeki logo
     const fallbackUrl = '/d.png'
@@ -999,7 +1001,9 @@ const generateMaterialPurchaseHTML = (data: MaterialPurchaseRequest): string => 
   }
 
   const getLogoUrl = () => {
-    return 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+    const storageBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || 
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`
+    return `${storageBaseUrl}/dovecbb.png`
   }
 
   return `
@@ -1219,7 +1223,9 @@ const generateMultiMaterialPurchaseHTML = (data: MultiMaterialPurchaseRequest): 
   }
 
   const getLogoUrl = () => {
-    return 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dovecbb.png'
+    const storageBaseUrl = process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || 
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`
+    return `${storageBaseUrl}/dovecbb.png`
   }
 
   return `

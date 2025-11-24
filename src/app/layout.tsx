@@ -3,15 +3,16 @@ import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { NotificationManager } from "@/components/NotificationManager";
 import { Providers } from "./providers";
+import { STORAGE_URLS } from "@/lib/constants";
 
 export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
   description: "Şantiye satın alma talepleri için modern yönetim sistemi",
   manifest: '/manifest.json',
   icons: {
-    icon: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
-    shortcut: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
-    apple: 'https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dove.png',
+    icon: STORAGE_URLS.ICON,
+    shortcut: STORAGE_URLS.ICON,
+    apple: STORAGE_URLS.ICON,
   },
   appleWebApp: {
     capable: true,

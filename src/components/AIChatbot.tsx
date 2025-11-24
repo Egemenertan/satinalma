@@ -271,7 +271,7 @@ export default function AIChatbot() {
             size="lg"
           >
             <img 
-              src="https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dunya.png"
+              src={`${process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`}/dunya.png`}
               alt="AI Asistan" 
               className="w-full h-full object-cover rounded-full"
               onError={(e) => {
@@ -310,7 +310,7 @@ export default function AIChatbot() {
                 {/* World Image - Yuvarlak */}
                 <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center p-1">
                   <img 
-                    src="https://yxzmxfwpgsqabtamnfql.supabase.co/storage/v1/object/public/satinalma/dunya.png"
+                    src={`${process.env.NEXT_PUBLIC_SUPABASE_STORAGE_URL || `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/satinalma`}/dunya.png`}
                     alt="AI Asistan" 
                     className="w-full h-full object-cover rounded-full"
                     onError={(e) => {

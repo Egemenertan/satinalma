@@ -35,6 +35,9 @@ function LoginContent() {
     setError('')
 
     try {
+      console.log('🔐 Login attempt started...')
+      console.log('📍 Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL)
+      
       // Supabase ile giriş yap
       const { data, error } = await supabase.auth.signInWithPassword({
         email,
@@ -42,7 +45,15 @@ function LoginContent() {
       })
 
       if (error) {
-        setError(error.message)
+        console.error('❌ Login error:', error)
+        // Network hatalarını daha açıklayıcı göster
+        if (error.message.includes('fetch')) {
+          setError('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin veya birkaç saniye sonra tekrar deneyin.')
+        } else if (error.message.includes('Invalid login credentials')) {
+          setError('Email veya şifre hatalı. Lütfen kontrol edip tekrar deneyin.')
+        } else {
+          setError(error.message)
+        }
         return
       }
 
@@ -57,6 +68,12 @@ function LoginContent() {
           .single()
 
         console.log('🔍 Profile check:', { role: profile?.role, error: profileError })
+
+        if (profileError) {
+          console.error('❌ Profile fetch error:', profileError)
+          setError('Kullanıcı profili yüklenirken hata oluştu.')
+          return
+        }
 
         if (profile) {
           // User rolü dashboard'a erişemez
@@ -79,7 +96,13 @@ function LoginContent() {
         }
       }
     } catch (err) {
-      setError('Giriş yapılırken bir hata oluştu.')
+      console.error('🔥 Unexpected error during login:', err)
+      // Catch bloğunda daha detaylı hata mesajı
+      if (err instanceof TypeError && err.message.includes('fetch')) {
+        setError('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin veya VPN kullanıyorsanız kapatmayı deneyin.')
+      } else {
+        setError(`Giriş yapılırken bir hata oluştu: ${err instanceof Error ? err.message : 'Bilinmeyen hata'}`)
+      }
     } finally {
       setLoading(false)
     }
