@@ -81,6 +81,9 @@ export function MaterialSearchBar({
           'Hijyen ve Temizlik'
         ])
         console.log('🔍 Arama ofis kategorileri ile sınırlandırıldı')
+      } else if (restrictToStationery === false) {
+        // Şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
+        searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
       }
       
       const { data, error } = await searchQuery.limit(10)

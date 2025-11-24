@@ -98,6 +98,9 @@ export function CreateMaterialModal({
             'Mutfak Malzemeleri',
             'Hijyen ve Temizlik'
           ])
+        } else {
+          // Diğer şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
+          classQuery = classQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
         }
 
         const { data: classesData, error } = await classQuery

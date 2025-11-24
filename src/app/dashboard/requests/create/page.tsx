@@ -358,6 +358,10 @@ export default function CreatePurchaseRequestPage() {
             'Hijyen ve Temizlik'
           ])
           console.log('🏢 Genel Merkez Ofisi kullanıcısı - Tüm ofis kategorileri gösteriliyor')
+        } else {
+          // Diğer şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
+          classQuery = classQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
+          console.log('🏗️ Şantiye kullanıcısı - İnşaat kategorileri gösteriliyor')
         }
         
         const { data: classesData, error: classesError } = await classQuery.order('class')
@@ -1306,9 +1310,7 @@ export default function CreatePurchaseRequestPage() {
                         'Ofis Araçları': 'https://images.unsplash.com/photo-1625134683123-52e57c251b04?w=800&q=80',
                         'Bilgisayar Aksesuarları': 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=800&q=80',
                         
-                        // Reklam Ürünleri Grupları
-                        'Broşür': 'https://images.unsplash.com/photo-1533227268428-f9ed0900fb3b?w=800&q=80',
-                        'Katalog': 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=80',
+                        // Reklam Ürünleri Grupları (görsel yok - sadece icon)
                         
                         // Ofis Ekipmanları Grupları
                         'Bilgisayar Donanımları': 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5?w=800&q=80',
