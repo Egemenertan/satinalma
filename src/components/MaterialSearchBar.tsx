@@ -22,7 +22,7 @@ interface MaterialSearchBarProps {
   onEnterSearch?: (results: SearchResult[]) => void
   placeholder?: string
   className?: string
-  restrictToStationery?: boolean  // Genel Merkez Ofisi için kırtasiye filtresi
+  restrictToStationery?: boolean  // Genel Merkez Ofisi için ofis malzemeleri filtresi
 }
 
 export function MaterialSearchBar({
@@ -70,10 +70,17 @@ export function MaterialSearchBar({
         .select('class, group, item_name')
         .or(`item_name.ilike.%${query}%,group.ilike.%${query}%,class.ilike.%${query}%`)
       
-      // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
+      // Genel Merkez Ofisi kullanıcıları için tüm ofis kategorileri
       if (restrictToStationery) {
-        searchQuery = searchQuery.eq('class', 'Kırtasiye Malzemeleri')
-        console.log('🔍 Arama kırtasiye malzemeleri ile sınırlandırıldı')
+        searchQuery = searchQuery.in('class', [
+          'Kırtasiye Malzemeleri',
+          'Reklam Ürünleri',
+          'Ofis Ekipmanları',
+          'Promosyon Ürünleri',
+          'Mutfak Malzemeleri',
+          'Hijyen ve Temizlik'
+        ])
+        console.log('🔍 Arama ofis kategorileri ile sınırlandırıldı')
       }
       
       const { data, error } = await searchQuery.limit(10)

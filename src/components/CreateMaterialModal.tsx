@@ -87,10 +87,17 @@ export function CreateMaterialModal({
           .not('class', 'eq', '')
           .order('class')
 
-        // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
+        // Genel Merkez Ofisi kullanıcıları için tüm ofis kategorileri
         if (isGenelMerkezUser) {
-          console.log('🔒 Genel Merkez Ofisi kullanıcısı - Sadece Kırtasiye Malzemeleri gösteriliyor')
-          classQuery = classQuery.eq('class', 'Kırtasiye Malzemeleri')
+          console.log('🔒 Genel Merkez Ofisi kullanıcısı - Tüm ofis kategorileri gösteriliyor')
+          classQuery = classQuery.in('class', [
+            'Kırtasiye Malzemeleri',
+            'Reklam Ürünleri',
+            'Ofis Ekipmanları',
+            'Promosyon Ürünleri',
+            'Mutfak Malzemeleri',
+            'Hijyen ve Temizlik'
+          ])
         }
 
         const { data: classesData, error } = await classQuery

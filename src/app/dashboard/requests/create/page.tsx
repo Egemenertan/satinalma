@@ -73,7 +73,13 @@ const getIconForClass = (className: string) => {
     'Elektrik': 'Zap',
     'Temizlik': 'Sparkles',
     'İş Güvenliği': 'Shield',
-    'Boyalar': 'Palette'
+    'Boyalar': 'Palette',
+    'Reklam Ürünleri': 'Sparkles',
+    'Kırtasiye Malzemeleri': 'FileText',
+    'Ofis Ekipmanları': 'Settings',
+    'Promosyon Ürünleri': 'Target',
+    'Mutfak Malzemeleri': 'Package2',
+    'Hijyen ve Temizlik': 'Sparkles'
   }
   
   // Partial match için
@@ -95,7 +101,13 @@ const getColorForClass = (className: string) => {
     'Elektrik': '#f59e0b',
     'Temizlik': '#ec4899',
     'İş Güvenliği': '#6366f1',
-    'Boyalar': '#84cc16'
+    'Boyalar': '#84cc16',
+    'Reklam Ürünleri': '#ec4899',
+    'Kırtasiye Malzemeleri': '#6366f1',
+    'Ofis Ekipmanları': '#10b981',
+    'Promosyon Ürünleri': '#f59e0b',
+    'Mutfak Malzemeleri': '#06b6d4',
+    'Hijyen ve Temizlik': '#8b5cf6'
   }
   
   // Partial match için
@@ -336,9 +348,16 @@ export default function CreatePurchaseRequestPage() {
         setIsGenelMerkezUser(isGenelMerkez)
         
         if (isGenelMerkez) {
-          // Sadece Kırtasiye Malzemeleri
-          classQuery = classQuery.eq('class', 'Kırtasiye Malzemeleri')
-          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Sadece Kırtasiye Malzemeleri gösteriliyor')
+          // Genel Merkez Ofisi için tüm ofis kategorileri
+          classQuery = classQuery.in('class', [
+            'Kırtasiye Malzemeleri',
+            'Reklam Ürünleri',
+            'Ofis Ekipmanları',
+            'Promosyon Ürünleri',
+            'Mutfak Malzemeleri',
+            'Hijyen ve Temizlik'
+          ])
+          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Tüm ofis kategorileri gösteriliyor')
         }
         
         const { data: classesData, error: classesError } = await classQuery.order('class')
@@ -1122,8 +1141,16 @@ export default function CreatePurchaseRequestPage() {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
                   {materialClasses
                     .filter((materialClass) => {
-                      // Kırtasiye Malzemeleri sadece Genel Merkez Ofisi kullanıcılarına göster
-                      if (materialClass.name === 'Kırtasiye Malzemeleri') {
+                      // Ofis kategorileri sadece Genel Merkez Ofisi kullanıcılarına göster
+                      const officeCategories = [
+                        'Kırtasiye Malzemeleri',
+                        'Reklam Ürünleri',
+                        'Ofis Ekipmanları',
+                        'Promosyon Ürünleri',
+                        'Mutfak Malzemeleri',
+                        'Hijyen ve Temizlik'
+                      ]
+                      if (officeCategories.includes(materialClass.name)) {
                         return isGenelMerkezUser
                       }
                       // Diğer sınıflar sadece Genel Merkez Ofisi OLMAYAN kullanıcılara göster
@@ -1142,10 +1169,16 @@ export default function CreatePurchaseRequestPage() {
                     'Palette': Palette
                   }[materialClass.icon] || Package
 
-                  // Kırtasiye Malzemeleri için görsel
-                  const categoryImage = materialClass.name === 'Kırtasiye Malzemeleri' 
-                    ? 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=800&q=80' 
-                    : null
+                  // Kategori görselleri
+                  const categoryImageMap: Record<string, string> = {
+                    'Kırtasiye Malzemeleri': 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=800&q=80',
+                    'Reklam Ürünleri': 'https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&q=80',
+                    'Ofis Ekipmanları': 'https://images.unsplash.com/photo-1593062096033-9a26b09da705?w=800&q=80',
+                    'Promosyon Ürünleri': 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=800&q=80',
+                    'Mutfak Malzemeleri': 'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80',
+                    'Hijyen ve Temizlik': 'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80'
+                  }
+                  const categoryImage = categoryImageMap[materialClass.name] || null
 
                   const isSelected = formData.material_class === materialClass.name
 
@@ -1260,12 +1293,40 @@ export default function CreatePurchaseRequestPage() {
                         'TreePine': TreePine
                       }[materialGroup.icon] || Package
 
-                      // Kırtasiye alt kategorileri için görseller
+                      // Tüm grup kategorileri için görseller
                       const groupImages: Record<string, string> = {
+                        // Kırtasiye Malzemeleri Grupları
                         'Defter ve Ajandalar': 'https://images.unsplash.com/photo-1531346878377-a5be20888e57?w=800&q=80',
                         'Kalemler': 'https://images.unsplash.com/photo-1455390582262-044cdead277a?w=800&q=80',
                         'Zarflar': 'https://images.unsplash.com/photo-1526554850534-7c78330d5f90?w=800&q=80',
-                        'Genel Kırtasiye': 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=800&q=80'
+                        'Genel Kırtasiye': 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=800&q=80',
+                        'Kağıt ve Bloklar': 'https://images.unsplash.com/photo-1586281380349-632531db7ed4?w=800&q=80',
+                        'Dosyalama ve Arşivleme': 'https://images.unsplash.com/photo-1544816155-12df9643f363?w=800&q=80',
+                        'Yazı ve İşaretleme': 'https://images.unsplash.com/photo-1513151233558-d860c5398176?w=800&q=80',
+                        'Ofis Araçları': 'https://images.unsplash.com/photo-1625134683123-52e57c251b04?w=800&q=80',
+                        'Bilgisayar Aksesuarları': 'https://images.unsplash.com/photo-1527864550417-7fd91fc51a46?w=800&q=80',
+                        
+                        // Reklam Ürünleri Grupları
+                        'Broşür': 'https://images.unsplash.com/photo-1533227268428-f9ed0900fb3b?w=800&q=80',
+                        'Katalog': 'https://images.unsplash.com/photo-1544947950-fa07a98d237f?w=800&q=80',
+                        
+                        // Ofis Ekipmanları Grupları
+                        'Bilgisayar Donanımları': 'https://images.unsplash.com/photo-1593640408182-31c70c8268f5?w=800&q=80',
+                        'Ofis Mobilyaları': 'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&q=80',
+                        'Elektronik Cihazlar': 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?w=800&q=80',
+                        
+                        // Promosyon Ürünleri Grupları
+                        'Kurumsal Hediyeler': 'https://images.unsplash.com/photo-1513201099705-a9746e1e201f?w=800&q=80',
+                        'Ofis Hediyeleri': 'https://images.unsplash.com/photo-1514228742587-6b1558fcca3d?w=800&q=80',
+                        
+                        // Mutfak Malzemeleri Grupları
+                        'İçecek Malzemeleri': 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?w=800&q=80',
+                        'Mutfak Temizliği': 'https://images.unsplash.com/photo-1563453392212-326f5e854473?w=800&q=80',
+                        'Mutfak Eşyaları': 'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80',
+                        
+                        // Hijyen ve Temizlik Grupları
+                        'Kişisel Hijyen': 'https://images.unsplash.com/photo-1556228578-0d85b1a4d571?w=800&q=80',
+                        'Genel Temizlik': 'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80'
                       }
                       
                       const groupImage = groupImages[materialGroup.name]
