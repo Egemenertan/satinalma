@@ -190,11 +190,19 @@ export const getPDFStyles = (): string => `
   }
 
   .invoice-notes {
-    margin-top: 6px;
-    padding-top: 6px;
-    border-top: 1px solid #ddd;
+    margin-top: 8px;
+    padding: 8px 10px;
+    background: #f9f9f9;
+    border-left: 3px solid #666;
+    border-radius: 3px;
     font-size: 9pt;
-    color: #555;
+    color: #333;
+    line-height: 1.5;
+  }
+  
+  .invoice-notes strong {
+    color: #000;
+    font-weight: 600;
   }
 
   /* Invoice Summary */

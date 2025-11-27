@@ -63,6 +63,16 @@ export const generatePDF = async (data: PDFData): Promise<void> => {
       statisticsGrandTotal: data.statistics.grandTotal,
       willShowBreakdown: !!(data.statistics.discount || data.statistics.tax || data.statistics.subtotal !== undefined)
     })
+    
+    console.log('📝 Invoice Notes Debug:', {
+      invoicesWithNotes: data.invoices.filter(inv => inv.notes).length,
+      allInvoices: data.invoices.map(inv => ({
+        id: inv.id.substring(0, 8),
+        amount: inv.amount,
+        hasNotes: !!inv.notes,
+        notes: inv.notes
+      }))
+    })
 
     // Generate HTML
     const htmlContent = generatePDFHTML(data)

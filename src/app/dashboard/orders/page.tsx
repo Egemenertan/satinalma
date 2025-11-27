@@ -545,6 +545,15 @@ export default function OrdersPage() {
     }
 
     console.log(`📋 Sipariş ${order.id} için ${allOrderInvoices.length} fatura bulundu`)
+    console.log('🔍 Faturalardaki notlar:', {
+      invoicesWithNotes: allOrderInvoices.filter(inv => inv.notes).length,
+      allInvoices: allOrderInvoices.map(inv => ({
+        id: inv.id.substring(0, 8),
+        amount: inv.amount,
+        hasNotes: !!inv.notes,
+        notes: inv.notes
+      }))
+    })
     
     // Individual invoice details'i kaydet (birden fazla fatura varsa göstermek için)
     if (allOrderInvoices.length > 1) {
@@ -916,6 +925,7 @@ export default function OrdersPage() {
               amount: amount,
               currency: currency,
               invoice_photos: invoicePhotos,
+              notes: invoiceNotes || null, // Notes'u da güncelle
             })
             .eq('order_id', orderId)
             .eq('invoice_group_id', editingInvoiceGroupId)
@@ -1145,6 +1155,7 @@ export default function OrdersPage() {
           amount: parseToNumber(orderAmounts[order.id] || '0'),
           currency: orderCurrencies[order.id] || 'TRY',
           invoice_photos: invoicePhotos,
+          notes: invoiceNotes || null, // Notes'u da ekle
           invoice_group_id: invoiceGroup.id,
         }))
 

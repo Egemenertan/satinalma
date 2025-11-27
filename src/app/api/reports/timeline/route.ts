@@ -516,7 +516,13 @@ export async function GET(request: NextRequest) {
       orderIds,
       invoicesFound: invoices?.length || 0,
       invoicesError: invoicesError?.message,
-      invoicesData: invoices
+      invoicesData: invoices,
+      invoicesWithNotes: invoices?.filter(inv => inv.notes).length || 0,
+      notesPreview: invoices?.map(inv => ({
+        id: inv.id?.substring(0, 8),
+        hasNotes: !!inv.notes,
+        notes: inv.notes
+      }))
     })
     
     // Manuel JOIN'leri yap
@@ -542,7 +548,13 @@ export async function GET(request: NextRequest) {
     
     console.log('💰 Manuel JOIN invoices sonucu:', {
       invoicesWithJoinsCount: invoicesWithJoins.length,
-      invoicesWithJoins
+      invoicesWithJoins,
+      invoicesWithNotes: invoicesWithJoins.filter(inv => inv.notes).length,
+      notesData: invoicesWithJoins.map(inv => ({
+        id: inv.id.substring(0, 8),
+        hasNotes: !!inv.notes,
+        notes: inv.notes
+      }))
     })
     
     const finalInvoices = invoicesWithJoins
@@ -711,7 +723,13 @@ export async function GET(request: NextRequest) {
       timelineCount: response.timeline.length,
       hasOrderInTimeline: response.timeline.some(t => t.type === 'order'),
       hasShipmentInTimeline: response.timeline.some(t => t.type === 'shipment'),
-      hasInvoiceInTimeline: response.timeline.some(t => t.type === 'invoice')
+      hasInvoiceInTimeline: response.timeline.some(t => t.type === 'invoice'),
+      invoicesWithNotes: response.invoices.filter((inv: any) => inv.notes).length,
+      invoicesNotesPreview: response.invoices.map((inv: any) => ({
+        id: inv.id?.substring(0, 8),
+        hasNotes: !!inv.notes,
+        notes: inv.notes
+      }))
     })
 
     console.log('💰 Statistics Response:', {

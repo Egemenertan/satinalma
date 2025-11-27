@@ -146,30 +146,65 @@ export function usePDFExport() {
         specificInvoices = specificInvoices.filter((inv: any) => selectedInvoiceIds.includes(inv.id))
       }
       
-      // Seçilen faturaların detaylı bilgilerini Supabase'den çek (subtotal, discount, tax, grand_total)
+      // Timeline'dan gelen invoices'ları kontrol et
+      console.log('🔍 Timeline\'dan gelen faturalar (notes kontrolü):', {
+        count: specificInvoices.length,
+        invoices: specificInvoices.map((inv: any) => ({
+          id: inv.id?.substring(0, 8),
+          amount: inv.amount,
+          hasNotesFromTimeline: !!inv.notes,
+          notesFromTimeline: inv.notes
+        }))
+      })
+      
+      // Seçilen faturaların detaylı bilgilerini Supabase'den çek (subtotal, discount, tax, grand_total, notes)
       if (specificInvoices.length > 0) {
         const invoiceIds = specificInvoices.map((inv: any) => inv.id)
         const { data: detailedInvoices } = await supabase
           .from('invoices')
-          .select('id, subtotal, discount, tax, grand_total')
+          .select('id, subtotal, discount, tax, grand_total, notes')
           .in('id', invoiceIds)
+        
+        console.log('🔍 Supabase\'den gelen detaylı faturalar (notes kontrolü):', {
+          count: detailedInvoices?.length || 0,
+          invoices: detailedInvoices?.map((inv: any) => ({
+            id: inv.id?.substring(0, 8),
+            hasNotes: !!inv.notes,
+            notes: inv.notes
+          }))
+        })
         
         if (detailedInvoices) {
           // Detayları mevcut invoice'lara ekle
           specificInvoices = specificInvoices.map((inv: any) => {
             const details = detailedInvoices.find(d => d.id === inv.id)
+            const finalNotes = details?.notes || inv.notes
+            
+            console.log(`🔍 Fatura ${inv.id?.substring(0, 8)} notes birleştirme:`, {
+              fromTimeline: inv.notes,
+              fromSupabase: details?.notes,
+              final: finalNotes
+            })
+            
             return {
               ...inv,
               subtotal: details?.subtotal,
               discount: details?.discount,
               tax: details?.tax,
-              grand_total: details?.grand_total
+              grand_total: details?.grand_total,
+              notes: finalNotes
             }
           })
           
           console.log('📋 Fatura detayları eklendi:', {
             invoicesCount: specificInvoices.length,
-            hasBreakdowns: specificInvoices.filter((inv: any) => inv.subtotal !== null).length
+            hasBreakdowns: specificInvoices.filter((inv: any) => inv.subtotal !== null).length,
+            hasNotes: specificInvoices.filter((inv: any) => inv.notes).length,
+            finalInvoices: specificInvoices.map((inv: any) => ({
+              id: inv.id?.substring(0, 8),
+              hasNotes: !!inv.notes,
+              notes: inv.notes
+            }))
           })
         }
       }
@@ -249,7 +284,13 @@ export function usePDFExport() {
         ordersCount: pdfApiData.orders.length,
         invoicesCount: pdfApiData.invoices.length,
         hasInvoiceGroupData: !!(pdfApiData.statistics.subtotal || pdfApiData.statistics.discount || pdfApiData.statistics.tax),
-        statistics: pdfApiData.statistics
+        statistics: pdfApiData.statistics,
+        invoicesWithNotes: pdfApiData.invoices.filter((inv: any) => inv.notes).length,
+        invoiceNotesPreview: pdfApiData.invoices.map((inv: any) => ({
+          id: inv.id?.substring(0, 8),
+          hasNotes: !!inv.notes,
+          notes: inv.notes
+        }))
       })
 
       // Generate PDF using new generator
