@@ -98,13 +98,38 @@ export function usePDFExport() {
       let relatedOrderIds = [order.id]
       let invoiceGroupId = null
       
+      console.log('🔍 PDF Export başlangıç:', {
+        orderId: order.id,
+        orderIdShort: order.id.substring(0, 8),
+        supplierName: order.suppliers?.name,
+        itemName: order.purchase_request_items?.item_name,
+        orderHasInvoices: !!(order.invoices && order.invoices.length > 0),
+        invoicesCount: order.invoices?.length || 0,
+        invoiceIds: order.invoices?.map(inv => inv.id.substring(0, 8))
+      })
+      
       // Eğer sipariş faturası varsa, invoice group'u kontrol et
       if (order.invoices && order.invoices.length > 0) {
-        const { data: invoiceWithGroup } = await supabase
+        // ÖNEMLİ: .single() yerine .limit(1) kullan - birden fazla fatura olabilir
+        const { data: invoiceWithGroup, error: invoiceError } = await supabase
           .from('invoices')
-          .select('invoice_group_id')
+          .select('invoice_group_id, order_id')
           .eq('order_id', order.id)
+          .limit(1)
           .single()
+        
+        if (invoiceError) {
+          console.error('❌ Fatura sorgu hatası:', {
+            orderId: order.id,
+            error: invoiceError
+          })
+        }
+        
+        console.log('🔍 Invoice group kontrolü:', {
+          orderId: order.id,
+          hasInvoiceGroup: !!invoiceWithGroup?.invoice_group_id,
+          invoiceGroupId: invoiceWithGroup?.invoice_group_id
+        })
         
         if (invoiceWithGroup?.invoice_group_id) {
           invoiceGroupId = invoiceWithGroup.invoice_group_id
@@ -119,8 +144,10 @@ export function usePDFExport() {
             relatedOrderIds = groupInvoices.map(inv => inv.order_id)
             console.log('📦 Toplu fatura grubu bulundu:', {
               groupId: invoiceGroupId,
+              currentOrderId: order.id,
               relatedOrdersCount: relatedOrderIds.length,
-              relatedOrderIds
+              relatedOrderIds,
+              WARNING: relatedOrderIds.length > 1 ? 'Bu sipariş bir invoice group\'a ait - tüm grup siparişleri dahil ediliyor!' : null
             })
           }
         }
@@ -245,16 +272,23 @@ export function usePDFExport() {
         ? specificInvoices[0].currency 
         : (specificOrders.length > 0 ? specificOrders[0].currency : 'TRY')
 
-      // Eğer sadece belirli faturalar seçildiyse, statistics'i kullanma
-      // Çünkü statistics tüm faturaların toplamını içeriyor
-      const shouldUseStatistics = !selectedInvoiceIds || selectedInvoiceIds.length === 0 || 
-                                   (invoiceGroupId && selectedInvoiceIds.length > 1)
+      // ÖNEMLİ: Statistics'i SADECE invoice group varsa kullan
+      // Çünkü statistics tüm request'teki faturaların toplamını içeriyor
+      // Invoice group yoksa, bu sipariş için yanlış KDV/İndirim bilgisi gösterilir!
+      const shouldUseStatistics = !!invoiceGroupId && (
+        !selectedInvoiceIds || 
+        selectedInvoiceIds.length === 0 || 
+        selectedInvoiceIds.length > 1
+      )
       
       console.log('📊 Statistics kullanımı:', {
         shouldUseStatistics,
         selectedInvoiceIds: selectedInvoiceIds || 'none',
         hasInvoiceGroup: !!invoiceGroupId,
-        invoicesCount: specificInvoices.length
+        invoicesCount: specificInvoices.length,
+        WARNING: !invoiceGroupId && timelineData.statistics?.subtotal 
+          ? '⚠️ Invoice group yok ama statistics var - KULLANILMAYACAK!' 
+          : null
       })
 
       // Prepare data for new PDF generator

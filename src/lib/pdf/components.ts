@@ -290,11 +290,20 @@ export const buildInvoiceSummary = (invoices: PDFInvoiceData[], statistics: PDFS
   }
   
   // Çoklu fatura veya grup fatura için mevcut görünüm
+  // ÖNEMLİ: Birden fazla fatura varsa, her zaman faturaların gerçek toplamını kullan
   const calculatedSubtotal = invoices.reduce((sum, inv) => sum + inv.amount, 0)
-  const subtotal = statistics.subtotal ?? calculatedSubtotal
+  
+  // Eğer birden fazla fatura varsa, statistics'teki değerler yanlış olabilir
+  // Bu durumda hesaplanan toplamı kullan
+  const subtotal = invoices.length > 1 ? calculatedSubtotal : (statistics.subtotal ?? calculatedSubtotal)
+  
   const discount = statistics.discount ?? 0
   const tax = statistics.tax ?? 0
-  const grandTotal = statistics.grandTotal ?? (subtotal - discount + tax)
+  
+  // Grand total hesaplama - birden fazla fatura varsa her zaman yeniden hesapla
+  const calculatedGrandTotal = subtotal - discount + tax
+  const grandTotal = invoices.length > 1 ? calculatedGrandTotal : (statistics.grandTotal ?? calculatedGrandTotal)
+  
   const hasBreakdown = (discount > 0 || tax > 0 || statistics.subtotal !== undefined)
 
   return `

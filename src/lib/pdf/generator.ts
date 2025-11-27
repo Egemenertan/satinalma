@@ -69,8 +69,22 @@ export const generatePDF = async (data: PDFData): Promise<void> => {
       allInvoices: data.invoices.map(inv => ({
         id: inv.id.substring(0, 8),
         amount: inv.amount,
+        currency: inv.currency,
+        supplier: inv.supplier_name,
+        item: inv.item_name,
         hasNotes: !!inv.notes,
         notes: inv.notes
+      }))
+    })
+    
+    console.log('📦 Orders Debug:', {
+      ordersCount: data.orders.length,
+      allOrders: data.orders.map(order => ({
+        id: order.id.substring(0, 8),
+        amount: order.amount,
+        currency: order.currency,
+        supplier: order.supplier_name,
+        item: order.item_name
       }))
     })
 
