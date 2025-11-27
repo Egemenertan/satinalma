@@ -10,6 +10,7 @@ export function useOrderFilters() {
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [siteFilter, setSiteFilter] = useState<string[]>([]) // Şantiye filtresi
   const [dateRange, setDateRange] = useState<{ from: Date | undefined; to?: Date | undefined }>({
     from: undefined,
     to: undefined,
@@ -36,6 +37,7 @@ export function useOrderFilters() {
     pageSize: itemsPerPage,
     searchTerm: debouncedSearchTerm,
     statusFilter,
+    siteFilter,
     dateRange,
   }
 
@@ -45,6 +47,8 @@ export function useOrderFilters() {
     setSearchTerm,
     statusFilter,
     setStatusFilter,
+    siteFilter,
+    setSiteFilter,
     dateRange,
     setDateRange,
     clearDateFilters,

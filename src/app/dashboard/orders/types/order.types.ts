@@ -70,6 +70,7 @@ export interface OrderFilters {
   pageSize: number
   searchTerm: string
   statusFilter: string
+  siteFilter: string[]
   dateRange: {
     from: Date | undefined
     to?: Date | undefined

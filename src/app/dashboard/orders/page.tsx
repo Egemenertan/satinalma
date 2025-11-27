@@ -58,6 +58,8 @@ export default function OrdersPage() {
     setSearchTerm,
     statusFilter,
     setStatusFilter,
+    siteFilter,
+    setSiteFilter,
     dateRange,
     setDateRange,
     clearDateFilters,
@@ -630,7 +632,7 @@ export default function OrdersPage() {
         .filter(Boolean)
         .join('\n---\n')
       setInvoiceNotes(allNotes || groupData.notes || '')
-      
+
       // TÜM faturaların fotoğraflarını birleştir (unique yap - tekrar eden fotoğrafları kaldır)
       const invoicePhotos = allOrderInvoices
         .flatMap(inv => inv.invoice_photos || [])
@@ -1271,6 +1273,8 @@ export default function OrdersPage() {
               onSearchChange={setSearchTerm}
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
+              siteFilter={siteFilter}
+              onSiteFilterChange={setSiteFilter}
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
               onClearDateFilters={clearDateFilters}

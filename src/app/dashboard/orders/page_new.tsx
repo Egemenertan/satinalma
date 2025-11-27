@@ -44,6 +44,8 @@ export default function OrdersPage() {
     setSearchTerm,
     statusFilter,
     setStatusFilter,
+    siteFilter,
+    setSiteFilter,
     dateRange,
     setDateRange,
     clearDateFilters,
@@ -259,6 +261,8 @@ export default function OrdersPage() {
               onSearchChange={setSearchTerm}
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
+              siteFilter={siteFilter}
+              onSiteFilterChange={setSiteFilter}
               dateRange={dateRange}
               onDateRangeChange={setDateRange}
               onClearDateFilters={clearDateFilters}

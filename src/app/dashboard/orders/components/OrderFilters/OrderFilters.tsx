@@ -2,6 +2,7 @@
 
 import { SearchInput } from './SearchInput'
 import { StatusFilter } from './StatusFilter'
+import { SiteFilter } from './SiteFilter'
 import { DateFilter } from './DateFilter'
 import { Button } from '@/components/ui/button'
 import { Receipt, List } from 'lucide-react'
@@ -11,6 +12,8 @@ interface OrderFiltersProps {
   onSearchChange: (value: string) => void
   statusFilter: string
   onStatusChange: (value: string) => void
+  siteFilter: string[]
+  onSiteFilterChange: (sites: string[]) => void
   dateRange: { from: Date | undefined; to?: Date | undefined }
   onDateRangeChange: (range: { from: Date | undefined; to?: Date | undefined }) => void
   onClearDateFilters: () => void
@@ -23,6 +26,8 @@ export function OrderFilters({
   onSearchChange,
   statusFilter,
   onStatusChange,
+  siteFilter,
+  onSiteFilterChange,
   dateRange,
   onDateRangeChange,
   onClearDateFilters,
@@ -42,6 +47,11 @@ export function OrderFilters({
         <StatusFilter
           value={statusFilter}
           onChange={onStatusChange}
+        />
+
+        <SiteFilter
+          selectedSites={siteFilter}
+          onSitesChange={onSiteFilterChange}
         />
 
         <DateFilter

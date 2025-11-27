@@ -11,7 +11,7 @@ import type { OrderData, OrdersResponse, OrderFilters } from '@/app/dashboard/or
  */
 export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse> {
   const supabase = createClient()
-  const { page, pageSize, searchTerm, statusFilter, dateRange } = filters
+  const { page, pageSize, searchTerm, statusFilter, siteFilter, dateRange } = filters
   
   // Kullanıcı rolünü kontrol et
   const { data: { user } } = await supabase.auth.getUser()
@@ -186,6 +186,35 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   // Durum filtresi
   if (statusFilter !== 'all') {
     query = query.eq('status', statusFilter)
+  }
+
+  // Şantiye filtresi
+  if (siteFilter && siteFilter.length > 0) {
+    // purchase_requests.site_name ile filtreleme yapamayız çünkü ilişkili tablo
+    // Önce site_name'leri olan order id'lerini bulalım
+    const { data: siteOrders } = await supabase
+      .from('orders')
+      .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name)')
+    
+    if (siteOrders) {
+      const filteredOrderIds = siteOrders
+        .filter((order: any) => {
+          const siteName = order.purchase_requests?.site_name
+          return siteName && siteFilter.includes(siteName)
+        })
+        .map((order: any) => order.id)
+      
+      if (filteredOrderIds.length > 0) {
+        query = query.in('id', filteredOrderIds)
+      } else {
+        // Seçilen şantiyelerde hiç sipariş yok
+        return {
+          orders: [],
+          totalCount: 0,
+          totalPages: 0
+        }
+      }
+    }
   }
 
   // Tarih filtresi

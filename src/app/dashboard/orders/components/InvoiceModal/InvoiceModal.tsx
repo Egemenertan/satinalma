@@ -218,7 +218,7 @@ export function InvoiceModal({
 
           {/* FATURA ÖZETİ - Hem tek hem toplu fatura için göster */}
           {(selectedOrderId || Object.keys(invoiceSubtotals).length > 0) && (
-              <InvoiceSummary
+            <InvoiceSummary
               invoiceSubtotals={invoiceSubtotals}
               invoiceDiscount={invoiceDiscount}
               invoiceTax={invoiceTax}
