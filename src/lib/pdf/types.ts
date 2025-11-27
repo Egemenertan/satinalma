@@ -11,6 +11,12 @@ export interface PDFInvoiceData {
   supplier_name: string
   item_name: string
   added_by: string
+  
+  // Individual invoice breakdown
+  subtotal?: number
+  discount?: number
+  tax?: number
+  grand_total?: number
 }
 
 export interface PDFStatistics {

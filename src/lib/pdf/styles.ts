@@ -213,6 +213,40 @@ export const getPDFStyles = (): string => `
     margin-bottom: 15px;
     text-transform: uppercase;
   }
+  
+  .invoice-summary-subtitle {
+    font-size: 11pt;
+    font-weight: 600;
+    margin-top: 15px;
+    margin-bottom: 8px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #000;
+  }
+  
+  .individual-invoice-summary {
+    margin-bottom: 20px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #ddd;
+  }
+  
+  .individual-invoice-summary:last-of-type {
+    border-bottom: none;
+  }
+  
+  .summary-row.invoice-total {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 2px solid #000;
+    font-weight: 700;
+  }
+  
+  .summary-row.invoice-total .summary-label {
+    font-weight: 700;
+  }
+  
+  .summary-row.invoice-total .summary-value {
+    font-weight: 700;
+  }
 
   .summary-row {
     display: flex;

@@ -180,32 +180,122 @@ export const buildInvoiceSummary = (invoices: PDFInvoiceData[], statistics: PDFS
     return ''
   }
 
-  // Calculate subtotal from invoices
-  const calculatedSubtotal = invoices.reduce((sum, inv) => sum + inv.amount, 0)
   const currency = invoices[0]?.currency || statistics.currency || 'TRY'
+  
+  // Birden fazla fatura varsa ve her birinin kendi detayları varsa, ayrı göster
+  // ÖNEMLİ: Sadece birden fazla fatura seçildiyse bu görünümü kullan
+  const hasIndividualBreakdowns = invoices.length > 1 && invoices.some(inv => 
+    inv.subtotal !== undefined || inv.discount !== undefined || inv.tax !== undefined
+  )
 
-  // Use statistics if available, otherwise use calculated values
+  if (hasIndividualBreakdowns && invoices.length > 1) {
+    // Her fatura için ayrı detay göster
+    const totalGrandTotal = invoices.reduce((sum, inv) => sum + (inv.grand_total || inv.amount), 0)
+    
+    return `
+      <div class="invoice-summary">
+        <div class="invoice-summary-title">Fatura Özeti (${invoices.length} Adet)</div>
+        
+        ${invoices.map((invoice, index) => {
+          const hasBreakdown = invoice.subtotal !== undefined || invoice.discount !== undefined || invoice.tax !== undefined
+          
+          return `
+            <div class="individual-invoice-summary">
+              <div class="invoice-summary-subtitle">Fatura ${index + 1} - ${invoice.supplier_name}</div>
+              
+              ${hasBreakdown ? `
+                <div class="summary-row">
+                  <span class="summary-label">Ara Toplam</span>
+                  <span class="summary-value">${formatNumber(invoice.subtotal || invoice.amount)} ${invoice.currency}</span>
+                </div>
+                
+                ${invoice.discount && invoice.discount > 0 ? `
+                  <div class="summary-row discount">
+                    <span class="summary-label">İndirim</span>
+                    <span class="summary-value">-${formatNumber(invoice.discount)} ${invoice.currency}</span>
+                  </div>
+                ` : ''}
+                
+                ${invoice.tax && invoice.tax > 0 ? `
+                  <div class="summary-row tax">
+                    <span class="summary-label">KDV</span>
+                    <span class="summary-value">+${formatNumber(invoice.tax)} ${invoice.currency}</span>
+                  </div>
+                ` : ''}
+                
+                <div class="summary-row invoice-total">
+                  <span class="summary-label">Fatura Toplamı</span>
+                  <span class="summary-value">${formatNumber(invoice.grand_total || invoice.amount)} ${invoice.currency}</span>
+                </div>
+              ` : `
+                <div class="summary-row">
+                  <span class="summary-label">Tutar</span>
+                  <span class="summary-value">${formatNumber(invoice.amount)} ${invoice.currency}</span>
+                </div>
+              `}
+            </div>
+          `
+        }).join('')}
+        
+        <div class="summary-row total">
+          <span class="summary-label">Tüm Faturalar Toplamı</span>
+          <span class="summary-value">${formatNumber(totalGrandTotal)} ${currency}</span>
+        </div>
+      </div>
+    `
+  }
+
+  // Tek fatura için - kendi detaylarını kullan
+  if (invoices.length === 1) {
+    const invoice = invoices[0]
+    const hasOwnBreakdown = invoice.subtotal !== undefined || invoice.discount !== undefined || invoice.tax !== undefined
+    
+    if (hasOwnBreakdown) {
+      // Faturanın kendi detayları varsa onları göster
+      return `
+        <div class="invoice-summary">
+          <div class="invoice-summary-title">Fatura Özeti</div>
+          
+          <div class="summary-row">
+            <span class="summary-label">${invoice.supplier_name} - ${invoice.item_name}</span>
+            <span class="summary-value">${formatNumber(invoice.amount)} ${invoice.currency}</span>
+          </div>
+          
+          <div class="summary-row subtotal">
+            <span class="summary-label">Ara Toplam</span>
+            <span class="summary-value">${formatNumber(invoice.subtotal || invoice.amount)} ${invoice.currency}</span>
+          </div>
+          
+          ${invoice.discount && invoice.discount > 0 ? `
+            <div class="summary-row discount">
+              <span class="summary-label">İndirim</span>
+              <span class="summary-value">-${formatNumber(invoice.discount)} ${invoice.currency}</span>
+            </div>
+          ` : ''}
+          
+          ${invoice.tax && invoice.tax > 0 ? `
+            <div class="summary-row tax">
+              <span class="summary-label">KDV</span>
+              <span class="summary-value">+${formatNumber(invoice.tax)} ${invoice.currency}</span>
+            </div>
+          ` : ''}
+          
+          <div class="summary-row total">
+            <span class="summary-label">Genel Toplam</span>
+            <span class="summary-value">${formatNumber(invoice.grand_total || invoice.amount)} ${invoice.currency}</span>
+          </div>
+        </div>
+      `
+    }
+  }
+  
+  // Çoklu fatura veya grup fatura için mevcut görünüm
+  const calculatedSubtotal = invoices.reduce((sum, inv) => sum + inv.amount, 0)
   const subtotal = statistics.subtotal ?? calculatedSubtotal
   const discount = statistics.discount ?? 0
   const tax = statistics.tax ?? 0
   const grandTotal = statistics.grandTotal ?? (subtotal - discount + tax)
-
   const hasBreakdown = (discount > 0 || tax > 0 || statistics.subtotal !== undefined)
-
-  console.log('🧾 Building Invoice Summary:', {
-    invoicesCount: invoices.length,
-    calculatedSubtotal,
-    statisticsSubtotal: statistics.subtotal,
-    statisticsDiscount: statistics.discount,
-    statisticsTax: statistics.tax,
-    statisticsGrandTotal: statistics.grandTotal,
-    finalSubtotal: subtotal,
-    finalDiscount: discount,
-    finalTax: tax,
-    finalGrandTotal: grandTotal,
-    hasBreakdown,
-    currency
-  })
 
   return `
     <div class="invoice-summary">

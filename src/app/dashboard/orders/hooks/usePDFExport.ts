@@ -138,13 +138,47 @@ export function usePDFExport() {
       
       // Eğer belirli faturalar seçildiyse, sadece onları dahil et
       if (selectedInvoiceIds && selectedInvoiceIds.length > 0) {
+        console.log('🎯 Kullanıcı tarafından seçilen faturalar:', {
+          selectedCount: selectedInvoiceIds.length,
+          totalAvailable: specificInvoices.length,
+          selectedIds: selectedInvoiceIds
+        })
         specificInvoices = specificInvoices.filter((inv: any) => selectedInvoiceIds.includes(inv.id))
+      }
+      
+      // Seçilen faturaların detaylı bilgilerini Supabase'den çek (subtotal, discount, tax, grand_total)
+      if (specificInvoices.length > 0) {
+        const invoiceIds = specificInvoices.map((inv: any) => inv.id)
+        const { data: detailedInvoices } = await supabase
+          .from('invoices')
+          .select('id, subtotal, discount, tax, grand_total')
+          .in('id', invoiceIds)
+        
+        if (detailedInvoices) {
+          // Detayları mevcut invoice'lara ekle
+          specificInvoices = specificInvoices.map((inv: any) => {
+            const details = detailedInvoices.find(d => d.id === inv.id)
+            return {
+              ...inv,
+              subtotal: details?.subtotal,
+              discount: details?.discount,
+              tax: details?.tax,
+              grand_total: details?.grand_total
+            }
+          })
+          
+          console.log('📋 Fatura detayları eklendi:', {
+            invoicesCount: specificInvoices.length,
+            hasBreakdowns: specificInvoices.filter((inv: any) => inv.subtotal !== null).length
+          })
+        }
       }
       
       console.log('📋 PDF için seçilen siparişler:', {
         ordersCount: specificOrders.length,
         invoicesCount: specificInvoices.length,
-        hasInvoiceGroup: !!invoiceGroupId
+        hasInvoiceGroup: !!invoiceGroupId,
+        selectedInvoiceIds: selectedInvoiceIds || 'Tümü'
       })
 
       // Timeline'ı ilgili siparişler için filtrele
@@ -176,6 +210,18 @@ export function usePDFExport() {
         ? specificInvoices[0].currency 
         : (specificOrders.length > 0 ? specificOrders[0].currency : 'TRY')
 
+      // Eğer sadece belirli faturalar seçildiyse, statistics'i kullanma
+      // Çünkü statistics tüm faturaların toplamını içeriyor
+      const shouldUseStatistics = !selectedInvoiceIds || selectedInvoiceIds.length === 0 || 
+                                   (invoiceGroupId && selectedInvoiceIds.length > 1)
+      
+      console.log('📊 Statistics kullanımı:', {
+        shouldUseStatistics,
+        selectedInvoiceIds: selectedInvoiceIds || 'none',
+        hasInvoiceGroup: !!invoiceGroupId,
+        invoicesCount: specificInvoices.length
+      })
+
       // Prepare data for new PDF generator
       const pdfApiData = {
         request: timelineData.request,
@@ -191,11 +237,11 @@ export function usePDFExport() {
           totalInvoices: specificInvoices.length,
           totalAmount: totalAmount,
           currency: invoiceCurrency,
-          // Use statistics from API (includes invoice group data)
-          subtotal: timelineData.statistics?.subtotal,
-          discount: timelineData.statistics?.discount,
-          tax: timelineData.statistics?.tax,
-          grandTotal: timelineData.statistics?.grandTotal,
+          // Sadece grup fatura veya tüm faturalar seçildiyse statistics kullan
+          subtotal: shouldUseStatistics ? timelineData.statistics?.subtotal : undefined,
+          discount: shouldUseStatistics ? timelineData.statistics?.discount : undefined,
+          tax: shouldUseStatistics ? timelineData.statistics?.tax : undefined,
+          grandTotal: shouldUseStatistics ? timelineData.statistics?.grandTotal : undefined,
         }
       }
       

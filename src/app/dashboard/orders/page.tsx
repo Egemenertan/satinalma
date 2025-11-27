@@ -35,6 +35,7 @@ import { OrdersTable } from './components/OrdersTable'
 import { InvoiceGroupView } from './components/OrdersTable/InvoiceGroupView'
 import { MultiSelectActions } from './components/MultiSelect'
 import { InvoiceModal } from './components/InvoiceModal'
+import { InvoiceSelectionModal } from './components/PDF/InvoiceSelectionModal'
 
 // Hooks
 import { useOrders, useOrderFilters, useMultiSelect, usePDFExport } from './hooks'
@@ -82,6 +83,11 @@ export default function OrdersPage() {
     isGeneratingReport,
     exportSingleOrder,
     exportMultipleOrders,
+    isPDFInvoiceSelectionOpen,
+    setIsPDFInvoiceSelectionOpen,
+    pdfOrderContext,
+    selectedPDFInvoices,
+    setSelectedPDFInvoices,
   } = usePDFExport()
 
   // View Mode State - Fatura bazlı görünüm
@@ -128,6 +134,25 @@ export default function OrdersPage() {
 
   // Invoice Group Edit State
   const [editingInvoiceGroupId, setEditingInvoiceGroupId] = useState<string | null>(null)
+  
+  // Individual Invoice Details - Birden fazla fatura varsa her birinin detayı
+  const [individualInvoiceDetails, setIndividualInvoiceDetails] = useState<Array<{
+    id: string
+    amount: number
+    currency: string
+    subtotal: number | null
+    discount: number | null
+    tax: number | null
+    grand_total: number | null
+    created_at: string
+  }>>([])
+  
+  // Her faturanın düzenlenmiş değerlerini tut
+  const [editedInvoiceValues, setEditedInvoiceValues] = useState<Record<string, {
+    subtotal: string
+    discount: string
+    tax: string
+  }>>({})
 
   const orders = ordersData?.orders || []
   const totalCount = ordersData?.totalCount || 0
@@ -292,6 +317,31 @@ export default function OrdersPage() {
       showToast('PDF oluşturma hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
     }
   }
+  
+  const handleConfirmPDFInvoiceSelection = async () => {
+    if (!pdfOrderContext) return
+    
+    try {
+      setIsPDFInvoiceSelectionOpen(false)
+      const selectedIds = Array.from(selectedPDFInvoices)
+      await exportSingleOrder(pdfOrderContext, selectedIds)
+      showToast('PDF başarıyla oluşturuldu', 'success')
+    } catch (error: any) {
+      showToast('PDF oluşturma hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
+    }
+  }
+  
+  const handleTogglePDFInvoice = (invoiceId: string) => {
+    setSelectedPDFInvoices(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(invoiceId)) {
+        newSet.delete(invoiceId)
+      } else {
+        newSet.add(invoiceId)
+      }
+      return newSet
+    })
+  }
 
   const handleExportGroupPDF = async (groupOrders: any[]) => {
     try {
@@ -315,6 +365,19 @@ export default function OrdersPage() {
 
   const handleOrderAmountChange = (orderId: string, formatted: string) => {
     setOrderAmounts(prev => ({ ...prev, [orderId]: formatted }))
+  }
+  
+  const handleIndividualInvoiceChange = (invoiceId: string, field: 'subtotal' | 'discount' | 'tax', value: string) => {
+    setEditedInvoiceValues(prev => {
+      const currentValues = prev[invoiceId] || { subtotal: '', discount: '', tax: '' }
+      return {
+        ...prev,
+        [invoiceId]: {
+          ...currentValues,
+          [field]: value
+        }
+      }
+    })
   }
 
   const handleOrderCurrencyChange = (orderId: string, currency: string) => {
@@ -456,7 +519,68 @@ export default function OrdersPage() {
     const supabase = createClient()
     const firstInvoice = invoices[0]
     
-    // Eğer invoice_group_id varsa, mevcut grubu düzenle
+    // Önce bu siparişin TÜM faturalarını çek (grup olsun olmasın)
+    // Order bilgilerini bul
+    const order = orders.find(o => {
+      return o.invoices?.some(inv => inv.id === firstInvoice.id)
+    })
+
+    if (!order) {
+      showToast('Sipariş bilgisi bulunamadı', 'error')
+      return
+    }
+
+    // Bu siparişin TÜM faturalarını Supabase'den çek (tüm detaylarıyla)
+    const { data: allOrderInvoices, error: allInvoicesError } = await supabase
+      .from('invoices')
+      .select('id, order_id, amount, currency, invoice_photos, notes, invoice_group_id, subtotal, discount, tax, grand_total, created_at')
+      .eq('order_id', order.id)
+      .order('created_at', { ascending: true })
+
+    if (allInvoicesError || !allOrderInvoices) {
+      showToast('Fatura bilgileri alınamadı', 'error')
+      return
+    }
+
+    console.log(`📋 Sipariş ${order.id} için ${allOrderInvoices.length} fatura bulundu`)
+    
+    // Individual invoice details'i kaydet (birden fazla fatura varsa göstermek için)
+    if (allOrderInvoices.length > 1) {
+      const invoiceDetails = allOrderInvoices.map(inv => ({
+        id: inv.id,
+        amount: parseFloat(inv.amount) || 0,
+        currency: inv.currency || 'TRY',
+        subtotal: inv.subtotal ? parseFloat(inv.subtotal) : null,
+        discount: inv.discount ? parseFloat(inv.discount) : null,
+        tax: inv.tax ? parseFloat(inv.tax) : null,
+        grand_total: inv.grand_total ? parseFloat(inv.grand_total) : null,
+        created_at: inv.created_at
+      }))
+      
+      setIndividualInvoiceDetails(invoiceDetails)
+      
+      // Her fatura için başlangıç değerlerini set et
+      const initialValues: Record<string, { subtotal: string; discount: string; tax: string }> = {}
+      invoiceDetails.forEach(inv => {
+        initialValues[inv.id] = {
+          subtotal: inv.subtotal !== null 
+            ? inv.subtotal.toFixed(2).replace('.', ',')
+            : inv.amount.toFixed(2).replace('.', ','),
+          discount: inv.discount !== null && inv.discount > 0
+            ? inv.discount.toFixed(2).replace('.', ',')
+            : '',
+          tax: inv.tax !== null && inv.tax > 0
+            ? inv.tax.toFixed(2).replace('.', ',')
+            : ''
+        }
+      })
+      setEditedInvoiceValues(initialValues)
+    } else {
+      setIndividualInvoiceDetails([])
+      setEditedInvoiceValues({})
+    }
+    
+    // Eğer invoice_group_id varsa, grup bilgilerini de çek
     if (firstInvoice.invoice_group_id) {
       // Invoice group bilgilerini çek
       const { data: groupData, error: groupError } = await supabase
@@ -470,28 +594,18 @@ export default function OrdersPage() {
         return
       }
 
-      // Tüm invoice'ları çek (order_id'leri bulmak için)
-      const { data: allInvoices, error: invoicesError } = await supabase
-        .from('invoices')
-        .select('id, order_id, amount, currency')
-        .eq('invoice_group_id', firstInvoice.invoice_group_id)
-
-      if (invoicesError || !allInvoices) {
-        showToast('Fatura bilgileri alınamadı', 'error')
-        return
-      }
-
       // Düzenleme modunu aktif et
       setEditingInvoiceGroupId(firstInvoice.invoice_group_id)
 
-      // Her sipariş için tutarları doldur
+      // Tüm faturaların toplam tutarını hesapla
+      const totalAmount = allOrderInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0)
+      
+      // Sipariş için tutarları doldur
       const amounts: Record<string, string> = {}
       const currencies: Record<string, string> = {}
       
-      allInvoices.forEach((inv: any) => {
-        amounts[inv.order_id] = inv.amount?.toFixed(2).replace('.', ',') || '0,00'
-        currencies[inv.order_id] = inv.currency || 'TRY'
-      })
+      amounts[order.id] = totalAmount.toFixed(2).replace('.', ',')
+      currencies[order.id] = firstInvoice.currency || 'TRY'
       
       setOrderAmounts(amounts)
       setOrderCurrencies(currencies)
@@ -510,55 +624,68 @@ export default function OrdersPage() {
       setInvoiceGrandTotal(groupData.grand_total?.toFixed(2).replace('.', ',') || '')
       setInvoiceGrandTotalCurrency(groupData.currency)
       
-      setInvoiceNotes(groupData.notes || '')
-      setInvoicePhotos(groupData.invoice_photos || [])
-
-      // Siparişleri seç (multi-select için)
-      const orderIds = allInvoices.map((inv: any) => inv.order_id)
-      orderIds.forEach(orderId => {
-        toggleOrderSelection(orderId)
-      })
-    } else {
-      // Invoice group yok - Tek fatura için de düzenleme modal'ını aç
-      // İlk invoice'ın bilgilerini al
-      const invoice = invoices[0]
+      // TÜM faturaların notlarını birleştir
+      const allNotes = allOrderInvoices
+        .map(inv => inv.notes)
+        .filter(Boolean)
+        .join('\n---\n')
+      setInvoiceNotes(allNotes || groupData.notes || '')
       
-      // Order bilgilerini bul
-      const order = orders.find(o => {
-        return o.invoices?.some(inv => inv.id === invoice.id)
-      })
+      // TÜM faturaların fotoğraflarını birleştir (unique yap - tekrar eden fotoğrafları kaldır)
+      const invoicePhotos = allOrderInvoices
+        .flatMap(inv => inv.invoice_photos || [])
+        .filter(Boolean)
+      const groupPhotos = groupData.invoice_photos || []
+      const allPhotos = [...invoicePhotos, ...groupPhotos]
+      // Unique yap - aynı URL'leri kaldır
+      const uniquePhotos = Array.from(new Set(allPhotos))
+      setInvoicePhotos(uniquePhotos)
 
-      if (!order) {
-        showToast('Sipariş bilgisi bulunamadı', 'error')
-        return
-      }
-
-      // Tek sipariş için tutarları ayarla
+      // Siparişi seç
+      toggleOrderSelection(order.id)
+    } else {
+      // Invoice group yok - TÜM faturaları göster (zaten yukarıda çektik)
+      // Tüm faturaların toplam tutarını hesapla
+      const totalAmount = allOrderInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0)
+      
+      // Sipariş için tutarları ayarla (toplam tutar)
       const amounts: Record<string, string> = {}
       const currencies: Record<string, string> = {}
       
-      amounts[order.id] = invoice.amount?.toFixed(2).replace('.', ',') || '0,00'
-      currencies[order.id] = invoice.currency || 'TRY'
+      amounts[order.id] = totalAmount.toFixed(2).replace('.', ',')
+      currencies[order.id] = firstInvoice.currency || 'TRY'
       
       setOrderAmounts(amounts)
       setOrderCurrencies(currencies)
 
-      // Özet bilgileri doldur (tek sipariş için)
+      // Özet bilgileri doldur (toplam tutar)
       const subtotals: Record<string, string> = {}
-      subtotals[invoice.currency] = invoice.amount?.toFixed(2).replace('.', ',') || '0,00'
+      subtotals[firstInvoice.currency] = totalAmount.toFixed(2).replace('.', ',')
       setInvoiceSubtotals(subtotals)
       
       // Diğer alanları temizle
       setInvoiceDiscount('')
       setInvoiceTax('')
       
-      setInvoiceNotes(invoice.notes || '')
-      setInvoicePhotos(invoice.invoice_photos || [])
+      // TÜM faturaların notlarını birleştir
+      const allNotes = allOrderInvoices
+        .map(inv => inv.notes)
+        .filter(Boolean)
+        .join('\n---\n')
+      setInvoiceNotes(allNotes || '')
+      
+      // TÜM faturaların fotoğraflarını birleştir (unique yap - tekrar eden fotoğrafları kaldır)
+      const allPhotos = allOrderInvoices
+        .flatMap(inv => inv.invoice_photos || [])
+        .filter(Boolean)
+      // Unique yap - aynı URL'leri kaldır
+      const uniquePhotos = Array.from(new Set(allPhotos))
+      setInvoicePhotos(uniquePhotos)
 
       // Siparişi seç
       toggleOrderSelection(order.id)
 
-      // Düzenleme modu - mevcut invoice'ı düzenliyoruz
+      // Düzenleme modu - mevcut invoice'ları düzenliyoruz
       setEditingInvoiceGroupId(null) // Grup yok, ama düzenleme yapılacak
     }
 
@@ -1227,6 +1354,8 @@ export default function OrdersPage() {
           setInvoiceTax('')
           setInvoiceGrandTotal('')
           setInvoiceNotes('')
+          setIndividualInvoiceDetails([])
+          setEditedInvoiceValues({})
           clearSelection()
         }}
         onSave={handleSaveInvoice}
@@ -1269,6 +1398,9 @@ export default function OrdersPage() {
         isUploadingInvoice={isUploadingInvoice}
         invoiceNotes={invoiceNotes}
         onNotesChange={setInvoiceNotes}
+        individualInvoiceDetails={individualInvoiceDetails}
+        editedInvoiceValues={editedInvoiceValues}
+        onIndividualInvoiceChange={handleIndividualInvoiceChange}
       />
 
 
@@ -1604,6 +1736,16 @@ export default function OrdersPage() {
           </div>
         </DialogContent>
       </Dialog>
+      
+      {/* PDF Fatura Seçim Modalı */}
+      <InvoiceSelectionModal
+        isOpen={isPDFInvoiceSelectionOpen}
+        onClose={() => setIsPDFInvoiceSelectionOpen(false)}
+        order={pdfOrderContext}
+        selectedInvoiceIds={selectedPDFInvoices}
+        onToggleInvoice={handleTogglePDFInvoice}
+        onConfirm={handleConfirmPDFInvoiceSelection}
+      />
     </div>
   )
 }

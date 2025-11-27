@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { Receipt, Upload, X, Image as ImageIcon, FileText, ZoomIn } from 'lucide-react'
 import { InlineLoading } from '@/components/ui/loading'
-import { formatNumberWithDots } from '../../utils'
+import { formatNumberWithDots, parseToNumber } from '../../utils'
 import FullScreenImageViewer from '@/components/FullScreenImageViewer'
 
 // Types
@@ -72,6 +72,26 @@ interface InvoiceModalProps {
   // Notes State
   invoiceNotes: string
   onNotesChange: (value: string) => void
+  
+  // Individual Invoice Details (for multiple invoices on same order)
+  individualInvoiceDetails?: Array<{
+    id: string
+    amount: number
+    currency: string
+    subtotal: number | null
+    discount: number | null
+    tax: number | null
+    grand_total: number | null
+    created_at: string
+  }>
+  
+  // Edited values for individual invoices
+  editedInvoiceValues?: Record<string, {
+    subtotal: string
+    discount: string
+    tax: string
+  }>
+  onIndividualInvoiceChange?: (invoiceId: string, field: 'subtotal' | 'discount' | 'tax', value: string) => void
 }
 
 export function InvoiceModal({
@@ -106,6 +126,9 @@ export function InvoiceModal({
   isUploadingInvoice,
   invoiceNotes,
   onNotesChange,
+  individualInvoiceDetails = [],
+  editedInvoiceValues = {},
+  onIndividualInvoiceChange,
 }: InvoiceModalProps) {
   
   // Image viewer state
@@ -195,7 +218,7 @@ export function InvoiceModal({
 
           {/* FATURA ÖZETİ - Hem tek hem toplu fatura için göster */}
           {(selectedOrderId || Object.keys(invoiceSubtotals).length > 0) && (
-            <InvoiceSummary
+              <InvoiceSummary
               invoiceSubtotals={invoiceSubtotals}
               invoiceDiscount={invoiceDiscount}
               invoiceTax={invoiceTax}
@@ -205,6 +228,9 @@ export function InvoiceModal({
               onSubtotalCurrencyChange={onSubtotalCurrencyChange}
               onDiscountChange={onDiscountChange}
               onTaxChange={onTaxChange}
+              individualInvoiceDetails={individualInvoiceDetails}
+              editedInvoiceValues={editedInvoiceValues}
+              onIndividualInvoiceChange={onIndividualInvoiceChange}
             />
           )}
 
@@ -533,6 +559,9 @@ function InvoiceSummary({
   onSubtotalCurrencyChange,
   onDiscountChange,
   onTaxChange,
+  individualInvoiceDetails = [],
+  editedInvoiceValues = {},
+  onIndividualInvoiceChange,
 }: {
   invoiceSubtotals: Record<string, string>
   invoiceDiscount: string
@@ -543,10 +572,200 @@ function InvoiceSummary({
   onSubtotalCurrencyChange: (newCurrency: string) => void
   onDiscountChange: (value: string) => void
   onTaxChange: (value: string) => void
+  individualInvoiceDetails?: Array<{
+    id: string
+    amount: number
+    currency: string
+    subtotal: number | null
+    discount: number | null
+    tax: number | null
+    grand_total: number | null
+    created_at: string
+  }>
+  editedInvoiceValues?: Record<string, {
+    subtotal: string
+    discount: string
+    tax: string
+  }>
+  onIndividualInvoiceChange?: (invoiceId: string, field: 'subtotal' | 'discount' | 'tax', value: string) => void
 }) {
   const currentCurrency = Object.keys(invoiceSubtotals)[0] || 'TRY'
   const currentSubtotal = Object.values(invoiceSubtotals)[0] || '0,00'
 
+  // Birden fazla fatura varsa, her birinin detaylarını ayrı göster
+  if (individualInvoiceDetails.length > 1) {
+    return (
+      <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-8 space-y-6">
+        <div className="flex items-center gap-2 pb-4 border-b border-gray-200">
+          <Receipt className="w-5 h-5 text-gray-700" />
+          <h3 className="font-semibold text-gray-900 text-lg">Fatura Özeti ({individualInvoiceDetails.length} Adet)</h3>
+        </div>
+        
+        {/* Her fatura için ayrı kart */}
+        <div className="space-y-4">
+          {individualInvoiceDetails.map((invoice, index) => {
+            // Her fatura için değerleri al (düzenlenmiş veya orijinal)
+            const invoiceValues = editedInvoiceValues[invoice.id] || {
+              subtotal: invoice.subtotal !== null 
+                ? invoice.subtotal.toFixed(2).replace('.', ',')
+                : invoice.amount.toFixed(2).replace('.', ','),
+              discount: invoice.discount !== null && invoice.discount > 0
+                ? invoice.discount.toFixed(2).replace('.', ',')
+                : '',
+              tax: invoice.tax !== null && invoice.tax > 0
+                ? invoice.tax.toFixed(2).replace('.', ',')
+                : ''
+            }
+            
+            // Genel toplam hesaplama
+            const calculateGrandTotal = () => {
+              const subtotalNum = parseToNumber(invoiceValues.subtotal)
+              const discountNum = parseToNumber(invoiceValues.discount)
+              const taxNum = parseToNumber(invoiceValues.tax)
+              const total = subtotalNum - discountNum + taxNum
+              return total.toFixed(2).replace('.', ',')
+            }
+            
+            const grandTotal = calculateGrandTotal()
+            
+            return (
+              <div key={invoice.id} className="bg-white rounded-xl border-2 border-gray-200 p-6 space-y-4">
+                <div className="flex items-center justify-between pb-3 border-b border-gray-200">
+                  <div className="flex items-center gap-2">
+                    <Receipt className="w-4 h-4 text-gray-600" />
+                    <span className="font-semibold text-gray-900">Fatura {index + 1}</span>
+                    <span className="text-xs text-gray-500">
+                      ({new Date(invoice.created_at).toLocaleDateString('tr-TR', {
+                        day: '2-digit',
+                        month: 'long',
+                        year: 'numeric'
+                      })})
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-gray-600">
+                    Tutar: {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
+                  </span>
+                </div>
+                
+                {/* Fatura detayları - Düzenlenebilir */}
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Ara Toplam */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      Ara Toplam
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={invoiceValues.subtotal}
+                        onFocus={(e) => {
+                          if (e.target.value === '0' || e.target.value === '0,00') {
+                            onIndividualInvoiceChange?.(invoice.id, 'subtotal', '')
+                          }
+                        }}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithDots(e.target.value)
+                          onIndividualInvoiceChange?.(invoice.id, 'subtotal', formatted)
+                        }}
+                        className="flex-1 h-11 rounded-lg border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 transition-all text-sm font-medium"
+                      />
+                      <div className="w-20 h-11 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-lg">
+                        {invoice.currency}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* İndirim */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      İndirim <span className="text-gray-400 normal-case">(Opsiyonel)</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="0,00"
+                        value={invoiceValues.discount}
+                        onFocus={(e) => {
+                          if (e.target.value === '0' || e.target.value === '0,00') {
+                            onIndividualInvoiceChange?.(invoice.id, 'discount', '')
+                          }
+                        }}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithDots(e.target.value)
+                          onIndividualInvoiceChange?.(invoice.id, 'discount', formatted)
+                        }}
+                        className="flex-1 h-11 rounded-lg border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 transition-all text-sm"
+                      />
+                      <div className="w-20 h-11 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-lg">
+                        {invoice.currency}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* KDV */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      KDV <span className="text-gray-400 normal-case">(Opsiyonel)</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        placeholder="0,00"
+                        value={invoiceValues.tax}
+                        onFocus={(e) => {
+                          if (e.target.value === '0' || e.target.value === '0,00') {
+                            onIndividualInvoiceChange?.(invoice.id, 'tax', '')
+                          }
+                        }}
+                        onChange={(e) => {
+                          const formatted = formatNumberWithDots(e.target.value)
+                          onIndividualInvoiceChange?.(invoice.id, 'tax', formatted)
+                        }}
+                        className="flex-1 h-11 rounded-lg border-gray-300 focus:border-gray-900 focus:ring-2 focus:ring-gray-900/10 transition-all text-sm"
+                      />
+                      <div className="w-20 h-11 flex items-center justify-center text-xs font-medium text-gray-700 bg-gray-100 border border-gray-200 rounded-lg">
+                        {invoice.currency}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Genel Toplam - Otomatik */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      Genel Toplam <span className="text-gray-400 normal-case">(Otomatik)</span>
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="text"
+                        value={grandTotal}
+                        readOnly
+                        className="flex-1 h-11 rounded-lg font-semibold bg-gray-100 border-2 border-gray-300 text-gray-900 text-sm"
+                      />
+                      <div className="w-20 h-11 flex items-center justify-center text-xs font-semibold text-gray-900 bg-gray-200 border-2 border-gray-300 rounded-lg">
+                        {invoice.currency}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+        
+        {/* Genel Toplam */}
+        <div className="bg-black text-white rounded-xl p-6">
+          <div className="flex justify-between items-center">
+            <span className="text-lg font-semibold">Tüm Faturalar Toplamı</span>
+            <span className="text-2xl font-bold">
+              {individualInvoiceDetails.reduce((sum, inv) => sum + (inv.grand_total || inv.amount), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currentCurrency}
+            </span>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Tek fatura için mevcut görünüm
   return (
     <div className="bg-gradient-to-br from-gray-50 to-white rounded-2xl border border-gray-200 p-8 space-y-6">
       <div className="flex items-center gap-2 pb-4 border-b border-gray-200">
