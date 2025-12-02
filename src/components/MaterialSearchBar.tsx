@@ -55,7 +55,10 @@ export function MaterialSearchBar({
 
   // Arama fonksiyonu
   const performSearch = async (query: string) => {
-    if (!query || query.trim().length < 2) {
+    // Boşlukları temizle ama minimum uzunluk kontrolü yap
+    const trimmedQuery = query.trim()
+    
+    if (!trimmedQuery || trimmedQuery.length < 2) {
       setSearchResults([])
       setShowResults(false)
       return
@@ -65,36 +68,157 @@ export function MaterialSearchBar({
     setShowResults(true)
 
     try {
+      // YENİ YAPI: material_categories tablosundan kategori isimlerini al
+      const categoryType = restrictToStationery ? 'ofis' : 'insaat'
+      
+      const { data: categories, error: categoriesError } = await supabase
+        .from('material_categories')
+        .select('name')
+        .eq('category_type', categoryType)
+        .eq('is_active', true)
+      
+      if (categoriesError) {
+        console.error('Kategoriler alınamadı:', categoriesError)
+        // Fallback: Eski yöntemi kullan
+        let searchQuery = supabase
+          .from('all_materials')
+          .select('class, group, item_name')
+          .or(`item_name.ilike.%${query}%,group.ilike.%${query}%,class.ilike.%${query}%`)
+        
+        if (restrictToStationery) {
+          searchQuery = searchQuery.in('class', [
+            'Kırtasiye Malzemeleri',
+            'Reklam Ürünleri',
+            'Ofis Ekipmanları',
+            'Promosyon Ürünleri',
+            'Mutfak Malzemeleri',
+            'Hijyen ve Temizlik'
+          ])
+        } else {
+          searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
+        }
+        
+        const { data, error } = await searchQuery.limit(10)
+        
+        if (!error && data) {
+          const results = data.map(item => ({
+            class: item.class || '',
+            group: item.group || '',
+            item_name: item.item_name || '',
+            display_text: `${item.item_name} - ${item.group} - ${item.class}`,
+            score: 100
+          }))
+          setSearchResults(results)
+        }
+        return
+      }
+      
+      // Kategori isimlerini array'e çevir
+      const categoryNames = categories?.map(cat => cat.name) || []
+      
+      console.log(`🔍 ${restrictToStationery ? 'Ofis' : 'İnşaat'} kategorileri ile arama yapılıyor:`, categoryNames)
+      
+      // Malzeme araması - sadece ilgili kategorilerde
+      // Tam eşleşmeleri önceliklendirmek için daha fazla sonuç al
+      
+      // Türkçe karakter varyasyonları için alternatif aramalar
+      const queryVariants = [trimmedQuery]
+      
+      // "ı" <-> "i" dönüşümü
+      if (trimmedQuery.includes('ı')) {
+        queryVariants.push(trimmedQuery.replace(/ı/g, 'i'))
+      }
+      if (trimmedQuery.includes('i')) {
+        queryVariants.push(trimmedQuery.replace(/i/g, 'ı'))
+      }
+      
+      // Boşluk normalizasyonu: "pn40" -> "pn 40" ve "pn 40" -> "pn40"
+      const spaceNormalizedVariants: string[] = []
+      queryVariants.forEach(q => {
+        // Rakam ve harf arasına boşluk ekle: "pn40" -> "pn 40"
+        const withSpace = q.replace(/([a-zA-ZğüşıöçĞÜŞİÖÇ])(\d)/g, '$1 $2')
+        if (withSpace !== q) spaceNormalizedVariants.push(withSpace)
+        
+        // Boşlukları kaldır: "pn 40" -> "pn40"
+        const withoutSpace = q.replace(/\s+/g, '')
+        if (withoutSpace !== q) spaceNormalizedVariants.push(withoutSpace)
+      })
+      
+      // Tüm varyantları birleştir
+      const allVariants = [...queryVariants, ...spaceNormalizedVariants]
+      
+      // Tüm varyantlar için OR sorgusu oluştur
+      const searchConditions = allVariants.flatMap(q => [
+        `item_name.ilike.%${q}%`,
+        `group.ilike.%${q}%`,
+        `class.ilike.%${q}%`
+      ]).join(',')
+      
       let searchQuery = supabase
         .from('all_materials')
         .select('class, group, item_name')
-        .or(`item_name.ilike.%${query}%,group.ilike.%${query}%,class.ilike.%${query}%`)
+        .or(searchConditions)
       
-      // Genel Merkez Ofisi kullanıcıları için tüm ofis kategorileri
-      if (restrictToStationery) {
-        searchQuery = searchQuery.in('class', [
-          'Kırtasiye Malzemeleri',
-          'Reklam Ürünleri',
-          'Ofis Ekipmanları',
-          'Promosyon Ürünleri',
-          'Mutfak Malzemeleri',
-          'Hijyen ve Temizlik'
-        ])
-        console.log('🔍 Arama ofis kategorileri ile sınırlandırıldı')
-      } else if (restrictToStationery === false) {
-        // Şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
-        searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
+      if (categoryNames.length > 0) {
+        searchQuery = searchQuery.in('class', categoryNames)
       }
       
-      const { data, error } = await searchQuery.limit(10)
+      const { data, error } = await searchQuery.limit(100) // Daha fazla sonuç al, sonra sırala
 
       if (!error && data) {
-        const results = data.map(item => ({
+        const queryLower = trimmedQuery.toLowerCase()
+        
+        // Sonuçları öncelik sırasına göre sırala
+        const sortedData = data
+          .map(item => {
+            const itemNameLower = (item.item_name || '').toLowerCase()
+            const groupLower = (item.group || '').toLowerCase()
+            const classLower = (item.class || '').toLowerCase()
+            
+            // Öncelik hesaplama (küçük sayı = yüksek öncelik)
+            let priority = 100
+            
+            // 1. Tam eşleşme (en yüksek öncelik) - SADECE item_name
+            if (itemNameLower === queryLower) priority = 1
+            // 2. Başlangıçta eşleşme - item_name
+            else if (itemNameLower.startsWith(queryLower + ' ')) priority = 2
+            else if (itemNameLower.startsWith(queryLower)) priority = 3
+            // 3. Kelime başında eşleşme - item_name
+            else if (itemNameLower.includes(' ' + queryLower + ' ')) priority = 4
+            else if (itemNameLower.includes(' ' + queryLower)) priority = 5
+            // 4. Sonunda eşleşme - item_name
+            else if (itemNameLower.endsWith(' ' + queryLower)) priority = 6
+            else if (itemNameLower.endsWith(queryLower)) priority = 7
+            // 5. Herhangi bir yerde eşleşme - item_name
+            else if (itemNameLower.includes(queryLower)) priority = 8
+            // 6. Group eşleşmeleri (daha düşük öncelik)
+            else if (groupLower === queryLower) priority = 9
+            else if (groupLower.startsWith(queryLower)) priority = 10
+            else if (groupLower.includes(queryLower)) priority = 11
+            // 7. Class eşleşmeleri (en düşük öncelik)
+            else if (classLower === queryLower) priority = 12
+            else if (classLower.includes(queryLower)) priority = 13
+            
+            return { ...item, priority }
+          })
+          .sort((a, b) => {
+            // Önce priority'ye göre sırala
+            if (a.priority !== b.priority) return a.priority - b.priority
+            // Aynı öncelikte ise, daha kısa olanı önce göster (daha spesifik)
+            const aLength = (a.item_name || '').length
+            const bLength = (b.item_name || '').length
+            if (aLength !== bLength) return aLength - bLength
+            // Sonra item_name'e göre alfabetik sırala
+            return (a.item_name || '').localeCompare(b.item_name || '', 'tr')
+          })
+          .slice(0, 15) // İlk 15 sonucu al (daha fazla çeşitlilik)
+        
+        const results = sortedData.map(item => ({
           class: item.class || '',
           group: item.group || '',
           item_name: item.item_name || '',
           display_text: `${item.item_name} - ${item.group} - ${item.class}`,
-          score: 100
+          score: item.priority
         }))
         setSearchResults(results)
       }
@@ -151,21 +275,32 @@ export function MaterialSearchBar({
   const highlightText = (text: string, query: string) => {
     if (!query.trim()) return { html: text, matchCount: 0 }
     
-    const queryWords = query.toLowerCase().split(/\s+/)
+    const queryWords = query.trim().toLowerCase().split(/\s+/)
     let highlightedText = text
     let totalMatches = 0
     
     queryWords.forEach(word => {
       if (word.length >= 2) {
-        const regex = new RegExp(`(${word})`, 'gi')
-        const matches = text.match(regex)
-        if (matches) {
-          totalMatches += matches.length
-          highlightedText = highlightedText.replace(
-            regex, 
-            '<mark class="bg-gray-100 px-1 rounded font-medium">$1</mark>'
-          )
+        // Türkçe karakter toleransı için hem "ı" hem "i" versiyonlarını ara
+        const wordVariants = [word]
+        if (word.includes('ı')) {
+          wordVariants.push(word.replace(/ı/g, 'i'))
         }
+        if (word.includes('i')) {
+          wordVariants.push(word.replace(/i/g, 'ı'))
+        }
+        
+        wordVariants.forEach(variant => {
+          const regex = new RegExp(`(${variant})`, 'gi')
+          const matches = text.match(regex)
+          if (matches) {
+            totalMatches += matches.length
+            highlightedText = highlightedText.replace(
+              regex, 
+              '<span class="text-green-600 font-semibold">$1</span>'
+            )
+          }
+        })
       }
     })
     

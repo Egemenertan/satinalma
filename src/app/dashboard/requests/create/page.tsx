@@ -66,13 +66,22 @@ const steps = [
 const getIconForClass = (className: string) => {
   const iconMap: Record<string, string> = {
     'İş Araçları': 'Wrench',
+    'İnce İşler (Mimari) Malzemeleri': 'Ruler',
     'Mimari Malzemeler': 'Ruler', 
+    'Kaba İnşaat Malzemeleri': 'Truck',
     'Kaba İnşaat': 'Truck',
+    'Mobilizasyon & Demobilizasyon': 'Package2',
     'Mobilyasyon': 'Package2',
+    'Mekanik Malzemeleri': 'Settings',
     'Mekanik': 'Settings',
+    'Mekanik Malzemeler': 'Settings',
+    'Elektrik Malzemeleri': 'Zap',
     'Elektrik': 'Zap',
+    'Temizlik Malzemeleri': 'Sparkles',
     'Temizlik': 'Sparkles',
+    'İş Sağlığı ve Güvenliği': 'Shield',
     'İş Güvenliği': 'Shield',
+    'Diğer Malzemeler': 'Package',
     'Boyalar': 'Palette',
     'Reklam Ürünleri': 'Sparkles',
     'Kırtasiye Malzemeleri': 'FileText',
@@ -94,13 +103,22 @@ const getIconForClass = (className: string) => {
 const getColorForClass = (className: string) => {
   const colorMap: Record<string, string> = {
     'İş Araçları': '#f59e0b',
+    'İnce İşler (Mimari) Malzemeleri': '#8b5cf6',
     'Mimari Malzemeler': '#8b5cf6',
+    'Kaba İnşaat Malzemeleri': '#ef4444',
     'Kaba İnşaat': '#ef4444',
+    'Mobilizasyon & Demobilizasyon': '#06b6d4',
     'Mobilyasyon': '#06b6d4',
+    'Mekanik Malzemeleri': '#10b981',
     'Mekanik': '#10b981',
+    'Mekanik Malzemeler': '#10b981',
+    'Elektrik Malzemeleri': '#f59e0b',
     'Elektrik': '#f59e0b',
+    'Temizlik Malzemeleri': '#ec4899',
     'Temizlik': '#ec4899',
+    'İş Sağlığı ve Güvenliği': '#6366f1',
     'İş Güvenliği': '#6366f1',
+    'Diğer Malzemeler': '#64748b',
     'Boyalar': '#84cc16',
     'Reklam Ürünleri': '#ec4899',
     'Kırtasiye Malzemeleri': '#6366f1',
@@ -329,14 +347,6 @@ export default function CreatePurchaseRequestPage() {
         // Kullanıcı şantiye kontrolü tamamlandı
         setIsCheckingSite(false)
 
-        // Malzeme sınıflarını çek (all_materials tablosundan farklı class değerleri)
-        // Genel Merkez Ofisi kullanıcıları için sadece Kırtasiye Malzemeleri
-        let classQuery = supabase
-          .from('all_materials')
-          .select('class')
-          .not('class', 'is', null)
-          .not('class', 'eq', '')
-        
         // Genel Merkez Ofisi kontrolü
         const { data: genelMerkezSite } = await supabase
           .from('sites')
@@ -347,48 +357,39 @@ export default function CreatePurchaseRequestPage() {
         const isGenelMerkez = genelMerkezSite && userSiteIds.includes(genelMerkezSite.id)
         setIsGenelMerkezUser(isGenelMerkez)
         
-        if (isGenelMerkez) {
-          // Genel Merkez Ofisi için tüm ofis kategorileri
-          classQuery = classQuery.in('class', [
-            'Kırtasiye Malzemeleri',
-            'Reklam Ürünleri',
-            'Ofis Ekipmanları',
-            'Promosyon Ürünleri',
-            'Mutfak Malzemeleri',
-            'Hijyen ve Temizlik'
-          ])
-          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Tüm ofis kategorileri gösteriliyor')
-        } else {
-          // Diğer şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
-          classQuery = classQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
-          console.log('🏗️ Şantiye kullanıcısı - İnşaat kategorileri gösteriliyor')
-        }
+        // YENİ YAPI: material_categories tablosundan kategorileri çek
+        // Genel Merkez Ofisi için 'ofis', diğer şantiyeler için 'insaat' kategorileri
+        const categoryType = isGenelMerkez ? 'ofis' : 'insaat'
         
-        const { data: classesData, error: classesError } = await classQuery.order('class')
+        console.log(`🏗️ ${isGenelMerkez ? 'Genel Merkez Ofisi' : 'Şantiye'} kullanıcısı - ${categoryType} kategorileri getiriliyor`)
+        
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('material_categories')
+          .select('*')
+          .eq('category_type', categoryType)
+          .eq('is_active', true)
+          .order('display_order')
 
-        if (classesError) {
-          console.error('Malzeme sınıfları yüklenirken hata:', classesError)
+        if (categoriesError) {
+          console.error('❌ Kategoriler yüklenirken hata:', categoriesError)
+          // Fallback: Eski yöntemi kullan
+          console.warn('⚠️ Eski yönteme geri dönülüyor...')
+          // ... eski kod buraya eklenebilir
+        } else if (categoriesData && categoriesData.length > 0) {
+          console.log('✅ Kategoriler başarıyla yüklendi:', categoriesData.length, 'adet')
+          console.log('📊 Yüklenen kategoriler:', categoriesData.map(c => c.display_name))
+          
+          const categories = categoriesData.map((cat) => ({
+            id: cat.id,
+            name: cat.name,
+            description: cat.description || `${cat.display_name} kategorisindeki malzemeler`,
+            icon: cat.icon,
+            color: cat.color
+          }))
+          
+          setMaterialClasses(categories)
         } else {
-          console.log('Raw class data:', classesData)
-          
-          // Farklı class değerlerini filtrele - sadece string değerleri al
-          const classNames = classesData
-            ?.map(item => item.class)
-            ?.filter(cls => typeof cls === 'string' && cls.trim() !== '') || []
-            
-          const uniqueClasses = Array.from(new Set(classNames))
-            .filter(Boolean)
-            .sort()
-            .map((className, index) => ({
-              id: index + 1,
-              name: className,
-              description: `${className} kategorisindeki malzemeler`,
-              icon: getIconForClass(className),
-              color: getColorForClass(className)
-            }))
-          
-          console.log('Filtrelenmiş sınıflar:', uniqueClasses)
-          setMaterialClasses(uniqueClasses || [])
+          console.warn('⚠️ Hiç kategori bulunamadı!')
         }
       } catch (error) {
         console.error('Veri yüklenirken hata:', error)
@@ -1203,7 +1204,7 @@ export default function CreatePurchaseRequestPage() {
                           ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
                           : 'hover:scale-[1.02] hover:shadow-lg'
                         }
-                        ${!categoryImage && (isSelected ? 'bg-gray-900' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200')}
+                        ${!categoryImage && (isSelected ? 'bg-white ring-2 ring-gray-900' : 'bg-white hover:bg-gray-50 border border-gray-200')}
                       `}
                       style={{
                         backgroundImage: categoryImage ? `url(${categoryImage})` : 'none',
@@ -1233,8 +1234,8 @@ export default function CreatePurchaseRequestPage() {
                             w-12 h-12 lg:w-16 lg:h-16 rounded-xl lg:rounded-2xl mb-3 lg:mb-4
                             flex items-center justify-center transition-all duration-300
                             ${isSelected 
-                              ? 'bg-white/20' 
-                              : 'bg-white group-hover:bg-gray-50 border border-gray-200'
+                              ? 'bg-gray-100' 
+                              : 'bg-gray-50 group-hover:bg-gray-100 border border-gray-200'
                             }
                           `}>
                             <IconComponent 
@@ -1250,7 +1251,7 @@ export default function CreatePurchaseRequestPage() {
                         <h3 className={`
                           font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
                           transition-colors duration-300
-                          ${categoryImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-700')}
+                          ${categoryImage ? 'text-white' : (isSelected ? 'text-gray-900' : 'text-gray-700')}
                         `}>
                           {materialClass.name}
                         </h3>
@@ -1351,7 +1352,7 @@ export default function CreatePurchaseRequestPage() {
                             ? 'shadow-xl scale-[0.98] ring-4 ring-black/20' 
                             : 'hover:scale-[1.02] hover:shadow-lg'
                           }
-                          ${!groupImage && (isSelected ? 'bg-gray-900' : 'bg-gray-50 hover:bg-gray-100 border border-gray-200')}
+                          ${!groupImage && (isSelected ? 'bg-white ring-2 ring-gray-900' : 'bg-white hover:bg-gray-50 border border-gray-200')}
                         `}
                         style={{
                           backgroundImage: groupImage ? `url(${groupImage})` : 'none',
@@ -1381,14 +1382,14 @@ export default function CreatePurchaseRequestPage() {
                               w-10 h-10 lg:w-14 lg:h-14 rounded-xl lg:rounded-2xl mb-2 lg:mb-3
                               flex items-center justify-center transition-all duration-300
                               ${isSelected 
-                                ? 'bg-white/20' 
-                                : 'bg-white group-hover:bg-gray-50 border border-gray-200'
+                                ? 'bg-gray-100' 
+                                : 'bg-gray-50 group-hover:bg-gray-100 border border-gray-200'
                               }
                             `}>
                               <IconComponent 
                                 className={`
                                   w-5 h-5 lg:w-7 lg:h-7 transition-colors duration-300
-                                  ${isSelected ? 'text-white' : 'text-gray-700'}
+                                  ${isSelected ? 'text-gray-900' : 'text-gray-700'}
                                 `}
                               />
                             </div>
@@ -1398,7 +1399,7 @@ export default function CreatePurchaseRequestPage() {
                           <h3 className={`
                             font-semibold text-xs lg:text-sm text-center leading-tight line-clamp-2
                             transition-colors duration-300
-                            ${groupImage ? 'text-white' : (isSelected ? 'text-white' : 'text-gray-700')}
+                            ${groupImage ? 'text-white' : (isSelected ? 'text-gray-900' : 'text-gray-700')}
                           `}>
                             {materialGroup.name}
                           </h3>

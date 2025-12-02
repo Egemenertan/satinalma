@@ -9,6 +9,47 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      material_categories: {
+        Row: {
+          id: number
+          name: string
+          display_name: string
+          description: string | null
+          icon: string
+          color: string
+          category_type: 'insaat' | 'ofis' | 'both'
+          is_active: boolean
+          display_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: number
+          name: string
+          display_name: string
+          description?: string | null
+          icon?: string
+          color?: string
+          category_type: 'insaat' | 'ofis' | 'both'
+          is_active?: boolean
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: number
+          name?: string
+          display_name?: string
+          description?: string | null
+          icon?: string
+          color?: string
+          category_type?: 'insaat' | 'ofis' | 'both'
+          is_active?: boolean
+          display_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
       profiles: {
         Row: {
           construction_site_id: string | null

@@ -1,9 +1,33 @@
-# Invoice Groups Migration
+# Supabase Migrations
 
-## Migration Dosyası
-`20250116_create_invoice_groups.sql`
+## Son Migration'lar
 
-## Ne Yapıyor?
+### 1. Material Categories Migration (02 Aralık 2025)
+**Dosya:** `20250202_create_material_categories.sql`
+
+#### Ne Yapıyor?
+Malzeme kategorilerini merkezi bir veritabanı tablosundan yöneten profesyonel sistem:
+
+1. **material_categories** tablosu oluşturuluyor
+2. Kategoriler için icon, renk, tip (inşaat/ofis) bilgileri ekleniyor
+3. RLS politikaları ekleniyor
+4. 15 adet kategori otomatik olarak ekleniyor (9 inşaat + 6 ofis)
+
+#### Avantajlar
+- ✅ Kategoriler artık veritabanında
+- ✅ SQL ile kolay yönetim
+- ✅ Deployment gerektirmez
+- ✅ Kullanıcı tiplerine göre otomatik filtreleme
+- ✅ Icon ve renk bilgisi kategori ile birlikte
+
+Detaylı bilgi için: `docs/MATERIAL_CATEGORIES.md`
+
+---
+
+### 2. Invoice Groups Migration (16 Ocak 2025)
+**Dosya:** `20250116_create_invoice_groups.sql`
+
+#### Ne Yapıyor?
 Bu migration, toplu fatura ilişkilendirmesi için yeni bir yapı oluşturuyor:
 
 1. **invoice_groups** tablosu oluşturuluyor
@@ -77,6 +101,7 @@ DROP TABLE IF EXISTS invoice_groups CASCADE;
 - Migration geriye uyumludur - mevcut faturalar çalışmaya devam eder
 - `is_master` ve `parent_invoice_id` kolonları deprecated oldu ama hala mevcut
 - Yeni toplu faturalar `invoice_groups` tablosunu kullanacak
+
 
 
 
