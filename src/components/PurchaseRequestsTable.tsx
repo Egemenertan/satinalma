@@ -39,7 +39,10 @@ import {
   Box,
   Hash,
   MoreVertical,
-  Trash2
+  Trash2,
+  ChevronDown,
+  Filter,
+  X
 } from 'lucide-react'
 
 interface PurchaseRequestItem {
@@ -110,8 +113,8 @@ const fetcherWithAuth = async (url: string) => {
   return { user, profile, supabase }
 }
 
-// Purchase requests fetcher - userRole prop'u alacak şekilde güncellendi
-const fetchPurchaseRequests = async (key: string, userRole?: string) => {
+// Purchase requests fetcher - gelişmiş arama ve filtreleme ile
+const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?: string, statusFilter?: string, locationFilter?: string) => {
   const [_, currentPage, pageSize, role] = key.split('/')
   const page = parseInt(currentPage)
   const size = parseInt(pageSize)
@@ -121,6 +124,21 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
   
   // Özel site ID'si için ek statuslar
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+  
+  // Gelişmiş arama: purchase_request_items içinde arama yap
+  let matchingRequestIds: string[] | null = null
+  if (searchTerm && searchTerm.trim().length > 0) {
+    const { data: itemsData } = await supabase
+      .from('purchase_request_items')
+      .select('purchase_request_id, item_name')
+      .ilike('item_name', `%${searchTerm.trim()}%`)
+    
+    if (itemsData && itemsData.length > 0) {
+      matchingRequestIds = [...new Set(itemsData.map(item => item.purchase_request_id))]
+    } else {
+      matchingRequestIds = []
+    }
+  }
   
   let countQuery = supabase
     .from('purchase_requests')
@@ -150,6 +168,25 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+  }
+  
+  // Gelişmiş arama filtresi
+  if (matchingRequestIds !== null) {
+    if (matchingRequestIds.length === 0) {
+      // Hiç eşleşme yok, boş sonuç dön
+      return { requests: [], totalCount: 0 }
+    }
+    countQuery = countQuery.in('id', matchingRequestIds)
+  }
+  
+  // Status filtresi
+  if (statusFilter && statusFilter !== 'all') {
+    countQuery = countQuery.eq('status', statusFilter)
+  }
+  
+  // Lokasyon filtresi
+  if (locationFilter && locationFilter !== 'all') {
+    countQuery = countQuery.eq('site_id', locationFilter)
   }
   
   // Önce toplam sayıyı al
@@ -215,6 +252,21 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
     }
   }
   
+  // Gelişmiş arama filtresi
+  if (matchingRequestIds !== null && matchingRequestIds.length > 0) {
+    requestsQuery = requestsQuery.in('id', matchingRequestIds)
+  }
+  
+  // Status filtresi
+  if (statusFilter && statusFilter !== 'all') {
+    requestsQuery = requestsQuery.eq('status', statusFilter)
+  }
+  
+  // Lokasyon filtresi
+  if (locationFilter && locationFilter !== 'all') {
+    requestsQuery = requestsQuery.eq('site_id', locationFilter)
+  }
+  
   const { data: requests, error } = await requestsQuery
   
   if (error) {
@@ -225,7 +277,7 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
       hint: error?.hint,
       code: error?.code
     })
-    throw new Error('Satın alma talepleri yüklenirken hata oluştu')
+    throw new Error(`Satın alma talepleri yüklenirken hata oluştu: ${error?.message || 'Bilinmeyen hata'}`)
   }
 
   // Profile bilgileri artık JOIN ile geliyor, sadece format işlemleri yap
@@ -315,6 +367,33 @@ const fetchPurchaseRequests = async (key: string, userRole?: string) => {
     }
   }) as PurchaseRequest[]
 
+  // "Sipariş verildi" statusundaki talepler için orders'ı ayrı query ile çek
+  const orderedRequestIds = formattedRequests
+    .filter(r => r.status === 'sipariş verildi')
+    .map(r => r.id)
+  
+  if (orderedRequestIds.length > 0) {
+    try {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('id, purchase_request_id, material_item_id, status, quantity, delivered_quantity')
+        .in('purchase_request_id', orderedRequestIds)
+      
+      if (!ordersError && ordersData) {
+        // Orders'ı ilgili request'lere ekle
+        formattedRequests.forEach((request: any) => {
+          if (request.status === 'sipariş verildi') {
+            request.orders = ordersData.filter(o => o.purchase_request_id === request.id)
+          }
+        })
+      } else if (ordersError) {
+        console.warn('Orders fetch error (non-critical):', ordersError.message)
+      }
+    } catch (err) {
+      console.warn('Orders fetch failed (non-critical):', err)
+    }
+  }
+
   return { requests: formattedRequests, totalCount: count || 0 }
 }
 
@@ -342,6 +421,14 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     sortBy: 'created_at',
     sortOrder: 'desc'
   })
+  
+  // Yeni filtreleme state'leri
+  const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [locationFilter, setLocationFilter] = useState<string>('all')
+  const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all') // Teslimat durumu filtresi
+  const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
+  const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false)
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false) // Mobile filter dropdown
 
   // Tooltip state'leri
   const [hoveredRequestId, setHoveredRequestId] = useState<string | null>(null)
@@ -436,22 +523,150 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
   // Role prop'tan veya fallback olarak 'user' kullan
   const userRole = propUserRole || 'user'
 
-  // SWR ile cache'li veri çekme - Role key'e dahil edildi
+  // Arama state'i
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+      setCurrentPage(1) // Arama değişince ilk sayfaya dön
+    }, 500)
+    return () => clearTimeout(timer)
+  }, [searchTerm])
+  
+  // Dropdown'ları dışarı tıklandığında kapat
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement
+      
+      // Dropdown içine tıklandıysa kapat
+      const isInsideDropdown = target.closest('[data-dropdown]')
+      const isDropdownButton = target.closest('button')?.hasAttribute('data-dropdown-trigger')
+      
+      if (!isInsideDropdown && !isDropdownButton) {
+        setIsStatusDropdownOpen(false)
+        setIsLocationDropdownOpen(false)
+        setIsMobileFilterOpen(false)
+      }
+    }
+    
+    if (isStatusDropdownOpen || isLocationDropdownOpen || isMobileFilterOpen) {
+      document.addEventListener('mousedown', handleClickOutside)
+      return () => document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [isStatusDropdownOpen, isLocationDropdownOpen, isMobileFilterOpen])
+  
+  // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}`,
+    () => fetchPurchaseRequests(
     `purchase_requests/${currentPage}/${pageSize}/${userRole}`,
-    fetchPurchaseRequests,
+      userRole,
+      debouncedSearchTerm,
+      statusFilter,
+      locationFilter
+    ),
     {
       revalidateOnFocus: true,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000, // 5 saniye cache - optimize edildi (önceden 1 saniyeydi)
+      dedupingInterval: 5000,
       errorRetryCount: 3,
       errorRetryInterval: 5000,
-      refreshInterval: 30000, // 30 saniyede bir otomatik yenile
+      refreshInterval: 30000,
     }
   )
 
   const requests = data?.requests || []
   const totalCount = data?.totalCount || 0
+  
+  // Malzeme teslimat durumu hesaplama fonksiyonu
+  const calculateMaterialDeliveryStatus = (request: any) => {
+    // Talebin tüm siparişlerini kontrol et
+    const orders = request.orders || []
+    
+    if (orders.length === 0) return null
+    
+    // Her malzeme için benzersiz order'ları al
+    const materialOrders = new Map()
+    orders.forEach((order: any) => {
+      const materialId = order.material_item_id
+      if (!materialOrders.has(materialId)) {
+        materialOrders.set(materialId, [])
+      }
+      materialOrders.get(materialId).push(order)
+    })
+    
+    let totalMaterials = materialOrders.size
+    let deliveredMaterials = 0
+    let partialMaterials = 0
+    
+    // Her malzeme için teslimat durumunu kontrol et
+    materialOrders.forEach((orders: any[], materialId: string) => {
+      const allDelivered = orders.every((o: any) => 
+        o.status === 'teslim alındı' || 
+        (o.delivered_quantity && o.quantity && Number(o.delivered_quantity) >= Number(o.quantity))
+      )
+      
+      const someDelivered = orders.some((o: any) => 
+        (o.delivered_quantity && Number(o.delivered_quantity) > 0) || 
+        o.status === 'teslim alındı' || 
+        o.status === 'kısmen teslim alındı'
+      )
+      
+      if (allDelivered) {
+        deliveredMaterials++
+      } else if (someDelivered) {
+        partialMaterials++
+      }
+    })
+    
+    // Sonuç hesapla
+    if (deliveredMaterials === totalMaterials) {
+      return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#2C5444' }, rounded: 'rounded-xl' }
+    } else if (deliveredMaterials > 0 || partialMaterials > 0) {
+      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-700', rounded: 'rounded-full' }
+    }
+    
+    return null
+  }
+  
+  // Teslimat durumu filtrelemesi - Frontend'de yapılıyor
+  const filteredByDeliveryStatus = requests.filter(request => {
+    if (deliveryStatusFilter === 'all') return true
+    
+    // Sadece "sipariş verildi" statusundaki talepler için teslimat durumu kontrolü
+    if (request.status !== 'sipariş verildi') return false
+    
+    const deliveryStatus = calculateMaterialDeliveryStatus(request)
+    
+    if (deliveryStatusFilter === 'tamami_teslim_alindi') {
+      return deliveryStatus?.type === 'full'
+    } else if (deliveryStatusFilter === 'kismen_teslim_alindi') {
+      return deliveryStatus?.type === 'partial'
+    } else if (deliveryStatusFilter === 'siparis_verildi_sadece') {
+      // Teslimat durumu badge'i olmayan "sipariş verildi" talepleri
+      return !deliveryStatus
+    }
+    
+    return true
+  })
+  
+  // Unique status ve location listeleri
+  const uniqueStatuses = [...new Set(requests.map(r => r.status).filter(Boolean))]
+  
+  // Lokasyonları unique hale getir - site_id'ye göre
+  const locationMap = new Map()
+  requests.forEach(r => {
+    if (r.site_id && !locationMap.has(r.site_id)) {
+      locationMap.set(r.site_id, {
+        id: r.site_id,
+        name: r.sites?.[0]?.name || r.site_name || 'Belirtilmemiş'
+      })
+    }
+  })
+  const uniqueLocations = Array.from(locationMap.values())
 
   // Real-time updates için subscription - Optimize edildi
   useEffect(() => {
@@ -487,7 +702,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
   }, [currentPage, pageSize, userRole])
 
   // Filter uygulaması
-  const filteredRequests = requests.filter((req: any) => {
+  const filteredRequests = filteredByDeliveryStatus.filter((req: any) => {
     // Site manager için tab bazlı filtreleme
     if (userRole === 'site_manager' && activeTab === 'approval_pending') {
       if (req.status !== 'kısmen gönderildi' && req.status !== 'depoda mevcut değil') {
@@ -515,8 +730,6 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       return aVal < bVal ? 1 : -1
     }
   })
-
-
 
   const getStatusBadge = (status: string, notifications?: string[], requestSiteId?: string) => {
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
@@ -970,18 +1183,7 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         {/* Search Bar ve Tab Menu */}
         <div className="mb-6">
           <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-            {/* Search Bar */}
-            <div className="w-full sm:max-w-md order-1 sm:order-2">
-              <div className="relative">
-                <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="Talep ara..."
-                  value={filters.search}
-                  onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-                  className="pl-10 h-10 bg-white rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
-                />
-              </div>
-            </div>
+           
             
             {/* Tab Menu - Sadece site manager için */}
             {userRole === 'site_manager' && (
@@ -1016,10 +1218,400 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         {/* Tablo */}
         <div className="space-y-3">
           {/* Header - Desktop Only */}
+          {/* Gelişmiş Arama ve Filtre Bölümü */}
+          <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
+            <div className="flex items-center gap-3 flex-wrap">
+              {/* Arama */}
+              <div className="flex-1 min-w-[200px] relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  type="text"
+                  placeholder="Talep ara... (malzeme adı, başlık, talep no)"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10 pr-10 h-10 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                />
+                {searchTerm && (
+                  <button
+                    onClick={() => setSearchTerm('')}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+              
+              {/* Mobile Filtre Butonu */}
+              <div className="md:hidden relative">
+                <Button
+                  data-dropdown-trigger
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsMobileFilterOpen(!isMobileFilterOpen)}
+                  className="flex items-center gap-2 h-10 bg-white"
+                >
+                  <Filter className="w-4 h-4" />
+                  Filtrele
+                  {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all') && (
+                    <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+                  )}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${isMobileFilterOpen ? 'rotate-180' : ''}`} />
+                </Button>
+                
+                {/* Mobile Dropdown - Apple Style */}
+                {isMobileFilterOpen && (
+                  <div data-dropdown className="absolute top-full right-0 mt-2 w-80 bg-white rounded-2xl shadow-2xl border border-gray-100 z-50 overflow-hidden">
+                    <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
+                      {/* Teslimat Durumu */}
+                      <div>
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Teslimat Durumu</div>
+                        <div className="space-y-2">
+                          <button
+                            onClick={() => {
+                              setStatusFilter('all')
+                              setDeliveryStatusFilter('all')
+                              setIsMobileFilterOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
+                              statusFilter === 'all' && deliveryStatusFilter === 'all'
+                                ? 'bg-gray-100'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="font-medium text-sm">Tümü</div>
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setStatusFilter('sipariş verildi')
+                              setDeliveryStatusFilter('tamami_teslim_alindi')
+                              setIsMobileFilterOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
+                              deliveryStatusFilter === 'tamami_teslim_alindi'
+                                ? 'bg-gray-100'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#2C5444' }}></span>
+                              <span className="font-medium text-sm">Tamamı Teslim Alındı</span>
+                            </div>
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setStatusFilter('sipariş verildi')
+                              setDeliveryStatusFilter('kismen_teslim_alindi')
+                              setIsMobileFilterOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
+                              deliveryStatusFilter === 'kismen_teslim_alindi'
+                                ? 'bg-gray-100'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                              <span className="font-medium text-sm">Kısmen Teslim Alındı</span>
+                            </div>
+                          </button>
+                          
+                          <button
+                            onClick={() => {
+                              setStatusFilter('sipariş verildi')
+                              setDeliveryStatusFilter('siparis_verildi_sadece')
+                              setIsMobileFilterOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
+                              deliveryStatusFilter === 'siparis_verildi_sadece'
+                                ? 'bg-gray-100'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="w-2.5 h-2.5 rounded-full bg-green-400"></span>
+                              <span className="font-medium text-sm">Sipariş Verildi</span>
+                            </div>
+                          </button>
+                        </div>
+                      </div>
+                      
+                      {/* Diğer Durumlar */}
+                      <div>
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Diğer Durumlar</div>
+                        <div className="space-y-1">
+                          {uniqueStatuses.map(status => (
+                            <button
+                              key={status}
+                              onClick={() => {
+                                setStatusFilter(status)
+                                setDeliveryStatusFilter('all')
+                                setIsMobileFilterOpen(false)
+                              }}
+                              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
+                                statusFilter === status && deliveryStatusFilter === 'all'
+                                  ? 'bg-gray-100 font-medium'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              {status}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Lokasyon */}
+                      <div>
+                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Lokasyon</div>
+                        <div className="space-y-1">
+                          <button
+                            onClick={() => {
+                              setLocationFilter('all')
+                              setIsMobileFilterOpen(false)
+                            }}
+                            className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
+                              locationFilter === 'all'
+                                ? 'bg-gray-100 font-medium'
+                                : 'hover:bg-gray-50'
+                            }`}
+                          >
+                            Tüm Lokasyonlar
+                          </button>
+                          {uniqueLocations.map(location => (
+                            <button
+                              key={location.id}
+                              onClick={() => {
+                                setLocationFilter(location.id)
+                                setIsMobileFilterOpen(false)
+                              }}
+                              className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
+                                locationFilter === location.id
+                                  ? 'bg-gray-100 font-medium'
+                                  : 'hover:bg-gray-50'
+                              }`}
+                            >
+                              {location.name}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Temizle Butonu */}
+                      {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all') && (
+                        <button
+                          onClick={() => {
+                            setStatusFilter('all')
+                            setLocationFilter('all')
+                            setDeliveryStatusFilter('all')
+                          }}
+                          className="w-full px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium text-gray-700 transition-colors"
+                        >
+                          Filtreleri Temizle
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Aktif Filtreler */}
+              {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all') && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-gray-500">Filtreler:</span>
+                  {deliveryStatusFilter !== 'all' && (
+                    <Badge 
+                      variant="outline" 
+                      className="gap-1 cursor-pointer hover:bg-gray-100"
+                      style={{ 
+                        backgroundColor: deliveryStatusFilter === 'tamami_teslim_alindi' ? '#2C5444' : 
+                                       deliveryStatusFilter === 'kismen_teslim_alindi' ? '#fb923c' : '#22c55e',
+                        color: 'white',
+                        borderColor: 'transparent'
+                      }}
+                      onClick={() => {
+                        setDeliveryStatusFilter('all')
+                        setStatusFilter('all')
+                      }}
+                    >
+                      {deliveryStatusFilter === 'tamami_teslim_alindi' ? 'Tamamı Teslim Alındı' :
+                       deliveryStatusFilter === 'kismen_teslim_alindi' ? 'Kısmen Teslim Alındı' :
+                       'Sipariş Verildi'}
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+                  {statusFilter !== 'all' && deliveryStatusFilter === 'all' && (
+                    <Badge 
+                      variant="outline" 
+                      className="bg-blue-50 text-blue-700 border-blue-200 gap-1 cursor-pointer hover:bg-blue-100"
+                      onClick={() => setStatusFilter('all')}
+                    >
+                      {statusFilter}
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+                  {locationFilter !== 'all' && (
+                    <Badge 
+                      variant="outline" 
+                      className="bg-blue-50 text-blue-700 border-blue-200 gap-1 cursor-pointer hover:bg-blue-100"
+                      onClick={() => setLocationFilter('all')}
+                    >
+                      {uniqueLocations.find(l => l.id === locationFilter)?.name}
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+                  <button
+                    onClick={() => {
+                      setStatusFilter('all')
+                      setLocationFilter('all')
+                      setDeliveryStatusFilter('all')
+                    }}
+                    className="text-xs text-gray-500 hover:text-gray-700 underline"
+                  >
+                    Tümünü Temizle
+                  </button>
+                </div>
+              )}
+              
+              {/* Sonuç Sayısı */}
+              <div className="text-sm text-gray-500 ml-auto">
+                {totalCount} sonuç
+              </div>
+            </div>
+          </div>
+
           <div className="hidden md:grid gap-4 px-4 py-3 bg-white rounded-2xl border border-gray-200" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Durum</div>
+            {/* Durum - Dropdown Filter */}
+            <div className="relative">
+              <button
+                data-dropdown-trigger
+                onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
+                className="flex items-center gap-1 text-xs font-medium text-black uppercase tracking-wider hover:text-gray-600 transition-colors"
+              >
+                Durum
+                <ChevronDown className="w-3 h-3" />
+                {(statusFilter !== 'all' || deliveryStatusFilter !== 'all') && (
+                  <span className="ml-1 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                )}
+              </button>
+              {isStatusDropdownOpen && (
+                <div data-dropdown className="absolute top-full left-0 mt-2 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-96 overflow-y-auto">
+                  <div className="p-2">
+                    <button
+                      onClick={() => {
+                        setStatusFilter('all')
+                        setDeliveryStatusFilter('all')
+                        setIsStatusDropdownOpen(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 ${statusFilter === 'all' && deliveryStatusFilter === 'all' ? 'bg-gray-100 font-medium' : ''}`}
+                    >
+                      Tümü
+                    </button>
+                    
+                    {/* Teslimat Durumları - Özel Seçenekler */}
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Teslimat Durumu</div>
+                      <button
+                        onClick={() => {
+                          setStatusFilter('sipariş verildi')
+                          setDeliveryStatusFilter('tamami_teslim_alindi')
+                          setIsStatusDropdownOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'tamami_teslim_alindi' ? 'bg-gray-100 font-medium' : ''}`}
+                      >
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#2C5444' }}></span>
+                        Tamamı Teslim Alındı
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter('sipariş verildi')
+                          setDeliveryStatusFilter('kismen_teslim_alindi')
+                          setIsStatusDropdownOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'kismen_teslim_alindi' ? 'bg-gray-100 font-medium' : ''}`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                        Kısmen Teslim Alındı
+                      </button>
+                      <button
+                        onClick={() => {
+                          setStatusFilter('sipariş verildi')
+                          setDeliveryStatusFilter('siparis_verildi_sadece')
+                          setIsStatusDropdownOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'siparis_verildi_sadece' ? 'bg-gray-100 font-medium' : ''}`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-green-400"></span>
+                        Sipariş Verildi (Teslimat Yok)
+                      </button>
+                    </div>
+                    
+                    {/* Normal Statuslar */}
+                    <div className="mt-2 pt-2 border-t border-gray-200">
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Diğer Durumlar</div>
+                      {uniqueStatuses.map(status => (
+                        <button
+                          key={status}
+                          onClick={() => {
+                            setStatusFilter(status)
+                            setDeliveryStatusFilter('all')
+                            setIsStatusDropdownOpen(false)
+                          }}
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 ${statusFilter === status && deliveryStatusFilter === 'all' ? 'bg-gray-100 font-medium' : ''}`}
+                        >
+                          {status}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="text-xs font-medium text-black uppercase tracking-wider">Başlık</div>
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Lokasyon</div>
+            
+            {/* Lokasyon - Dropdown Filter */}
+            <div className="relative">
+              <button
+                data-dropdown-trigger
+                onClick={() => setIsLocationDropdownOpen(!isLocationDropdownOpen)}
+                className="flex items-center gap-1 text-xs font-medium text-black uppercase tracking-wider hover:text-gray-600 transition-colors"
+              >
+                Lokasyon
+                <ChevronDown className="w-3 h-3" />
+                {locationFilter !== 'all' && (
+                  <span className="ml-1 w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
+                )}
+              </button>
+              {isLocationDropdownOpen && (
+                <div data-dropdown className="absolute top-full left-0 mt-2 w-56 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-64 overflow-y-auto">
+                  <div className="p-2">
+                    <button
+                      onClick={() => {
+                        setLocationFilter('all')
+                        setIsLocationDropdownOpen(false)
+                      }}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 ${locationFilter === 'all' ? 'bg-gray-100 font-medium' : ''}`}
+                    >
+                      Tümü
+                    </button>
+                    {uniqueLocations.map(location => (
+                      <button
+                        key={location.id}
+                        onClick={() => {
+                          setLocationFilter(location.id)
+                          setIsLocationDropdownOpen(false)
+                        }}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 ${locationFilter === location.id ? 'bg-gray-100 font-medium' : ''}`}
+                      >
+                        {location.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep Eden</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Oluşturma Tarihi</div>
             <div className="text-xs font-medium text-black uppercase tracking-wider">Talep No</div>
@@ -1073,8 +1665,24 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                   {/* Desktop Layout */}
                   <div className="hidden md:grid gap-4 items-center" style={{gridTemplateColumns: '1fr 2fr 1.5fr 1.5fr 1.2fr 1fr 200px'}}>
                     {/* Durum */}
-                    <div>
-                      {getStatusBadge(request.status, request.notifications, request.site_id)}
+                    <div className="flex flex-col gap-1">
+                      {request.status === 'sipariş verildi' && (() => {
+                        const deliveryStatus = calculateMaterialDeliveryStatus(request)
+                        if (deliveryStatus) {
+                          // Teslimat durumu badge'i varsa sadece onu göster
+                          return (
+                            <Badge 
+                              className={`${deliveryStatus.className} border-0 ${deliveryStatus.rounded || 'rounded-full'} text-xs font-medium px-2 py-1`}
+                              style={deliveryStatus.style}
+                            >
+                              {deliveryStatus.label}
+                            </Badge>
+                          )
+                        }
+                        // Teslimat durumu yoksa normal status badge'i göster
+                        return getStatusBadge(request.status, request.notifications, request.site_id)
+                      })()}
+                      {request.status !== 'sipariş verildi' && getStatusBadge(request.status, request.notifications, request.site_id)}
                     </div>
 
                     {/* Başlık */}
@@ -1251,7 +1859,25 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                         )}
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
-                        {getStatusBadge(request.status, request.notifications, request.site_id)}
+                        <div className="flex flex-col gap-1">
+                          {request.status === 'sipariş verildi' && (() => {
+                            const deliveryStatus = calculateMaterialDeliveryStatus(request)
+                            if (deliveryStatus) {
+                              // Teslimat durumu badge'i varsa sadece onu göster
+                              return (
+                                <Badge 
+                                  className={`${deliveryStatus.className} border-0 ${deliveryStatus.rounded || 'rounded-full'} text-xs font-medium px-2 py-1`}
+                                  style={deliveryStatus.style}
+                                >
+                                  {deliveryStatus.label}
+                                </Badge>
+                              )
+                            }
+                            // Teslimat durumu yoksa normal status badge'i göster
+                            return getStatusBadge(request.status, request.notifications, request.site_id)
+                          })()}
+                          {request.status !== 'sipariş verildi' && getStatusBadge(request.status, request.notifications, request.site_id)}
+                        </div>
                         
                         {/* Kebab Menu */}
                         <div className="relative">
