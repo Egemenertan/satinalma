@@ -304,37 +304,37 @@ export default function MaterialCard({
   return (
     <div className="border border-gray-200 rounded-3xl bg-white">
       {/* Malzeme Header */}
-      <div className="p-4 border-b border-gray-100">
-        <div className="flex items-start justify-between">
-          <div className="flex-1">
-            <div className="flex items-center gap-3 mb-3">
+      <div className="p-3 sm:p-4 border-b border-gray-100">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+          <div className="flex-1 w-full">
+            <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
               {totalItems > 1 && (
-                <div className="w-7 h-7 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-medium">
+                <div className="w-6 h-6 sm:w-7 sm:h-7 bg-gray-900 text-white rounded-full flex items-center justify-center text-xs sm:text-sm font-medium flex-shrink-0">
                   {index + 1}
                 </div>
               )}
-              <h5 className="text-xl font-semibold text-gray-900">{item.item_name}</h5>
+              <h5 className="text-base sm:text-xl font-semibold text-gray-900 break-words">{item.item_name}</h5>
             </div>
             
             {/* Malzeme Detayları */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+            <div className="grid grid-cols-1 gap-2 sm:gap-3 text-xs sm:text-sm">
               {item.brand && (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 min-w-[80px]">Marka:</span>
-                  <span className="font-medium text-gray-900">{item.brand}</span>
+                  <span className="text-gray-500 min-w-[60px] sm:min-w-[80px]">Marka:</span>
+                  <span className="font-medium text-gray-900 break-words">{item.brand}</span>
                 </div>
               )}
               
               {item.purpose && (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 min-w-[80px]">Amaç:</span>
-                  <span className="font-medium text-gray-900">{item.purpose}</span>
+                  <span className="text-gray-500 min-w-[60px] sm:min-w-[80px]">Amaç:</span>
+                  <span className="font-medium text-gray-900 break-words">{item.purpose}</span>
                 </div>
               )}
               
               {item.delivery_date && (
                 <div className="flex items-center gap-2">
-                  <span className="text-gray-500 min-w-[80px]">Gerekli:</span>
+                  <span className="text-gray-500 min-w-[60px] sm:min-w-[80px]">Gerekli:</span>
                   <span className="font-medium text-gray-900">
                     {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
                   </span>
@@ -343,23 +343,23 @@ export default function MaterialCard({
             </div>
             
             {item.specifications && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-3xl">
-                <span className="text-sm text-gray-600">{item.specifications}</span>
+              <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-gray-50 rounded-2xl sm:rounded-3xl">
+                <span className="text-xs sm:text-sm text-gray-600 break-words">{item.specifications}</span>
               </div>
             )}
           </div>
           
           {/* Düzenle ve Kaldır Butonları */}
-          <div className="flex flex-col items-end gap-2">
+          <div className="flex flex-row sm:flex-col items-start sm:items-end gap-1 sm:gap-2 w-full sm:w-auto">
             {!shouldHideEditButtons && (
-              <div className="flex gap-1">
+              <div className="flex gap-1 w-full sm:w-auto">
                 {/* Düzenle Butonu - sadece düzenleme yetkisi varsa göster */}
                 {canEditRequest && (
                   <Button
                     size="sm"
                     variant="outline"
                     onClick={() => router.push(`/dashboard/requests/${request.id}/edit`)}
-                    className="h-8 px-3 bg-white/80 rounded-2xl hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1"
+                    className="h-7 sm:h-8 px-2 sm:px-3 bg-white/80 rounded-xl sm:rounded-2xl hover:bg-white border-gray-200 hover:border-gray-300 flex items-center gap-1 flex-1 sm:flex-none"
                     title="Talebi Düzenle"
                   >
                     <Edit className="h-3 w-3 text-gray-600" />
@@ -373,7 +373,7 @@ export default function MaterialCard({
                     size="sm"
                     variant="outline"
                     onClick={() => onRemoveMaterial(item.id)}
-                    className="h-8 px-3 bg-red-50 rounded-2xl hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1"
+                    className="h-7 sm:h-8 px-2 sm:px-3 bg-red-50 rounded-xl sm:rounded-2xl hover:bg-red-100 border-red-200 hover:border-red-300 flex items-center gap-1 flex-1 sm:flex-none"
                     title="Malzemeyi Kaldır"
                   >
                     <Trash2 className="h-3 w-3 text-red-600" />
@@ -462,7 +462,7 @@ export default function MaterialCard({
 
       {/* Tedarikçi Bilgileri - Temiz ve düzenli tasarım */}
       {shouldShowTrackingSystem() && (
-        <div className="p-4 border-b border-gray-100">
+        <div className="p-3 sm:p-4 border-b border-gray-100">
           {(() => {
             const itemOrders = materialOrders.filter((order: any) => 
               order.material_item_id === item.id
@@ -470,8 +470,8 @@ export default function MaterialCard({
             
             if (itemOrders.length === 0) {
               return (
-                <div className="text-center py-4">
-                  <div className="text-sm text-gray-500">Bu malzeme için henüz sipariş verilmemiş</div>
+                <div className="text-center py-3 sm:py-4">
+                  <div className="text-xs sm:text-sm text-gray-500">Bu malzeme için henüz sipariş verilmemiş</div>
                 </div>
               )
             }
@@ -532,34 +532,28 @@ export default function MaterialCard({
             const suppliers = Object.values(supplierGroups)
             
             return (
-              <div className="space-y-3">
+              <div className="space-y-2 sm:space-y-3">
                 <div className="flex items-center gap-2">
-                  <h6 className="text-sm font-medium text-gray-700">Sipariş Bilgileri</h6>
+                  <h6 className="text-xs sm:text-sm font-medium text-gray-700">Sipariş Bilgileri</h6>
                 </div>
-                <div className={`grid gap-3 ${
-                  suppliers.length === 1 
-                    ? 'grid-cols-1' 
-                    : suppliers.length === 2 
-                      ? 'grid-cols-1 lg:grid-cols-2' 
-                      : 'grid-cols-1 lg:grid-cols-2 xl:grid-cols-3'
-                }`}>
+                <div className="grid gap-2 sm:gap-3 grid-cols-1">
                   {suppliers.map((supplier: any, index: number) => (
-                    <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-4 border">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-3 flex-1">
-                          <div className="w-10 h-10 bg-blue-100 rounded-3xl flex items-center justify-center">
-                            <svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-3 sm:p-4 border">
+                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-2">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 w-full">
+                          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-2xl sm:rounded-3xl flex items-center justify-center flex-shrink-0">
+                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
                             </svg>
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-gray-900 truncate">{supplier.name}</h4>
+                              <h4 className="font-semibold text-gray-900 text-sm sm:text-base truncate">{supplier.name}</h4>
                             </div>
-                            <p className="text-sm text-gray-600">Tedarikçi</p>
+                            <p className="text-xs sm:text-sm text-gray-600">Tedarikçi</p>
                           </div>
                         </div>
-                        <div className="ml-4 shrink-0 flex items-center gap-2">
+                        <div className="w-full sm:w-auto sm:ml-4 shrink-0 flex items-center gap-2">
                           {(() => {
                             // Tedarikçinin tüm siparişlerinin statuslarını kontrol et
                             const orderStatuses = supplier.orders.map((order: any) => {
@@ -613,7 +607,7 @@ export default function MaterialCard({
                             
                             if (orderStatuses.every(s => s === 'teslim alındı')) {
                               return (
-                                <Badge className="bg-green-100 text-green-700">
+                                <Badge className="bg-green-100 text-green-700 text-xs px-2 py-1">
                                   Tamamı Teslim Alındı
                                 </Badge>
                               )
@@ -621,14 +615,14 @@ export default function MaterialCard({
                             
                             if (orderStatuses.some(s => s === 'kısmen teslim alındı')) {
                               return (
-                                <Badge className="bg-orange-100 text-orange-700">
+                                <Badge className="bg-orange-100 text-orange-700 text-xs px-2 py-1">
                                   Kısmen Teslim Alındı
                                 </Badge>
                               )
                             }
                             
                             return (
-                              <Badge className="bg-blue-100 text-blue-700">
+                              <Badge className="bg-blue-100 text-blue-700 text-xs px-2 py-1">
                                 Sipariş Verildi
                               </Badge>
                             )
@@ -637,37 +631,37 @@ export default function MaterialCard({
                       </div>
 
                       {/* Miktar Bilgileri - ReturnedMaterialsCard tarzında */}
-                      <div className="grid grid-cols-2 gap-3 mb-3">
-                        <div className="bg-white rounded-3xl p-3 border border-gray-200">
+                      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
+                        <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
                           <div className="text-center">
-                            <span className="text-xs font-medium text-gray-600 block mb-1">Sipariş Miktarı:</span>
-                            <span className="text-sm font-bold text-blue-600">
+                            <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Sipariş Miktarı:</span>
+                            <span className="text-xs sm:text-sm font-bold text-blue-600">
                               {supplier.totalQuantity.toFixed(2)} {item.unit}
                             </span>
                           </div>
                         </div>
-                        <div className="bg-white rounded-3xl p-3 border border-gray-200">
+                        <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
                           <div className="text-center">
-                            <span className="text-xs font-medium text-gray-600 block mb-1">Teslim Alınan:</span>
-                            <span className="text-sm font-bold text-green-600">
+                            <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Teslim Alınan:</span>
+                            <span className="text-xs sm:text-sm font-bold text-green-600">
                               {supplier.totalDelivered.toFixed(2)} {item.unit}
                             </span>
                           </div>
                         </div>
                         {supplier.totalReturned > 0 && (
                           <>
-                            <div className="bg-white rounded-3xl p-3 border border-gray-200">
+                            <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
                               <div className="text-center">
-                                <span className="text-xs font-medium text-gray-600 block mb-1">İade Edilen:</span>
-                                <span className="text-sm font-bold text-orange-600">
+                                <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">İade Edilen:</span>
+                                <span className="text-xs sm:text-sm font-bold text-orange-600">
                                   {supplier.totalReturned.toFixed(2)} {item.unit}
                                 </span>
                               </div>
                             </div>
-                            <div className="bg-white rounded-3xl p-3 border border-gray-200">
+                            <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
                               <div className="text-center">
-                                <span className="text-xs font-medium text-gray-600 block mb-1">Kalan:</span>
-                                <span className="text-sm font-bold text-blue-600">
+                                <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Kalan:</span>
+                                <span className="text-xs sm:text-sm font-bold text-blue-600">
                                   {supplier.remainingQuantity.toFixed(2)} {item.unit}
                                 </span>
                               </div>
@@ -677,16 +671,16 @@ export default function MaterialCard({
                       </div>
                       
                       {/* İletişim Bilgileri */}
-                      <div className="space-y-2 text-sm">
+                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
                         {supplier.supplier?.contact_person && (
                           <div className="flex items-center gap-2">
-                            <span className="text-gray-500 min-w-[60px]">İletişim:</span>
-                            <span className="text-gray-900 truncate">{supplier.supplier.contact_person}</span>
+                            <span className="text-gray-500 min-w-[50px] sm:min-w-[60px]">İletişim:</span>
+                            <span className="text-gray-900 truncate break-words">{supplier.supplier.contact_person}</span>
                           </div>
                         )}
                         {supplier.supplier?.phone && (
                           <div className="flex items-center gap-2">
-                            <span className="text-gray-500 min-w-[60px]">Telefon:</span>
+                            <span className="text-gray-500 min-w-[50px] sm:min-w-[60px]">Telefon:</span>
                             <span className="text-gray-900">{supplier.supplier.phone}</span>
                           </div>
                         )}
@@ -694,9 +688,9 @@ export default function MaterialCard({
                       
                       {/* Kademeli Teslim Alma Butonları - Santiye Depo için */}
                       {onOrderDeliveryConfirmation && supplier.orders && supplier.orders.length > 0 && (
-                        <div className="mt-3 pt-3 border-t border-gray-200">
-                          <div className="text-xs text-gray-600 mb-2">Siparişler:</div>
-                          <div className="space-y-2">
+                        <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
+                          <div className="text-[10px] sm:text-xs text-gray-600 mb-1.5 sm:mb-2">Siparişler:</div>
+                          <div className="space-y-1.5 sm:space-y-2">
                             {supplier.orders.map((order: any) => {
                               const hasDeliveries = order.total_delivered > 0
                               const returnedQuantity = order.returned_quantity || 0
@@ -710,22 +704,22 @@ export default function MaterialCard({
                               const orderStatus = order.status || 'pending'
                               
                               return (
-                                <div key={order.id} className={`bg-white rounded-3xl p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
-                                  <div className="flex items-start justify-between">
-                                    <div className="flex-1 space-y-2">
+                                <div key={order.id} className={`bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
+                                  <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
+                                    <div className="flex-1 space-y-1.5 sm:space-y-2 w-full">
                                       {/* Sipariş Başlığı ve Badge */}
                                       <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium text-gray-900">
+                                        <span className="text-xs sm:text-sm font-medium text-gray-900">
                                           {order.quantity} {item.unit}
                                         </span>
-                                        <span className="text-xs text-gray-500">
+                                        <span className="text-[10px] sm:text-xs text-gray-500">
                                           {order.is_return_reorder ? 'yeniden sipariş' : 'sipariş'}
                                         </span>
                                        
                                       </div>
 
                                       {/* Miktar Bilgileri */}
-                                      <div className="space-y-1 text-xs">
+                                      <div className="space-y-0.5 sm:space-y-1 text-[10px] sm:text-xs">
                                         {hasDeliveries && (
                                           <div className="flex gap-1">
                                             <span className="text-gray-500">Teslim:</span>
@@ -746,9 +740,9 @@ export default function MaterialCard({
 
                                       {/* Yeniden Sipariş Badge'i */}
                                       {order.is_return_reorder && (
-                                        <div className="mt-2">
-                                          <Badge className="bg-purple-100 text-purple-700 text-xs px-2 py-1">
-                                            <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <div className="mt-1 sm:mt-2">
+                                          <Badge className="bg-purple-100 text-purple-700 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1">
+                                            <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
                                             </svg>
                                             İade nedeniyle yeniden sipariş
@@ -756,14 +750,14 @@ export default function MaterialCard({
                                         </div>
                                       )}
                                     </div>
-                                    <div className="flex gap-2 ml-3">
+                                    <div className="flex gap-1.5 sm:gap-2 w-full sm:w-auto sm:ml-3">
                                       {canDeliver && (
                                         <Button
                                           size="sm"
                                           onClick={() => onOrderDeliveryConfirmation(order, item)}
-                                          className="h-8 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-3xl shadow-sm"
+                                          className="h-7 sm:h-8 px-2 sm:px-3 bg-green-600 hover:bg-green-700 text-white text-[10px] sm:text-xs font-medium rounded-2xl sm:rounded-3xl shadow-sm flex-1 sm:flex-none"
                                         >
-                                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                                           </svg>
                                           Teslim Al
@@ -773,16 +767,16 @@ export default function MaterialCard({
                                         <Button
                                           size="sm"
                                           onClick={() => onOrderReturn(order, item)}
-                                          className="h-8 px-3 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-3xl shadow-sm"
+                                          className="h-7 sm:h-8 px-2 sm:px-3 bg-red-600 hover:bg-red-700 text-white text-[10px] sm:text-xs font-medium rounded-2xl sm:rounded-3xl shadow-sm flex-1 sm:flex-none"
                                           title="Malzeme İadesi - Kalan miktardan iade edilebilir"
                                         >
-                                          <RotateCcw className="w-3 h-3 mr-1" />
+                                          <RotateCcw className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
                                           İade
                                         </Button>
                                       )}
                                       {isCompleted && (
-                                        <div className="text-xs text-green-600 font-medium flex items-center ml-2">
-                                          <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <div className="text-[10px] sm:text-xs text-green-600 font-medium flex items-center">
+                                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
                                           </svg>
                                           Tamamlandı
@@ -855,13 +849,13 @@ export default function MaterialCard({
 
       {/* Detaylı takip sistemi - sade renk tasarımı */}
       {shouldShowTrackingSystem() && (
-        <div className="p-4 border-b border-gray-100">
-          <h6 className="text-sm font-medium text-gray-700 mb-4">Durum Takibi</h6>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="p-3 sm:p-4 border-b border-gray-100">
+          <h6 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-4">Durum Takibi</h6>
+          <div className="grid grid-cols-2 gap-2 sm:gap-4">
             {/* İlk Talep */}
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">İlk Talep</div>
-              <div className="text-lg font-bold text-gray-900">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">İlk Talep</div>
+              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">
                 {(() => {
                   const originalRequest = item.original_quantity ?? item.quantity
                   return `${originalRequest.toFixed(2)} ${item.unit}`
@@ -870,9 +864,9 @@ export default function MaterialCard({
             </div>
             
             {/* Depodan Gönderilen */}
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">Depodan Gönderilen</div>
-              <div className="text-lg font-bold text-green-600">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Depodan Gönderilen</div>
+              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">
                 {(() => {
                   const itemShipments = shipmentData[item.id]
                   const depoShipped = itemShipments?.total_shipped || 0
@@ -884,19 +878,19 @@ export default function MaterialCard({
                 const shipmentCount = itemShipments?.shipments?.length || 0
                 if (shipmentCount > 0) {
                   return (
-                    <div className="text-xs text-gray-600 mt-1">
+                    <div className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 truncate">
                       {shipmentCount} gönderim
                     </div>
                   )
                 }
-                return <div className="text-xs text-gray-500 mt-1">-</div>
+                return <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">-</div>
               })()}
             </div>
             
             {/* Sipariş Verildi */}
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">Sipariş Verildi</div>
-              <div className="text-lg font-bold text-green-600">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Sipariş Verildi</div>
+              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">
                 {(() => {
                   const totalOrdered = materialOrders
                     .filter((order: any) => order.material_item_id === item.id)
@@ -915,32 +909,32 @@ export default function MaterialCard({
                 if (orderCount > 0) {
                   if (deliveredCount === orderCount) {
                     return (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 truncate">
                         Tamamı teslim alındı
                       </div>
                     )
                   } else if (deliveredCount > 0) {
                     return (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 truncate">
                         {deliveredCount}/{orderCount} teslim alındı
                       </div>
                     )
                   } else {
                     return (
-                      <div className="text-xs text-gray-600 mt-1">
+                      <div className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 truncate">
                         {orderCount} sipariş bekleniyor
                       </div>
                     )
                   }
                 }
-                return <div className="text-xs text-gray-500 mt-1">Sipariş yok</div>
+                return <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Sipariş yok</div>
               })()}
             </div>
             
             {/* Teslimat Tarihi */}
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">Teslimat</div>
-              <div className="text-lg font-bold text-gray-900">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Teslimat</div>
+              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">
                 {(() => {
                   const itemOrders = materialOrders.filter((order: any) => 
                     order.material_item_id === item.id
@@ -1023,25 +1017,25 @@ export default function MaterialCard({
 
       {/* Miktar Bilgileri - Sadece normal depo işlemlerinde göster */}
       {!shouldShowTrackingSystem() && (
-        <div className="p-4 border-b border-gray-100">
-          <h6 className="text-sm font-medium text-gray-700 mb-4">Miktar Durumu</h6>
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">İlk Talep</div>
-              <div className="text-lg font-bold text-gray-900">{originalQuantity} {item.unit}</div>
+        <div className="p-3 sm:p-4 border-b border-gray-100">
+          <h6 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-4">Miktar Durumu</h6>
+          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-4">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">İlk Talep</div>
+              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">{originalQuantity} {item.unit}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">Gönderilen</div>
-              <div className="text-lg font-bold text-green-600">{totalShipped.toFixed(2)} {item.unit}</div>
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Gönderilen</div>
+              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">{totalShipped.toFixed(2)} {item.unit}</div>
             </div>
             
-            <div className="bg-gray-50 rounded-3xl p-3 border border-gray-200">
-              <div className="text-xs font-medium text-gray-600 mb-1">Kalan</div>
-              <div className="text-lg font-bold text-red-600">
+            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
+              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Kalan</div>
+              <div className="text-sm sm:text-lg font-bold text-red-600 truncate">
                 {Math.max(0, remainingQuantity).toFixed(2)} {item.unit}
               </div>
-              <div className="text-xs text-gray-500 mt-1">
+              <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">
                 {remainingQuantity <= 0 ? 'Tamamlandı' : 'Bekliyor'}
               </div>
             </div>
@@ -1112,13 +1106,13 @@ export default function MaterialCard({
 
       {/* Gönderim İşlemleri */}
       {!shouldShowTrackingSystem() && (
-        <div className="p-4">
+        <div className="p-3 sm:p-4">
           {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) && !isReturnReorderStatus() ? (
-            <div className="space-y-4">
-              <h6 className="text-sm font-medium text-gray-700">Gönderim İşlemleri</h6>
-              <div className="flex flex-col sm:flex-row gap-3">
+            <div className="space-y-3 sm:space-y-4">
+              <h6 className="text-xs sm:text-sm font-medium text-gray-700">Gönderim İşlemleri</h6>
+              <div className="flex flex-col gap-2 sm:gap-3">
                 <div className="flex-1">
-                  <label className="block text-xs font-medium text-gray-600 mb-2">
+                  <label className="block text-[10px] sm:text-xs font-medium text-gray-600 mb-1.5 sm:mb-2">
                     Gönderilecek Miktar (Max: {item.quantity} {item.unit})
                   </label>
                   <div className="flex gap-2">
@@ -1134,14 +1128,14 @@ export default function MaterialCard({
                       }))}
                       onWheel={(e) => e.preventDefault()}
                       placeholder="Miktar girin"
-                      className="h-10 rounded-3xl bg-white"
+                      className="h-9 sm:h-10 rounded-2xl sm:rounded-3xl bg-white text-sm"
                     />
-                    <div className="flex items-center px-3 bg-gray-50 rounded-3xl border">
-                      <span className="text-sm text-gray-600">{item.unit}</span>
+                    <div className="flex items-center px-2 sm:px-3 bg-gray-50 rounded-2xl sm:rounded-3xl border">
+                      <span className="text-xs sm:text-sm text-gray-600">{item.unit}</span>
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-2 sm:items-end">
+                <div className="flex flex-col sm:flex-row gap-2">
                   <Button
                     onClick={async () => {
                       const quantity = sendQuantities[item.id]
@@ -1169,12 +1163,12 @@ export default function MaterialCard({
                       }
                     }}
                     disabled={!sendQuantities[item.id]?.trim() || parseFloat(sendQuantities[item.id] || '0') <= 0 || sendingItem}
-                    className="h-10 px-4 bg-green-600 rounded-3xl hover:bg-green-700 text-white"
+                    className="h-9 sm:h-10 px-3 sm:px-4 bg-green-600 rounded-2xl sm:rounded-3xl hover:bg-green-700 text-white text-xs sm:text-sm flex-1 sm:flex-none"
                   >
                     {sendingItem ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-white mr-1.5 sm:mr-2"></div>
                     ) : (
-                      <Package className="h-4 w-4 mr-2" />
+                      <Package className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                     )}
                     Gönder
                   </Button>
@@ -1182,12 +1176,12 @@ export default function MaterialCard({
                     onClick={() => handleSingleItemDepotNotAvailable(item)}
                     variant="outline"
                     disabled={processingDepotStatus[item.id]}
-                    className="h-10 px-4 border-red-200 rounded-3xl text-red-700 hover:bg-red-50"
+                    className="h-9 sm:h-10 px-3 sm:px-4 border-red-200 rounded-2xl sm:rounded-3xl text-red-700 hover:bg-red-50 text-xs sm:text-sm flex-1 sm:flex-none"
                   >
                     {processingDepotStatus[item.id] ? (
-                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
+                      <div className="animate-spin rounded-full h-3 w-3 sm:h-4 sm:w-4 border-b-2 border-red-700 mr-1.5 sm:mr-2"></div>
                     ) : (
-                      <X className="h-4 w-4 mr-2" />
+                      <X className="h-3 w-3 sm:h-4 sm:w-4 mr-1.5 sm:mr-2" />
                     )}
                     {processingDepotStatus[item.id] ? 'İşleniyor...' : 'Depoda Yok'}
                   </Button>

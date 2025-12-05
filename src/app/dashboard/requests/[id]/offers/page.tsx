@@ -237,21 +237,39 @@ export default function OffersPage() {
 
           {/* Mobile Layout */}
           <div className="sm:hidden">
-            <div className="flex items-center justify-between py-4">
-              <div className="flex items-center gap-3">
+            <div className="flex flex-col gap-2 py-3">
+              <div className="flex items-center justify-between">
                 <Button
                   variant="ghost"
                   size="sm"
                   onClick={() => router.push('/dashboard/requests')}
-                  className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-2 h-8"
+                  className="flex items-center gap-1 hover:bg-gray-100 rounded-lg px-2 h-7"
                 >
-                  <ArrowLeft className="h-4 w-4" />
-                  <span className="text-sm font-medium">Geri</span>
+                  <ArrowLeft className="h-3 w-3" />
+                  <span className="text-xs font-medium">Geri</span>
                 </Button>
-                <div>
-                  
-                  <p className="text-xs text-gray-500">{request.request_number}</p>
-                </div>
+                <p className="text-xs text-gray-500">{request.request_number}</p>
+              </div>
+              {/* Mobile Status Badges */}
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge className={`border ${getUrgencyColor(request.urgency_level)} text-[10px] px-1.5 py-0.5`}>
+                  {request.urgency_level === 'critical' ? 'Kritik' : 
+                   request.urgency_level === 'high' ? 'Yüksek' :
+                   request.urgency_level === 'normal' ? 'Normal' : 'Düşük'}
+                </Badge>
+                <Badge className={`border ${getStatusColor(request.status)} text-[10px] px-1.5 py-0.5 truncate max-w-[150px]`}>
+                  {request.status === 'pending' ? 'Beklemede' :
+                   request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
+                   request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
+                   request.status === 'sipariş verildi' ? 'Sipariş Verildi' :
+                   request.status === 'gönderildi' ? 'Gönderildi' :
+                   request.status === 'kısmen gönderildi' ? 'Kısmen Gönderildi' :
+                   request.status === 'depoda mevcut değil' ? 'Depoda Mevcut Değil' :
+                   request.status === 'eksik onaylandı' ? 'Eksik Onaylandı' :
+                   request.status === 'alternatif onaylandı' ? 'Alternatif Onaylandı' :
+                   request.status === 'satın almaya gönderildi' ? 'Satın Almaya Gönderildi' :
+                   request.status === 'eksik malzemeler talep edildi' ? 'Eksik Malzemeler Talep Edildi' : request.status}
+                </Badge>
               </div>
             </div>
           </div>
@@ -262,15 +280,15 @@ export default function OffersPage() {
         <div className="space-y-4 sm:space-y-8">
           
           {/* Lokasyon Bilgisi - Sade */}
-          <div className="mb-4 sm:mb-8">
+          <div className="mb-3 sm:mb-8">
             {request.site_name ? (
-              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.site_name}</h2>
+              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.site_name}</h2>
             ) : request.sites ? (
-              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.sites.name}</h2>
+              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.sites.name}</h2>
             ) : request.construction_sites ? (
-              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.construction_sites.name}</h2>
+              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.construction_sites.name}</h2>
             ) : (
-              <h2 className="text-xl sm:text-3xl font-semibold text-gray-900">{request.department}</h2>
+              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.department}</h2>
             )}
           </div>
 
@@ -297,62 +315,62 @@ export default function OffersPage() {
           )}
 
           {/* Talep Detayları - Tek Kolon */}
-          <div className="mb-4 sm:mb-8">
+          <div className="mb-3 sm:mb-8">
             <div className="bg-white border-0 shadow-sm rounded-3xl">
-              <div className="p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-6">Talep Detayları</h3>
+              <div className="p-3 sm:p-6">
+                <h3 className="text-base sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-6">Talep Detayları</h3>
               </div>
-              <div className="px-6 pb-6 space-y-6">
+              <div className="px-3 sm:px-6 pb-3 sm:pb-6 space-y-3 sm:space-y-6">
                 <div>
-                  <p className="text-sm font-medium text-gray-500 mb-2">Başlık</p>
-                  <p className="text-lg font-medium text-gray-900">{request.title}</p>
+                  <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Başlık</p>
+                  <p className="text-sm sm:text-lg font-medium text-gray-900 break-words">{request.title}</p>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-2">Departman</p>
-                    <p className="text-base text-gray-900">{request.department}</p>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Departman</p>
+                    <p className="text-xs sm:text-base text-gray-900 break-words">{request.department}</p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-2">Talep Eden</p>
-                    <p className="text-base text-gray-900">
+                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Talep Eden</p>
+                    <p className="text-xs sm:text-base text-gray-900 break-words">
                       {request.profiles?.full_name || 'Kullanıcı bilgisi bulunamadı'}
                     </p>
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-gray-500 mb-2">Talep Tarihi</p>
-                    <p className="text-base text-gray-900">{new Date(request.created_at).toLocaleDateString('tr-TR')}</p>
+                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Talep Tarihi</p>
+                    <p className="text-xs sm:text-base text-gray-900">{new Date(request.created_at).toLocaleDateString('tr-TR')}</p>
                   </div>
                   {request.delivery_date && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500 mb-2">Gerekli Tarih</p>
-                      <p className="text-base text-gray-900">{new Date(request.delivery_date).toLocaleDateString('tr-TR')}</p>
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Gerekli Tarih</p>
+                      <p className="text-xs sm:text-base text-gray-900">{new Date(request.delivery_date).toLocaleDateString('tr-TR')}</p>
                     </div>
                   )}
                   {/* Kategori Bilgileri */}
                   {request.category_name && (
-                    <div className="md:col-span-2">
-                      <p className="text-sm font-medium text-gray-500 mb-2">Malzeme Kategorisi</p>
-                      <p className="text-base text-gray-900">{request.category_name}</p>
+                    <div className="sm:col-span-2">
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Malzeme Kategorisi</p>
+                      <p className="text-xs sm:text-base text-gray-900 break-words">{request.category_name}</p>
                       {request.subcategory_name && (
-                        <p className="text-sm text-gray-600 mt-1">→ {request.subcategory_name}</p>
+                        <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">→ {request.subcategory_name}</p>
                       )}
                     </div>
                   )}
                   {/* Malzeme Sınıf ve Grup Bilgileri */}
                   {(request.material_class || request.material_group) && (
-                    <div className="md:col-span-2 lg:col-span-3">
-                      <p className="text-sm font-medium text-gray-500 mb-2">Malzeme Sınıflandırması</p>
-                      <div className="flex flex-wrap items-center gap-3">
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Malzeme Sınıflandırması</p>
+                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                       {request.material_class && (
-                          <div className="flex items-center gap-2">
-                          <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded-md font-medium">Sınıf</span>
-                          <p className="text-base text-gray-900">{request.material_class}</p>
+                          <div className="flex items-center gap-1.5 sm:gap-2">
+                          <span className="text-[10px] sm:text-xs bg-gray-100 text-gray-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md font-medium">Sınıf</span>
+                          <p className="text-xs sm:text-base text-gray-900 break-words">{request.material_class}</p>
                         </div>
                       )}
                       {request.material_group && (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded-md font-medium">Grup</span>
-                          <p className="text-base text-gray-900">{request.material_group}</p>
+                        <div className="flex items-center gap-1.5 sm:gap-2">
+                          <span className="text-[10px] sm:text-xs bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md font-medium">Grup</span>
+                          <p className="text-xs sm:text-base text-gray-900 break-words">{request.material_group}</p>
                         </div>
                       )}
                       </div>
@@ -361,8 +379,8 @@ export default function OffersPage() {
                 </div>
                   {request.description && (
                     <div>
-                      <p className="text-sm font-medium text-gray-500 mb-2">Açıklama</p>
-                    <p className="text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-4">{request.description}</p>
+                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Açıklama</p>
+                    <p className="text-xs sm:text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 sm:p-4 break-words">{request.description}</p>
                     </div>
                   )}
               </div>

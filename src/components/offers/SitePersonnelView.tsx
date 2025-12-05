@@ -140,13 +140,13 @@ export default function SitePersonnelView({
   return (
     <>
       <Card className="border-none bg-white rounded-3xl shadow-none">
-        <CardHeader className="pb-8">
-          <div className="flex items-center justify-between">
+        <CardHeader className="pb-4 sm:pb-8">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
-              <CardTitle className="text-2xl font-semibold text-gray-900 tracking-tight">
+              <CardTitle className="text-lg sm:text-2xl font-semibold text-gray-900 tracking-tight">
                 Malzeme Takip
               </CardTitle>
-              <p className="text-sm text-gray-500 mt-2 font-normal">
+              <p className="text-xs sm:text-sm text-gray-500 mt-1 sm:mt-2 font-normal">
                 Talep, gönderim ve teslimat durumu
               </p>
             </div>
@@ -157,74 +157,76 @@ export default function SitePersonnelView({
                 onClick={handleEditRequest}
                 variant="outline"
                 size="sm"
-                className="h-9 px-4 rounded-full border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-sm font-medium"
+                className="h-8 sm:h-9 px-3 sm:px-4 rounded-full border-gray-300 text-gray-700 hover:bg-gray-50 hover:border-gray-400 transition-all duration-200 text-xs sm:text-sm font-medium"
               >
                 Düzenle
               </Button>
             )}
           </div>
         </CardHeader>
-        <CardContent>
-          <div className="space-y-6">
+        <CardContent className="px-3 sm:px-6">
+          <div className="space-y-4 sm:space-y-6">
             {request.purchase_request_items.map((item, index) => {
               const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
               
               return (
-                <div key={item.id} className="border border-gray-200/80 rounded-2xl p-6 bg-white hover:shadow-sm transition-shadow duration-300">
+                <div key={item.id} className="border border-gray-200/80 rounded-2xl p-3 sm:p-6 bg-white hover:shadow-sm transition-shadow duration-300">
                   {/* Malzeme Header */}
-                  <div className="flex items-start justify-between mb-6 pb-6 border-b border-gray-100">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-3">
+                  <div className="flex flex-col sm:flex-row items-start justify-between mb-4 sm:mb-6 pb-4 sm:pb-6 border-b border-gray-100 gap-3">
+                    <div className="flex-1 w-full">
+                      <div className="flex items-center gap-2 sm:gap-3 mb-2 sm:mb-3">
                         {request.purchase_request_items.length > 1 && (
-                          <div className="w-7 h-7 bg-black text-white rounded-full flex items-center justify-center text-xs font-semibold">
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 bg-black text-white rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
                             {index + 1}
                           </div>
                         )}
-                        <h4 className="text-xl font-semibold text-gray-900 tracking-tight">{item.item_name}</h4>
+                        <h4 className="text-base sm:text-xl font-semibold text-gray-900 tracking-tight break-words">{item.item_name}</h4>
                       </div>
                       
-                      <div className="space-y-2 ml-10">
+                      <div className="space-y-1.5 sm:space-y-2 ml-0 sm:ml-10">
                         {item.brand && (
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500 w-32">Marka</span>
-                            <span className="text-sm font-medium text-gray-900">{item.brand}</span>
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Marka</span>
+                            <span className="text-xs sm:text-sm font-medium text-gray-900 break-words">{item.brand}</span>
                           </div>
                         )}
                         
                         {item.purpose && (
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500 w-32">Kullanım Amacı</span>
-                            <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Kullanım Amacı</span>
+                            <span className="text-xs sm:text-sm font-medium text-gray-900 break-words">{item.purpose}</span>
                           </div>
                         )}
                         
                         {item.delivery_date && (
-                          <div className="flex items-center gap-3">
-                            <span className="text-sm text-gray-500 w-32">Gerekli Tarih</span>
-                            <span className="text-sm font-medium text-gray-900">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Gerekli Tarih</span>
+                            <span className="text-xs sm:text-sm font-medium text-gray-900">
                               {new Date(item.delivery_date).toLocaleDateString('tr-TR')}
                             </span>
                           </div>
                         )}
                         
-                        <div className="flex items-center gap-3">
-                          <span className="text-sm text-gray-500 w-32">Miktar</span>
-                          <span className="text-sm font-semibold text-gray-900">{item.quantity} {item.unit}</span>
-                          {item.specifications && (
-                            <span className="text-sm text-gray-500">• {item.specifications}</span>
-                          )}
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Miktar</span>
+                          <span className="text-xs sm:text-sm font-semibold text-gray-900">{item.quantity} {item.unit}</span>
                         </div>
+                        {item.specifications && (
+                          <div className="text-xs sm:text-sm text-gray-500 mt-2 p-2 bg-gray-50 rounded-lg break-words">
+                            {item.specifications}
+                          </div>
+                        )}
                       </div>
                     </div>
                     
                     {/* Teslimat Durumu */}
-                    <div className="text-right ml-6">
+                    <div className="text-left sm:text-right w-full sm:w-auto sm:ml-6">
                       {(() => {
                         const deliveryStatus = getMaterialDeliveryStatus(item)
                         
                         if (!deliveryStatus.hasOrders) {
                           return (
-                            <div className="text-xs font-medium text-gray-400 bg-gray-50 px-3 py-1.5 rounded-full">
+                            <div className="text-xs font-medium text-gray-400 bg-gray-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full inline-block">
                               Sipariş Yok
                             </div>
                           )
@@ -232,7 +234,7 @@ export default function SitePersonnelView({
                         
                         if (deliveryStatus.allDelivered) {
                           return (
-                            <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded-full">
+                            <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full inline-block">
                               Teslim Alındı
                             </div>
                           )
@@ -240,14 +242,14 @@ export default function SitePersonnelView({
                         
                         if (deliveryStatus.someDelivered) {
                           return (
-                            <div className="text-xs font-medium text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full">
+                            <div className="text-xs font-medium text-gray-600 bg-gray-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full inline-block">
                               {deliveryStatus.deliveredCount}/{deliveryStatus.totalCount} Teslim
                             </div>
                           )
                         }
                         
                         return (
-                          <div className="text-xs font-medium text-gray-500 bg-gray-50 px-3 py-1.5 rounded-full">
+                          <div className="text-xs font-medium text-gray-500 bg-gray-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full inline-block">
                             Beklemede
                           </div>
                         )
@@ -256,30 +258,30 @@ export default function SitePersonnelView({
                   </div>
 
                   {/* Gönderim Durumu - Apple Style Grid */}
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
                     {/* İlk Talep */}
-                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
-                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">İlk Talep</div>
-                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                    <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">İlk Talep</div>
+                      <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const originalRequest = item.original_quantity ?? item.quantity
                           return `${originalRequest.toFixed(2)}`
                         })()}
                       </div>
-                      <div className="text-sm text-gray-500 mt-1 font-medium">{item.unit}</div>
+                      <div className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 font-medium">{item.unit}</div>
                     </div>
                     
                     {/* Depodan Gönderilen */}
-                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
-                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Depodan Gönderilen</div>
-                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                    <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Depodan Gönderilen</div>
+                      <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const itemShipments = shipmentData[item.id]
                           const depoShipped = itemShipments?.total_shipped || 0
                           return `${depoShipped.toFixed(2)}`
                         })()}
                       </div>
-                      <div className="text-sm text-gray-500 mt-1 font-medium">
+                      <div className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 font-medium">
                         {(() => {
                           const itemShipments = shipmentData[item.id]
                           const shipmentCount = itemShipments?.shipments?.length || 0
@@ -292,9 +294,9 @@ export default function SitePersonnelView({
                     </div>
                     
                     {/* Sipariş Verildi */}
-                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
-                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Sipariş Verildi</div>
-                      <div className="text-2xl font-semibold text-gray-900 tracking-tight">
+                    <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Sipariş Verildi</div>
+                      <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const totalOrdered = materialOrders
                             .filter((order: any) => order.material_item_id === item.id)
@@ -302,7 +304,7 @@ export default function SitePersonnelView({
                           return `${totalOrdered.toFixed(2)}`
                         })()}
                       </div>
-                      <div className="text-sm text-gray-500 mt-1 font-medium">
+                      <div className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 font-medium truncate">
                         {(() => {
                           const orderCount = materialOrders.filter((order: any) => 
                             order.material_item_id === item.id
@@ -315,7 +317,7 @@ export default function SitePersonnelView({
                             if (deliveredCount === orderCount) {
                               return `${item.unit} · Tamamlandı`
                             } else if (deliveredCount > 0) {
-                              return `${item.unit} · ${deliveredCount}/${orderCount} teslim`
+                              return `${item.unit} · ${deliveredCount}/${orderCount}`
                             } else {
                               return `${item.unit} · ${orderCount} bekliyor`
                             }
@@ -326,9 +328,9 @@ export default function SitePersonnelView({
                     </div>
                     
                     {/* Teslimat Tarihi */}
-                    <div className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
-                      <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">Teslimat Tarihi</div>
-                      <div className="text-base font-semibold text-gray-900 tracking-tight">
+                    <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50 col-span-2 md:col-span-1">
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Teslimat Tarihi</div>
+                      <div className="text-sm sm:text-base font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const itemOrders = materialOrders.filter((order: any) => 
                             order.material_item_id === item.id
@@ -357,7 +359,7 @@ export default function SitePersonnelView({
                           return formattedDate
                         })()}
                       </div>
-                      <div className="text-sm text-gray-500 mt-1 font-medium">
+                      <div className="text-xs sm:text-sm text-gray-500 mt-0.5 sm:mt-1 font-medium">
                         {(() => {
                           const itemOrders = materialOrders.filter((order: any) => 
                             order.material_item_id === item.id
@@ -398,8 +400,8 @@ export default function SitePersonnelView({
 
                   {/* Tedarikçi Bilgileri - Apple Style */}
                   {(request?.status === 'sipariş verildi' || request?.status === 'kısmen teslim alındı' || request?.status === 'teslim alındı') && (
-                    <div className="mt-6 pt-6 border-t border-gray-100">
-                      <div className="text-xs font-medium text-gray-500 mb-4 uppercase tracking-wider">Tedarikçi Bilgileri</div>
+                    <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-100">
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-3 sm:mb-4 uppercase tracking-wider">Tedarikçi Bilgileri</div>
                       {(() => {
                         const itemOrders = materialOrders.filter((order: any) => 
                           order.material_item_id === item.id
@@ -445,38 +447,38 @@ export default function SitePersonnelView({
                         const suppliers = Object.values(supplierGroups)
                         
                         return (
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 gap-3 sm:gap-4">
                             {suppliers.map((supplier: any, index: number) => (
-                              <div key={index} className="bg-gray-50/50 rounded-xl p-5 border border-gray-100/50">
-                                <div className="flex items-start justify-between mb-4">
-                                  <div className="flex-1">
-                                    <div className="font-semibold text-gray-900 text-base tracking-tight mb-3">{supplier.name}</div>
-                                    <div className="space-y-2">
-                                      <div className="flex items-center justify-between text-sm">
+                              <div key={index} className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
+                                <div className="flex flex-col sm:flex-row items-start justify-between mb-3 sm:mb-4 gap-3">
+                                  <div className="flex-1 w-full">
+                                    <div className="font-semibold text-gray-900 text-sm sm:text-base tracking-tight mb-2 sm:mb-3 break-words">{supplier.name}</div>
+                                    <div className="space-y-1.5 sm:space-y-2">
+                                      <div className="flex items-center justify-between text-xs sm:text-sm">
                                         <span className="text-gray-500">Sipariş</span>
                                         <span className="font-semibold text-gray-900">{supplier.totalQuantity.toFixed(2)} {item.unit}</span>
                                       </div>
-                                      <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center justify-between text-xs sm:text-sm">
                                         <span className="text-gray-500">Teslim</span>
                                         <span className="font-semibold text-gray-900">{supplier.totalDelivered.toFixed(2)} {item.unit}</span>
                                       </div>
-                                      <div className="flex items-center justify-between text-sm">
+                                      <div className="flex items-center justify-between text-xs sm:text-sm">
                                         <span className="text-gray-500">Kalan</span>
                                         <span className="font-semibold text-gray-900">{(supplier.totalQuantity - supplier.totalDelivered).toFixed(2)} {item.unit}</span>
                                       </div>
                                     </div>
                                   </div>
-                                  <div className="ml-4 shrink-0">
+                                  <div className="w-full sm:w-auto sm:ml-4 shrink-0">
                                     {supplier.totalDelivered >= supplier.totalQuantity ? (
-                                      <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-3 py-1.5 rounded-full">
+                                      <div className="text-xs font-semibold text-gray-900 bg-gray-100 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full inline-block">
                                         Tamamlandı
                                       </div>
                                     ) : supplier.totalDelivered > 0 ? (
-                                      <div className="text-xs font-medium text-gray-600 bg-gray-50 px-3 py-1.5 rounded-full border border-gray-200">
+                                      <div className="text-xs font-medium text-gray-600 bg-gray-50 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-gray-200 inline-block">
                                         Kısmen
                                       </div>
                                     ) : (
-                                      <div className="text-xs font-medium text-gray-500 bg-white px-3 py-1.5 rounded-full border border-gray-200">
+                                      <div className="text-xs font-medium text-gray-500 bg-white px-2 sm:px-3 py-1 sm:py-1.5 rounded-full border border-gray-200 inline-block">
                                         Bekliyor
                                       </div>
                                     )}
@@ -485,17 +487,17 @@ export default function SitePersonnelView({
                                 
                                 {/* İletişim Bilgileri */}
                                 {(supplier.supplier?.contact_person || supplier.supplier?.phone) && (
-                                  <div className="border-t border-gray-200/50 pt-4 mt-4">
-                                    <div className="text-xs font-medium text-gray-500 mb-3 uppercase tracking-wider">İletişim</div>
-                                    <div className="space-y-2">
+                                  <div className="border-t border-gray-200/50 pt-3 sm:pt-4 mt-3 sm:mt-4">
+                                    <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-2 sm:mb-3 uppercase tracking-wider">İletişim</div>
+                                    <div className="space-y-1.5 sm:space-y-2">
                                       {supplier.supplier?.contact_person && (
-                                        <div className="flex items-center justify-between text-sm">
+                                        <div className="flex items-center justify-between text-xs sm:text-sm">
                                           <span className="text-gray-500">Kişi</span>
-                                          <span className="text-gray-900 font-medium">{supplier.supplier.contact_person}</span>
+                                          <span className="text-gray-900 font-medium break-words text-right">{supplier.supplier.contact_person}</span>
                                         </div>
                                       )}
                                       {supplier.supplier?.phone && (
-                                        <div className="flex items-center justify-between text-sm">
+                                        <div className="flex items-center justify-between text-xs sm:text-sm">
                                           <span className="text-gray-500">Telefon</span>
                                           <span className="text-gray-900 font-medium">{supplier.supplier.phone}</span>
                                         </div>
@@ -516,16 +518,16 @@ export default function SitePersonnelView({
           </div>
           
           {/* Genel Bilgilendirme - Apple Style */}
-          <div className="mt-8 bg-gray-50/50 border border-gray-100/50 rounded-2xl p-6">
-            <div className="flex gap-4">
-              <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
+          <div className="mt-4 sm:mt-8 bg-gray-50/50 border border-gray-100/50 rounded-2xl p-4 sm:p-6">
+            <div className="flex gap-3 sm:gap-4">
+              <div className="w-5 h-5 sm:w-6 sm:h-6 bg-black rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
                 <span className="text-white text-xs font-semibold">i</span>
               </div>
               <div>
-                <h4 className="text-sm font-semibold text-gray-900 tracking-tight">
+                <h4 className="text-xs sm:text-sm font-semibold text-gray-900 tracking-tight">
                   Malzeme Akış Sistemi
                 </h4>
-                <p className="text-sm text-gray-500 mt-2 leading-relaxed">
+                <p className="text-xs sm:text-sm text-gray-500 mt-1 sm:mt-2 leading-relaxed">
                   Her malzemenin 4 aşaması: İlk Talep → Depodan Gönderilen → Sipariş Verildi → Teslimat Tarihi
                 </p>
               </div>

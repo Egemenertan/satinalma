@@ -263,12 +263,11 @@ export default function SantiyeDepoView({
   return (
     <>
     <Card className="bg-white border-0 shadow-sm rounded-3xl">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-           
+      <CardHeader className="p-4 sm:p-6">
+        <div className="flex flex-col sm:flex-row items-start justify-between gap-3">
+          <div className="flex items-start gap-2 sm:gap-3 flex-1">
             <div>
-              <CardTitle className="text-xl font-semibold text-gray-900">
+              <CardTitle className="text-base sm:text-xl font-semibold text-gray-900">
                 {isReturnReorderStatus()
                   ? 'İade Nedeniyle Yeniden Sipariş'
                   : shouldShowTrackingSystem()
@@ -276,7 +275,7 @@ export default function SantiyeDepoView({
                     : 'Depo İşlemleri'
                 }
               </CardTitle>
-              <p className="text-sm text-gray-600 mt-1">
+              <p className="text-xs sm:text-sm text-gray-600 mt-1">
                 {isReturnReorderStatus()
                   ? 'Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır ve sadece görüntüleme yapabilirsiniz.'
                   : shouldShowTrackingSystem()
@@ -291,16 +290,16 @@ export default function SantiyeDepoView({
           {shouldShowPDFExportButton() && (
             <Button
               onClick={() => setShowPDFExportModal(true)}
-              className="bg-gray-900 rounded-xl hover:bg-gray-800 text-white"
+              className="bg-gray-900 rounded-xl hover:bg-gray-800 text-white h-9 px-3 text-sm w-full sm:w-auto"
             >
-              <FileText className="w-4 h-4 mr-2" />
+              <FileText className="w-3 h-3 sm:w-4 sm:h-4 mr-2" />
               Talep PDF'i
             </Button>
           )}
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="space-y-4">
+      <CardContent className="p-3 sm:p-6">
+        <div className="space-y-3 sm:space-y-4">
             {request.purchase_request_items.map((item, index) => {
               // Her malzeme için gönderim durumunu kontrol et
               const itemShipments = shipmentData[item.id]

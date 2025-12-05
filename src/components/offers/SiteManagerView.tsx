@@ -270,14 +270,14 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       
       {/* Site Manager özel onay butonu */}
       {showApprovalButton && (
-        <Card className="bg-white border-0 shadow-sm">
-          <CardContent className="p-8">
+        <Card className="bg-white border-0 shadow-sm rounded-3xl">
+          <CardContent className="p-4 sm:p-8">
             <div className="text-center">
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Package className="w-8 h-8 text-green-600" />
+              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4">
+                <Package className="w-6 h-6 sm:w-8 sm:h-8 text-green-600" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-900 mb-2">Site Manager İşlemleri</h3>
-              <p className="text-gray-600 mb-6">
+              <h3 className="text-base sm:text-xl font-semibold text-gray-900 mb-2">Site Manager İşlemleri</h3>
+              <p className="text-xs sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
                 {request?.status === 'onay_bekliyor'
                   ? 'Bu talep onayınızı bekliyor. Onaylayarak talebi ilerletebilir veya reddedebilirsiniz.'
                   : request?.status === 'kısmen gönderildi' 
@@ -286,15 +286,15 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                 }
               </p>
               
-              <div className="flex flex-col sm:flex-row gap-3 justify-center">
+              <div className="flex flex-col gap-2 sm:gap-3">
                 {/* Edit Butonu */}
                 {canEditRequest() && (
                   <Button
                     onClick={handleEditRequest}
                     variant="outline"
-                    className="flex items-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 px-6 py-3 text-lg"
+                    className="flex items-center justify-center gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-lg rounded-xl w-full"
                   >
-                    <Edit className="h-5 w-5" />
+                    <Edit className="h-4 w-4 sm:h-5 sm:w-5" />
                     Talebi Düzenle
                   </Button>
                 )}
@@ -304,17 +304,17 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                   onClick={handleRejectClick}
                   disabled={siteManagerRejecting}
                   variant="outline"
-                  className="flex items-center gap-2 border-red-300 text-red-700 hover:bg-red-50 px-6 py-3 text-lg"
+                  className="flex items-center justify-center gap-2 border-red-300 text-red-700 hover:bg-red-50 px-4 sm:px-6 py-2 sm:py-3 text-sm sm:text-lg rounded-xl w-full"
                 >
                   {siteManagerRejecting ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-red-600 mr-2"></div>
-                      Reddediliyor...
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-red-600"></div>
+                      <span>Reddediliyor...</span>
                     </>
                   ) : (
                     <>
-                      <X className="h-5 w-5" />
-                      Reddet
+                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <span>Reddet</span>
                     </>
                   )}
                 </Button>
@@ -323,15 +323,15 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                 <Button
                   onClick={handleSiteManagerApproval}
                   disabled={siteManagerApproving}
-                  className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg text-lg font-medium"
+                  className="bg-green-600 hover:bg-green-700 text-white px-4 sm:px-8 py-2 sm:py-3 rounded-xl text-sm sm:text-lg font-medium w-full"
                 >
                   {siteManagerApproving ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                      {request?.status === 'onay_bekliyor' ? 'Onaylanıyor...' : 'Gönderiliyor...'}
+                      <div className="animate-spin rounded-full h-4 w-4 sm:h-5 sm:w-5 border-b-2 border-white mr-2"></div>
+                      <span>{request?.status === 'onay_bekliyor' ? 'Onaylanıyor...' : 'Gönderiliyor...'}</span>
                     </>
                   ) : (
-                    request?.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'
+                    <span>{request?.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'}</span>
                   )}
                 </Button>
               </div>
