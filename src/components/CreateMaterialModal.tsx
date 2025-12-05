@@ -67,6 +67,7 @@ export function CreateMaterialModal({
 
         const { data: { user } } = await supabase.auth.getUser()
         let isGenelMerkezUser = false
+        let userSiteIds: string[] = []
 
         if (user && genelMerkezSite) {
           const { data: profileData } = await supabase
@@ -76,52 +77,48 @@ export function CreateMaterialModal({
             .single()
 
           if (profileData?.site_id && Array.isArray(profileData.site_id)) {
-            isGenelMerkezUser = profileData.site_id.includes(genelMerkezSite.id)
+            userSiteIds = profileData.site_id
+            isGenelMerkezUser = userSiteIds.includes(genelMerkezSite.id)
           }
         }
 
-        let classQuery = supabase
-          .from('all_materials')
-          .select('class')
-          .not('class', 'is', null)
-          .not('class', 'eq', '')
-          .order('class')
-
-        // Genel Merkez Ofisi kullanıcıları için tüm ofis kategorileri
-        if (isGenelMerkezUser) {
-          console.log('🔒 Genel Merkez Ofisi kullanıcısı - Tüm ofis kategorileri gösteriliyor')
-          classQuery = classQuery.in('class', [
-            'Kırtasiye Malzemeleri',
-            'Reklam Ürünleri',
-            'Ofis Ekipmanları',
-            'Promosyon Ürünleri',
-            'Mutfak Malzemeleri',
-            'Hijyen ve Temizlik'
-          ])
+        // YENİ YAPI: material_categories tablosundan kategorileri çek
+        let categoryTypes: string[] = []
+        
+        if (isGenelMerkezUser && userSiteIds.length > 1) {
+          // Kullanıcı hem Genel Merkez hem de başka şantiyelere sahip - her ikisini de göster
+          categoryTypes = ['insaat', 'ofis']
+          console.log('🏗️ Kullanıcı hem Genel Merkez hem de şantiye erişimine sahip - TÜM kategoriler gösteriliyor')
+        } else if (isGenelMerkezUser) {
+          // Sadece Genel Merkez
+          categoryTypes = ['ofis']
+          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Ofis kategorileri gösteriliyor')
         } else {
-          // Diğer şantiye kullanıcıları için ofis kategorilerini HARİÇ tut
-          classQuery = classQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
+          // Sadece şantiye
+          categoryTypes = ['insaat']
+          console.log('🏗️ Şantiye kullanıcısı - İnşaat kategorileri gösteriliyor')
         }
 
-        const { data: classesData, error } = await classQuery
+        const { data: categoriesData, error: categoriesError } = await supabase
+          .from('material_categories')
+          .select('*')
+          .in('category_type', categoryTypes)
+          .eq('is_active', true)
+          .order('display_order')
 
-        if (!error && classesData) {
-          const classNames = classesData
-            .map(item => item.class)
-            .filter(cls => typeof cls === 'string' && cls.trim() !== '')
+        if (!categoriesError && categoriesData) {
+          const categories = categoriesData.map((cat) => ({
+            id: cat.id,
+            name: cat.name,
+            description: cat.description || `${cat.display_name} kategorisindeki malzemeler`,
+            icon: cat.icon,
+            color: cat.color
+          }))
           
-          const uniqueClasses = Array.from(new Set(classNames))
-            .filter(Boolean)
-            .sort()
-            .map((className, index) => ({
-              id: index + 1,
-              name: className,
-              description: `${className} kategorisindeki malzemeler`,
-              icon: 'Package',
-              color: '#6b7280'
-            }))
-          
-          setMaterialClasses(uniqueClasses)
+          setMaterialClasses(categories)
+          console.log('✅ Kategoriler başarıyla yüklendi:', categories.length, 'adet')
+        } else {
+          console.error('❌ Kategoriler yüklenirken hata:', categoriesError)
         }
       } catch (error) {
         console.error('Sınıflar yüklenirken hata:', error)

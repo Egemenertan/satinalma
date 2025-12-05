@@ -359,14 +359,27 @@ export default function CreatePurchaseRequestPage() {
         
         // YENİ YAPI: material_categories tablosundan kategorileri çek
         // Genel Merkez Ofisi için 'ofis', diğer şantiyeler için 'insaat' kategorileri
-        const categoryType = isGenelMerkez ? 'ofis' : 'insaat'
+        // ÖNEMLI: Kullanıcı hem Genel Merkez hem de şantiyeye sahipse, HER İKİ TİPİ DE GÖR
+        let categoryTypes: string[] = []
         
-        console.log(`🏗️ ${isGenelMerkez ? 'Genel Merkez Ofisi' : 'Şantiye'} kullanıcısı - ${categoryType} kategorileri getiriliyor`)
+        if (isGenelMerkez && userSiteIds.length > 1) {
+          // Kullanıcı hem Genel Merkez hem de başka şantiyelere sahip - her ikisini de göster
+          categoryTypes = ['insaat', 'ofis']
+          console.log('🏗️ Kullanıcı hem Genel Merkez hem de şantiye erişimine sahip - TÜM kategoriler gösteriliyor')
+        } else if (isGenelMerkez) {
+          // Sadece Genel Merkez
+          categoryTypes = ['ofis']
+          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Ofis kategorileri gösteriliyor')
+        } else {
+          // Sadece şantiye
+          categoryTypes = ['insaat']
+          console.log('🏗️ Şantiye kullanıcısı - İnşaat kategorileri gösteriliyor')
+        }
         
         const { data: categoriesData, error: categoriesError } = await supabase
           .from('material_categories')
           .select('*')
-          .eq('category_type', categoryType)
+          .in('category_type', categoryTypes)
           .eq('is_active', true)
           .order('display_order')
 
