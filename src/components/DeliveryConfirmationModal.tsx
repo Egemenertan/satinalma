@@ -7,8 +7,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
-import { Upload, X, Camera, FileImage, Loader2, Package } from 'lucide-react'
+import { Upload, X, Camera, FileImage, Loader2, Package, Scan } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
+import DocumentScanner from '@/components/DocumentScanner'
 
 interface DeliveryConfirmationModalProps {
   isOpen: boolean
@@ -41,8 +42,12 @@ export default function DeliveryConfirmationModal({
   const [deliveredQuantity, setDeliveredQuantity] = useState<number>(0)
   const [maxQuantity, setMaxQuantity] = useState<number>(0)
   const [remainingQuantity, setRemainingQuantity] = useState<number>(0)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+  
+  // Mobil cihaz kontrolü
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   // Miktar hesaplamalarını yap
   useEffect(() => {
@@ -107,6 +112,23 @@ export default function DeliveryConfirmationModal({
     
     setPhotos(prev => prev.filter((_, i) => i !== index))
     setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+  
+  // Handle scanner complete
+  const handleScanComplete = (files: File[]) => {
+    if (files.length + photos.length > 5) {
+      showToast('Maksimum 5 fotoğraf yükleyebilirsiniz', 'error')
+      return
+    }
+
+    // Add new files to existing ones
+    setPhotos(prev => [...prev, ...files])
+    
+    // Create preview URLs
+    const newPreviewUrls = files.map(file => URL.createObjectURL(file))
+    setPhotoPreviewUrls(prev => [...prev, ...newPreviewUrls])
+    
+    setIsScannerOpen(false)
   }
 
   const uploadPhotosToSupabase = async (): Promise<string[]> => {
@@ -350,13 +372,30 @@ export default function DeliveryConfirmationModal({
               <span className="text-red-500 ml-1">*</span>
             </Label>
             
-            {/* Upload Button */}
-            <div className="flex flex-col gap-4">
+            {/* Upload Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {/* Belge Tarama - Sadece mobilde göster */}
+              {isMobile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsScannerOpen(true)}
+                  className="h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white"
+                  disabled={uploading || photos.length >= 5}
+                >
+                  <div className="flex items-center gap-2 text-gray-900">
+                    <Scan className="h-5 w-5" />
+                    <span className="font-medium">Belge Tara</span>
+                  </div>
+                </Button>
+              )}
+              
+              {/* Normal Upload */}
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-full h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white"
+                className={`h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white ${isMobile ? '' : 'md:col-span-2'}`}
                 disabled={uploading || photos.length >= 5}
               >
                 <div className="flex items-center gap-2 text-gray-600">
@@ -364,7 +403,7 @@ export default function DeliveryConfirmationModal({
                   <span>
                     {photos.length >= 5 
                       ? 'Maksimum 5 fotoğraf yükleyebilirsiniz' 
-                      : 'İrsaliye fotoğrafı ekle'}
+                      : 'Galeriden Seç'}
                   </span>
                 </div>
               </Button>
@@ -474,6 +513,16 @@ export default function DeliveryConfirmationModal({
           )}
         </div>
       </DialogContent>
+      
+      {/* Document Scanner */}
+      <DocumentScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanComplete={handleScanComplete}
+        maxPages={5}
+        title="İrsaliye Tara"
+        description="İrsaliyeyi kamera ile tarayın, otomatik olarak iyileştirilecektir"
+      />
     </Dialog>
   )
 }

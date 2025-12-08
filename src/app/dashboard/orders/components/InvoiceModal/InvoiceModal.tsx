@@ -19,10 +19,11 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { Receipt, Upload, X, Image as ImageIcon, FileText, ZoomIn } from 'lucide-react'
+import { Receipt, Upload, X, Image as ImageIcon, FileText, ZoomIn, Scan } from 'lucide-react'
 import { InlineLoading } from '@/components/ui/loading'
 import { formatNumberWithDots, parseToNumber } from '../../utils'
 import FullScreenImageViewer from '@/components/FullScreenImageViewer'
+import DocumentScanner from '@/components/DocumentScanner'
 
 // Types
 interface InvoiceModalProps {
@@ -135,6 +136,9 @@ export function InvoiceModal({
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   
+  // Document scanner state
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
+  
   // Modal başlığını belirle
   const getModalTitle = () => {
     if (editingInvoiceGroupId) return 'Fatura Düzenle'
@@ -152,6 +156,23 @@ export function InvoiceModal({
   const handlePhotoClick = (index: number) => {
     setSelectedImageIndex(index)
     setIsImageViewerOpen(true)
+  }
+  
+  // Handle scanner complete
+  const handleScanComplete = async (files: File[]) => {
+    // FileList benzeri bir obje oluştur
+    const fileList = {
+      length: files.length,
+      item: (index: number) => files[index],
+      [Symbol.iterator]: function* () {
+        for (let i = 0; i < files.length; i++) {
+          yield files[i]
+        }
+      }
+    } as FileList
+    
+    await onPhotoUpload(fileList)
+    setIsScannerOpen(false)
   }
 
   return (
@@ -241,6 +262,7 @@ export function InvoiceModal({
             onPhotoRemove={onPhotoRemove}
             onPhotoClick={handlePhotoClick}
             isUploadingInvoice={isUploadingInvoice}
+            onOpenScanner={() => setIsScannerOpen(true)}
           />
 
           {/* NOTLAR */}
@@ -295,6 +317,16 @@ export function InvoiceModal({
         images={invoicePhotos}
         initialIndex={selectedImageIndex}
         title="Fatura Fotoğrafları"
+      />
+      
+      {/* Document Scanner */}
+      <DocumentScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanComplete={handleScanComplete}
+        maxPages={10}
+        title="Fatura Tara"
+        description="Faturayı kamera ile tarayın, otomatik olarak iyileştirilecektir"
       />
     </Dialog>
   )
@@ -909,13 +941,17 @@ function InvoicePhotos({
   onPhotoRemove,
   onPhotoClick,
   isUploadingInvoice,
+  onOpenScanner,
 }: {
   invoicePhotos: string[]
   onPhotoUpload: (files: FileList) => Promise<void>
   onPhotoRemove: (index: number) => void
   onPhotoClick?: (index: number) => void
   isUploadingInvoice: boolean
+  onOpenScanner?: () => void
 }) {
+  // Mobil cihaz kontrolü
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2">
@@ -923,22 +959,47 @@ function InvoicePhotos({
         <Label className="font-semibold text-gray-900">Fatura Fotoğrafları</Label>
       </div>
       
-      {/* Upload Butonu - Siyah Beyaz */}
-      <div 
-        className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group"
-        onClick={() => document.getElementById('invoice-upload')?.click()}
-      >
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-            <Upload className="w-8 h-8 text-gray-900" />
+      {/* Upload Butonları */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Belge Tarama - Sadece mobilde göster */}
+        {isMobile && onOpenScanner && (
+          <div 
+            className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group"
+            onClick={onOpenScanner}
+          >
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-900 to-black flex items-center justify-center group-hover:scale-110 transition-transform">
+                <Scan className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <p className="font-medium text-gray-900 mb-1">
+                  Belge Tara
+                </p>
+                <p className="text-xs text-gray-500">
+                  Gelişmiş tarama ile net görüntü
+                </p>
+              </div>
+            </div>
           </div>
-          <div>
-            <p className="font-medium text-gray-900 mb-1">
-              {isUploadingInvoice ? 'Yükleniyor...' : 'Fotoğraf Yükle'}
-            </p>
-            <p className="text-sm text-gray-500">
-              Tıklayın veya sürükleyip bırakın
-            </p>
+        )}
+        
+        {/* Normal Upload */}
+        <div 
+          className={`border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group ${isMobile && onOpenScanner ? '' : 'md:col-span-2'}`}
+          onClick={() => document.getElementById('invoice-upload')?.click()}
+        >
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+              <Upload className="w-7 h-7 text-gray-900" />
+            </div>
+            <div>
+              <p className="font-medium text-gray-900 mb-1">
+                {isUploadingInvoice ? 'Yükleniyor...' : 'Fotoğraf Yükle'}
+              </p>
+              <p className="text-xs text-gray-500">
+                Galeriden seçin veya sürükleyin
+              </p>
+            </div>
           </div>
         </div>
       </div>

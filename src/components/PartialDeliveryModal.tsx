@@ -8,7 +8,8 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
-import { Upload, X, Camera, FileImage, Loader2, Package, Check, AlertCircle } from 'lucide-react'
+import { Upload, X, Camera, FileImage, Loader2, Package, Check, AlertCircle, Scan } from 'lucide-react'
+import DocumentScanner from '@/components/DocumentScanner'
 
 interface PartialDeliveryModalProps {
   isOpen: boolean
@@ -36,8 +37,12 @@ export default function PartialDeliveryModal({
   const [uploading, setUploading] = useState(false)
   const [orderDeliveries, setOrderDeliveries] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
+  
+  // Mobil cihaz kontrolü
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   // Modal açıldığında mevcut teslimatları yükle
   useEffect(() => {
@@ -113,7 +118,8 @@ export default function PartialDeliveryModal({
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.capture = 'environment'
+    // Mobil cihazlarda kamerayı direkt aç
+    input.setAttribute('capture', 'environment')
     input.onchange = (e) => {
       const target = e.target as HTMLInputElement
       if (target.files) {
@@ -425,7 +431,20 @@ export default function PartialDeliveryModal({
                   Teslimat Fotoğrafları <span className="text-red-500">*</span>
                 </Label>
                 
-                <div className="grid grid-cols-2 gap-3 mb-4">
+                <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-4`}>
+                  {isMobile && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setIsScannerOpen(true)}
+                      disabled={photos.length >= 5}
+                      className="h-12 border-dashed"
+                    >
+                      <Scan className="w-4 h-4 mr-2" />
+                      Tara
+                    </Button>
+                  )}
+                  
                   <Button
                     type="button"
                     variant="outline"
@@ -445,7 +464,7 @@ export default function PartialDeliveryModal({
                     className="h-12 border-dashed"
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    Dosya Seç
+                    Galeri
                   </Button>
                 </div>
 
@@ -552,6 +571,16 @@ export default function PartialDeliveryModal({
           )}
         </DialogFooter>
       </DialogContent>
+      
+      {/* Document Scanner */}
+      <DocumentScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanComplete={handleScanComplete}
+        maxPages={5}
+        title="Teslimat Belgesi Tara"
+        description="Teslimat belgesini kamera ile tarayın, otomatik olarak iyileştirilecektir"
+      />
     </Dialog>
   )
 }

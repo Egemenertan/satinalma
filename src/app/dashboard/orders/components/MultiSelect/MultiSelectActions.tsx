@@ -55,7 +55,8 @@ export function MultiSelectActions({
               <Receipt className="h-4 w-4 mr-2" />
               Fatura Ekle
             </Button>
-            <Button
+            {/* Rapor butonu geçici olarak gizlendi */}
+            {/* <Button
               onClick={onExportPDF}
               disabled={isGeneratingReport}
               className="bg-white hover:bg-gray-100 text-black px-4 py-2 rounded-xl font-medium shadow-lg"
@@ -71,7 +72,7 @@ export function MultiSelectActions({
                   Rapor
                 </>
               )}
-            </Button>
+            </Button> */}
           </div>
         </div>
       </div>

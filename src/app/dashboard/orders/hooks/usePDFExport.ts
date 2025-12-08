@@ -359,65 +359,137 @@ export function usePDFExport() {
       // Seçili siparişleri al
       const selectedOrdersData = orders.filter(order => selectedOrderIds.includes(order.id))
       
+      console.log('📋 Toplu PDF Export başlatılıyor:', {
+        selectedOrdersCount: selectedOrdersData.length,
+        orderIds: selectedOrderIds
+      })
+      
+      // Önce invoice_group_id kontrolü yap (tek sipariş mantığıyla aynı)
+      const { createClient } = await import('@/lib/supabase/client')
+      const supabase = createClient()
+      
+      let invoiceGroupId = null
+      let allRelatedOrderIds = [...selectedOrderIds]
+      
+      // Seçili siparişlerden herhangi birinin invoice_group_id'si var mı kontrol et
+      if (selectedOrdersData.length > 0 && selectedOrdersData[0].invoices && selectedOrdersData[0].invoices.length > 0) {
+        const { data: invoiceWithGroup } = await supabase
+          .from('invoices')
+          .select('invoice_group_id')
+          .eq('order_id', selectedOrdersData[0].id)
+          .limit(1)
+          .single()
+        
+        if (invoiceWithGroup?.invoice_group_id) {
+          invoiceGroupId = invoiceWithGroup.invoice_group_id
+          
+          // Aynı group'taki TÜM siparişleri bul (seçili olmayanlar da dahil)
+          const { data: groupInvoices } = await supabase
+            .from('invoices')
+            .select('order_id')
+            .eq('invoice_group_id', invoiceGroupId)
+          
+          if (groupInvoices && groupInvoices.length > 0) {
+            allRelatedOrderIds = groupInvoices.map(inv => inv.order_id)
+            console.log('📦 Toplu fatura grubu tespit edildi:', {
+              groupId: invoiceGroupId,
+              selectedOrdersCount: selectedOrderIds.length,
+              totalGroupOrdersCount: allRelatedOrderIds.length,
+              WARNING: allRelatedOrderIds.length > selectedOrderIds.length 
+                ? `⚠️ Seçili ${selectedOrderIds.length} sipariş ama grup ${allRelatedOrderIds.length} sipariş içeriyor - TÜM grup dahil edilecek!` 
+                : null
+            })
+          }
+        }
+      }
+      
       // İlk siparişin request_id'sini al
       const firstRequestId = selectedOrdersData[0].purchase_request_id
       
-      // Timeline verilerini çek
-      const response = await fetch(`/api/reports/timeline?requestId=${firstRequestId}`)
+      // Timeline verilerini çek - invoice_group_id varsa onu da gönder
+      const apiUrl = new URL(`/api/reports/timeline`, window.location.origin)
+      apiUrl.searchParams.set('requestId', firstRequestId)
+      if (invoiceGroupId) {
+        apiUrl.searchParams.set('invoiceGroupId', invoiceGroupId)
+      }
+      
+      const response = await fetch(apiUrl.toString())
       if (!response.ok) {
         throw new Error(`API Error: ${response.status}`)
       }
 
       const timelineData = await response.json()
 
-      // Sadece seçili siparişlerin verilerini filtrele
+      // İlgili tüm siparişlerin verilerini filtrele (invoice group varsa tüm grup dahil)
       const filteredOrders = timelineData.orders.filter((order: any) => 
-        selectedOrderIds.includes(order.id)
+        allRelatedOrderIds.includes(order.id)
       )
       
       const filteredInvoices = timelineData.invoices.filter((invoice: any) => 
-        selectedOrderIds.includes(invoice.order_id)
+        allRelatedOrderIds.includes(invoice.order_id)
       )
 
-      // Timeline'ı seçili siparişlere göre filtrele
+      console.log('📋 Filtrelenmiş veriler:', {
+        filteredOrdersCount: filteredOrders.length,
+        filteredInvoicesCount: filteredInvoices.length,
+        hasInvoiceGroup: !!invoiceGroupId
+      })
+
+      // Timeline'ı ilgili siparişlere göre filtrele
       const filteredTimeline = timelineData.timeline.filter((item: any) => {
         if (item.type === 'order' || item.type === 'shipment') {
-          return selectedOrderIds.includes(item.order_id)
+          return allRelatedOrderIds.includes(item.order_id)
         }
         if (item.type === 'invoice') {
-          return selectedOrderIds.includes(item.invoice?.order_id)
+          return allRelatedOrderIds.includes(item.invoice?.order_id)
         }
         return true
       })
 
       // İstatistikleri hesapla
-      const totalAmount = filteredOrders.reduce((sum: number, order: any) => {
-        const invoiceAmount = order.invoices?.reduce((invSum: number, inv: any) => invSum + inv.amount, 0) || 0
-        return sum + (invoiceAmount > 0 ? invoiceAmount : order.amount)
-      }, 0)
+      const totalAmount = filteredInvoices.length > 0
+        ? filteredInvoices.reduce((sum: number, inv: any) => sum + inv.amount, 0)
+        : filteredOrders.reduce((sum: number, order: any) => sum + order.amount, 0)
 
       const totalDays = Math.ceil(
         (new Date().getTime() - new Date(filteredOrders[filteredOrders.length - 1]?.created_at || new Date()).getTime()) / (1000 * 60 * 60 * 24)
       )
+      
+      const invoiceCurrency = filteredInvoices.length > 0 
+        ? filteredInvoices[0].currency 
+        : (filteredOrders.length > 0 ? filteredOrders[0].currency : 'TRY')
+      
+      // ÖNEMLİ: Statistics'i SADECE invoice group varsa kullan (tek sipariş mantığıyla aynı)
+      const shouldUseStatistics = !!invoiceGroupId
+      
+      console.log('📊 Statistics kullanımı (toplu):', {
+        shouldUseStatistics,
+        hasInvoiceGroup: !!invoiceGroupId,
+        invoicesCount: filteredInvoices.length,
+        subtotal: timelineData.statistics?.subtotal,
+        discount: timelineData.statistics?.discount,
+        tax: timelineData.statistics?.tax,
+        grandTotal: timelineData.statistics?.grandTotal
+      })
 
       // Prepare data for new PDF generator
       const pdfApiData = {
         request: timelineData.request,
-        timeline: filteredTimeline,  // ← Timeline'ı ekle!
+        timeline: filteredTimeline,
         orders: filteredOrders,
         invoices: filteredInvoices,
         statistics: {
           totalDays: totalDays,
           totalOffers: filteredOrders.length,
           totalShipments: filteredOrders.filter((o: any) => o.is_delivered).length,
-          totalInvoices: filteredOrders.reduce((sum: number, order: any) => sum + (order.invoices?.length || 0), 0),
+          totalInvoices: filteredInvoices.length,
           totalAmount: totalAmount,
-          currency: filteredOrders[0]?.currency || 'TRY',
-          // Use statistics from API (includes invoice group data)
-          subtotal: timelineData.statistics?.subtotal,
-          discount: timelineData.statistics?.discount,
-          tax: timelineData.statistics?.tax,
-          grandTotal: timelineData.statistics?.grandTotal,
+          currency: invoiceCurrency,
+          // Sadece invoice group varsa statistics kullan
+          subtotal: shouldUseStatistics ? timelineData.statistics?.subtotal : undefined,
+          discount: shouldUseStatistics ? timelineData.statistics?.discount : undefined,
+          tax: shouldUseStatistics ? timelineData.statistics?.tax : undefined,
+          grandTotal: shouldUseStatistics ? timelineData.statistics?.grandTotal : undefined,
         }
       }
 

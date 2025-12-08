@@ -6,8 +6,9 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
-import { RotateCcw, AlertTriangle, Camera, Upload, X, Image } from 'lucide-react'
+import { RotateCcw, AlertTriangle, Camera, Upload, X, Image, Scan } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import DocumentScanner from '@/components/DocumentScanner'
 
 interface ReturnModalProps {
   isOpen: boolean
@@ -32,7 +33,11 @@ export default function ReturnModal({
   const [isProcessing, setIsProcessing] = useState(false)
   const [photos, setPhotos] = useState<File[]>([])
   const [photoPreviewUrls, setPhotoPreviewUrls] = useState<string[]>([])
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
   const supabase = createClient()
+  
+  // Mobil cihaz kontrolü
+  const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
 
   // Mevcut iade edilmiş miktar ve kalan miktar hesapla
   const currentReturnedQuantity = order?.returned_quantity || 0
@@ -78,7 +83,8 @@ export default function ReturnModal({
     const input = document.createElement('input')
     input.type = 'file'
     input.accept = 'image/*'
-    input.capture = 'environment'
+    // Mobil cihazlarda kamerayı direkt aç
+    input.setAttribute('capture', 'environment')
     input.onchange = (e) => {
       const target = e.target as HTMLInputElement
       if (target.files) {
@@ -86,6 +92,24 @@ export default function ReturnModal({
       }
     }
     input.click()
+  }
+  
+  // Handle scanner complete
+  const handleScanComplete = (files: File[]) => {
+    if (files.length + photos.length > 5) {
+      showToast('Maksimum 5 fotoğraf yükleyebilirsiniz', 'error')
+      return
+    }
+
+    const newPreviewUrls: string[] = []
+    files.forEach(file => {
+      const previewUrl = URL.createObjectURL(file)
+      newPreviewUrls.push(previewUrl)
+    })
+
+    setPhotos(prev => [...prev, ...files])
+    setPhotoPreviewUrls(prev => [...prev, ...newPreviewUrls])
+    setIsScannerOpen(false)
   }
 
   const uploadPhotosToSupabase = async (): Promise<string[]> => {
@@ -834,7 +858,21 @@ export default function ReturnModal({
             </Label>
             
             {/* Upload Butonları */}
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
+              {isMobile && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setIsScannerOpen(true)}
+                  disabled={isProcessing || photos.length >= 5}
+                  className="h-10"
+                >
+                  <Scan className="w-4 h-4 mr-2" />
+                  <span className="hidden sm:inline">Tara</span>
+                  <span className="sm:hidden">Tara</span>
+                </Button>
+              )}
+              
               <Button
                 type="button"
                 variant="outline"
@@ -847,11 +885,11 @@ export default function ReturnModal({
                   input.click()
                 }}
                 disabled={isProcessing || photos.length >= 5}
-                className="flex-1 h-10"
+                className="h-10"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Galeri</span>
-                <span className="sm:hidden">Galeriden Seç</span>
+                <span className="sm:hidden">Galeri</span>
               </Button>
               
               <Button
@@ -859,11 +897,11 @@ export default function ReturnModal({
                 variant="outline"
                 onClick={triggerCameraCapture}
                 disabled={isProcessing || photos.length >= 5}
-                className="flex-1 h-10"
+                className="h-10"
               >
                 <Camera className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Kamera</span>
-                <span className="sm:hidden">Kamera Aç</span>
+                <span className="sm:hidden">Kamera</span>
               </Button>
             </div>
 
@@ -943,6 +981,16 @@ export default function ReturnModal({
           </Button>
         </DialogFooter>
       </DialogContent>
+      
+      {/* Document Scanner */}
+      <DocumentScanner
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScanComplete={handleScanComplete}
+        maxPages={5}
+        title="İade Belgesi Tara"
+        description="İade belgesini kamera ile tarayın, otomatik olarak iyileştirilecektir"
+      />
     </Dialog>
   )
 }
