@@ -204,6 +204,19 @@ export const getPDFStyles = (): string => `
     color: #000;
     font-weight: 600;
   }
+  
+  /* Toplu Fatura Stili */
+  .invoice-group-item {
+    background: #f0f8ff;
+    border: 2px solid #4a90e2;
+  }
+  
+  .invoice-materials {
+    margin-top: 10px;
+    padding-top: 8px;
+    border-top: 1px dashed #ccc;
+    font-size: 9pt;
+  }
 
   /* Invoice Summary */
   .invoice-summary {

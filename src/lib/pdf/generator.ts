@@ -183,8 +183,10 @@ export const transformToPDFData = (apiData: any): PDFData => {
     notes: invoice.notes,
     supplier_name: invoice.orders?.suppliers?.name || invoice.suppliers?.name || 'Tedarikçi',
     item_name: invoice.orders?.purchase_request_items?.item_name || invoice.purchase_request_items?.item_name || 'Malzeme',
-    added_by: invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || invoice.added_by_user?.full_name || invoice.added_by_user?.email || 'Purchasing Officer'
-  }))
+    added_by: invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || invoice.added_by_user?.full_name || invoice.added_by_user?.email || 'Purchasing Officer',
+    // Toplu fatura için invoice_group_id'yi ekle
+    invoice_group_id: invoice.invoice_group_id || null
+  } as any))
 
   // Extract key people from timeline
   const timeline = []

@@ -10,15 +10,15 @@ export async function GET(request: NextRequest) {
     const requestId = searchParams.get('requestId')
     const specificInvoiceGroupId = searchParams.get('invoiceGroupId') // Yeni parametre
 
-    if (!requestId) {
+    if (!requestId && !specificInvoiceGroupId) {
       return NextResponse.json(
-        { error: 'Request ID gerekli' },
+        { error: 'Request ID veya Invoice Group ID gerekli' },
         { status: 400 }
       )
     }
 
     console.log('📊 Timeline API Request:', {
-      requestId,
+      requestId: requestId || 'none',
       specificInvoiceGroupId: specificInvoiceGroupId || 'none'
     })
 
@@ -30,11 +30,47 @@ export async function GET(request: NextRequest) {
       hasUser: !!user,
       userId: user?.id,
       userError: userError?.message,
-      requestId
+      requestId: requestId || 'none',
+      invoiceGroupId: specificInvoiceGroupId || 'none'
     })
+    
+    // Eğer invoice_group_id verilmişse, önce o gruba ait tüm order'ları ve purchase_request_id'leri bul
+    let allRequestIds: string[] = []
+    
+    if (specificInvoiceGroupId) {
+      console.log('🔍 Invoice Group ID ile tüm ilgili request\'ler bulunuyor:', specificInvoiceGroupId)
+      
+      // Bu invoice group'a ait tüm invoices'ları bul
+      const { data: groupInvoices } = await supabase
+        .from('invoices')
+        .select('order_id')
+        .eq('invoice_group_id', specificInvoiceGroupId)
+      
+      if (groupInvoices && groupInvoices.length > 0) {
+        const orderIds = groupInvoices.map(inv => inv.order_id)
+        
+        // Bu order'ların purchase_request_id'lerini bul
+        const { data: orders } = await supabase
+          .from('orders')
+          .select('purchase_request_id')
+          .in('id', orderIds)
+        
+        if (orders && orders.length > 0) {
+          allRequestIds = [...new Set(orders.map(o => o.purchase_request_id))]
+          console.log('✅ Invoice Group için bulunan request\'ler:', {
+            invoiceGroupId: specificInvoiceGroupId,
+            orderCount: orderIds.length,
+            uniqueRequestIds: allRequestIds,
+            requestCount: allRequestIds.length
+          })
+        }
+      }
+    } else if (requestId) {
+      allRequestIds = [requestId]
+    }
 
-    // Ana talep bilgilerini çek
-    const { data: requestData, error: requestError } = await supabase
+    // Ana talep bilgilerini çek - birden fazla request olabilir (invoice group için)
+    const { data: allRequestsData, error: requestError } = await supabase
       .from('purchase_requests')
       .select(`
         id,
@@ -62,15 +98,24 @@ export async function GET(request: NextRequest) {
           role
         )
       `)
-      .eq('id', requestId)
-      .single()
+      .in('id', allRequestIds)
 
-    if (requestError) {
+    if (requestError || !allRequestsData || allRequestsData.length === 0) {
       return NextResponse.json(
         { error: 'Talep bulunamadı' },
         { status: 404 }
       )
     }
+    
+    // İlk request'i ana request olarak kullan (backward compatibility için)
+    const requestData = allRequestsData[0]
+    
+    console.log('📋 Request Data:', {
+      totalRequests: allRequestsData.length,
+      requestIds: allRequestIds,
+      mainRequestId: requestData.id,
+      titles: allRequestsData.map(r => r.title)
+    })
 
     // Teklif bilgilerini çek
     const { data: offers, error: offersError } = await supabase
@@ -88,17 +133,17 @@ export async function GET(request: NextRequest) {
       .eq('request_id', requestId)
       .order('created_at', { ascending: true })
 
-    // Sipariş bilgilerini çek
-    console.log('🛒 Orders sorgusu yapılıyor:', { requestId })
+    // Sipariş bilgilerini çek - tüm request'ler için
+    console.log('🛒 Orders sorgusu yapılıyor:', { allRequestIds })
     
     // Önce basit orders sorgusu yap (JOIN'siz)
     const { data: ordersSimple, error: ordersSimpleError } = await supabase
       .from('orders')
       .select('*')
-      .eq('purchase_request_id', requestId)
+      .in('purchase_request_id', allRequestIds)
     
     console.log('🛒 Basit orders sorgusu:', {
-      requestId,
+      allRequestIds,
       ordersSimpleFound: ordersSimple?.length || 0,
       ordersSimpleError: ordersSimpleError?.message,
       ordersSimpleData: ordersSimple
@@ -127,7 +172,7 @@ export async function GET(request: NextRequest) {
         supplier_id,
         purchase_request_id
       `)
-      .eq('purchase_request_id', requestId)
+      .in('purchase_request_id', allRequestIds)
       .order('created_at', { ascending: true })
     
     console.log('🛒 JOINsiz orders sorgusu:', {
@@ -230,7 +275,7 @@ export async function GET(request: NextRequest) {
       }))
     })
 
-    // Sevkiyat bilgilerini çek
+    // Sevkiyat bilgilerini çek - tüm request'ler için
     const { data: shipments, error: shipmentsError } = await supabase
       .from('shipments')
       .select(`
@@ -246,7 +291,7 @@ export async function GET(request: NextRequest) {
           unit
         )
       `)
-      .eq('purchase_request_id', requestId)
+      .in('purchase_request_id', allRequestIds)
       .order('shipped_at', { ascending: true })
 
     // Gönderen kullanıcı bilgilerini ayrı sorguda çek
@@ -319,7 +364,7 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 3. Approval history - Site Manager onayları
+    // 3. Approval history - Site Manager onayları - tüm request'ler için
     const { data: approvals, error: approvalsError } = await supabase
       .from('approval_history')
       .select(`
@@ -333,7 +378,7 @@ export async function GET(request: NextRequest) {
           role
         )
       `)
-      .eq('purchase_request_id', requestId)
+      .in('purchase_request_id', allRequestIds)
       .order('created_at', { ascending: true })
 
     if (approvals && approvals.length > 0) {
@@ -479,7 +524,8 @@ export async function GET(request: NextRequest) {
           currency,
           created_at,
           notes,
-          order_id
+          order_id,
+          invoice_group_id
         `)
         .in('order_id', orderIds)
         .order('created_at', { ascending: true })
@@ -498,7 +544,8 @@ export async function GET(request: NextRequest) {
           currency,
           created_at,
           notes,
-          order_id
+          order_id,
+          invoice_group_id
         `)
         .order('created_at', { ascending: true })
       
@@ -677,6 +724,7 @@ export async function GET(request: NextRequest) {
 
     const response = {
       request: requestData,
+      allRequests: allRequestsData, // Tüm request'leri de ekle
       timeline,
       orders: finalOrders || [],
       shipments: shipmentsWithUsers || [],
@@ -704,12 +752,13 @@ export async function GET(request: NextRequest) {
         ordersError: ordersError?.message,
         shipmentsError: shipmentsError?.message,
         invoicesError: invoicesError?.message,
-        requestId,
+        requestIds: allRequestIds, // Tüm request ID'leri
+        requestCount: allRequestIds.length,
         timelineLength: timeline.length,
         // Invoice group debug bilgileri
         invoiceGroupData: invoiceGroupData,
         hasInvoiceGroup: !!invoiceGroupData,
-        invoiceGroupId: uniqueGroupIds?.[0] || null,
+        invoiceGroupId: uniqueGroupIds?.[0] || specificInvoiceGroupId || null,
         invoicesWithGroupIds: invoicesWithGroups
       }
     }

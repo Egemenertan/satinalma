@@ -146,17 +146,63 @@ export const buildOrders = (orders: PDFOrderData[]): string => {
 
 /**
  * Invoices List Component
+ * Toplu faturaları grupla ve tek fatura olarak göster
  */
 export const buildInvoicesList = (invoices: PDFInvoiceData[]): string => {
   if (!invoices || invoices.length === 0) {
     return '<div class="section"><div class="section-title">Faturalar</div><div class="no-data">Fatura bulunamadı</div></div>'
   }
 
+  // Faturaları invoice_group_id'ye göre grupla
+  const groupedInvoices = new Map<string, PDFInvoiceData[]>()
+  const standaloneInvoices: PDFInvoiceData[] = []
+  
+  invoices.forEach(invoice => {
+    const groupId = (invoice as any).invoice_group_id
+    if (groupId) {
+      if (!groupedInvoices.has(groupId)) {
+        groupedInvoices.set(groupId, [])
+      }
+      groupedInvoices.get(groupId)!.push(invoice)
+    } else {
+      standaloneInvoices.push(invoice)
+    }
+  })
+  
+  console.log('📋 Fatura Gruplama:', {
+    topluFaturaGrupSayisi: groupedInvoices.size,
+    tekFaturaSayisi: standaloneInvoices.length,
+    toplamFatura: invoices.length
+  })
+
   return `
     <div class="section">
       <div class="section-title">Faturalar</div>
       <div class="invoice-list">
-        ${invoices.map(invoice => `
+        ${Array.from(groupedInvoices.entries()).map(([groupId, groupInvoices]) => {
+          // Toplu fatura için tek bir kart göster
+          const totalAmount = groupInvoices.reduce((sum, inv) => sum + inv.amount, 0)
+          const currency = groupInvoices[0].currency
+          const firstInvoice = groupInvoices[0]
+          const materialCount = groupInvoices.length
+          
+            return `
+              <div class="invoice-item">
+                <div class="invoice-header">
+                  <div class="invoice-supplier">
+                    <strong>Toplu Fatura</strong> - ${materialCount} Malzeme
+                  </div>
+                  <div class="invoice-date">${formatDate(firstInvoice.created_at)}</div>
+                </div>
+                
+                <div class="invoice-meta">Ekleyen: ${firstInvoice.added_by}</div>
+                ${firstInvoice.notes ? `<div class="invoice-notes"><strong>Not:</strong> ${firstInvoice.notes}</div>` : ''}
+               
+              </div>
+            `
+        }).join('')}
+        
+        ${standaloneInvoices.map(invoice => `
           <div class="invoice-item">
             <div class="invoice-header">
               <div class="invoice-supplier">${invoice.supplier_name} - ${invoice.item_name}</div>
