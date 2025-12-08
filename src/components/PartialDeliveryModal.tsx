@@ -128,6 +128,24 @@ export default function PartialDeliveryModal({
     }
     input.click()
   }
+  
+  // Handle scanner complete
+  const handleScanComplete = (files: File[]) => {
+    if (files.length + photos.length > 5) {
+      showToast('Maksimum 5 fotoğraf yükleyebilirsiniz', 'error')
+      return
+    }
+
+    const newPreviewUrls: string[] = []
+    files.forEach(file => {
+      const previewUrl = URL.createObjectURL(file)
+      newPreviewUrls.push(previewUrl)
+    })
+
+    setPhotos(prev => [...prev, ...files])
+    setPhotoPreviewUrls(prev => [...prev, ...newPreviewUrls])
+    setIsScannerOpen(false)
+  }
 
   const uploadPhotosToSupabase = async (): Promise<string[]> => {
     if (photos.length === 0) return []
