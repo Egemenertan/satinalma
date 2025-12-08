@@ -959,47 +959,22 @@ function InvoicePhotos({
         <Label className="font-semibold text-gray-900">Fatura Fotoğrafları</Label>
       </div>
       
-      {/* Upload Butonları */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Belge Tarama - Sadece mobilde göster */}
-        {isMobile && onOpenScanner && (
-          <div 
-            className="border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group"
-            onClick={onOpenScanner}
-          >
-            <div className="flex flex-col items-center gap-3">
-              <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-gray-900 to-black flex items-center justify-center group-hover:scale-110 transition-transform">
-                <Scan className="w-7 h-7 text-white" />
-              </div>
-              <div>
-                <p className="font-medium text-gray-900 mb-1">
-                  Belge Tara
-                </p>
-                <p className="text-xs text-gray-500">
-                  Gelişmiş tarama ile net görüntü
-                </p>
-              </div>
-            </div>
+      {/* Upload Butonu */}
+      <div 
+        className="border-2 border-dashed border-gray-300 rounded-2xl p-8 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group"
+        onClick={() => document.getElementById('invoice-upload')?.click()}
+      >
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-16 h-16 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <Upload className="w-8 h-8 text-gray-900" />
           </div>
-        )}
-        
-        {/* Normal Upload */}
-        <div 
-          className={`border-2 border-dashed border-gray-300 rounded-2xl p-6 text-center hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer group ${isMobile && onOpenScanner ? '' : 'md:col-span-2'}`}
-          onClick={() => document.getElementById('invoice-upload')?.click()}
-        >
-          <div className="flex flex-col items-center gap-3">
-            <div className="w-14 h-14 rounded-2xl bg-gray-100 flex items-center justify-center group-hover:scale-110 transition-transform">
-              <Upload className="w-7 h-7 text-gray-900" />
-            </div>
-            <div>
-              <p className="font-medium text-gray-900 mb-1">
-                {isUploadingInvoice ? 'Yükleniyor...' : 'Fotoğraf Yükle'}
-              </p>
-              <p className="text-xs text-gray-500">
-                Galeriden seçin veya sürükleyin
-              </p>
-            </div>
+          <div>
+            <p className="font-medium text-gray-900 mb-1">
+              {isUploadingInvoice ? 'Yükleniyor...' : 'Fotoğraf Yükle'}
+            </p>
+            <p className="text-sm text-gray-500">
+              Tıklayın veya sürükleyip bırakın
+            </p>
           </div>
         </div>
       </div>

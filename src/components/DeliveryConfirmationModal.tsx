@@ -372,30 +372,13 @@ export default function DeliveryConfirmationModal({
               <span className="text-red-500 ml-1">*</span>
             </Label>
             
-            {/* Upload Buttons */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {/* Belge Tarama - Sadece mobilde göster */}
-              {isMobile && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsScannerOpen(true)}
-                  className="h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white"
-                  disabled={uploading || photos.length >= 5}
-                >
-                  <div className="flex items-center gap-2 text-gray-900">
-                    <Scan className="h-5 w-5" />
-                    <span className="font-medium">Belge Tara</span>
-                  </div>
-                </Button>
-              )}
-              
-              {/* Normal Upload */}
+            {/* Upload Button */}
+            <div className="flex flex-col gap-4">
               <Button
                 type="button"
                 variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                className={`h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white ${isMobile ? '' : 'md:col-span-2'}`}
+                className="w-full h-16 border-2 border-dashed border-gray-300 hover:border-gray-400 transition-colors bg-white"
                 disabled={uploading || photos.length >= 5}
               >
                 <div className="flex items-center gap-2 text-gray-600">
@@ -403,7 +386,7 @@ export default function DeliveryConfirmationModal({
                   <span>
                     {photos.length >= 5 
                       ? 'Maksimum 5 fotoğraf yükleyebilirsiniz' 
-                      : 'Galeriden Seç'}
+                      : 'İrsaliye fotoğrafı ekle'}
                   </span>
                 </div>
               </Button>

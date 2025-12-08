@@ -449,20 +449,7 @@ export default function PartialDeliveryModal({
                   Teslimat Fotoğrafları <span className="text-red-500">*</span>
                 </Label>
                 
-                <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-2'} gap-3 mb-4`}>
-                  {isMobile && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setIsScannerOpen(true)}
-                      disabled={photos.length >= 5}
-                      className="h-12 border-dashed"
-                    >
-                      <Scan className="w-4 h-4 mr-2" />
-                      Tara
-                    </Button>
-                  )}
-                  
+                <div className="grid grid-cols-2 gap-3 mb-4">
                   <Button
                     type="button"
                     variant="outline"
@@ -482,7 +469,7 @@ export default function PartialDeliveryModal({
                     className="h-12 border-dashed"
                   >
                     <Upload className="w-4 h-4 mr-2" />
-                    Galeri
+                    Dosya Seç
                   </Button>
                 </div>
 

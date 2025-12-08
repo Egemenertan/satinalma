@@ -858,21 +858,7 @@ export default function ReturnModal({
             </Label>
             
             {/* Upload Butonları */}
-            <div className={`grid ${isMobile ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-              {isMobile && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsScannerOpen(true)}
-                  disabled={isProcessing || photos.length >= 5}
-                  className="h-10"
-                >
-                  <Scan className="w-4 h-4 mr-2" />
-                  <span className="hidden sm:inline">Tara</span>
-                  <span className="sm:hidden">Tara</span>
-                </Button>
-              )}
-              
+            <div className="flex flex-col sm:flex-row gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -885,11 +871,11 @@ export default function ReturnModal({
                   input.click()
                 }}
                 disabled={isProcessing || photos.length >= 5}
-                className="h-10"
+                className="flex-1 h-10"
               >
                 <Upload className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Galeri</span>
-                <span className="sm:hidden">Galeri</span>
+                <span className="sm:hidden">Galeriden Seç</span>
               </Button>
               
               <Button
@@ -897,11 +883,11 @@ export default function ReturnModal({
                 variant="outline"
                 onClick={triggerCameraCapture}
                 disabled={isProcessing || photos.length >= 5}
-                className="h-10"
+                className="flex-1 h-10"
               >
                 <Camera className="w-4 h-4 mr-2" />
                 <span className="hidden sm:inline">Kamera</span>
-                <span className="sm:hidden">Kamera</span>
+                <span className="sm:hidden">Kamera Aç</span>
               </Button>
             </div>
 
