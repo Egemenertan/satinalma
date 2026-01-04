@@ -98,6 +98,10 @@ export default function ProcurementView({
     deliveryDate: string
   }>>({})
 
+  // Sipariş düzenleme state
+  const [editingOrder, setEditingOrder] = useState<any | null>(null)
+  const [isEditOrderModalOpen, setIsEditOrderModalOpen] = useState(false)
+
   // Multi-select functions
   const toggleMaterialSelection = (materialId: string) => {
     const newSelected = new Set(selectedMaterials)
@@ -307,6 +311,46 @@ export default function ProcurementView({
     
     setBulkOrderDetails(defaultDetails)
     setIsBulkOrderModalOpen(true)
+  }
+
+  // Sipariş tedarikçi değiştirme fonksiyonu
+  const handleChangeOrderSupplier = async (newSupplier: any) => {
+    if (!editingOrder) return
+
+    try {
+      console.log('🔄 Sipariş tedarikçisi değiştiriliyor:', {
+        orderId: editingOrder.order_id,
+        oldSupplier: editingOrder.supplier_name,
+        newSupplier: newSupplier.name
+      })
+
+      // Siparişin tedarikçisini güncelle
+      const { error: updateError } = await supabase
+        .from('orders')
+        .update({ 
+          supplier_id: newSupplier.id,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', editingOrder.order_id)
+
+      if (updateError) {
+        throw new Error(`Tedarikçi güncellenirken hata: ${updateError.message}`)
+      }
+
+      console.log('✅ Sipariş tedarikçisi güncellendi')
+      showToast('Tedarikçi başarıyla değiştirildi!', 'success')
+      
+      // Modal'ı kapat
+      setIsEditOrderModalOpen(false)
+      setEditingOrder(null)
+      
+      // Sayfayı yenile
+      await onRefresh()
+
+    } catch (error: any) {
+      console.error('❌ Tedarikçi değiştirme hatası:', error)
+      showToast(`Hata: ${error.message}`, 'error')
+    }
   }
 
   // Toplu sipariş submit
@@ -2112,8 +2156,8 @@ DOVEC GROUP
                             )}
                           </div>
                           
-                          <div className="text-right">
-                            <div className="text-xs text-gray-600 mb-1">
+                          <div className="text-right flex flex-col items-end gap-2">
+                            <div className="text-xs text-gray-600">
                               {order.created_at ? 
                                 new Date(order.created_at).toLocaleDateString('tr-TR') : 
                                 'Bugün'
@@ -2122,6 +2166,18 @@ DOVEC GROUP
                             <Badge variant="secondary" className="bg-gray-100 text-gray-700 text-xs">
                               ✓ Aktif
                             </Badge>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setEditingOrder(order)
+                                setIsEditOrderModalOpen(true)
+                              }}
+                              className="h-8 px-3 text-xs bg-white hover:bg-gray-50 border-gray-200 text-gray-700"
+                            >
+                              <Building2 className="h-3 w-3 mr-1" />
+                              Düzenle
+                            </Button>
                           </div>
                         </div>
                       </div>
@@ -3331,6 +3387,23 @@ DOVEC GROUP
           </div>
         </div>
       )}
+
+      {/* Sipariş Düzenleme Modal - Tedarikçi Değiştir */}
+      <AssignSupplierModal
+        isOpen={isEditOrderModalOpen}
+        onClose={() => {
+          setIsEditOrderModalOpen(false)
+          setEditingOrder(null)
+        }}
+        itemName={editingOrder ? `Sipariş #${editingOrder.order_id.toString().slice(-8)}` : ''}
+        itemUnit=""
+        materialClass={request?.material_class || undefined}
+        materialGroup={request?.material_group || undefined}
+        isBulkOrder={true}
+        onBulkOrderWithSupplier={(supplier) => {
+          handleChangeOrderSupplier(supplier)
+        }}
+      />
 
       {/* Tedarikçi Atama Modal */}
       <AssignSupplierModal

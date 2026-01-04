@@ -608,18 +608,53 @@ export default function OrdersPage() {
       // Düzenleme modunu aktif et
       setEditingInvoiceGroupId(firstInvoice.invoice_group_id)
 
-      // Tüm faturaların toplam tutarını hesapla
-      const totalAmount = allOrderInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0)
+      // Bu invoice_group'a ait TÜM faturaları çek (farklı siparişlerden olabilir)
+      const { data: allGroupInvoices, error: groupInvoicesError } = await supabase
+        .from('invoices')
+        .select('id, order_id, amount, currency, invoice_photos, notes, created_at')
+        .eq('invoice_group_id', firstInvoice.invoice_group_id)
+        .order('created_at', { ascending: true })
+
+      if (groupInvoicesError || !allGroupInvoices) {
+        showToast('Grup faturalarını alınamadı', 'error')
+        return
+      }
+
+      console.log(`📦 Invoice Group ${firstInvoice.invoice_group_id.substring(0, 8)} için ${allGroupInvoices.length} fatura bulundu`)
       
-      // Sipariş için tutarları doldur
+      // Her sipariş için tutarları doldur
       const amounts: Record<string, string> = {}
       const currencies: Record<string, string> = {}
+      const orderIds = new Set<string>()
       
-      amounts[order.id] = totalAmount.toFixed(2).replace('.', ',')
-      currencies[order.id] = firstInvoice.currency || 'TRY'
+      allGroupInvoices.forEach(inv => {
+        orderIds.add(inv.order_id)
+        
+        // Eğer bu sipariş için zaten tutar varsa, ekle
+        if (amounts[inv.order_id]) {
+          const currentAmount = parseToNumber(amounts[inv.order_id])
+          const newAmount = currentAmount + (parseFloat(inv.amount) || 0)
+          amounts[inv.order_id] = newAmount.toFixed(2).replace('.', ',')
+        } else {
+          amounts[inv.order_id] = (parseFloat(inv.amount) || 0).toFixed(2).replace('.', ',')
+          currencies[inv.order_id] = inv.currency || 'TRY'
+        }
+      })
+      
+      console.log(`📊 Grup içinde ${orderIds.size} farklı sipariş var:`, Array.from(orderIds).map(id => id.substring(0, 8)))
       
       setOrderAmounts(amounts)
       setOrderCurrencies(currencies)
+      
+      // Siparişleri seç - SENKRON olarak
+      // Önce temizle
+      clearSelection()
+      
+      // Sonra hepsini ekle
+      Array.from(orderIds).forEach(orderId => {
+        console.log(`✅ Sipariş seçiliyor: ${orderId.substring(0, 8)}`)
+        toggleOrderSelection(orderId)
+      })
 
       // Özet bilgileri doldur
       const subtotals: Record<string, string> = {}
@@ -652,8 +687,7 @@ export default function OrdersPage() {
       const uniquePhotos = Array.from(new Set(allPhotos))
       setInvoicePhotos(uniquePhotos)
 
-      // Siparişi seç
-      toggleOrderSelection(order.id)
+      // NOT: Siparişler zaten yukarıda seçildi (orderIds.forEach ile)
     } else {
       // Invoice group yok - TÜM faturaları göster (zaten yukarıda çektik)
       // Tüm faturaların toplam tutarını hesapla
@@ -669,14 +703,41 @@ export default function OrdersPage() {
       setOrderAmounts(amounts)
       setOrderCurrencies(currencies)
 
-      // Özet bilgileri doldur (toplam tutar)
+      // Özet bilgileri doldur - TÜM faturaların toplamı
       const subtotals: Record<string, string> = {}
-      subtotals[firstInvoice.currency] = totalAmount.toFixed(2).replace('.', ',')
+      const totalSubtotal = allOrderInvoices.reduce((sum, inv) => {
+        return sum + (inv.subtotal ? parseFloat(inv.subtotal) : parseFloat(inv.amount) || 0)
+      }, 0)
+      const totalDiscount = allOrderInvoices.reduce((sum, inv) => {
+        return sum + (inv.discount ? parseFloat(inv.discount) : 0)
+      }, 0)
+      const totalTax = allOrderInvoices.reduce((sum, inv) => {
+        return sum + (inv.tax ? parseFloat(inv.tax) : 0)
+      }, 0)
+      const totalGrandTotal = allOrderInvoices.reduce((sum, inv) => {
+        return sum + (inv.grand_total ? parseFloat(inv.grand_total) : parseFloat(inv.amount) || 0)
+      }, 0)
+      
+      subtotals[firstInvoice.currency] = totalSubtotal.toFixed(2).replace('.', ',')
       setInvoiceSubtotals(subtotals)
       
-      // Diğer alanları temizle
-      setInvoiceDiscount('')
-      setInvoiceTax('')
+      // Toplam indirim ve KDV'yi göster (her faturanın toplamı)
+      setInvoiceDiscount(totalDiscount > 0 ? totalDiscount.toFixed(2).replace('.', ',') : '')
+      setInvoiceDiscountCurrency(firstInvoice.currency)
+      
+      setInvoiceTax(totalTax > 0 ? totalTax.toFixed(2).replace('.', ',') : '')
+      setInvoiceTaxCurrency(firstInvoice.currency)
+      
+      setInvoiceGrandTotal(totalGrandTotal.toFixed(2).replace('.', ','))
+      setInvoiceGrandTotalCurrency(firstInvoice.currency)
+      
+      console.log('📊 Grup olmayan faturalar - Özet hesaplandı:', {
+        totalSubtotal,
+        totalDiscount,
+        totalTax,
+        totalGrandTotal,
+        invoiceCount: allOrderInvoices.length
+      })
       
       // TÜM faturaların notlarını birleştir
       const allNotes = allOrderInvoices
@@ -700,7 +761,14 @@ export default function OrdersPage() {
       setEditingInvoiceGroupId(null) // Grup yok, ama düzenleme yapılacak
     }
 
-    // Modal'ı aç
+    // Modal'ı aç - State güncellemelerinden sonra
+    console.log('🎯 Modal açılıyor - Final state:', {
+      editingInvoiceGroupId: editingInvoiceGroupId || firstInvoice.invoice_group_id,
+      orderAmountsCount: Object.keys(orderAmounts).length,
+      orderAmounts: orderAmounts,
+      selectedOrdersSize: selectedOrders.size
+    })
+    
     setIsInvoiceModalOpen(true)
   }
 
@@ -894,6 +962,16 @@ export default function OrdersPage() {
         const tax = invoiceTax ? parseToNumber(invoiceTax) : null
         const grandTotal = invoiceGrandTotal ? parseToNumber(invoiceGrandTotal) : subtotal
 
+        console.log('💾 Toplu fatura güncelleniyor:', {
+          editingInvoiceGroupId,
+          subtotal,
+          discount,
+          tax,
+          grandTotal,
+          currency: invoiceGrandTotalCurrency || firstCurrency,
+          editedInvoiceValues: Object.keys(editedInvoiceValues).length
+        })
+
         // 1. Invoice group'u güncelle
         const { error: groupError } = await supabase
           .from('invoice_groups')
@@ -913,25 +991,99 @@ export default function OrdersPage() {
           throw groupError
         }
 
+        console.log('✅ Invoice group güncellendi')
+
         // 2. Her bir invoice'ı güncelle
-        const updatePromises = Object.keys(orderAmounts).map(async (orderId) => {
-          const amount = parseToNumber(orderAmounts[orderId] || '0')
-          const currency = orderCurrencies[orderId] || 'TRY'
+        // Eğer individualInvoiceDetails varsa, her fatura için ayrı ayrı güncelle
+        // NOT: SIRAYLA güncelliyoruz (paralel değil) - trigger çakışmasını önlemek için
+        if (individualInvoiceDetails.length > 0) {
+          console.log(`🔄 ${individualInvoiceDetails.length} fatura SIRAYLA güncellenecek...`)
+          
+          for (const invoice of individualInvoiceDetails) {
+            const invoiceId = invoice.id
+            const editedValues = editedInvoiceValues[invoiceId]
+            
+            // Düzenlenmiş değerleri al, yoksa orijinal değerleri kullan
+            // Boş string kontrolü ekle - boş ise null kullan
+            const invoiceSubtotal = editedValues?.subtotal && editedValues.subtotal.trim() !== ''
+              ? parseToNumber(editedValues.subtotal) 
+              : (invoice.subtotal || invoice.amount)
+            
+            const invoiceDiscount = editedValues?.discount && editedValues.discount.trim() !== ''
+              ? parseToNumber(editedValues.discount) 
+              : (invoice.discount || null)
+            
+            const invoiceTax = editedValues?.tax && editedValues.tax.trim() !== ''
+              ? parseToNumber(editedValues.tax) 
+              : (invoice.tax || null)
+            
+            // Genel toplam hesapla: Ara Toplam - İndirim + KDV
+            const invoiceGrandTotal = invoiceSubtotal - (invoiceDiscount || 0) + (invoiceTax || 0)
 
-          // Bu order_id'ye ait invoice'ı bul ve güncelle
-          return supabase
-            .from('invoices')
-            .update({
-              amount: amount,
-              currency: currency,
-              invoice_photos: invoicePhotos,
-              notes: invoiceNotes || null, // Notes'u da güncelle
+            console.log(`💾 Fatura ${invoiceId.substring(0, 8)} güncelleniyor:`, {
+              invoiceId: invoiceId,
+              editedValues: editedValues,
+              subtotal: invoiceSubtotal,
+              discount: invoiceDiscount,
+              tax: invoiceTax,
+              grand_total: invoiceGrandTotal
             })
-            .eq('order_id', orderId)
-            .eq('invoice_group_id', editingInvoiceGroupId)
-        })
 
-        await Promise.all(updatePromises)
+            try {
+              // Bu invoice'ı güncelle - TEK TEK
+              const { data, error } = await supabase
+                .from('invoices')
+                .update({
+                  amount: invoice.amount, // Amount değişmez
+                  currency: invoice.currency,
+                  invoice_photos: invoicePhotos,
+                  notes: invoiceNotes || null,
+                  subtotal: invoiceSubtotal,
+                  discount: invoiceDiscount,
+                  tax: invoiceTax,
+                  grand_total: invoiceGrandTotal,
+                })
+                .eq('id', invoiceId)
+                .select()
+              
+              if (error) {
+                console.error(`❌ Fatura ${invoiceId.substring(0, 8)} güncelleme hatası:`, error)
+                throw error
+              }
+              
+              console.log(`✅ Fatura ${invoiceId.substring(0, 8)} güncellendi:`, data)
+              
+              // Küçük bir bekleme ekle (trigger'ların tamamlanması için)
+              await new Promise(resolve => setTimeout(resolve, 100))
+              
+            } catch (error) {
+              console.error(`❌ Fatura ${invoiceId.substring(0, 8)} işlemi başarısız:`, error)
+              throw error
+            }
+          }
+          
+          console.log(`✅ ${individualInvoiceDetails.length} fatura başarıyla güncellendi`)
+        } else {
+          // Eski yöntem: order_id bazlı güncelleme
+          const updatePromises = Object.keys(orderAmounts).map(async (orderId) => {
+            const amount = parseToNumber(orderAmounts[orderId] || '0')
+            const currency = orderCurrencies[orderId] || 'TRY'
+
+            // Bu order_id'ye ait invoice'ı bul ve güncelle
+            return supabase
+              .from('invoices')
+              .update({
+                amount: amount,
+                currency: currency,
+                invoice_photos: invoicePhotos,
+                notes: invoiceNotes || null,
+              })
+              .eq('order_id', orderId)
+              .eq('invoice_group_id', editingInvoiceGroupId)
+          })
+
+          await Promise.all(updatePromises)
+        }
 
         showToast('Toplu fatura başarıyla güncellendi', 'success')
         setIsInvoiceModalOpen(false)
@@ -944,6 +1096,8 @@ export default function OrdersPage() {
         setInvoiceTax('')
         setInvoiceGrandTotal('')
         setInvoiceNotes('')
+        setIndividualInvoiceDetails([])
+        setEditedInvoiceValues({})
         clearSelection()
         
         // React Query cache'i yenile
@@ -957,18 +1111,97 @@ export default function OrdersPage() {
         const amount = parseToNumber(orderAmounts[orderId] || '0')
         const currency = orderCurrencies[orderId] || 'TRY'
 
-        // Mevcut invoice'ı güncelle
-        const { error: updateError } = await supabase
-          .from('invoices')
-          .update({
-            amount: amount,
-            currency: currency,
-            invoice_photos: invoicePhotos,
-            notes: invoiceNotes || null,
-          })
-          .eq('order_id', orderId)
+        console.log('💾 Tek fatura güncelleniyor (grup yok):', {
+          orderId,
+          amount,
+          currency,
+          individualInvoiceDetails: individualInvoiceDetails.length,
+          editedInvoiceValues: Object.keys(editedInvoiceValues).length
+        })
 
-        if (updateError) throw updateError
+        // Eğer individualInvoiceDetails varsa, her fatura için ayrı ayrı güncelle
+        // NOT: SIRAYLA güncelliyoruz (paralel değil) - trigger çakışmasını önlemek için
+        if (individualInvoiceDetails.length > 0) {
+          console.log(`🔄 ${individualInvoiceDetails.length} fatura SIRAYLA güncellenecek (tek fatura modu)...`)
+          
+          for (const invoice of individualInvoiceDetails) {
+            const invoiceId = invoice.id
+            const editedValues = editedInvoiceValues[invoiceId]
+            
+            // Düzenlenmiş değerleri al, yoksa orijinal değerleri kullan
+            // Boş string kontrolü ekle - boş ise null kullan
+            const invoiceSubtotal = editedValues?.subtotal && editedValues.subtotal.trim() !== ''
+              ? parseToNumber(editedValues.subtotal) 
+              : (invoice.subtotal || invoice.amount)
+            
+            const invoiceDiscount = editedValues?.discount && editedValues.discount.trim() !== ''
+              ? parseToNumber(editedValues.discount) 
+              : (invoice.discount || null)
+            
+            const invoiceTax = editedValues?.tax && editedValues.tax.trim() !== ''
+              ? parseToNumber(editedValues.tax) 
+              : (invoice.tax || null)
+            
+            // Genel toplam hesapla: Ara Toplam - İndirim + KDV
+            const invoiceGrandTotal = invoiceSubtotal - (invoiceDiscount || 0) + (invoiceTax || 0)
+
+            console.log(`💾 Fatura ${invoiceId.substring(0, 8)} güncelleniyor (tek fatura modu):`, {
+              invoiceId: invoiceId,
+              editedValues: editedValues,
+              subtotal: invoiceSubtotal,
+              discount: invoiceDiscount,
+              tax: invoiceTax,
+              grand_total: invoiceGrandTotal
+            })
+
+            try {
+              // Bu invoice'ı güncelle - TEK TEK
+              const { data, error } = await supabase
+                .from('invoices')
+                .update({
+                  amount: invoice.amount, // Amount değişmez
+                  currency: invoice.currency,
+                  invoice_photos: invoicePhotos,
+                  notes: invoiceNotes || null,
+                  subtotal: invoiceSubtotal,
+                  discount: invoiceDiscount,
+                  tax: invoiceTax,
+                  grand_total: invoiceGrandTotal,
+                })
+                .eq('id', invoiceId)
+                .select()
+              
+              if (error) {
+                console.error(`❌ Fatura ${invoiceId.substring(0, 8)} güncelleme hatası:`, error)
+                throw error
+              }
+              
+              console.log(`✅ Fatura ${invoiceId.substring(0, 8)} güncellendi:`, data)
+              
+              // Küçük bir bekleme ekle (trigger'ların tamamlanması için)
+              await new Promise(resolve => setTimeout(resolve, 100))
+              
+            } catch (error) {
+              console.error(`❌ Fatura ${invoiceId.substring(0, 8)} işlemi başarısız:`, error)
+              throw error
+            }
+          }
+          
+          console.log(`✅ ${individualInvoiceDetails.length} fatura başarıyla güncellendi`)
+        } else {
+          // Eski yöntem: order_id bazlı güncelleme
+          const { error: updateError } = await supabase
+            .from('invoices')
+            .update({
+              amount: amount,
+              currency: currency,
+              invoice_photos: invoicePhotos,
+              notes: invoiceNotes || null,
+            })
+            .eq('order_id', orderId)
+
+          if (updateError) throw updateError
+        }
 
         showToast('Fatura başarıyla güncellendi', 'success')
         setIsInvoiceModalOpen(false)
@@ -980,6 +1213,8 @@ export default function OrdersPage() {
         setInvoiceTax('')
         setInvoiceGrandTotal('')
         setInvoiceNotes('')
+        setIndividualInvoiceDetails([])
+        setEditedInvoiceValues({})
         clearSelection()
         
         // React Query cache'i yenile
@@ -1382,7 +1617,12 @@ export default function OrdersPage() {
         onInvoiceAmountChange={handleInvoiceAmountChange}
         onInvoiceCurrencyChange={setInvoiceCurrency}
         selectedOrder={selectedOrderId ? orders.find(o => o.id === selectedOrderId) : undefined}
-        selectedOrders={getSelectedOrdersData(orders)}
+        selectedOrders={
+          // Invoice group düzenleme modundaysa, orderAmounts'taki siparişleri kullan
+          editingInvoiceGroupId 
+            ? Object.keys(orderAmounts).map(orderId => orders.find(o => o.id === orderId)).filter(Boolean)
+            : getSelectedOrdersData(orders)
+        }
         orderAmounts={orderAmounts}
         orderCurrencies={orderCurrencies}
         onOrderAmountChange={handleOrderAmountChange}

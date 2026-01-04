@@ -23,7 +23,9 @@ import {
   MoreHorizontal,
   ChevronLeft,
   BarChart3,
-  Truck
+  Truck,
+  Package,
+  Tag
 } from 'lucide-react'
 
 // Bekleyen talep sayısını getiren fetcher (rol bazlı)
@@ -106,6 +108,18 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       title: 'Siparişler',
       href: '/dashboard/orders',
       icon: Truck
+    },
+    {
+      id: 'products',
+      title: 'Ürünler',
+      href: '/dashboard/products',
+      icon: Package
+    },
+    {
+      id: 'brands',
+      title: 'Markalar',
+      href: '/dashboard/brands',
+      icon: Tag
     },
     {
       id: 'reports',

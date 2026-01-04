@@ -83,7 +83,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/reports'
   }
   
-  // Purchasing officer dashboard, requests, suppliers, sites, orders ve reports sayfalarına erişebilir
+  // Purchasing officer dashboard, requests, suppliers, sites, orders, products, brands ve reports sayfalarına erişebilir
   if (userRole === 'purchasing_officer') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
@@ -100,6 +100,12 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === 'orders' ||
            page === '/dashboard/orders' ||
            page.startsWith('/dashboard/orders/') ||
+           page === 'products' ||
+           page === '/dashboard/products' ||
+           page.startsWith('/dashboard/products/') ||
+           page === 'brands' ||
+           page === '/dashboard/brands' ||
+           page.startsWith('/dashboard/brands/') ||
            page === 'reports' ||
            page === '/dashboard/reports'
   }
@@ -134,11 +140,11 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'warehouse_manager') {
-    return ['dashboard', 'requests', 'reports'] // Dashboard, requests ve reports
+    return ['dashboard', 'requests', 'products', 'brands', 'reports'] // Dashboard, requests, products, brands ve reports
   }
   
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'suppliers', 'sites', 'orders', 'reports'] // Dashboard, requests, suppliers, sites, orders ve reports
+    return ['dashboard', 'requests', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports'] // Dashboard, requests, suppliers, sites, orders, products, brands ve reports
   }
   
   if (userRole === 'site_personnel') {
@@ -154,5 +160,5 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   // Admin ve manager tüm menülere erişebilir
-  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'orders', 'reports', 'settings']
+  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
 }

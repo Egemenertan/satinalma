@@ -31,64 +31,101 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
 
-  // Arama - Basit ve etkili yaklaşım
+  // Arama - SQL bazlı, hızlı ve etkili
   let orderIdsFromSearch: string[] = []
 
   if (searchTerm && searchTerm.trim()) {
-    const searchPattern = `%${searchTerm.trim()}%`
-    
     try {
-      // Tüm orders'ı çek ve ilişkili tablolarla birlikte ara
-      const { data: searchResults, error: searchError } = await supabase
-        .from('orders')
-        .select(`
-          id,
-          suppliers!orders_supplier_id_fkey (name),
-          purchase_requests!orders_purchase_request_id_fkey (title, request_number),
-          purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications)
-        `)
+      const search = searchTerm.trim().toLowerCase()
+      const searchPattern = `%${search}%`
+      
+      console.log('🔍 Arama yapılıyor:', search)
+      
+      // SQL ile doğrudan arama - ÇOK DAHA HIZLI!
+      // Geçici olarak RPC'yi devre dışı bırak - fallback kullan
+      const searchError = { message: 'Using fallback search' }
+      let searchResults = null
+      
+      // const { data: searchResults, error: searchError } = await supabase.rpc(
+      //   'search_orders',
+      //   { search_term: search }
+      // )
       
       if (searchError) {
-        console.error('Arama hatası:', searchError)
-        throw searchError
-      }
-
-      // Client-side filtreleme - case-insensitive
-      if (searchResults) {
-        const lowerSearch = searchTerm.trim().toLowerCase()
+        console.warn('⚠️ RPC arama hatası, fallback kullanılıyor:', searchError.message)
         
-        orderIdsFromSearch = searchResults
-          .filter((order: any) => {
-            // Tedarikçi adında ara
-            const supplierName = order.suppliers?.name
-            if (supplierName && typeof supplierName === 'string' && supplierName.toLowerCase().includes(lowerSearch)) return true
-            
-            // Talep başlığında ara
-            const requestTitle = order.purchase_requests?.title
-            if (requestTitle && typeof requestTitle === 'string' && requestTitle.toLowerCase().includes(lowerSearch)) return true
-            
-            // Talep numarasında ara
-            const requestNumber = order.purchase_requests?.request_number
-            if (requestNumber && typeof requestNumber === 'string' && requestNumber.toLowerCase().includes(lowerSearch)) return true
-            
-            // Malzeme adında ara
-            const itemName = order.purchase_request_items?.item_name
-            if (itemName && typeof itemName === 'string' && itemName.toLowerCase().includes(lowerSearch)) return true
-            
-            // Marka adında ara
-            const brand = order.purchase_request_items?.brand
-            if (brand && typeof brand === 'string' && brand.toLowerCase().includes(lowerSearch)) return true
-            
-            // Spesifikasyonda ara
-            const specs = order.purchase_request_items?.specifications
-            if (specs && typeof specs === 'string' && specs.toLowerCase().includes(lowerSearch)) return true
-            
-            return false
-          })
-          .map((order: any) => order.id)
+        // Fallback: Basit ILIKE sorgusu
+        const { data: fallbackResults, error: fallbackError } = await supabase
+          .from('orders')
+          .select(`
+            id,
+            quantity,
+            suppliers!orders_supplier_id_fkey (name),
+            purchase_requests!orders_purchase_request_id_fkey (title, request_number),
+            purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
+          `)
+        
+        if (fallbackError) {
+          console.error('❌ Fallback arama da başarısız:', fallbackError)
+          throw fallbackError
+        }
+        
+        // Client-side filtreleme (fallback)
+        if (fallbackResults) {
+          // Türkçe karakterleri normalize et
+          const normalizeTurkish = (text: string): string => {
+            return text
+              .toLowerCase()
+              .replace(/ı/g, 'i')
+              .replace(/İ/g, 'i')
+              .replace(/ş/g, 's')
+              .replace(/Ş/g, 's')
+              .replace(/ğ/g, 'g')
+              .replace(/Ğ/g, 'g')
+              .replace(/ü/g, 'u')
+              .replace(/Ü/g, 'u')
+              .replace(/ö/g, 'o')
+              .replace(/Ö/g, 'o')
+              .replace(/ç/g, 'c')
+              .replace(/Ç/g, 'c')
+          }
+          
+          const normalizedSearch = normalizeTurkish(search)
+          const searchWords = normalizedSearch.split(/\s+/).filter(word => word.length > 0)
+          
+          orderIdsFromSearch = fallbackResults
+            .filter((order: any) => {
+              const searchableFields = [
+                order.suppliers?.name,
+                order.purchase_requests?.title,
+                order.purchase_requests?.request_number,
+                order.purchase_request_items?.item_name,
+                order.purchase_request_items?.brand,
+                order.purchase_request_items?.specifications,
+                order.quantity ? `${order.quantity}` : null,
+                order.purchase_request_items?.unit,
+                order.quantity && order.purchase_request_items?.unit 
+                  ? `${order.quantity} ${order.purchase_request_items.unit}`
+                  : null,
+              ]
+              
+              const combinedText = normalizeTurkish(
+                searchableFields
+                  .filter(field => field && typeof field === 'string')
+                  .join(' ')
+              )
+              
+              // Her kelime geçmeli
+              return searchWords.every(word => combinedText.includes(word))
+            })
+            .map((order: any) => order.id)
+        }
+      } else {
+        // RPC başarılı - sonuçları al
+        orderIdsFromSearch = (searchResults || []).map((r: any) => r.order_id)
       }
 
-      console.log('🔍 Arama sonucu:', orderIdsFromSearch.length, 'sipariş bulundu')
+      console.log('✅ Arama sonucu:', orderIdsFromSearch.length, 'sipariş bulundu')
 
       // Hiçbir sonuç bulunamadıysa boş döndür
       if (orderIdsFromSearch.length === 0) {
@@ -99,7 +136,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
         }
       }
     } catch (error) {
-      console.error('Arama işlemi başarısız:', error)
+      console.error('❌ Arama işlemi başarısız:', error)
       throw error
     }
   }

@@ -179,7 +179,7 @@ export function InvoiceModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
         showCloseButton={false}
-        className="!max-w-[90vw] !w-[1100px] bg-white !max-h-[90vh] flex flex-col p-0 gap-0 border-0 shadow-2xl [&]:!rounded-[2rem]"
+        className="!max-w-[90vw] !w-[1100px] bg-white !max-h-[90vh] flex flex-col p-0 gap-0 border-0 shadow-2xl rounded-3xl"
         style={{ borderRadius: '2rem' }}
       >
         {/* Apple Style Header - Siyah Beyaz */}

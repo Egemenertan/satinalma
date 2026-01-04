@@ -45,7 +45,7 @@ export function InvoiceSelectionModal({
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="max-w-xl bg-white border-0 shadow-2xl rounded-2xl p-0 overflow-hidden">
+      <DialogContent className="max-w-xl bg-white border-0 shadow-2xl rounded-3xl p-0 overflow-hidden">
         {/* Header - Apple Style */}
         <div className="px-6 pt-6 pb-4 border-b border-gray-100">
           <DialogTitle className="text-xl font-semibold text-gray-900 tracking-tight">

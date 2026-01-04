@@ -125,17 +125,68 @@ const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?
   // Özel site ID'si için ek statuslar
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
   
-  // Gelişmiş arama: purchase_request_items içinde arama yap
+  // Gelişmiş arama: purchase_requests ve purchase_request_items içinde arama yap
   let matchingRequestIds: string[] | null = null
   if (searchTerm && searchTerm.trim().length > 0) {
+    // Türkçe karakterleri normalize et
+    const normalizeTurkish = (text: string): string => {
+      return text
+        .toLowerCase()
+        .replace(/ı/g, 'i')
+        .replace(/İ/g, 'i')
+        .replace(/ş/g, 's')
+        .replace(/Ş/g, 's')
+        .replace(/ğ/g, 'g')
+        .replace(/Ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/Ü/g, 'u')
+        .replace(/ö/g, 'o')
+        .replace(/Ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .replace(/Ç/g, 'c')
+    }
+    
+    const normalizedSearch = normalizeTurkish(searchTerm.trim())
+    
+    // 1. Purchase requests tablosunda ara (request_number, title, description)
+    const { data: requestsData } = await supabase
+      .from('purchase_requests')
+      .select('id, request_number, title, description')
+    
+    // 2. Purchase request items tablosunda ara (item_name)
     const { data: itemsData } = await supabase
       .from('purchase_request_items')
       .select('purchase_request_id, item_name')
-      .ilike('item_name', `%${searchTerm.trim()}%`)
     
-    if (itemsData && itemsData.length > 0) {
-      matchingRequestIds = [...new Set(itemsData.map(item => item.purchase_request_id))]
-    } else {
+    // Client-side filtreleme ile Türkçe karakter desteği
+    const matchingIds = new Set<string>()
+    
+    // Requests'lerde ara
+    if (requestsData) {
+      requestsData.forEach(req => {
+        const searchableText = [
+          req.request_number || '',
+          req.title || '',
+          req.description || ''
+        ].join(' ')
+        
+        if (normalizeTurkish(searchableText).includes(normalizedSearch)) {
+          matchingIds.add(req.id)
+        }
+      })
+    }
+    
+    // Items'larda ara
+    if (itemsData) {
+      itemsData.forEach(item => {
+        if (normalizeTurkish(item.item_name || '').includes(normalizedSearch)) {
+          matchingIds.add(item.purchase_request_id)
+        }
+      })
+    }
+    
+    matchingRequestIds = Array.from(matchingIds)
+    if (matchingRequestIds.length === 0) {
       matchingRequestIds = []
     }
   }
@@ -701,6 +752,24 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     }
   }, [currentPage, pageSize, userRole])
 
+  // Türkçe karakterleri normalize et
+  const normalizeTurkish = (text: string): string => {
+    return text
+      .toLowerCase()
+      .replace(/ı/g, 'i')
+      .replace(/İ/g, 'i')
+      .replace(/ş/g, 's')
+      .replace(/Ş/g, 's')
+      .replace(/ğ/g, 'g')
+      .replace(/Ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/Ü/g, 'u')
+      .replace(/ö/g, 'o')
+      .replace(/Ö/g, 'o')
+      .replace(/ç/g, 'c')
+      .replace(/Ç/g, 'c')
+  }
+
   // Filter uygulaması
   const filteredRequests = filteredByDeliveryStatus.filter((req: any) => {
     // Site manager için tab bazlı filtreleme
@@ -712,11 +781,11 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     
     if (filters.status !== 'all' && req.status !== filters.status) return false
     if (filters.search) {
-      const searchTerm = filters.search.toLowerCase()
+      const searchTerm = normalizeTurkish(filters.search)
       return (
-        req.request_number?.toLowerCase().includes(searchTerm) ||
-        req.title?.toLowerCase().includes(searchTerm) ||
-        req.description?.toLowerCase().includes(searchTerm)
+        normalizeTurkish(req.request_number || '').includes(searchTerm) ||
+        normalizeTurkish(req.title || '').includes(searchTerm) ||
+        normalizeTurkish(req.description || '').includes(searchTerm)
       )
     }
     return true
