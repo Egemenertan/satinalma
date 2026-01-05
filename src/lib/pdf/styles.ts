@@ -218,10 +218,10 @@ export const getPDFStyles = (): string => `
     font-size: 9pt;
   }
 
-  /* Invoice Summary */
+  /* Invoice Summary - Kompakt */
   .invoice-summary {
-    margin-top: 30px;
-    padding: 20px;
+    margin-top: 15px;
+    padding: 10px 0;
     border: none;
     border-radius: 0;
     background: transparent;
@@ -229,24 +229,24 @@ export const getPDFStyles = (): string => `
   }
 
   .invoice-summary-title {
-    font-size: 14pt;
+    font-size: 12pt;
     font-weight: 700;
-    margin-bottom: 15px;
+    margin-bottom: 8px;
     text-transform: uppercase;
   }
   
   .invoice-summary-subtitle {
-    font-size: 11pt;
+    font-size: 10pt;
     font-weight: 600;
-    margin-top: 15px;
-    margin-bottom: 8px;
-    padding-bottom: 5px;
+    margin-top: 8px;
+    margin-bottom: 4px;
+    padding-bottom: 3px;
     border-bottom: 1px solid #000;
   }
   
   .individual-invoice-summary {
-    margin-bottom: 20px;
-    padding-bottom: 15px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
     border-bottom: 2px solid #ddd;
   }
   
@@ -255,8 +255,8 @@ export const getPDFStyles = (): string => `
   }
   
   .summary-row.invoice-total {
-    margin-top: 8px;
-    padding-top: 8px;
+    margin-top: 4px;
+    padding-top: 4px;
     border-top: 2px solid #000;
     font-weight: 700;
   }
@@ -272,7 +272,7 @@ export const getPDFStyles = (): string => `
   .summary-row {
     display: flex;
     justify-content: space-between;
-    padding: 8px 0;
+    padding: 4px 0;
     border-bottom: 1px solid #ddd;
   }
 
@@ -282,17 +282,17 @@ export const getPDFStyles = (): string => `
 
   .summary-label {
     font-weight: 500;
-    font-size: 10pt;
+    font-size: 9pt;
   }
 
   .summary-value {
     font-weight: 600;
-    font-size: 10pt;
+    font-size: 9pt;
   }
 
   .summary-row.subtotal {
-    margin-top: 10px;
-    padding-top: 12px;
+    margin-top: 6px;
+    padding-top: 6px;
     border-top: 2px solid #000;
   }
 
@@ -307,18 +307,18 @@ export const getPDFStyles = (): string => `
   }
 
   .summary-row.total {
-    margin-top: 10px;
-    padding-top: 12px;
+    margin-top: 6px;
+    padding-top: 8px;
     border-top: 3px double #000;
   }
 
   .summary-row.total .summary-label {
-    font-size: 13pt;
+    font-size: 11pt;
     font-weight: 700;
   }
 
   .summary-row.total .summary-value {
-    font-size: 16pt;
+    font-size: 13pt;
     font-weight: 700;
     color: #000;
   }
