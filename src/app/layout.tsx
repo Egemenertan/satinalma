@@ -9,10 +9,23 @@ export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
   description: "Şantiye satın alma talepleri için modern yönetim sistemi",
   manifest: '/manifest.json',
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
+    googleBot: {
+      index: false,
+      follow: false,
+      noimageindex: true,
+      'max-video-preview': -1,
+      'max-image-preview': 'none',
+      'max-snippet': -1,
+    },
+  },
   icons: {
-    icon: STORAGE_URLS.ICON,
-    shortcut: STORAGE_URLS.ICON,
-    apple: STORAGE_URLS.ICON,
+    icon: '/blackdu.webp',
+    shortcut: '/blackdu.webp',
+    apple: '/blackdu.webp',
   },
   appleWebApp: {
     capable: true,
