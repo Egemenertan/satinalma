@@ -1506,13 +1506,11 @@ DOVEC GROUP
                               </div>
                             )}
                             
-                            {/* Kullanım Amacı */}
-                            {item.purpose && (
-                              <div className="flex items-center gap-2 mb-2">
-                                <span className="text-sm font-medium text-gray-700">Kullanım Amacı:</span>
-                                <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
-                              </div>
-                            )}
+                            {/* Kullanım Amacı - Artık zorunlu alan */}
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-medium text-gray-700">Kullanım Amacı:</span>
+                              <span className="text-sm font-medium text-gray-900">{item.purpose}</span>
+                            </div>
                             
                             {/* Gerekli Teslimat Tarihi */}
                             {item.delivery_date && (

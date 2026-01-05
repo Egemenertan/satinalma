@@ -611,7 +611,7 @@ export default function OrdersPage() {
       // Bu invoice_group'a ait TÜM faturaları çek (farklı siparişlerden olabilir)
       const { data: allGroupInvoices, error: groupInvoicesError } = await supabase
         .from('invoices')
-        .select('id, order_id, amount, currency, invoice_photos, notes, created_at')
+        .select('id, order_id, amount, currency, grand_total, invoice_photos, notes, created_at')
         .eq('invoice_group_id', firstInvoice.invoice_group_id)
         .order('created_at', { ascending: true })
 
@@ -622,7 +622,7 @@ export default function OrdersPage() {
 
       console.log(`📦 Invoice Group ${firstInvoice.invoice_group_id.substring(0, 8)} için ${allGroupInvoices.length} fatura bulundu`)
       
-      // Her sipariş için tutarları doldur
+      // Her sipariş için tutarları doldur - grand_total varsa onu kullan
       const amounts: Record<string, string> = {}
       const currencies: Record<string, string> = {}
       const orderIds = new Set<string>()
@@ -630,13 +630,16 @@ export default function OrdersPage() {
       allGroupInvoices.forEach(inv => {
         orderIds.add(inv.order_id)
         
+        // grand_total varsa onu kullan, yoksa amount kullan
+        const invoiceTotal = inv.grand_total ? parseFloat(inv.grand_total) : parseFloat(inv.amount) || 0
+        
         // Eğer bu sipariş için zaten tutar varsa, ekle
         if (amounts[inv.order_id]) {
           const currentAmount = parseToNumber(amounts[inv.order_id])
-          const newAmount = currentAmount + (parseFloat(inv.amount) || 0)
+          const newAmount = currentAmount + invoiceTotal
           amounts[inv.order_id] = newAmount.toFixed(2).replace('.', ',')
         } else {
-          amounts[inv.order_id] = (parseFloat(inv.amount) || 0).toFixed(2).replace('.', ',')
+          amounts[inv.order_id] = invoiceTotal.toFixed(2).replace('.', ',')
           currencies[inv.order_id] = inv.currency || 'TRY'
         }
       })
@@ -690,8 +693,11 @@ export default function OrdersPage() {
       // NOT: Siparişler zaten yukarıda seçildi (orderIds.forEach ile)
     } else {
       // Invoice group yok - TÜM faturaları göster (zaten yukarıda çektik)
-      // Tüm faturaların toplam tutarını hesapla
-      const totalAmount = allOrderInvoices.reduce((sum, inv) => sum + (parseFloat(inv.amount) || 0), 0)
+      // Tüm faturaların toplam tutarını hesapla - grand_total varsa onu kullan, yoksa amount kullan
+      const totalAmount = allOrderInvoices.reduce((sum, inv) => {
+        const invoiceTotal = inv.grand_total ? parseFloat(inv.grand_total) : parseFloat(inv.amount) || 0
+        return sum + invoiceTotal
+      }, 0)
       
       // Sipariş için tutarları ayarla (toplam tutar)
       const amounts: Record<string, string> = {}
@@ -1774,7 +1780,11 @@ export default function OrdersPage() {
                     ) : (
                       <div className="text-2xl font-bold text-gray-900">
                         {getCurrencySymbol(invoice.currency)}
-                        {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {invoice.currency}
+                        {(() => {
+                          const displayAmount = invoice.grand_total || invoice.amount
+                          console.log(`💰 Fatura ${invoice.id.substring(0, 8)}: amount=${invoice.amount}, grand_total=${invoice.grand_total}, displaying=${displayAmount}`)
+                          return displayAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })
+                        })()} {invoice.currency}
                       </div>
                     )}
                     

@@ -18,7 +18,7 @@ export interface PurchaseRequestItem {
   unit: string
   specifications: string
   brand?: string
-  purpose?: string  // Her malzeme için ayrı kullanım amacı
+  purpose: string  // Her malzeme için ayrı kullanım amacı - ZORUNLU
   delivery_date?: string  // Her malzeme için ayrı teslimat tarihi
   original_quantity?: number  // İlk talep edilen miktar - hiç değişmez
   image_urls?: string[]  // Malzeme görselleri

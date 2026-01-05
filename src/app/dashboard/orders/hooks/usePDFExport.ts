@@ -263,9 +263,9 @@ export function usePDFExport() {
         return ['creation', 'approval', 'shipment'].includes(item.type)
       }) || []
 
-      // Toplam tutar ve para birimi hesapla
+      // Toplam tutar ve para birimi hesapla - grand_total varsa onu kullan
       const totalAmount = specificInvoices.length > 0 
-        ? specificInvoices.reduce((sum: number, inv: any) => sum + inv.amount, 0)
+        ? specificInvoices.reduce((sum: number, inv: any) => sum + (inv.grand_total || inv.amount), 0)
         : specificOrders.reduce((sum: number, o: any) => sum + o.amount, 0)
       
       const invoiceCurrency = specificInvoices.length > 0 

@@ -64,6 +64,10 @@ export type Database = {
           role_old: string | null
           site_id: string[] | null
           updated_at: string | null
+          original_role: Database["public"]["Enums"]["user_role_enum"] | null
+          temporary_role_start_date: string | null
+          temporary_role_end_date: string | null
+          temporary_role_assigned_by: string | null
         }
         Insert: {
           construction_site_id?: string | null
@@ -78,6 +82,10 @@ export type Database = {
           role_old?: string | null
           site_id?: string[] | null
           updated_at?: string | null
+          original_role?: Database["public"]["Enums"]["user_role_enum"] | null
+          temporary_role_start_date?: string | null
+          temporary_role_end_date?: string | null
+          temporary_role_assigned_by?: string | null
         }
         Update: {
           construction_site_id?: string | null
@@ -92,6 +100,10 @@ export type Database = {
           role_old?: string | null
           site_id?: string[] | null
           updated_at?: string | null
+          original_role?: Database["public"]["Enums"]["user_role_enum"] | null
+          temporary_role_start_date?: string | null
+          temporary_role_end_date?: string | null
+          temporary_role_assigned_by?: string | null
         }
         Relationships: []
       }

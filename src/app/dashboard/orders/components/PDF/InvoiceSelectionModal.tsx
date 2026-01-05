@@ -122,7 +122,7 @@ export function InvoiceSelectionModal({
                     </div>
                     
                     <div className="text-lg font-bold mb-1 text-gray-900">
-                      {invoice.amount?.toLocaleString('tr-TR', { 
+                      {(invoice.grand_total || invoice.amount)?.toLocaleString('tr-TR', { 
                         minimumFractionDigits: 2, 
                         maximumFractionDigits: 2 
                       })} {invoice.currency}
@@ -152,11 +152,11 @@ export function InvoiceSelectionModal({
           {selectedInvoiceIds.size > 0 && (
             <div className="bg-gray-50 rounded-xl p-4 border border-gray-200">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-gray-600">Toplam</span>
+                <span className="text-sm font-medium text-gray-600">Genel Toplam</span>
                 <span className="text-xl font-bold text-gray-900">
                   {order.invoices
                     .filter((inv: any) => selectedInvoiceIds.has(inv.id))
-                    .reduce((sum: number, inv: any) => sum + (inv.amount || 0), 0)
+                    .reduce((sum: number, inv: any) => sum + (inv.grand_total || inv.amount || 0), 0)
                     .toLocaleString('tr-TR', { 
                       minimumFractionDigits: 2, 
                       maximumFractionDigits: 2 

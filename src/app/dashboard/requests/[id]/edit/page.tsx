@@ -1028,6 +1028,27 @@ export default function EditPurchaseRequestPage() {
                   />
                 </div>
                 
+                {/* Kullanım Amacı */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
+                    <Target className="w-4 h-4" />
+                    Kullanım Amacı *
+                  </Label>
+                  <Input
+                    value={currentMaterial?.purpose || ''}
+                    onChange={(e) => {
+                      const updatedMaterials = [...selectedMaterials]
+                      updatedMaterials[currentMaterialIndex] = {
+                        ...updatedMaterials[currentMaterialIndex],
+                        purpose: e.target.value
+                      }
+                      setSelectedMaterials(updatedMaterials)
+                    }}
+                    placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
+                  />
+                </div>
+                
                 <div>
                   <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                     <Tag className="w-4 h-4" />
@@ -1091,27 +1112,6 @@ export default function EditPurchaseRequestPage() {
                     className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
-              </div>
-
-              {/* Kullanım Amacı */}
-              <div>
-                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
-                  <Target className="w-4 h-4" />
-                  Kullanım Amacı *
-                </Label>
-                <Input
-                  value={currentMaterial?.purpose || ''}
-                  onChange={(e) => {
-                    const updatedMaterials = [...selectedMaterials]
-                    updatedMaterials[currentMaterialIndex] = {
-                      ...updatedMaterials[currentMaterialIndex],
-                      purpose: e.target.value
-                    }
-                    setSelectedMaterials(updatedMaterials)
-                  }}
-                  placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
-                  className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
-                />
               </div>
 
               {/* Gerekli Teslimat Tarihi */}

@@ -325,12 +325,10 @@ export default function MaterialCard({
                 </div>
               )}
               
-              {item.purpose && (
-                <div className="flex items-center gap-2">
-                  <span className="text-gray-500 min-w-[60px] sm:min-w-[80px]">Amaç:</span>
-                  <span className="font-medium text-gray-900 break-words">{item.purpose}</span>
-                </div>
-              )}
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 min-w-[60px] sm:min-w-[80px]">Amaç:</span>
+                <span className="font-medium text-gray-900 break-words">{item.purpose}</span>
+              </div>
               
               {item.delivery_date && (
                 <div className="flex items-center gap-2">

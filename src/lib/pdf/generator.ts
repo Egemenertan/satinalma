@@ -64,11 +64,15 @@ export const generatePDF = async (data: PDFData): Promise<void> => {
       willShowBreakdown: !!(data.statistics.discount || data.statistics.tax || data.statistics.subtotal !== undefined)
     })
     
-    console.log('📝 Invoice Notes Debug:', {
+    console.log('📝 Invoice Details Debug:', {
       invoicesWithNotes: data.invoices.filter(inv => inv.notes).length,
       allInvoices: data.invoices.map(inv => ({
         id: inv.id.substring(0, 8),
         amount: inv.amount,
+        subtotal: inv.subtotal,
+        discount: inv.discount,
+        tax: inv.tax,
+        grand_total: inv.grand_total,
         currency: inv.currency,
         supplier: inv.supplier_name,
         item: inv.item_name,
@@ -181,9 +185,14 @@ export const transformToPDFData = (apiData: any): PDFData => {
     currency: invoice.currency,
     created_at: invoice.created_at,
     notes: invoice.notes,
-    supplier_name: invoice.orders?.suppliers?.name || invoice.suppliers?.name || 'Tedarikçi',
-    item_name: invoice.orders?.purchase_request_items?.item_name || invoice.purchase_request_items?.item_name || 'Malzeme',
-    added_by: invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || invoice.added_by_user?.full_name || invoice.added_by_user?.email || 'Purchasing Officer',
+    supplier_name: invoice.orders?.suppliers?.name || invoice.suppliers?.name || invoice.supplier_name || 'Tedarikçi',
+    item_name: invoice.orders?.purchase_request_items?.item_name || invoice.purchase_request_items?.item_name || invoice.item_name || 'Malzeme',
+    added_by: invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || invoice.added_by_user?.full_name || invoice.added_by_user?.email || invoice.added_by || 'Purchasing Officer',
+    // Fatura detayları - invoices tablosundan gelen
+    subtotal: invoice.subtotal,
+    discount: invoice.discount,
+    tax: invoice.tax,
+    grand_total: invoice.grand_total,
     // Toplu fatura için invoice_group_id'yi ekle
     invoice_group_id: invoice.invoice_group_id || null
   } as any))

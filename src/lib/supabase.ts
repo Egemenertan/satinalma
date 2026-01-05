@@ -224,7 +224,7 @@ export type Database = {
           material_item_id: string | null
           original_quantity: number | null
           purchase_request_id: string
-          purpose: string | null
+          purpose: string
           quantity: number
           sent_quantity: number | null
           specifications: string | null
@@ -249,7 +249,7 @@ export type Database = {
           material_item_id?: string | null
           original_quantity?: number | null
           purchase_request_id: string
-          purpose?: string | null
+          purpose: string
           quantity: number
           sent_quantity?: number | null
           specifications?: string | null

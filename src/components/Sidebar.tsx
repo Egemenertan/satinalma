@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { getAccessibleMenuItems, getRoleLabel } from '@/lib/roles'
+import RoleAssignmentModal from '@/components/RoleAssignmentModal'
 import {
   LayoutDashboard,
   FileText,
@@ -25,7 +26,8 @@ import {
   BarChart3,
   Truck,
   Package,
-  Tag
+  Tag,
+  UserCog
 } from 'lucide-react'
 
 // Bekleyen talep sayısını getiren fetcher (rol bazlı)
@@ -160,6 +162,7 @@ export default function Sidebar({
   const [userRole, setUserRole] = useState<string>('user')
   const [userEmail, setUserEmail] = useState<string>('')
   const [userName, setUserName] = useState<string>('')
+  const [showRoleAssignmentModal, setShowRoleAssignmentModal] = useState(false)
   
   // External prop varsa onu kullan, yoksa internal state kullan
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
@@ -365,6 +368,16 @@ export default function Sidebar({
 
   return (
     <>
+      {/* Role Assignment Modal */}
+      <RoleAssignmentModal
+        isOpen={showRoleAssignmentModal}
+        onClose={() => setShowRoleAssignmentModal(false)}
+        onSuccess={() => {
+          // Başarılı atama sonrası yapılacaklar
+          console.log('✅ Rol ataması başarılı')
+        }}
+      />
+
       {/* Mobile Overlay */}
       {isMobileOpen && (
         <div 
@@ -426,7 +439,7 @@ export default function Sidebar({
 
         {/* Quick Create - only show when not collapsed */}
         {(!isCollapsed || isMobileOpen) && (
-          <div className="px-4 py-3">
+          <div className="px-4 py-3 space-y-2">
             <Button 
               onClick={() => {
                 router.push('/dashboard/requests/create')
@@ -440,6 +453,24 @@ export default function Sidebar({
               
               Hızlı Talep
             </Button>
+            
+            {/* Site Manager için Rol Yönetimi Butonu */}
+            {userRole === 'site_manager' && (
+              <Button 
+                onClick={() => {
+                  setShowRoleAssignmentModal(true)
+                  // Mobile'da sidebar'ı kapat
+                  if (isMobileOpen) {
+                    setIsMobileOpen(false)
+                  }
+                }}
+                variant="outline"
+                className="w-full h-9 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white text-sm font-medium rounded-2xl flex items-center justify-center gap-2 transition-all duration-200"
+              >
+                <UserCog className="h-4 w-4" />
+                Rol Yönetimi
+              </Button>
+            )}
           </div>
         )}
 

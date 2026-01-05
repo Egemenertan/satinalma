@@ -375,7 +375,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     material_group?: string
     material_item_name?: string
     specifications?: string  // Her malzeme için ayrı teknik özellikler
-    purpose?: string         // Her malzeme için ayrı kullanım amacı
+    purpose: string          // Her malzeme için ayrı kullanım amacı - ZORUNLU
     delivery_date?: string   // Her malzeme için ayrı teslimat tarihi
     image_urls?: string[]
   }>
@@ -468,7 +468,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       unit: material.unit,
       unit_price: 0,
       specifications: material.specifications || '', // Her malzeme için ayrı teknik özellikler
-      purpose: material.purpose || null, // Her malzeme için ayrı kullanım amacı
+      purpose: material.purpose, // Her malzeme için ayrı kullanım amacı - ZORUNLU
       delivery_date: material.delivery_date || null, // Her malzeme için ayrı teslimat tarihi
       brand: material.brand || null,
       material_class: material.material_class || null,

@@ -191,12 +191,10 @@ export default function SitePersonnelView({
                           </div>
                         )}
                         
-                        {item.purpose && (
-                          <div className="flex items-center gap-2 sm:gap-3">
-                            <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Kullanım Amacı</span>
-                            <span className="text-xs sm:text-sm font-medium text-gray-900 break-words">{item.purpose}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center gap-2 sm:gap-3">
+                          <span className="text-xs sm:text-sm text-gray-500 min-w-[80px] sm:w-32">Kullanım Amacı</span>
+                          <span className="text-xs sm:text-sm font-medium text-gray-900 break-words">{item.purpose}</span>
+                        </div>
                         
                         {item.delivery_date && (
                           <div className="flex items-center gap-2 sm:gap-3">

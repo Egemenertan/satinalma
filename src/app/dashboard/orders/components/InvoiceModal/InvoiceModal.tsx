@@ -490,6 +490,13 @@ function MultipleOrdersInvoice({
   onAmountChange: (orderId: string, value: string) => void
   onCurrencyChange: (orderId: string, value: string) => void
 }) {
+  // Toplam tutarı hesapla
+  const totalAmount = Object.values(orderAmounts).reduce((sum, amount) => {
+    return sum + parseToNumber(amount)
+  }, 0)
+  
+  const currency = Object.values(orderCurrencies)[0] || 'TRY'
+  
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -497,7 +504,14 @@ function MultipleOrdersInvoice({
          
           <h3 className="font-semibold text-gray-900">Sipariş Fatura Tutarları</h3>
         </div>
-        <div className="text-sm text-gray-500">{orders.length} sipariş</div>
+        <div className="flex items-center gap-3">
+          <div className="text-sm text-gray-500">{orders.length} sipariş</div>
+          {totalAmount > 0 && (
+            <div className="px-3 py-1.5 bg-gray-900 text-white rounded-lg text-sm font-semibold">
+              Toplam: {totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currency}
+            </div>
+          )}
+        </div>
       </div>
       
       <div className="max-h-[450px] overflow-y-auto space-y-3 pr-2">
@@ -674,9 +688,12 @@ function InvoiceSummary({
                       })})
                     </span>
                   </div>
-                  <span className="text-sm font-medium text-gray-600">
-                    Tutar: {invoice.amount.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {invoice.currency}
-                  </span>
+                  <div className="text-right">
+                    <div className="text-xs text-gray-500 mb-0.5">Genel Toplam</div>
+                    <span className="text-base font-bold text-gray-900">
+                      {grandTotal} {invoice.currency}
+                    </span>
+                  </div>
                 </div>
                 
                 {/* Fatura detayları - Düzenlenebilir */}
@@ -784,12 +801,23 @@ function InvoiceSummary({
           })}
         </div>
         
-        {/* Genel Toplam */}
+        {/* Genel Toplam - Güncellenmiş değerleri kullan */}
         <div className="bg-black text-white rounded-xl p-6">
           <div className="flex justify-between items-center">
             <span className="text-lg font-semibold">Tüm Faturalar Toplamı</span>
             <span className="text-2xl font-bold">
-              {individualInvoiceDetails.reduce((sum, inv) => sum + (inv.grand_total || inv.amount), 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currentCurrency}
+              {individualInvoiceDetails.reduce((sum, inv) => {
+                // Düzenlenmiş değerleri kullan
+                const invoiceValues = editedInvoiceValues[inv.id]
+                if (invoiceValues) {
+                  const subtotalNum = parseToNumber(invoiceValues.subtotal)
+                  const discountNum = parseToNumber(invoiceValues.discount)
+                  const taxNum = parseToNumber(invoiceValues.tax)
+                  return sum + (subtotalNum - discountNum + taxNum)
+                }
+                // Düzenlenmemişse orijinal değerleri kullan
+                return sum + (inv.grand_total || inv.amount)
+              }, 0).toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {currentCurrency}
             </span>
           </div>
         </div>

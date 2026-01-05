@@ -525,7 +525,11 @@ export async function GET(request: NextRequest) {
           created_at,
           notes,
           order_id,
-          invoice_group_id
+          invoice_group_id,
+          subtotal,
+          discount,
+          tax,
+          grand_total
         `)
         .in('order_id', orderIds)
         .order('created_at', { ascending: true })
@@ -545,7 +549,11 @@ export async function GET(request: NextRequest) {
           created_at,
           notes,
           order_id,
-          invoice_group_id
+          invoice_group_id,
+          subtotal,
+          discount,
+          tax,
+          grand_total
         `)
         .order('created_at', { ascending: true })
       
@@ -582,6 +590,10 @@ export async function GET(request: NextRequest) {
         if (relatedOrder) {
           invoicesWithJoins.push({
             ...invoice,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            grand_total: invoice.grand_total,
             orders: {
               purchase_request_id: relatedOrder.purchase_request_id,
               suppliers: relatedOrder.suppliers,
@@ -630,7 +642,11 @@ export async function GET(request: NextRequest) {
             item_name: itemName,
             added_by: userName,
             added_by_role: orderUser?.role,
-            notes: invoice.notes
+            notes: invoice.notes,
+            subtotal: invoice.subtotal,
+            discount: invoice.discount,
+            tax: invoice.tax,
+            grand_total: invoice.grand_total
           }
         })
       })
@@ -778,6 +794,14 @@ export async function GET(request: NextRequest) {
         id: inv.id?.substring(0, 8),
         hasNotes: !!inv.notes,
         notes: inv.notes
+      })),
+      invoicesBreakdownPreview: response.invoices.map((inv: any) => ({
+        id: inv.id?.substring(0, 8),
+        amount: inv.amount,
+        subtotal: inv.subtotal,
+        discount: inv.discount,
+        tax: inv.tax,
+        grand_total: inv.grand_total
       }))
     })
 

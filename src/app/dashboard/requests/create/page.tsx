@@ -888,7 +888,7 @@ export default function CreatePurchaseRequestPage() {
       case 5:
         // Tüm seçili malzemeler için zorunlu alanlar dolu olmalı (material_name otomatik dolu olduğu için kontrol edilmez)
         return selectedMaterials.length > 0 && selectedMaterials.every(material => 
-          material.unit && material.quantity && material.delivery_date
+          material.unit && material.quantity && material.delivery_date && material.purpose
         )
       case 6:
         return true // Step 6 artık sadece özet gösteriyor, purpose her malzemede ayrı kontrol ediliyor
@@ -903,7 +903,7 @@ export default function CreatePurchaseRequestPage() {
     return (formData.construction_site || userSite) && 
            selectedMaterials.length > 0 &&
            selectedMaterials.every(material => 
-             material.unit && material.quantity && material.delivery_date
+             material.unit && material.quantity && material.delivery_date && material.purpose
            )
   }
 
@@ -1801,6 +1801,28 @@ export default function CreatePurchaseRequestPage() {
                   </Popover>
                 </div>
 
+                {/* Purpose */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Kullanım Amacı <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    value={currentMaterial?.purpose || ''}
+                    onChange={(e) => {
+                      const updatedMaterials = [...selectedMaterials]
+                      updatedMaterials[currentMaterialIndex] = {
+                        ...updatedMaterials[currentMaterialIndex],
+                        purpose: e.target.value
+                      }
+                      setSelectedMaterials(updatedMaterials)
+                    }}
+                    placeholder="Bu malzeme nerede ve nasıl kullanılacak? (Zorunlu)"
+                    className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
+                    required
+                  />
+                </div>
+
                 {/* Brand */}
                 <div>
                   <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
@@ -1818,27 +1840,6 @@ export default function CreatePurchaseRequestPage() {
                       setSelectedMaterials(updatedMaterials)
                     }}
                     placeholder="Marka/üretici..."
-                    className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
-                  />
-                </div>
-
-                {/* Purpose */}
-                <div>
-                  <Label className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                    <Target className="w-4 h-4" />
-                    Kullanım Amacı
-                  </Label>
-                  <Input
-                    value={currentMaterial?.purpose || ''}
-                    onChange={(e) => {
-                      const updatedMaterials = [...selectedMaterials]
-                      updatedMaterials[currentMaterialIndex] = {
-                        ...updatedMaterials[currentMaterialIndex],
-                        purpose: e.target.value
-                      }
-                      setSelectedMaterials(updatedMaterials)
-                    }}
-                    placeholder="Bu malzeme nerede ve nasıl kullanılacak?"
                     className="h-12 rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
                   />
                 </div>
