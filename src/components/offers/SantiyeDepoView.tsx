@@ -390,14 +390,6 @@ export default function SantiyeDepoView({
     return !restrictedStatuses.includes(request?.status)
   }
 
-  // Talebi düzenleme yetkisi kontrolü
-  const canEditRequest = () => {
-    // Santiye Depo için: sipariş verildi, teslim alındı ve sonrası durumlarda düzenleme yapılamaz
-    // Kısmen gönderildi ve depoda mevcut değil durumlarında düzenleme yapılabilir
-    const restrictedStatuses = ['sipariş verildi', 'teslim alındı', 'kısmen teslim alındı', 'gönderildi', 'iade var']
-    return !restrictedStatuses.includes(request?.status)
-  }
-
   // Malzeme kaldırma onayı başlat
   const handleRemoveMaterial = (itemId: string) => {
     const materialItem = request?.purchase_request_items?.find((item: any) => item.id === itemId)
