@@ -63,11 +63,14 @@ export async function createPurchaseRequest(data: {
     
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
-    // Eğer santiye_depo veya santiye_depo_yonetici kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
+    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
     let initialStatus = 'pending'
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
+    } else if (user.role === 'santiye_depo_yonetici') {
+      initialStatus = 'satın almaya gönderildi'
+    } else if (user.role === 'santiye_depo') {
       initialStatus = 'depoda mevcut değil'
     }
     
@@ -126,7 +129,9 @@ export async function createPurchaseRequest(data: {
     let historyComment = 'Talep oluşturuldu'
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
+    } else if (user.role === 'santiye_depo_yonetici') {
+      historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
+    } else if (user.role === 'santiye_depo') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
     
@@ -411,13 +416,16 @@ export async function createMultiMaterialPurchaseRequest(data: {
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
     // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
     // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için site_personnel kullanıcıları "onay_bekliyor" statusu ile oluşturur
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
+    } else if (user.role === 'santiye_depo_yonetici') {
+      initialStatus = 'satın almaya gönderildi'
+    } else if (user.role === 'santiye_depo') {
       initialStatus = 'depoda mevcut değil'
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
       // Özel site için site_personnel kullanıcıları onay bekliyor statusu ile oluşturur
@@ -493,6 +501,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
     let historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
+    } else if (user.role === 'santiye_depo_yonetici') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (user.role === 'santiye_depo') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
