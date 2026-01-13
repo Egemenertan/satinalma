@@ -63,11 +63,11 @@ export async function createPurchaseRequest(data: {
     
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
-    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Eğer santiye_depo veya santiye_depo_yonetici kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
     let initialStatus = 'pending'
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo') {
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
       initialStatus = 'depoda mevcut değil'
     }
     
@@ -126,7 +126,7 @@ export async function createPurchaseRequest(data: {
     let historyComment = 'Talep oluşturuldu'
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (user.role === 'santiye_depo') {
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
     
@@ -417,7 +417,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo') {
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
       initialStatus = 'depoda mevcut değil'
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
       // Özel site için site_personnel kullanıcıları onay bekliyor statusu ile oluşturur
@@ -620,6 +620,11 @@ export async function updatePurchaseRequest(data: {
       
       // Site Manager: pending, rejected, kısmen gönderildi, depoda mevcut değil
       if (user.role === 'site_manager') {
+        return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
+      }
+      
+      // Santiye Depo ve Santiye Depo Yöneticisi: pending, rejected, kısmen gönderildi, depoda mevcut değil
+      if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
         return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
       }
       

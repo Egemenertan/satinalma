@@ -19,15 +19,12 @@ import {
   ChevronDown,
   ChevronRight,
   LogOut,
-  Menu,
   X,
-  MoreHorizontal,
-  ChevronLeft,
-  BarChart3,
   Truck,
   Package,
   Tag,
-  UserCog
+  UserCog,
+  Plus
 } from 'lucide-react'
 
 // Bekleyen talep sayısını getiren fetcher (rol bazlı)
@@ -124,12 +121,6 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       icon: Tag
     },
     {
-      id: 'reports',
-      title: 'Raporlar',
-      href: '/dashboard/reports',
-      icon: BarChart3
-    },
-    {
       id: 'settings',
       title: 'Ayarlar',
       href: '/dashboard/settings',
@@ -145,24 +136,23 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
 
 interface SidebarProps {
   className?: string
-  onCollapsedChange?: (collapsed: boolean) => void
   isMobileOpen?: boolean
   setIsMobileOpen?: (open: boolean) => void
 }
 
 export default function Sidebar({ 
   className, 
-  onCollapsedChange, 
   isMobileOpen: externalIsMobileOpen = false,
   setIsMobileOpen: externalSetIsMobileOpen
 }: SidebarProps) {
-  const [isCollapsed, setIsCollapsed] = useState(false)
+  const [isCollapsed, setIsCollapsed] = useState(true)
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
   const [userRole, setUserRole] = useState<string>('user')
   const [userEmail, setUserEmail] = useState<string>('')
   const [userName, setUserName] = useState<string>('')
   const [showRoleAssignmentModal, setShowRoleAssignmentModal] = useState(false)
+  const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   
   // External prop varsa onu kullan, yoksa internal state kullan
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
@@ -255,12 +245,6 @@ export default function Sidebar({
     }
   }, [refreshPendingCount])
 
-  const handleToggleCollapse = () => {
-    const newCollapsed = !isCollapsed
-    setIsCollapsed(newCollapsed)
-    onCollapsedChange?.(newCollapsed)
-  }
-
   const handleMobileToggle = () => {
     setIsMobileOpen(!isMobileOpen)
   }
@@ -286,6 +270,11 @@ export default function Sidebar({
 
   const isActive = (href?: string) => {
     if (!href) return false
+    // Dashboard için tam eşleşme kontrolü
+    if (href === '/dashboard') {
+      return pathname === '/dashboard'
+    }
+    // Diğer sayfalar için normal kontrol
     return pathname === href || pathname.startsWith(href + '/')
   }
 
@@ -293,6 +282,7 @@ export default function Sidebar({
     const hasChildren = item.children && item.children.length > 0
     const isExpanded = expandedItems.includes(item.title)
     const active = isActive(item.href)
+    const showTooltip = isCollapsed && !isMobileOpen && hoveredItem === item.title
 
     if (hasChildren) {
       return (
@@ -300,12 +290,16 @@ export default function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full h-10 transition-colors",
+              "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
-              "text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md",
-              active && "bg-gray-100 text-gray-900"
+              active 
+                ? "bg-black text-white hover:bg-gray-800" 
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+              "rounded-xl"
             )}
             onClick={() => toggleExpanded(item.title)}
+            onMouseEnter={() => setHoveredItem(item.title)}
+            onMouseLeave={() => setHoveredItem(null)}
           >
             <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
             {(!isCollapsed || isMobileOpen) && (
@@ -331,38 +325,61 @@ export default function Sidebar({
     }
 
     return (
-      <Link href={item.href || '#'}>
-        <Button
-          variant="ghost"
-          className={cn(
-            "w-full h-10 transition-colors",
-            isCollapsed ? "justify-center px-0" : "justify-start px-2",
-            "text-gray-600 hover:text-gray-900 hover:bg-gray-50 rounded-md",
-            active && "bg-gray-100 text-gray-900"
-          )}
-          onClick={() => {
-            if (isMobileOpen) {
-              setIsMobileOpen(false)
-            }
-          }}
-          title={isCollapsed ? item.title : undefined}
-        >
-          <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-          {(!isCollapsed || isMobileOpen) && (
-            <>
-              <span className="text-sm">{item.title}</span>
+      <div className="relative">
+        <Link href={item.href || '#'}>
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full h-10 transition-all duration-200",
+              isCollapsed ? "justify-center px-0" : "justify-start px-2",
+              active 
+                ? "bg-black text-white hover:bg-gray-800" 
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+              "rounded-xl"
+            )}
+            onClick={() => {
+              if (isMobileOpen) {
+                setIsMobileOpen(false)
+              }
+            }}
+            onMouseEnter={() => setHoveredItem(item.title)}
+            onMouseLeave={() => setHoveredItem(null)}
+          >
+            <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
+            {(!isCollapsed || isMobileOpen) && (
+              <>
+                <span className="text-sm">{item.title}</span>
+                {item.badge && (
+                  <Badge 
+                    variant="secondary" 
+                    className="ml-auto h-5 px-2 text-xs bg-red-500 text-white hover:bg-red-600 border-0"
+                  >
+                    {item.badge}
+                  </Badge>
+                )}
+              </>
+            )}
+          </Button>
+        </Link>
+        
+        {/* Modern Tooltip */}
+        {showTooltip && (
+          <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+            <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+              {item.title}
               {item.badge && (
                 <Badge 
                   variant="secondary" 
-                  className="ml-auto h-5 px-2 text-xs bg-red-500 text-white hover:bg-red-600 border-0"
+                  className="ml-2 h-4 px-1.5 text-xs bg-red-500 text-white border-0"
                 >
                   {item.badge}
                 </Badge>
               )}
-            </>
-          )}
-        </Button>
-      </Link>
+              <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+            </div>
+          </div>
+        )}
+      </div>
     )
   }
 
@@ -387,92 +404,147 @@ export default function Sidebar({
       )}
 
       {/* Sidebar */}
-      <div className={cn(
-        "fixed z-50 flex flex-col transition-all duration-500 ease-out",
-        "bg-gradient-to-br from-white to-gray-50/50 shadow-2xl backdrop-blur-xl",
-        // Desktop - Ada tasarımı (sol tarafta)
-        "hidden lg:flex",
-        "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
-        isCollapsed ? "lg:w-16" : "lg:w-64",
-        // Mobile - Ada tasarımı (SAĞDA)
-        isMobileOpen ? "flex top-3 bottom-3 right-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
-        className
-      )}>
+      <div 
+        className={cn(
+          "fixed z-50 flex flex-col transition-all duration-500 ease-out",
+          "bg-gradient-to-br from-white to-gray-50/50 shadow-2xl backdrop-blur-xl",
+          // Desktop - Ada tasarımı (sol tarafta)
+          "hidden lg:flex",
+          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
+          isCollapsed ? "lg:w-16" : "lg:w-64",
+          // Mobile - Ada tasarımı (SAĞDA)
+          isMobileOpen ? "flex top-3 bottom-3 right-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
+          className
+        )}
+        onMouseLeave={() => setHoveredItem(null)}
+      >
         {/* Header with Logo */}
         <div className={cn(
-          "flex items-center border-b border-gray-100/50",
-          // Mobile ve Desktop: logo ve buton
-          isMobileOpen ? "justify-between px-6 py-5" : 
-          // Desktop: logo ve toggle buton
-          isCollapsed ? "justify-center px-4 py-5" : "justify-between px-6 py-5"
+          "flex items-center justify-center border-b border-gray-100/50",
+          isMobileOpen ? "justify-between px-6 py-5" : "px-4 py-5"
         )}>
-          {/* Logo - mobile ve desktop'ta göster (collapsed değilse) */}
-          {!isCollapsed && (
+          {/* Logo - sadece mobile'da göster */}
+          {isMobileOpen && (
             <button 
               onClick={() => router.push('/dashboard/requests')}
               className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             >
               <img 
-                src="/d.png" 
+                src="/blackdu.webp" 
                 alt="Logo" 
-                className="h-8 w-auto filter brightness-0"
+                className="h-8 w-auto"
               />
             </button>
           )}
           
-          {/* Desktop: Collapse Toggle, Mobile: Close Button */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={isMobileOpen ? () => setIsMobileOpen(false) : handleToggleCollapse}
-            className="h-8 w-8 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
-          >
-            {isMobileOpen ? (
+          {/* Desktop: Logo icon, Mobile: Close Button */}
+          {isMobileOpen ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsMobileOpen(false)}
+              className="h-8 w-8 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
+            >
               <X className="h-4 w-4" />
-            ) : isCollapsed ? (
-              <Menu className="h-4 w-4" />
-            ) : (
-              <ChevronLeft className="h-4 w-4" />
-            )}
-          </Button>
+            </Button>
+          ) : (
+            <button 
+              onClick={() => router.push('/dashboard/requests')}
+              className="hover:opacity-80 transition-opacity"
+            >
+              <img 
+                src="/blackdu.webp" 
+                alt="Logo" 
+                className="h-10 w-10 object-contain"
+              />
+            </button>
+          )}
         </div>
 
-        {/* Quick Create - only show when not collapsed */}
-        {(!isCollapsed || isMobileOpen) && (
-          <div className="px-4 py-3 space-y-2">
-            <Button 
-              onClick={() => {
-                router.push('/dashboard/requests/create')
-                // Mobile'da sidebar'ı kapat
-                if (isMobileOpen) {
-                  setIsMobileOpen(false)
-                }
-              }}
-              className="w-full h-9 bg-black hover:bg-gray-800 text-white text-sm font-medium rounded-2xl"
-            >
+        {/* Quick Create */}
+        <div className={cn("py-3", isCollapsed && !isMobileOpen ? "px-2" : "px-4")}>
+          {isCollapsed && !isMobileOpen ? (
+            <div className="space-y-2 flex flex-col items-center">
+              {/* Hızlı Talep - Icon Only */}
+              <div className="relative">
+                <Button 
+                  onClick={() => router.push('/dashboard/requests/create')}
+                  onMouseEnter={() => setHoveredItem('quick-create')}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  className="w-10 h-10 bg-white hover:bg-gray-50 text-black border-2 border-black rounded-full flex items-center justify-center transition-all duration-200"
+                >
+                  <Plus className="h-5 w-5" />
+                </Button>
+                
+                {/* Tooltip for Quick Create */}
+                {hoveredItem === 'quick-create' && (
+                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                    <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                      Hızlı Talep
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    </div>
+                  </div>
+                )}
+              </div>
               
-              Hızlı Talep
-            </Button>
-            
-            {/* Site Manager için Rol Yönetimi Butonu */}
-            {userRole === 'site_manager' && (
+              {/* Site Manager için Rol Yönetimi - Icon Only */}
+              {userRole === 'site_manager' && (
+                <div className="relative">
+                  <Button 
+                    onClick={() => setShowRoleAssignmentModal(true)}
+                    onMouseEnter={() => setHoveredItem('role-management')}
+                    onMouseLeave={() => setHoveredItem(null)}
+                    variant="outline"
+                    className="w-full h-10 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl flex items-center justify-center transition-all duration-200"
+                  >
+                    <UserCog className="h-4 w-4" />
+                  </Button>
+                  
+                  {/* Tooltip for Role Management */}
+                  {hoveredItem === 'role-management' && (
+                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                      <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                        Rol Yönetimi
+                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-2">
               <Button 
                 onClick={() => {
-                  setShowRoleAssignmentModal(true)
-                  // Mobile'da sidebar'ı kapat
+                  router.push('/dashboard/requests/create')
                   if (isMobileOpen) {
                     setIsMobileOpen(false)
                   }
                 }}
-                variant="outline"
-                className="w-full h-9 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white text-sm font-medium rounded-2xl flex items-center justify-center gap-2 transition-all duration-200"
+                className="w-full h-9 bg-white hover:bg-gray-50 text-black border-2 border-black text-sm font-medium rounded-2xl transition-all duration-200"
               >
-                <UserCog className="h-4 w-4" />
-                Rol Yönetimi
+                Hızlı Talep
               </Button>
-            )}
-          </div>
-        )}
+              
+              {/* Site Manager için Rol Yönetimi Butonu */}
+              {userRole === 'site_manager' && (
+                <Button 
+                  onClick={() => {
+                    setShowRoleAssignmentModal(true)
+                    if (isMobileOpen) {
+                      setIsMobileOpen(false)
+                    }
+                  }}
+                  variant="outline"
+                  className="w-full h-9 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white text-sm font-medium rounded-2xl flex items-center justify-center gap-2 transition-all duration-200"
+                >
+                  <UserCog className="h-4 w-4" />
+                  Rol Yönetimi
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
 
         {/* Navigation */}
         <nav className={cn(
@@ -487,14 +559,59 @@ export default function Sidebar({
         {/* User Profile */}
         <div className={cn(
           "py-4 border-t border-gray-100",
-          isCollapsed ? "px-2" : "px-4"
+          isCollapsed && !isMobileOpen ? "px-2" : "px-4"
         )}>
           {isCollapsed && !isMobileOpen ? (
-            <div className="flex justify-center">
-              <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                <span className="text-xs font-medium text-white">
-                  {userName ? userName.charAt(0).toUpperCase() : 'U'}
-                </span>
+            <div className="space-y-2">
+              {/* User Avatar with Tooltip */}
+              <div className="relative flex justify-center">
+                <button
+                  onMouseEnter={() => setHoveredItem('user-profile')}
+                  onMouseLeave={() => setHoveredItem(null)}
+                  className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:ring-2 hover:ring-orange-300 transition-all duration-200"
+                >
+                  <span className="text-sm font-medium text-white">
+                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                  </span>
+                </button>
+                
+                {/* User Profile Tooltip */}
+                {hoveredItem === 'user-profile' && (
+                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                    <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200 min-w-[180px]">
+                      <div className="text-sm font-medium">{userName || 'Kullanıcı'}</div>
+                      <div className="text-xs text-gray-300 mt-0.5">{userEmail}</div>
+                      <div className="text-xs font-medium text-orange-300 mt-1 bg-orange-500/20 px-2 py-0.5 rounded inline-block">
+                        {getRoleLabel(userRole as any)}
+                      </div>
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    </div>
+                  </div>
+                )}
+              </div>
+              
+              {/* Logout Button with Tooltip */}
+              <div className="relative flex justify-center">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-10 w-10 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+                  onClick={handleLogout}
+                  onMouseEnter={() => setHoveredItem('logout')}
+                  onMouseLeave={() => setHoveredItem(null)}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+                
+                {/* Logout Tooltip */}
+                {hoveredItem === 'logout' && (
+                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                    <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                      Çıkış Yap
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           ) : (

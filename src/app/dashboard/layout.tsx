@@ -17,7 +17,6 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
   const [userRole, setUserRole] = useState<UserRole>('user')
@@ -66,7 +65,7 @@ export default function DashboardLayout({
       
       if (!hasPageAccess) {
         // Erişim yoksa kullanıcıyı erişebileceği bir sayfaya yönlendir
-        if (userRole === 'site_manager' || userRole === 'site_personnel' || userRole === 'santiye_depo') {
+        if (userRole === 'site_manager' || userRole === 'site_personnel' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') {
           router.push('/dashboard/requests')
         } else {
           // Diğer roller için dashboard'a yönlendir
@@ -155,7 +154,6 @@ export default function DashboardLayout({
       </header>
 
       <Sidebar 
-        onCollapsedChange={setSidebarCollapsed} 
         isMobileOpen={isMobileMenuOpen}
         setIsMobileOpen={handleSidebarMobileChange}
       />
@@ -169,9 +167,7 @@ export default function DashboardLayout({
       </div>
       
       {/* Desktop Layout - Sidebar artık ada tasarımında, boşluklar ayarlandı */}
-      <main className={`min-h-screen transition-all duration-500 hidden lg:block ${
-        sidebarCollapsed ? 'lg:pl-[5.5rem]' : 'lg:pl-[17.75rem]'
-      }`}>
+      <main className="min-h-screen transition-all duration-500 hidden lg:block lg:pl-[5.5rem]">
         <div className="h-full overflow-y-auto">
           <div className="p-8">
             {children}

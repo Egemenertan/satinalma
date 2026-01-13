@@ -49,12 +49,14 @@ interface PurchaseRequestItem {
   id: string
   item_name: string
   quantity: number
+  original_quantity?: number
   unit: string
   unit_price: number
   brand?: string
   material_class?: string
   material_group?: string
   specifications?: string
+  sent_quantity?: number
 }
 
 interface PurchaseRequest {
@@ -76,6 +78,8 @@ interface PurchaseRequest {
   updated_at: string
   sent_quantity?: number
   notifications?: string[] // Bildirimler: ["iade var", "acil"] gibi
+  unordered_materials_count?: number // Siparişi verilmemiş malzeme sayısı
+  overdue_deliveries_count?: number // Teslim alınmamış sipariş sayısı
   // Relations
   sites?: Array<{
     name: string
@@ -113,8 +117,87 @@ const fetcherWithAuth = async (url: string) => {
   return { user, profile, supabase }
 }
 
+// Siparişi verilmemiş malzeme sayısını hesapla
+const fetchUnorderedMaterialsCount = async (requestIds: string[], supabase: any) => {
+  if (requestIds.length === 0) return {}
+  
+  try {
+    // Her request_id için siparişi olmayan purchase_request_items sayısını hesapla
+    const { data, error } = await supabase.rpc('get_unordered_materials_count', {
+      request_ids: requestIds
+    })
+    
+    if (error) {
+      console.error('Unordered materials count fetch error:', error)
+      // RPC yoksa fallback olarak manuel hesaplama yap
+      return await fetchUnorderedMaterialsCountManual(requestIds, supabase)
+    }
+    
+    // { request_id: count } formatına çevir
+    const countMap: { [key: string]: number } = {}
+    data?.forEach((row: any) => {
+      countMap[row.request_id] = row.unordered_count || 0
+    })
+    
+    return countMap
+  } catch (err) {
+    console.error('Unordered materials count error:', err)
+    return await fetchUnorderedMaterialsCountManual(requestIds, supabase)
+  }
+}
+
+// Manuel hesaplama (fallback)
+const fetchUnorderedMaterialsCountManual = async (requestIds: string[], supabase: any) => {
+  try {
+    // Tüm purchase_request_items'ları çek
+    const { data: items, error: itemsError } = await supabase
+      .from('purchase_request_items')
+      .select('id, purchase_request_id')
+      .in('purchase_request_id', requestIds)
+    
+    if (itemsError) throw itemsError
+    
+    // Tüm orders'ları çek
+    const { data: orders, error: ordersError } = await supabase
+      .from('orders')
+      .select('material_item_id')
+      .in('purchase_request_id', requestIds)
+      .not('material_item_id', 'is', null)
+    
+    if (ordersError) throw ordersError
+    
+    // Order'ı olan material_item_id'leri set'e koy
+    const orderedMaterialIds = new Set(orders?.map((o: any) => o.material_item_id) || [])
+    
+    // Her request için siparişi olmayan malzeme sayısını hesapla
+    const countMap: { [key: string]: number } = {}
+    items?.forEach((item: any) => {
+      if (!countMap[item.purchase_request_id]) {
+        countMap[item.purchase_request_id] = 0
+      }
+      if (!orderedMaterialIds.has(item.id)) {
+        countMap[item.purchase_request_id]++
+      }
+    })
+    
+    return countMap
+  } catch (err) {
+    console.error('Manual unordered materials count error:', err)
+    return {}
+  }
+}
+
 // Purchase requests fetcher - gelişmiş arama ve filtreleme ile
-const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?: string, statusFilter?: string, locationFilter?: string) => {
+const fetchPurchaseRequests = async (
+  key: string, 
+  userRole?: string, 
+  searchTerm?: string, 
+  statusFilter?: string, 
+  locationFilter?: string,
+  unorderedOnly?: boolean,
+  overdueOnly?: boolean,
+  overdueRequestIds?: string[]
+) => {
   const [_, currentPage, pageSize, role] = key.split('/')
   const page = parseInt(currentPage)
   const size = parseInt(pageSize)
@@ -191,6 +274,56 @@ const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?
     }
   }
   
+  // Siparişi olmayan talepler filtresi - önce bunları bulalım
+  let unorderedRequestIds: string[] | null = null
+  if (unorderedOnly && effectiveRole === 'purchasing_officer') {
+    try {
+      // İlk önce kullanıcının görebileceği tüm talepleri al
+      let tempQuery = supabase
+        .from('purchase_requests')
+        .select('id')
+      
+      const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
+      tempQuery = tempQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
+      
+      const { data: allRequests } = await tempQuery
+      
+      if (allRequests && allRequests.length > 0) {
+        const allRequestIds = allRequests.map(r => r.id)
+        
+        // RPC ile siparişi olmayan talepleri bul
+        const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
+          request_ids: allRequestIds
+        })
+        
+        // 0'dan büyük olanları filtrele
+        unorderedRequestIds = unorderedData
+          ?.filter((item: any) => item.unordered_count > 0)
+          .map((item: any) => item.request_id) || []
+        
+        if (unorderedRequestIds.length === 0) {
+          // Hiç siparişi olmayan talep yok
+          return { requests: [], totalCount: 0 }
+        }
+      } else {
+        return { requests: [], totalCount: 0 }
+      }
+    } catch (err) {
+      console.error('Unordered requests filter error:', err)
+      unorderedRequestIds = []
+    }
+  }
+  
+  // Teslim alınmamış siparişler filtresi
+  let overdueFilterIds: string[] | null = null
+  if (overdueOnly && overdueRequestIds && overdueRequestIds.length > 0) {
+    overdueFilterIds = overdueRequestIds
+    if (overdueFilterIds.length === 0) {
+      // Hiç gecikmiş sipariş yok
+      return { requests: [], totalCount: 0 }
+    }
+  }
+  
   let countQuery = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
@@ -219,6 +352,16 @@ const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+  }
+  
+  // Siparişi olmayan talepler filtresi
+  if (unorderedRequestIds !== null) {
+    countQuery = countQuery.in('id', unorderedRequestIds)
+  }
+  
+  // Teslim alınmamış siparişler filtresi
+  if (overdueFilterIds !== null) {
+    countQuery = countQuery.in('id', overdueFilterIds)
   }
   
   // Gelişmiş arama filtresi
@@ -301,6 +444,16 @@ const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+  }
+  
+  // Siparişi olmayan talepler filtresi
+  if (unorderedRequestIds !== null) {
+    requestsQuery = requestsQuery.in('id', unorderedRequestIds)
+  }
+  
+  // Teslim alınmamış siparişler filtresi
+  if (overdueFilterIds !== null) {
+    requestsQuery = requestsQuery.in('id', overdueFilterIds)
   }
   
   // Gelişmiş arama filtresi
@@ -445,14 +598,74 @@ const fetchPurchaseRequests = async (key: string, userRole?: string, searchTerm?
     }
   }
 
+  // Siparişi verilmemiş malzeme sayılarını hesapla (purchasing_officer için)
+  const allRequestIds = formattedRequests.map(r => r.id)
+  let unorderedMaterialsCounts: { [key: string]: number } = {}
+  
+  if (effectiveRole === 'purchasing_officer' && allRequestIds.length > 0) {
+    try {
+      unorderedMaterialsCounts = await fetchUnorderedMaterialsCount(allRequestIds, supabase)
+      
+      // Her request'e unordered_materials_count ekle
+      formattedRequests.forEach((request: any) => {
+        request.unordered_materials_count = unorderedMaterialsCounts[request.id] || 0
+      })
+    } catch (err) {
+      console.warn('Unordered materials count failed (non-critical):', err)
+    }
+  }
+  
+  // Teslim alınmamış sipariş sayılarını hesapla (santiye_depo, santiye_depo_yonetici için)
+  let overdueDeliveriesCounts: { [key: string]: number } = {}
+  
+  if ((effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_yonetici' || effectiveRole === 'site_manager') && allRequestIds.length > 0 && overdueRequestIds && overdueRequestIds.length > 0) {
+    try {
+      // overdueRequestIds array'inden request_id ve overdue_orders_count'u al
+      // overdueRequestIds prop'u zaten count bilgisini içermiyor, sadece ID'leri içeriyor
+      // Bu yüzden RPC'yi tekrar çağırmalıyız
+      const userSiteIds = Array.isArray(profile?.site_id) ? profile.site_id : (profile?.site_id ? [profile.site_id] : [])
+      
+      if (userSiteIds.length > 0) {
+        const { data: overdueData } = await supabase.rpc('get_overdue_deliveries_count', {
+          user_site_ids: userSiteIds
+        })
+        
+        if (overdueData) {
+          overdueData.forEach((item: any) => {
+            overdueDeliveriesCounts[item.request_id] = item.overdue_orders_count || 0
+          })
+          
+          // Her request'e overdue_deliveries_count ekle
+          formattedRequests.forEach((request: any) => {
+            request.overdue_deliveries_count = overdueDeliveriesCounts[request.id] || 0
+          })
+        }
+      }
+    } catch (err) {
+      console.warn('Overdue deliveries count failed (non-critical):', err)
+    }
+  }
+
   return { requests: formattedRequests, totalCount: count || 0 }
 }
 
 interface PurchaseRequestsTableProps {
   userRole?: string // Layout'tan gelen role prop'u
+  showUnorderedOnly?: boolean // Siparişi verilmemiş talepleri göster
+  onUnorderedFilterChange?: (active: boolean) => void // Filtre değişikliğini parent'a bildir
+  showOverdueOnly?: boolean // Teslim alınmamış siparişleri göster
+  onOverdueFilterChange?: (active: boolean) => void // Filtre değişikliğini parent'a bildir
+  overdueRequestIds?: string[] // Teslim alınmamış taleplerin ID'leri
 }
 
-export default function PurchaseRequestsTable({ userRole: propUserRole }: PurchaseRequestsTableProps = {}) {
+export default function PurchaseRequestsTable({ 
+  userRole: propUserRole, 
+  showUnorderedOnly = false,
+  onUnorderedFilterChange,
+  showOverdueOnly = false,
+  onOverdueFilterChange,
+  overdueRequestIds = []
+}: PurchaseRequestsTableProps = {}) {
   const router = useRouter()
   const { showToast } = useToast()
   const [currentPage, setCurrentPage] = useState(1)
@@ -477,6 +690,22 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [locationFilter, setLocationFilter] = useState<string>('all')
   const [deliveryStatusFilter, setDeliveryStatusFilter] = useState<string>('all') // Teslimat durumu filtresi
+  const [unorderedOnlyFilter, setUnorderedOnlyFilter] = useState<boolean>(() => {
+    // localStorage'dan filtreyi oku
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('unordered_filter_active')
+      return saved === 'true' || showUnorderedOnly
+    }
+    return showUnorderedOnly
+  })
+  const [overdueOnlyFilter, setOverdueOnlyFilter] = useState<boolean>(() => {
+    // localStorage'dan filtreyi oku
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('overdue_filter_active')
+      return saved === 'true' || showOverdueOnly
+    }
+    return showOverdueOnly
+  })
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false)
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false) // Mobile filter dropdown
@@ -529,6 +758,36 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     }
   }, [activeTab])
 
+  // showUnorderedOnly prop'u değiştiğinde state'i güncelle
+  useEffect(() => {
+    setUnorderedOnlyFilter(showUnorderedOnly)
+    if (showUnorderedOnly) {
+      setCurrentPage(1) // Filtre aktif olunca ilk sayfaya dön
+    }
+  }, [showUnorderedOnly])
+  
+  // showOverdueOnly prop'u değiştiğinde state'i güncelle
+  useEffect(() => {
+    setOverdueOnlyFilter(showOverdueOnly)
+    if (showOverdueOnly) {
+      setCurrentPage(1) // Filtre aktif olunca ilk sayfaya dön
+    }
+  }, [showOverdueOnly])
+
+  // unorderedOnlyFilter değiştiğinde localStorage'a kaydet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('unordered_filter_active', unorderedOnlyFilter.toString())
+    }
+  }, [unorderedOnlyFilter])
+  
+  // overdueOnlyFilter değiştiğinde localStorage'a kaydet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('overdue_filter_active', overdueOnlyFilter.toString())
+    }
+  }, [overdueOnlyFilter])
+
   // Malzeme bilgilerini çekme fonksiyonu
   const fetchRequestMaterials = async (requestId: string) => {
     if (requestMaterials[requestId] || loadingMaterials[requestId]) {
@@ -545,12 +804,14 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
           id,
           item_name,
           quantity,
+          original_quantity,
           unit,
           unit_price,
           brand,
           material_class,
           material_group,
-          specifications
+          specifications,
+          sent_quantity
         `)
         .eq('purchase_request_id', requestId)
         .order('item_name')
@@ -560,9 +821,16 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         return
       }
 
+      // original_quantity varsa onu kullan, yoksa quantity kullan
+      const formattedMaterials = materials?.map(material => ({
+        ...material,
+        // original_quantity'yi quantity olarak göster (tooltip için)
+        quantity: material.original_quantity ? Number(material.original_quantity) : material.quantity
+      })) || []
+
       setRequestMaterials(prev => ({
         ...prev,
-        [requestId]: materials || []
+        [requestId]: formattedMaterials
       }))
     } catch (error) {
       console.error('Malzeme bilgileri çekilirken hata:', error)
@@ -611,13 +879,16 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
   
   // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}`,
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${JSON.stringify(overdueRequestIds)}`,
     () => fetchPurchaseRequests(
     `purchase_requests/${currentPage}/${pageSize}/${userRole}`,
       userRole,
       debouncedSearchTerm,
       statusFilter,
-      locationFilter
+      locationFilter,
+      unorderedOnlyFilter,
+      overdueOnlyFilter,
+      overdueRequestIds
     ),
     {
       revalidateOnFocus: true,
@@ -779,6 +1050,8 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       }
     }
     
+    // Siparişi verilmemiş talep filtresi - Backend'de yapılıyor, frontend'de tekrar filtrelemeye gerek yok
+    
     if (filters.status !== 'all' && req.status !== filters.status) return false
     if (filters.search) {
       const searchTerm = normalizeTurkish(filters.search)
@@ -790,6 +1063,15 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
     }
     return true
   }).sort((a: any, b: any) => {
+    // Siparişi verilmemiş filtre aktifse, önce en çok eksiği olanları göster
+    if (unorderedOnlyFilter && userRole === 'purchasing_officer') {
+      const aCount = a.unordered_materials_count || 0
+      const bCount = b.unordered_materials_count || 0
+      if (aCount !== bCount) {
+        return bCount - aCount // Büyükten küçüğe
+      }
+    }
+    
     const aVal = a[filters.sortBy] || ''
     const bVal = b[filters.sortBy] || ''
     
@@ -1497,9 +1779,44 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
               </div>
               
               {/* Aktif Filtreler */}
-              {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all') && (
+              {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all' || unorderedOnlyFilter || overdueOnlyFilter) && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-500">Filtreler:</span>
+                  
+                  {/* Siparişi Verilmemiş Filtresi */}
+                  {unorderedOnlyFilter && (
+                    <Badge 
+                      variant="outline" 
+                      className="bg-red-500 text-white border-0 gap-1 cursor-pointer hover:bg-red-600 animate-pulse"
+                      onClick={() => {
+                        setUnorderedOnlyFilter(false)
+                        if (onUnorderedFilterChange) {
+                          onUnorderedFilterChange(false)
+                        }
+                      }}
+                    >
+                      Siparişi Verilmemiş Talepler
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+                  
+                  {/* Teslim Alınmamış Siparişler Filtresi */}
+                  {overdueOnlyFilter && (
+                    <Badge 
+                      variant="outline" 
+                      className="bg-orange-500 text-white border-0 gap-1 cursor-pointer hover:bg-orange-600 animate-pulse"
+                      onClick={() => {
+                        setOverdueOnlyFilter(false)
+                        if (onOverdueFilterChange) {
+                          onOverdueFilterChange(false)
+                        }
+                      }}
+                    >
+                      Teslim Alınmamış Siparişler
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+                  
                   {deliveryStatusFilter !== 'all' && (
                     <Badge 
                       variant="outline" 
@@ -1546,6 +1863,10 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                       setStatusFilter('all')
                       setLocationFilter('all')
                       setDeliveryStatusFilter('all')
+                      setUnorderedOnlyFilter(false)
+                      if (onUnorderedFilterChange) {
+                        onUnorderedFilterChange(false)
+                      }
                     }}
                     className="text-xs text-gray-500 hover:text-gray-700 underline"
                   >
@@ -1846,6 +2167,26 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                           <FileText className="w-4 h-4 text-black" />
                         </div>
                         <span className="font-semibold text-gray-800">{request.request_number}</span>
+                        {/* Siparişi verilmemiş malzeme uyarısı - sadece purchasing_officer için */}
+                        {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
+                          <Badge 
+                            variant="outline" 
+                            className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            title={`${request.unordered_materials_count} malzemenin siparişi verilmedi!`}
+                          >
+                            {request.unordered_materials_count}
+                          </Badge>
+                        )}
+                        {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
+                        {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
+                          <Badge 
+                            variant="outline" 
+                            className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            title={`${request.overdue_deliveries_count} siparişin teslim tarihi geçti!`}
+                          >
+                            {request.overdue_deliveries_count}
+                          </Badge>
+                        )}
                       </div>
                     </div>
                     
@@ -2081,6 +2422,26 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                           <span className="font-medium text-gray-800 text-xs">
                             {request.request_number}
                           </span>
+                          {/* Siparişi verilmemiş malzeme uyarısı - sadece purchasing_officer için */}
+                          {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
+                            <Badge 
+                              variant="outline" 
+                              className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                              title={`${request.unordered_materials_count} malzemenin siparişi verilmedi!`}
+                            >
+                              {request.unordered_materials_count}
+                            </Badge>
+                          )}
+                          {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
+                          {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
+                            <Badge 
+                              variant="outline" 
+                              className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                              title={`${request.overdue_deliveries_count} siparişin teslim tarihi geçti!`}
+                            >
+                              {request.overdue_deliveries_count}
+                            </Badge>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -2110,40 +2471,70 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
               
               {/* Sayfa numaraları */}
               <div className="flex items-center gap-1">
-                {Array.from({ length: Math.min(5, Math.ceil(totalCount / pageSize)) }, (_, i) => {
-                  const pageNum = i + 1
+                {(() => {
                   const totalPages = Math.ceil(totalCount / pageSize)
+                  const pages: (number | string)[] = []
                   
-                  // Akıllı sayfa gösterimi
-                  let showPage = false
-                  if (totalPages <= 5) {
-                    showPage = true
-                  } else if (currentPage <= 3) {
-                    showPage = pageNum <= 5
-                  } else if (currentPage >= totalPages - 2) {
-                    showPage = pageNum > totalPages - 5
+                  if (totalPages <= 7) {
+                    // 7 veya daha az sayfa varsa hepsini göster
+                    for (let i = 1; i <= totalPages; i++) {
+                      pages.push(i)
+                    }
                   } else {
-                    showPage = Math.abs(pageNum - currentPage) <= 2
+                    // İlk sayfa her zaman göster
+                    pages.push(1)
+                    
+                    if (currentPage <= 3) {
+                      // Başta isek: 1, 2, 3, 4, 5, ..., son
+                      for (let i = 2; i <= 5; i++) {
+                        pages.push(i)
+                      }
+                      pages.push('...')
+                      pages.push(totalPages)
+                    } else if (currentPage >= totalPages - 2) {
+                      // Sonda isek: 1, ..., son-4, son-3, son-2, son-1, son
+                      pages.push('...')
+                      for (let i = totalPages - 4; i <= totalPages; i++) {
+                        pages.push(i)
+                      }
+                    } else {
+                      // Ortada isek: 1, ..., current-1, current, current+1, ..., son
+                      pages.push('...')
+                      pages.push(currentPage - 1)
+                      pages.push(currentPage)
+                      pages.push(currentPage + 1)
+                      pages.push('...')
+                      pages.push(totalPages)
+                    }
                   }
                   
-                  if (!showPage) return null
-                  
-                  return (
-                    <Button
-                      key={pageNum}
-                      variant={currentPage === pageNum ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setCurrentPage(pageNum)}
-                      className={`w-8 h-8 p-0 rounded-xl ${
-                        currentPage === pageNum 
-                          ? 'bg-black text-white' 
-                          : 'border-gray-200 hover:bg-gray-50'
-                      }`}
-                    >
-                      {pageNum}
-                    </Button>
-                  )
-                })}
+                  return pages.map((page, index) => {
+                    if (page === '...') {
+                      return (
+                        <span key={`ellipsis-${index}`} className="px-2 text-gray-400">
+                          ...
+                        </span>
+                      )
+                    }
+                    
+                    const pageNum = page as number
+                    return (
+                      <Button
+                        key={pageNum}
+                        variant={currentPage === pageNum ? "default" : "outline"}
+                        size="sm"
+                        onClick={() => setCurrentPage(pageNum)}
+                        className={`w-8 h-8 p-0 rounded-xl ${
+                          currentPage === pageNum 
+                            ? 'bg-black text-white' 
+                            : 'border-gray-200 hover:bg-gray-50'
+                        }`}
+                      >
+                        {pageNum}
+                      </Button>
+                    )
+                  })
+                })()}
               </div>
               
               <Button

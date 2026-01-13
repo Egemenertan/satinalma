@@ -45,7 +45,7 @@ const fetchPageData = async () => {
   // 4. Stats sorgusu - Veritabanında aggregate fonksiyonlarını kullan
   let statsQuery = supabase
     .from('purchase_requests')
-    .select('status, urgency_level', { count: 'exact' })
+    .select('status, urgency_level, id', { count: 'exact' })
   
   // Role bazlı filtreleme
   if (profile?.role === 'site_personnel') {
@@ -61,7 +61,8 @@ const fetchPageData = async () => {
     return {
       userInfo: { displayName, email: profile?.email },
       role: profile?.role || '',
-      stats: { total: 0, pending: 0, approved: 0, urgent: 0 }
+      stats: { total: 0, pending: 0, approved: 0, urgent: 0 },
+      pendingOrdersCount: 0
     }
   }
   
@@ -73,15 +74,73 @@ const fetchPageData = async () => {
     urgent: requests?.filter(r => r.urgency_level === 'critical' || r.urgency_level === 'high').length || 0
   }
   
+  // 5. Purchasing officer için: Siparişi bekleyen talep sayısını hesapla
+  let pendingOrdersCount = 0
+  if (profile?.role === 'purchasing_officer' && requests && requests.length > 0) {
+    try {
+      const requestIds = requests.map(r => r.id)
+      const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
+        request_ids: requestIds
+      })
+      
+      // 0'dan büyük olan talepleri say
+      pendingOrdersCount = unorderedData?.filter((item: any) => item.unordered_count > 0).length || 0
+    } catch (err) {
+      console.warn('Pending orders count failed:', err)
+    }
+  }
+  
+  // 6. Site manager, santiye depo ve santiye depo yöneticisi için: Teslim alınmamış (gecikmiş) talep sayısını hesapla
+  let overdueDeliveriesCount = 0
+  let overdueRequestIds: string[] = []
+  if (profile?.role === 'site_manager' || profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_yonetici') {
+    try {
+      // Kullanıcının sitelerine ait gecikmiş talepleri getir
+      const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+      
+      if (userSiteIds.length > 0) {
+        const { data: overdueData } = await supabase.rpc('get_overdue_deliveries_count', {
+          user_site_ids: userSiteIds
+        })
+        
+        // Gecikmiş siparişi olan talep sayısını ve ID'lerini hesapla
+        overdueDeliveriesCount = overdueData?.length || 0
+        overdueRequestIds = overdueData?.map((item: any) => item.request_id) || []
+      }
+    } catch (err) {
+      console.warn('Overdue deliveries count failed:', err)
+    }
+  }
+  
   return {
     userInfo: { displayName, email: profile?.email },
     role: profile?.role || '',
-    stats
+    stats,
+    pendingOrdersCount,
+    overdueDeliveriesCount,
+    overdueRequestIds,
+    siteId: profile?.site_id
   }
 }
 
 export default function RequestsPage() {
   const router = useRouter()
+  const [showUnorderedOnly, setShowUnorderedOnly] = useState(() => {
+    // localStorage'dan filtreyi oku
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('unordered_filter_active')
+      return saved === 'true'
+    }
+    return false
+  })
+  const [showOverdueOnly, setShowOverdueOnly] = useState(() => {
+    // localStorage'dan filtreyi oku
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('overdue_filter_active')
+      return saved === 'true'
+    }
+    return false
+  })
   
   // Tek SWR ile tüm sayfa verisini çek - Optimize edildi!
   const { data: pageData, error, mutate: refreshPageData } = useSWR(
@@ -95,7 +154,11 @@ export default function RequestsPage() {
       fallbackData: {
         userInfo: { displayName: 'Kullanıcı', email: '' },
         role: '',
-        stats: { total: 0, pending: 0, approved: 0, urgent: 0 }
+        stats: { total: 0, pending: 0, approved: 0, urgent: 0 },
+        pendingOrdersCount: 0,
+        overdueDeliveriesCount: 0,
+        overdueRequestIds: [],
+        siteId: null
       }
     }
   )
@@ -104,6 +167,10 @@ export default function RequestsPage() {
   const userInfo = pageData?.userInfo
   const userRole = pageData?.role || ''
   const stats = pageData?.stats
+  const pendingOrdersCount = pageData?.pendingOrdersCount || 0
+  const overdueDeliveriesCount = pageData?.overdueDeliveriesCount || 0
+  const overdueRequestIds = pageData?.overdueRequestIds || []
+  const userSiteId = pageData?.siteId
 
 
   // Real-time updates için subscription - Optimize edildi
@@ -145,16 +212,84 @@ export default function RequestsPage() {
     }
   }, [refreshPageData])
 
+  // showUnorderedOnly değiştiğinde localStorage'a kaydet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('unordered_filter_active', showUnorderedOnly.toString())
+    }
+  }, [showUnorderedOnly])
+  
+  // showOverdueOnly değiştiğinde localStorage'a kaydet
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('overdue_filter_active', showOverdueOnly.toString())
+    }
+  }, [showOverdueOnly])
 
 
 
   return (
     <div className="px-0 pb-6 space-y-6 sm:space-y-8">
       {/* Welcome Message */}
-      <div className="px-4 pt-2">
+      <div className="px-4 pt-2 space-y-2">
         <p className="text-lg text-gray-700 font-light">
           Merhaba <span className="font-medium text-gray-900">{userInfo?.displayName}</span>, hoşgeldin! 👋
         </p>
+        
+        {/* Sipariş Bekleyen Talepler Uyarısı - Sadece Purchasing Officer için */}
+        {userRole === 'purchasing_officer' && pendingOrdersCount > 0 && (
+          <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-2xl">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
+                <span className="text-white font-bold text-sm">{pendingOrdersCount}</span>
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-red-800">
+                {pendingOrdersCount === 1 
+                  ? 'Sipariş bekleyen 1 talebin var!' 
+                  : `Sipariş bekleyen ${pendingOrdersCount} talebin var!`}
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Bu taleplerde bazı malzemelerin siparişi verilmemiş. Lütfen kontrol et.
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowUnorderedOnly(true)}
+              size="sm"
+              className="flex-shrink-0 bg-white hover:bg-red-500 text-red-500 border border-red-500 hover:text-white rounded-2xl px-12 py-2 text-xs font-medium  transition-all"
+            >
+              Göz At
+            </Button>
+          </div>
+        )}
+        
+        {/* Teslim Alınmamış Siparişler Uyarısı - Site Manager, Santiye Depo ve Santiye Depo Yöneticisi için */}
+        {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
+          <div className="flex items-center gap-3 p-3 bg-orange-50 border border-orange-200 rounded-2xl">
+            <div className="flex-shrink-0">
+             
+            </div>
+            <div className="flex-1">
+              <p className="text-lg font-medium text-orange-800">
+                {overdueDeliveriesCount === 1 
+                  ? 'Teslim alınmamış 1 siparişin var!' 
+                  : `Teslim alınmamış ${overdueDeliveriesCount} siparişin var!`}
+              </p>
+              <p className="text-md text-orange-600 mt-0.5">
+                Lütfen teslim aldığınız siparişlerin irsaliye girişini yapın. 
+                Eğer teslim gecikti ise satın almayı bilgilendirin.
+              </p>
+            </div>
+            <Button
+              onClick={() => setShowOverdueOnly(true)}
+              size="sm"
+              className="flex-shrink-0 bg-white hover:bg-orange-500 text-orange-500 border border-orange-500 hover:text-white rounded-2xl px-12 py-2 text-xs font-medium  transition-all"
+            >
+              Göz At
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Header */}
@@ -274,13 +409,27 @@ export default function RequestsPage() {
         </div>
 
         {/* Requests Table */}
-        <PurchaseRequestsTable userRole={userRole} />
+        <PurchaseRequestsTable 
+          userRole={userRole} 
+          showUnorderedOnly={showUnorderedOnly}
+          onUnorderedFilterChange={setShowUnorderedOnly}
+          showOverdueOnly={showOverdueOnly}
+          onOverdueFilterChange={setShowOverdueOnly}
+          overdueRequestIds={overdueRequestIds}
+        />
       </div>
 
       {/* Mobile: Table first, then Stats Cards */}
       <div className="sm:hidden space-y-6">
         {/* Requests Table */}
-        <PurchaseRequestsTable userRole={userRole} />
+        <PurchaseRequestsTable 
+          userRole={userRole} 
+          showUnorderedOnly={showUnorderedOnly}
+          onUnorderedFilterChange={setShowUnorderedOnly}
+          showOverdueOnly={showOverdueOnly}
+          onOverdueFilterChange={setShowOverdueOnly}
+          overdueRequestIds={overdueRequestIds}
+        />
 
         {/* Stats Cards */}
         <div className="grid grid-cols-2 gap-4 px-4">

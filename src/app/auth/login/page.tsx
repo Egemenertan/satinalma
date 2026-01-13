@@ -85,7 +85,7 @@ function LoginContent() {
           
           console.log('🚀 Redirecting based on role...')
           // Rol bazlı yönlendirme
-          if (profile.role === 'site_manager' || profile.role === 'site_personnel' || profile.role === 'santiye_depo') {
+          if (profile.role === 'site_manager' || profile.role === 'site_personnel' || profile.role === 'santiye_depo' || profile.role === 'santiye_depo_yonetici') {
             window.location.href = '/dashboard/requests'
           } else {
             window.location.href = '/dashboard'
