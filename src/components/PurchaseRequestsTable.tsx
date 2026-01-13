@@ -1135,6 +1135,18 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
         throw new Error('Kullanıcı oturumu bulunamadı.')
       }
       
+      // Kullanıcı rolünü al
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single()
+      
+      const currentUserRole = profile?.role || 'Site Manager'
+      const roleLabel = currentUserRole === 'santiye_depo_yonetici' 
+        ? 'Şantiye Depo Yöneticisi' 
+        : 'Site Manager'
+      
       // Request bilgisini al (site_id ve status için)
       const { data: requestData, error: requestError } = await supabase
         .from('purchase_requests')
@@ -1153,12 +1165,12 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
       
       let newStatus = 'satın almaya gönderildi'
       let successMessage = 'Talep satın almaya gönderildi!'
-      let historyComment = 'Site Manager tarafından satın almaya gönderildi'
+      let historyComment = `${roleLabel} tarafından satın almaya gönderildi`
       
       if (isSpecialSite && isAwaitingApproval) {
         newStatus = 'pending'
         successMessage = 'Talep onaylandı!'
-        historyComment = 'Site Manager tarafından onaylandı'
+        historyComment = `${roleLabel} tarafından onaylandı`
         console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
       }
       
@@ -1837,10 +1849,10 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                       </div>
                     </div>
                     
-                    {/* Actions - Site Manager için özel buton + Kebab Menu */}
+                    {/* Actions - Site Manager ve Santiye Depo Yöneticisi için özel buton + Kebab Menu */}
                     <div className="relative flex justify-center items-center gap-2">
-                      {/* Site Manager için Satın Almaya Gönder / Onayla butonu */}
-                      {userRole === 'site_manager' && (() => {
+                      {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu */}
+                      {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
                         const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
                         const isSpecialSite = request.site_id === SPECIAL_SITE_ID
                         
@@ -1983,8 +1995,8 @@ export default function PurchaseRequestsTable({ userRole: propUserRole }: Purcha
                       </div>
                     </div>
                     
-                    {/* Site Manager için Satın Almaya Gönder / Onayla butonu - Mobile */}
-                    {userRole === 'site_manager' && (() => {
+                    {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu - Mobile */}
+                    {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
                       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
                       const isSpecialSite = request.site_id === SPECIAL_SITE_ID
                       

@@ -16,6 +16,7 @@ export type UserRole =
   | 'warehouse_manager' // Depo yöneticisi - site_manager ile aynı yetkiler
   | 'purchasing_officer' // Satın alma sorumlusu - site_manager ile aynı yetkiler
   | 'santiye_depo' // Şantiye depo - tüm satın alma taleplerini görüntüleyebilir
+  | 'santiye_depo_yonetici' // Şantiye depo yöneticisi - santiye_depo + talep onaylama yetkisi
 
 export interface Database {
   public: {

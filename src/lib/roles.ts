@@ -9,7 +9,8 @@ export const roleLabels: Record<UserRole, string> = {
   site_manager: 'Şantiye Yöneticisi',
   warehouse_manager: 'Depo Yöneticisi',
   purchasing_officer: 'Satın Alma Sorumlusu',
-  santiye_depo: 'Şantiye Depo'
+  santiye_depo: 'Şantiye Depo',
+  santiye_depo_yonetici: 'Şantiye Depo Yöneticisi'
 }
 
 export const roleDescriptions: Record<UserRole, string> = {
@@ -20,7 +21,8 @@ export const roleDescriptions: Record<UserRole, string> = {
   site_manager: 'Talep yönetimi ve onay yetkisi',
   warehouse_manager: 'Dashboard ve talep yönetimi yetkisi',
   purchasing_officer: 'Dashboard ve talep yönetimi yetkisi',
-  santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi'
+  santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi',
+  santiye_depo_yonetici: 'Depo işlemleri ve talep onaylama yetkisi (Şantiye Depo + Site Manager)'
 }
 
 // Rol doğrulama
@@ -52,7 +54,7 @@ export const roleGroups = {
   full_access: ['admin', 'manager'] as UserRole[], // Tüm sayfalara erişim
   basic_access: ['user'] as UserRole[], // Normal kullanıcı erişimi
   limited_access: ['site_personnel', 'santiye_depo'] as UserRole[], // Sadece requests sayfası
-  site_management: ['site_manager', 'warehouse_manager'] as UserRole[], // Dashboard ve requests sayfaları
+  site_management: ['site_manager', 'warehouse_manager', 'santiye_depo_yonetici'] as UserRole[], // Dashboard ve requests sayfaları + onay yetkisi
   purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, suppliers, sites sayfaları
 }
 
@@ -125,6 +127,14 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/requests/')
   }
   
+  // Santiye depo yöneticisi - site_manager ile aynı yetkilere sahip
+  if (userRole === 'santiye_depo_yonetici') {
+    return page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/')
+  }
+  
   // Normal kullanıcılar hiçbir sayfaya erişemez
   if (userRole === 'user') {
     return false
@@ -153,6 +163,10 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   
   if (userRole === 'santiye_depo') {
     return ['requests'] // Sadece requests menüsü
+  }
+  
+  if (userRole === 'santiye_depo_yonetici') {
+    return ['requests'] // Sadece requests menüsü (site_manager gibi)
   }
   
   if (userRole === 'user') {

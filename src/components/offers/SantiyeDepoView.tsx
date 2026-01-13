@@ -51,17 +51,17 @@ export default function SantiyeDepoView({
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
   const [genelMerkezSiteId, setGenelMerkezSiteId] = useState<string | null>(null)
   
-  // Site Manager approval states (hasan.oztunc için)
+  // Site Manager approval states
   const [siteManagerApproving, setSiteManagerApproving] = useState(false)
   const [siteManagerRejecting, setSiteManagerRejecting] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
   const [rejectionReason, setRejectionReason] = useState('')
-  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<string | null>(null)
   
   const supabase = createClient()
   const router = useRouter()
 
-  // Check if user is from "Genel Merkez Ofisi" site and get user email
+  // Check if user is from "Genel Merkez Ofisi" site and get user role
   useEffect(() => {
     const checkUserSite = async () => {
       try {
@@ -73,16 +73,21 @@ export default function SantiyeDepoView({
         }
 
         console.log('👤 Kullanıcı ID:', user.id)
-        setCurrentUserEmail(user.email || null)
 
-        // Get user profile with site_id
+        // Get user profile with site_id and role
         const { data: profile } = await supabase
           .from('profiles')
-          .select('site_id')
+          .select('site_id, role')
           .eq('id', user.id)
           .single()
 
         console.log('📋 Kullanıcı profili:', profile)
+
+        // Kullanıcı rolünü kaydet
+        if (profile?.role) {
+          setUserRole(profile.role)
+          console.log('🔐 Kullanıcı rolü:', profile.role)
+        }
 
         if (profile?.site_id && profile.site_id.length > 0) {
           const firstSiteId = profile.site_id[0]
@@ -151,12 +156,12 @@ export default function SantiyeDepoView({
     return request?.status === 'iade nedeniyle sipariş'
   }
 
-  // hasan.oztunc@dovecgroup.com kullanıcısı için site manager yetkileri
-  const isHasanOztunc = currentUserEmail === 'hasan.oztunc@dovecgroup.com'
+  // Santiye depo yöneticisi kontrolü - rol bazlı
+  const isSantiyeDepoYonetici = userRole === 'santiye_depo_yonetici'
   
-  // Site Manager düzenleme yetkisi kontrolü (sadece hasan.oztunc için)
+  // Site Manager düzenleme yetkisi kontrolü (santiye_depo_yonetici rolü için)
   const canEditRequest = () => {
-    if (!isHasanOztunc) return false
+    if (!isSantiyeDepoYonetici) return false
     return request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil'
   }
 
@@ -188,12 +193,12 @@ export default function SantiyeDepoView({
       
       let newStatus = 'satın almaya gönderildi'
       let successMessage = 'Malzemeler satın almaya gönderildi!'
-      let historyComment = 'Hasan Öztunç (Şantiye Depo) tarafından satın almaya gönderildi'
+      let historyComment = 'Şantiye Depo Yöneticisi tarafından satın almaya gönderildi'
       
       if (isSpecialSite && isAwaitingApproval) {
         newStatus = 'pending'
         successMessage = 'Talep onaylandı!'
-        historyComment = 'Hasan Öztunç (Şantiye Depo) tarafından onaylandı'
+        historyComment = 'Şantiye Depo Yöneticisi tarafından onaylandı'
         console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
       }
 
@@ -291,7 +296,7 @@ export default function SantiyeDepoView({
           purchase_request_id: request.id,
           action: 'rejected',
           performed_by: user.id,
-          comments: `Hasan Öztunç (Şantiye Depo) tarafından reddedildi: ${rejectionReason.trim()}`
+          comments: `Şantiye Depo Yöneticisi tarafından reddedildi: ${rejectionReason.trim()}`
         });
 
       if (historyError) {
@@ -320,11 +325,11 @@ export default function SantiyeDepoView({
     }
   }
 
-  // Site Manager için onay butonu gösterilecek durumlar (sadece hasan.oztunc için)
+  // Site Manager için onay butonu gösterilecek durumlar (santiye_depo_yonetici rolü için)
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
   const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
   
-  const showApprovalButton = isHasanOztunc && (
+  const showApprovalButton = isSantiyeDepoYonetici && (
     isSpecialSite 
       ? request?.status === 'onay_bekliyor'  // Özel site: sadece onay_bekliyor
       : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil')  // Normal siteler
@@ -350,17 +355,19 @@ export default function SantiyeDepoView({
   }
 
   // Sipariş bazlı kademeli teslim alma fonksiyonu
-  const handleOrderDeliveryConfirmation = (order: any, materialItem: any) => {
+  const handleOrderDeliveryConfirmation = (order: any, materialItem: any, isEditMode: boolean = false) => {
     console.log('📦 Kademeli teslim alma modalı açılıyor:', {
       orderId: order.id,
       orderQuantity: order.quantity,
       materialName: materialItem.item_name,
-      supplierName: order.suppliers?.name || order.supplier?.name
+      supplierName: order.suppliers?.name || order.supplier?.name,
+      isEditMode
     })
     
     setSelectedOrderForDelivery({
       ...order,
-      materialItem: materialItem
+      materialItem: materialItem,
+      isEditMode // Edit mode flag'i ekle
     })
     setIsPartialDeliveryModalOpen(true)
   }
@@ -696,7 +703,7 @@ export default function SantiyeDepoView({
       showToast={showToast}
     />
 
-    {/* Site Manager Onay Butonu - Sadece hasan.oztunc@dovecgroup.com için */}
+    {/* Site Manager Onay Butonu - Sadece santiye_depo_yonetici rolü için */}
     {showApprovalButton && (
       <Card className="bg-white border-0 shadow-sm rounded-3xl">
         <CardContent className="p-4 sm:p-8">

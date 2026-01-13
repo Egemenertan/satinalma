@@ -23,7 +23,7 @@ interface MaterialCardProps {
   onRemoveMaterial?: (itemId: string) => void  // Malzeme kaldırma fonksiyonu
   canRemoveMaterial?: boolean  // Kaldırma yetkisi kontrolü
   canEditRequest?: boolean  // Talebi düzenleme yetkisi kontrolü
-  onOrderDeliveryConfirmation?: (order: any, materialItem: any) => void  // Kademeli teslim alma fonksiyonu
+  onOrderDeliveryConfirmation?: (order: any, materialItem: any, isEditMode?: boolean) => void  // Kademeli teslim alma fonksiyonu
   onOrderReturn?: (order: any, materialItem: any) => void  // İade işlemi fonksiyonu
   hideTopDeliveryButtons?: boolean  // Sağ üstteki teslim alma butonlarını gizle
   onShipmentSuccess?: () => void  // Gönderim başarılı olduğunda tetiklenecek callback
@@ -530,28 +530,16 @@ export default function MaterialCard({
             const suppliers = Object.values(supplierGroups)
             
             return (
-              <div className="space-y-2 sm:space-y-3">
-                <div className="flex items-center gap-2">
-                  <h6 className="text-xs sm:text-sm font-medium text-gray-700">Sipariş Bilgileri</h6>
-                </div>
-                <div className="grid gap-2 sm:gap-3 grid-cols-1">
+              <div className="space-y-3">
+                <h6 className="text-sm font-medium text-gray-700 mb-2">Sipariş Bilgileri</h6>
+                <div className="space-y-2">
                   {suppliers.map((supplier: any, index: number) => (
-                    <div key={index} className="bg-gray-50 border-gray-200 rounded-xl p-3 sm:p-4 border">
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between mb-2 sm:mb-3 gap-2">
-                        <div className="flex items-center gap-2 sm:gap-3 flex-1 w-full">
-                          <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-100 rounded-2xl sm:rounded-3xl flex items-center justify-center flex-shrink-0">
-                            <svg className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-4m-5 0H3m2 0h4M9 7h6m-6 4h6m-6 4h6"></path>
-                            </svg>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-semibold text-gray-900 text-sm sm:text-base truncate">{supplier.name}</h4>
-                            </div>
-                            <p className="text-xs sm:text-sm text-gray-600">Tedarikçi</p>
-                          </div>
-                        </div>
-                        <div className="w-full sm:w-auto sm:ml-4 shrink-0 flex items-center gap-2">
+                    <div key={index} className="bg-white rounded-xl p-3 border border-gray-100">
+                      <div className="flex items-center justify-between mb-2">
+                        <h3 className="text-sm font-semibold text-gray-900">
+                          {supplier.name}
+                        </h3>
+                        <div className="shrink-0">
                           {(() => {
                             // Tedarikçinin tüm siparişlerinin statuslarını kontrol et
                             const orderStatuses = supplier.orders.map((order: any) => {
@@ -628,67 +616,29 @@ export default function MaterialCard({
                         </div>
                       </div>
 
-                      {/* Miktar Bilgileri - ReturnedMaterialsCard tarzında */}
-                      <div className="grid grid-cols-2 gap-2 sm:gap-3 mb-2 sm:mb-3">
-                        <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-                          <div className="text-center">
-                            <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Sipariş Miktarı:</span>
-                            <span className="text-xs sm:text-sm font-bold text-blue-600">
-                              {supplier.totalQuantity.toFixed(2)} {item.unit}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-                          <div className="text-center">
-                            <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Teslim Alınan:</span>
-                            <span className="text-xs sm:text-sm font-bold text-green-600">
-                              {supplier.totalDelivered.toFixed(2)} {item.unit}
-                            </span>
-                          </div>
-                        </div>
+                      {/* Miktar Bilgileri - Tek satırda kompakt */}
+                      <div className="flex flex-wrap gap-3 text-xs mb-2">
+                        <span className="text-gray-500">Sipariş: <span className="font-medium text-gray-900">{supplier.totalQuantity.toFixed(2)} {item.unit}</span></span>
+                        <span className="text-gray-500">Teslim: <span className="font-medium text-green-600">{supplier.totalDelivered.toFixed(2)} {item.unit}</span></span>
                         {supplier.totalReturned > 0 && (
                           <>
-                            <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-                              <div className="text-center">
-                                <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">İade Edilen:</span>
-                                <span className="text-xs sm:text-sm font-bold text-orange-600">
-                                  {supplier.totalReturned.toFixed(2)} {item.unit}
-                                </span>
-                              </div>
-                            </div>
-                            <div className="bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-                              <div className="text-center">
-                                <span className="text-[10px] sm:text-xs font-medium text-gray-600 block mb-0.5 sm:mb-1">Kalan:</span>
-                                <span className="text-xs sm:text-sm font-bold text-blue-600">
-                                  {supplier.remainingQuantity.toFixed(2)} {item.unit}
-                                </span>
-                              </div>
-                            </div>
+                            <span className="text-gray-500">İade: <span className="font-medium text-orange-600">{supplier.totalReturned.toFixed(2)} {item.unit}</span></span>
+                            <span className="text-gray-500">Kalan: <span className="font-medium text-blue-600">{supplier.remainingQuantity.toFixed(2)} {item.unit}</span></span>
                           </>
                         )}
                       </div>
                       
-                      {/* İletişim Bilgileri */}
-                      <div className="space-y-1.5 sm:space-y-2 text-xs sm:text-sm">
-                        {supplier.supplier?.contact_person && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500 min-w-[50px] sm:min-w-[60px]">İletişim:</span>
-                            <span className="text-gray-900 truncate break-words">{supplier.supplier.contact_person}</span>
-                          </div>
-                        )}
-                        {supplier.supplier?.phone && (
-                          <div className="flex items-center gap-2">
-                            <span className="text-gray-500 min-w-[50px] sm:min-w-[60px]">Telefon:</span>
-                            <span className="text-gray-900">{supplier.supplier.phone}</span>
-                          </div>
-                        )}
-                      </div>
-                      
-                      {/* Kademeli Teslim Alma Butonları - Santiye Depo için */}
+                      {/* İletişim - Çok kompakt */}
+                      {(supplier.supplier?.contact_person || supplier.supplier?.phone) && (
+                        <div className="flex gap-3 text-[10px] text-gray-500 mb-2">
+                          {supplier.supplier?.contact_person && <span>{supplier.supplier.contact_person}</span>}
+                          {supplier.supplier?.phone && <span>{supplier.supplier.phone}</span>}
+                        </div>
+                      )}
+
+                      {/* Siparişler - Çok kompakt */}
                       {onOrderDeliveryConfirmation && supplier.orders && supplier.orders.length > 0 && (
-                        <div className="mt-2 sm:mt-3 pt-2 sm:pt-3 border-t border-gray-200">
-                          <div className="text-[10px] sm:text-xs text-gray-600 mb-1.5 sm:mb-2">Siparişler:</div>
-                          <div className="space-y-1.5 sm:space-y-2">
+                        <div className="space-y-1.5">
                             {supplier.orders.map((order: any) => {
                               const hasDeliveries = order.total_delivered > 0
                               const returnedQuantity = order.returned_quantity || 0
@@ -702,135 +652,55 @@ export default function MaterialCard({
                               const orderStatus = order.status || 'pending'
                               
                               return (
-                                <div key={order.id} className={`bg-white rounded-2xl sm:rounded-3xl p-2 sm:p-3 border ${order.is_return_reorder ? 'border-purple-200 bg-purple-50' : 'border-gray-200'}`}>
-                                  <div className="flex flex-col sm:flex-row items-start justify-between gap-2">
-                                    <div className="flex-1 space-y-1.5 sm:space-y-2 w-full">
-                                      {/* Sipariş Başlığı ve Badge */}
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-xs sm:text-sm font-medium text-gray-900">
-                                          {order.quantity} {item.unit}
-                                        </span>
-                                        <span className="text-[10px] sm:text-xs text-gray-500">
-                                          {order.is_return_reorder ? 'yeniden sipariş' : 'sipariş'}
-                                        </span>
-                                       
-                                      </div>
-
-                                      {/* Miktar Bilgileri */}
-                                      <div className="space-y-0.5 sm:space-y-1 text-[10px] sm:text-xs">
-                                        {hasDeliveries && (
-                                          <div className="flex gap-1">
-                                            <span className="text-gray-500">Teslim:</span>
-                                            <span className="font-medium text-green-600">{deliveredQuantity} {item.unit}</span>
-                                          </div>
-                                        )}
-                                        {returnedQuantity > 0 && (
-                                          <div className="flex gap-1">
-                                            <span className="text-gray-500">İade:</span>
-                                            <span className="font-medium text-orange-600">{returnedQuantity} {item.unit}</span>
-                                          </div>
-                                        )}
-                                        <div className="flex gap-1">
-                                          <span className="text-gray-500">Kalan:</span>
-                                          <span className="font-medium text-blue-600">{remainingQuantity.toFixed(2)} {item.unit}</span>
-                                        </div>
-                                      </div>
-
-                                      {/* Yeniden Sipariş Badge'i */}
-                                      {order.is_return_reorder && (
-                                        <div className="mt-1 sm:mt-2">
-                                          <Badge className="bg-purple-100 text-purple-700 text-[10px] sm:text-xs px-1.5 sm:px-2 py-0.5 sm:py-1">
-                                            <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
-                                            </svg>
-                                            İade nedeniyle yeniden sipariş
-                                          </Badge>
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="flex gap-1.5 sm:gap-2 w-full sm:w-auto sm:ml-3">
-                                      {canDeliver && (
-                                        <Button
-                                          size="sm"
-                                          onClick={() => onOrderDeliveryConfirmation(order, item)}
-                                          className="h-7 sm:h-8 px-2 sm:px-3 bg-green-600 hover:bg-green-700 text-white text-[10px] sm:text-xs font-medium rounded-2xl sm:rounded-3xl shadow-sm flex-1 sm:flex-none"
-                                        >
-                                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                                          </svg>
-                                          Teslim Al
-                                        </Button>
-                                      )}
-                                      {onOrderReturn && canReturn && (
-                                        <Button
-                                          size="sm"
-                                          onClick={() => onOrderReturn(order, item)}
-                                          className="h-7 sm:h-8 px-2 sm:px-3 bg-red-600 hover:bg-red-700 text-white text-[10px] sm:text-xs font-medium rounded-2xl sm:rounded-3xl shadow-sm flex-1 sm:flex-none"
-                                          title="Malzeme İadesi - Kalan miktardan iade edilebilir"
-                                        >
-                                          <RotateCcw className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" />
-                                          İade
-                                        </Button>
-                                      )}
-                                      {isCompleted && (
-                                        <div className="text-[10px] sm:text-xs text-green-600 font-medium flex items-center">
-                                          <svg className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-0.5 sm:mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
-                                          </svg>
-                                          Tamamlandı
-                                        </div>
-                                      )}
-                                    </div>
+                                <div key={order.id} className={`flex items-center gap-2 p-2 rounded-xl ${order.is_return_reorder ? 'bg-purple-50' : 'bg-white'}`}>
+                                  <div className="flex gap-1.5">
+                                    {canDeliver && (
+                                      <Button size="sm" onClick={() => onOrderDeliveryConfirmation(order, item)} className="h-9 px-5 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-xl">
+                                        <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                        Teslim Al
+                                      </Button>
+                                    )}
+                                    {hasDeliveries && !canDeliver && (
+                                      <Button size="sm" onClick={() => onOrderDeliveryConfirmation(order, item, true)} className="h-9 px-5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl">
+                                        <svg className="w-3.5 h-3.5 mr-1.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"></path></svg>
+                                        Düzenle
+                                      </Button>
+                                    )}
+                                    {onOrderReturn && canReturn && (
+                                      <Button size="sm" onClick={() => onOrderReturn(order, item)} className="h-9 px-5 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-xl">
+                                        <RotateCcw className="w-3.5 h-3.5 mr-1.5" />
+                                        İade
+                                      </Button>
+                                    )}
+                                    {isCompleted && (
+                                      <span className="text-[10px] text-green-600 font-medium flex items-center px-2">
+                                        <svg className="w-3 h-3 mr-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                        Tamamlandı
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               )
                             })}
                           </div>
-                        </div>
                       )}
                       
-                      {/* Teslimat Tarihi */}
+                      {/* Teslimat Tarihi - Kompakt */}
                       {(() => {
-                        const nextDeliveryDate = supplier.orders
-                          .map((order: any) => order.delivery_date)
-                          .filter(Boolean)
-                          .sort()[0]
-                          
+                        const nextDeliveryDate = supplier.orders.map((order: any) => order.delivery_date).filter(Boolean).sort()[0]
                         if (nextDeliveryDate) {
                           const deliveryDate = new Date(nextDeliveryDate)
                           const today = new Date()
                           today.setHours(0, 0, 0, 0)
                           deliveryDate.setHours(0, 0, 0, 0)
-                          
                           const diffTime = deliveryDate.getTime() - today.getTime()
                           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-                          
-                          let statusText = ''
-                          let statusColor = 'text-gray-600'
-                          
-                          if (diffDays < 0) {
-                            statusText = `${Math.abs(diffDays)} gün geçti`
-                            statusColor = 'text-red-600'
-                          } else if (diffDays === 0) {
-                            statusText = 'Bugün'
-                            statusColor = 'text-orange-600'
-                          } else if (diffDays <= 3) {
-                            statusText = `${diffDays} gün kaldı`
-                            statusColor = 'text-orange-600'
-                          } else {
-                            statusText = `${diffDays} gün kaldı`
-                            statusColor = 'text-gray-600'
-                          }
-                          
+                          let statusColor = diffDays < 0 ? 'text-red-600' : diffDays === 0 ? 'text-orange-600' : 'text-gray-600'
+                          let statusText = diffDays < 0 ? `${Math.abs(diffDays)}g geçti` : diffDays === 0 ? 'Bugün' : `${diffDays}g`
                           return (
-                            <div className="mt-3 pt-3 border-t border-gray-200">
-                              <div className="flex items-center justify-between text-sm">
-                                <span className="text-gray-500">Teslimat:</span>
-                                <div className="text-right">
-                                  <div className="text-gray-900">{deliveryDate.toLocaleDateString('tr-TR')}</div>
-                                  <div className={`text-xs ${statusColor}`}>{statusText}</div>
-                                </div>
-                              </div>
+                            <div className="flex items-center justify-between text-[10px] mt-1.5 text-gray-500">
+                              <span>Teslimat: <span className="text-gray-900">{deliveryDate.toLocaleDateString('tr-TR')}</span></span>
+                              <span className={statusColor}>{statusText}</span>
                             </div>
                           )
                         }
@@ -845,15 +715,15 @@ export default function MaterialCard({
         </div>
       )}
 
-      {/* Detaylı takip sistemi - sade renk tasarımı */}
+      {/* Detaylı takip sistemi - minimal */}
       {shouldShowTrackingSystem() && (
-        <div className="p-3 sm:p-4 border-b border-gray-100">
-          <h6 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-4">Durum Takibi</h6>
-          <div className="grid grid-cols-2 gap-2 sm:gap-4">
+        <div className="p-3 border-b border-gray-100">
+          <h6 className="text-xs font-medium text-gray-700 mb-2">Durum Takibi</h6>
+          <div className="grid grid-cols-2 gap-2">
             {/* İlk Talep */}
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">İlk Talep</div>
-              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5 truncate">İlk Talep</div>
+              <div className="text-sm font-semibold text-gray-900 truncate">
                 {(() => {
                   const originalRequest = item.original_quantity ?? item.quantity
                   return `${originalRequest.toFixed(2)} ${item.unit}`
@@ -862,9 +732,9 @@ export default function MaterialCard({
             </div>
             
             {/* Depodan Gönderilen */}
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Depodan Gönderilen</div>
-              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5 truncate">Depodan Gönderilen</div>
+              <div className="text-sm font-semibold text-green-600 truncate">
                 {(() => {
                   const itemShipments = shipmentData[item.id]
                   const depoShipped = itemShipments?.total_shipped || 0
@@ -876,19 +746,19 @@ export default function MaterialCard({
                 const shipmentCount = itemShipments?.shipments?.length || 0
                 if (shipmentCount > 0) {
                   return (
-                    <div className="text-[10px] sm:text-xs text-gray-600 mt-0.5 sm:mt-1 truncate">
+                    <div className="text-[9px] text-gray-500 mt-0.5 truncate">
                       {shipmentCount} gönderim
                     </div>
                   )
                 }
-                return <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">-</div>
+                return <div className="text-[9px] text-gray-400 mt-0.5">-</div>
               })()}
             </div>
             
             {/* Sipariş Verildi */}
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Sipariş Verildi</div>
-              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5 truncate">Sipariş Verildi</div>
+              <div className="text-sm font-semibold text-green-600 truncate">
                 {(() => {
                   const totalOrdered = materialOrders
                     .filter((order: any) => order.material_item_id === item.id)
@@ -930,9 +800,9 @@ export default function MaterialCard({
             </div>
             
             {/* Teslimat Tarihi */}
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Teslimat</div>
-              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5 truncate">Teslimat</div>
+              <div className="text-sm font-semibold text-gray-900 truncate">
                 {(() => {
                   const itemOrders = materialOrders.filter((order: any) => 
                     order.material_item_id === item.id
@@ -1013,29 +883,23 @@ export default function MaterialCard({
         </div>
       )}
 
-      {/* Miktar Bilgileri - Sadece normal depo işlemlerinde göster */}
+      {/* Miktar Bilgileri - Kompakt */}
       {!shouldShowTrackingSystem() && (
-        <div className="p-3 sm:p-4 border-b border-gray-100">
-          <h6 className="text-xs sm:text-sm font-medium text-gray-700 mb-2 sm:mb-4">Miktar Durumu</h6>
-          <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-3 sm:mb-4">
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">İlk Talep</div>
-              <div className="text-sm sm:text-lg font-bold text-gray-900 truncate">{originalQuantity} {item.unit}</div>
+        <div className="p-3 border-b border-gray-100">
+          <h6 className="text-xs font-medium text-gray-700 mb-2">Miktar Durumu</h6>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5">İlk Talep</div>
+              <div className="text-sm font-semibold text-gray-900">{originalQuantity} {item.unit}</div>
             </div>
-            
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Gönderilen</div>
-              <div className="text-sm sm:text-lg font-bold text-green-600 truncate">{totalShipped.toFixed(2)} {item.unit}</div>
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5">Gönderilen</div>
+              <div className="text-sm font-semibold text-green-600">{totalShipped.toFixed(2)} {item.unit}</div>
             </div>
-            
-            <div className="bg-gray-50 rounded-2xl sm:rounded-3xl p-2 sm:p-3 border border-gray-200">
-              <div className="text-[10px] sm:text-xs font-medium text-gray-600 mb-0.5 sm:mb-1 truncate">Kalan</div>
-              <div className="text-sm sm:text-lg font-bold text-red-600 truncate">
-                {Math.max(0, remainingQuantity).toFixed(2)} {item.unit}
-              </div>
-              <div className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1 truncate">
-                {remainingQuantity <= 0 ? 'Tamamlandı' : 'Bekliyor'}
-              </div>
+            <div className="bg-white border border-gray-100 rounded-xl p-2">
+              <div className="text-[10px] font-medium text-gray-500 mb-0.5">Kalan</div>
+              <div className="text-sm font-semibold text-red-600">{Math.max(0, remainingQuantity).toFixed(2)} {item.unit}</div>
+              <div className="text-[9px] text-gray-500 mt-0.5">{remainingQuantity <= 0 ? 'Tamamlandı' : 'Bekliyor'}</div>
             </div>
           </div>
         </div>
@@ -1043,13 +907,13 @@ export default function MaterialCard({
 
       {/* Malzeme Resimleri */}
       {item.image_urls && item.image_urls.length > 0 && (
-        <div className="p-4 border-b border-gray-100">
-          <h6 className="text-sm font-medium text-gray-700 mb-4">Malzeme Görselleri</h6>
-          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="p-3 border-b border-gray-100">
+          <h6 className="text-xs font-medium text-gray-700 mb-2">Malzeme Görselleri</h6>
+          <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
             {item.image_urls.slice(0, 6).map((url, imgIndex) => (
               <div 
                 key={imgIndex} 
-                className="aspect-square bg-white rounded-lg border border-gray-200 overflow-hidden group cursor-pointer hover:shadow-md transition-all duration-200"
+                className="aspect-square bg-white rounded-xl overflow-hidden cursor-pointer hover:ring-2 hover:ring-gray-300 transition-all"
                 onClick={() => {
                   const img = new Image()
                   img.src = url
@@ -1092,10 +956,8 @@ export default function MaterialCard({
               </div>
             ))}
             {item.image_urls.length > 6 && (
-              <div className="aspect-square bg-gray-100 rounded-lg border border-gray-200 flex items-center justify-center">
-                <span className="text-sm text-gray-500 font-medium">
-                  +{item.image_urls.length - 6}
-                </span>
+              <div className="aspect-square bg-gray-100 rounded-xl flex items-center justify-center">
+                <span className="text-xs text-gray-500 font-medium">+{item.image_urls.length - 6}</span>
               </div>
             )}
           </div>

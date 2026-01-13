@@ -38,11 +38,16 @@ export default function PartialDeliveryModal({
   const [orderDeliveries, setOrderDeliveries] = useState<any[]>([])
   const [loading, setLoading] = useState(false)
   const [isScannerOpen, setIsScannerOpen] = useState(false)
+  const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]) // Mevcut fotoğraf URL'leri
+  const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null) // Düzenlenen teslimat ID'si
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
   
   // Mobil cihaz kontrolü
   const isMobile = typeof window !== 'undefined' && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)
+  
+  // Edit mode kontrolü
+  const isEditMode = order?.isEditMode === true
 
   // Modal açıldığında mevcut teslimatları yükle
   useEffect(() => {
@@ -69,10 +74,30 @@ export default function PartialDeliveryModal({
 
       if (error) throw error
       setOrderDeliveries(data || [])
+      
+      // Edit mode ise, en son teslimatı yükle
+      if (isEditMode && data && data.length > 0) {
+        const lastDelivery = data[0] // En son teslimat
+        loadDeliveryForEdit(lastDelivery)
+      }
     } catch (error) {
       console.error('Teslimat geçmişi yüklenirken hata:', error)
     } finally {
       setLoading(false)
+    }
+  }
+  
+  // Düzenleme için teslimat verilerini yükle
+  const loadDeliveryForEdit = (delivery: any) => {
+    setSelectedDeliveryId(delivery.id)
+    setDeliveredQuantity(delivery.delivered_quantity.toString())
+    setDeliveryNotes(delivery.delivery_notes || '')
+    setQualityCheck(delivery.quality_check !== false) // Default true
+    setDamageNotes(delivery.damage_notes || '')
+    
+    // Mevcut fotoğraf URL'lerini yükle
+    if (delivery.delivery_photos && Array.isArray(delivery.delivery_photos)) {
+      setExistingPhotoUrls(delivery.delivery_photos)
     }
   }
 
@@ -112,6 +137,11 @@ export default function PartialDeliveryModal({
     URL.revokeObjectURL(photoPreviewUrls[index])
     setPhotos(prev => prev.filter((_, i) => i !== index))
     setPhotoPreviewUrls(prev => prev.filter((_, i) => i !== index))
+  }
+  
+  // Mevcut fotoğrafı kaldır
+  const removeExistingPhoto = (index: number) => {
+    setExistingPhotoUrls(prev => prev.filter((_, i) => i !== index))
   }
 
   const triggerCameraCapture = () => {
@@ -185,12 +215,14 @@ export default function PartialDeliveryModal({
         throw new Error('Geçerli bir miktar girin')
       }
 
-      // En az 1 fotoğraf zorunlu
-      if (photos.length === 0) {
-        throw new Error('En az 1 irsaliye fotoğrafı yüklemelisiniz')
+      // En az 1 fotoğraf zorunlu (mevcut veya yeni)
+      const totalPhotos = existingPhotoUrls.length + photos.length
+      if (totalPhotos === 0) {
+        throw new Error('En az 1 irsaliye fotoğrafı olmalıdır')
       }
 
-      if (quantity > maxDeliverable) {
+      // Edit mode değilse miktar kontrolü yap
+      if (!isEditMode && quantity > maxDeliverable) {
         throw new Error(`Maksimum ${maxDeliverable} ${materialItem?.unit || 'adet'} teslim alabilirsiniz`)
       }
 
@@ -200,58 +232,91 @@ export default function PartialDeliveryModal({
         throw new Error('Kullanıcı oturumu bulunamadı')
       }
 
-      // Fotoğrafları yükle
-      const photoUrls = await uploadPhotosToSupabase()
-
-      // Kademeli teslim kaydı oluştur
-      console.log('🔍 create_order_delivery parametreleri:', {
-        p_order_id: order.id,
-        p_delivered_quantity: quantity,
-        p_received_by: user.id,
-        p_delivery_notes: deliveryNotes.trim() || null,
-        p_delivery_photos: photoUrls,
-        p_quality_check: qualityCheck,
-        p_damage_notes: damageNotes.trim() || null
-      })
+      // Yeni fotoğrafları yükle
+      const newPhotoUrls = await uploadPhotosToSupabase()
       
-      const { data, error } = await supabase
-        .rpc('create_order_delivery', {
+      // Tüm fotoğraf URL'lerini birleştir (mevcut + yeni)
+      const allPhotoUrls = [...existingPhotoUrls, ...newPhotoUrls]
+
+      if (isEditMode && selectedDeliveryId) {
+        // Edit mode: Mevcut teslimatı güncelle
+        console.log('📝 Teslimat güncelleniyor:', {
+          deliveryId: selectedDeliveryId,
+          delivered_quantity: quantity,
+          delivery_notes: deliveryNotes.trim() || null,
+          delivery_photos: allPhotoUrls,
+          quality_check: qualityCheck,
+          damage_notes: damageNotes.trim() || null
+        })
+        
+        const { error: updateError } = await supabase
+          .from('order_deliveries')
+          .update({
+            delivered_quantity: quantity,
+            delivery_notes: deliveryNotes.trim() || null,
+            delivery_photos: allPhotoUrls,
+            quality_check: qualityCheck,
+            damage_notes: damageNotes.trim() || null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', selectedDeliveryId)
+
+        if (updateError) {
+          throw new Error(`Teslimat güncelleme başarısız: ${updateError.message}`)
+        }
+
+        showToast('Teslimat bilgileri başarıyla güncellendi!', 'success')
+      } else {
+        // Normal mode: Yeni teslimat kaydı oluştur
+        console.log('🔍 create_order_delivery parametreleri:', {
           p_order_id: order.id,
           p_delivered_quantity: quantity,
           p_received_by: user.id,
           p_delivery_notes: deliveryNotes.trim() || null,
-          p_delivery_photos: photoUrls,
-          p_quality_check: qualityCheck, // Artık güvenli - fonksiyon içinde handle ediliyor
+          p_delivery_photos: allPhotoUrls,
+          p_quality_check: qualityCheck,
           p_damage_notes: damageNotes.trim() || null
         })
+        
+        const { data, error } = await supabase
+          .rpc('create_order_delivery', {
+            p_order_id: order.id,
+            p_delivered_quantity: quantity,
+            p_received_by: user.id,
+            p_delivery_notes: deliveryNotes.trim() || null,
+            p_delivery_photos: allPhotoUrls,
+            p_quality_check: qualityCheck,
+            p_damage_notes: damageNotes.trim() || null
+          })
 
-      if (error) {
-        throw new Error(`Teslim alma işlemi başarısız: ${error.message}`)
+        if (error) {
+          throw new Error(`Teslim alma işlemi başarısız: ${error.message}`)
+        }
+
+        const result = data as any
+        if (!result.success) {
+          throw new Error(result.error || 'Teslim alma işlemi başarısız')
+        }
+
+        const newRemaining = result.remaining_quantity || 0
+        const isCompleted = newRemaining <= 0
+        const orderStatus = result.order_status || 'pending'
+        
+        console.log('✅ Teslim alma sonucu:', {
+          orderId: order.id,
+          newRemaining,
+          isCompleted,
+          orderStatus,
+          totalDelivered: result.total_delivered
+        })
+
+        showToast(
+          isCompleted 
+            ? `${materialItem?.item_name || 'Sipariş'} tamamen teslim alındı!`
+            : `${quantity} ${materialItem?.unit || 'adet'} teslim alındı. Kalan: ${newRemaining} ${materialItem?.unit || 'adet'}`,
+          'success'
+        )
       }
-
-      const result = data as any
-      if (!result.success) {
-        throw new Error(result.error || 'Teslim alma işlemi başarısız')
-      }
-
-      const newRemaining = result.remaining_quantity || 0
-      const isCompleted = newRemaining <= 0
-      const orderStatus = result.order_status || 'pending'
-      
-      console.log('✅ Teslim alma sonucu:', {
-        orderId: order.id,
-        newRemaining,
-        isCompleted,
-        orderStatus,
-        totalDelivered: result.total_delivered
-      })
-
-      showToast(
-        isCompleted 
-          ? `${materialItem?.item_name || 'Sipariş'} tamamen teslim alındı!`
-          : `${quantity} ${materialItem?.unit || 'adet'} teslim alındı. Kalan: ${newRemaining} ${materialItem?.unit || 'adet'}`,
-        'success'
-      )
 
       // Cache'i temizle ki tabloda güncel status gözüksün
       try {
@@ -302,6 +367,8 @@ export default function PartialDeliveryModal({
     setDamageNotes('')
     setQualityCheck(true)
     setOrderDeliveries([])
+    setExistingPhotoUrls([])
+    setSelectedDeliveryId(null)
     onClose()
   }
 
@@ -313,7 +380,7 @@ export default function PartialDeliveryModal({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Package className="h-5 w-5 text-blue-600" />
-            Kademeli Teslim Alma
+            {isEditMode ? 'Teslimat Bilgilerini Düzenle' : 'Kademeli Teslim Alma'}
           </DialogTitle>
           <div className="text-sm text-gray-600">
             {materialItem?.item_name || 'Sipariş'} • {order.suppliers?.name || 'Tedarikçi'}
@@ -367,9 +434,11 @@ export default function PartialDeliveryModal({
           </div>
 
           {/* Teslim Alma Formu */}
-          {remainingQuantity > 0 && (
+          {(remainingQuantity > 0 || isEditMode) && (
             <div className="space-y-4">
-              <h4 className="text-sm font-medium text-gray-700">Yeni Teslim Alma</h4>
+              <h4 className="text-sm font-medium text-gray-700">
+                {isEditMode ? 'Teslimat Bilgileri' : 'Yeni Teslim Alma'}
+              </h4>
               
               {/* Miktar Girişi */}
               <div>
@@ -442,74 +511,6 @@ export default function PartialDeliveryModal({
                   rows={2}
                 />
               </div>
-
-              {/* Fotoğraf Yükleme */}
-              <div>
-                <Label className="text-sm font-medium mb-3 block">
-                  Teslimat Fotoğrafları <span className="text-red-500">*</span>
-                </Label>
-                
-                <div className="grid grid-cols-2 gap-3 mb-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={triggerCameraCapture}
-                    disabled={photos.length >= 5}
-                    className="h-12 border-dashed"
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Kamera
-                  </Button>
-                  
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={photos.length >= 5}
-                    className="h-12 border-dashed"
-                  >
-                    <Upload className="w-4 h-4 mr-2" />
-                    Dosya Seç
-                  </Button>
-                </div>
-
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handlePhotoUpload}
-                  className="hidden"
-                />
-
-                {/* Fotoğraf Önizlemeleri */}
-                {photos.length > 0 && (
-                  <div className="grid grid-cols-3 gap-2">
-                    {photoPreviewUrls.map((url, index) => (
-                      <div key={index} className="relative aspect-square">
-                        <img
-                          src={url}
-                          alt={`Fotoğraf ${index + 1}`}
-                          className="w-full h-full object-cover rounded-3xl border"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removePhoto(index)}
-                          className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                
-                <p className="text-xs text-gray-500 mt-2">
-                  {photos.length}/5 fotoğraf yüklendi • En az 1 fotoğraf zorunlu
-                </p>
-              </div>
             </div>
           )}
 
@@ -544,6 +545,172 @@ export default function PartialDeliveryModal({
               </div>
             </div>
           )}
+
+          {/* İrsaliye Fotoğrafları - En Altta */}
+          {(remainingQuantity > 0 || isEditMode) && (
+            <div>
+                <Label className="text-sm font-medium mb-3 block">
+                  Teslimat Fotoğrafları <span className="text-red-500">*</span>
+                </Label>
+                
+                <div className="grid grid-cols-2 gap-3 mb-4">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={triggerCameraCapture}
+                    disabled={(existingPhotoUrls.length + photos.length) >= 10}
+                    className="h-12 border-dashed"
+                  >
+                    <Camera className="w-4 h-4 mr-2" />
+                    Kamera
+                  </Button>
+                  
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={(existingPhotoUrls.length + photos.length) >= 10}
+                    className="h-12 border-dashed"
+                  >
+                    <Upload className="w-4 h-4 mr-2" />
+                    Dosya Seç
+                  </Button>
+                </div>
+
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handlePhotoUpload}
+                  className="hidden"
+                />
+
+                {/* Mevcut Fotoğraflar (Edit Mode) */}
+                {isEditMode && existingPhotoUrls.length > 0 && (
+                  <div className="mb-4">
+                    <Label className="text-sm font-medium mb-2 block text-blue-600">
+                      Mevcut İrsaliye Fotoğrafları
+                    </Label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {existingPhotoUrls.map((url, index) => (
+                        <div key={`existing-${index}`} className="relative aspect-square">
+                          <img
+                            src={url}
+                            alt={`Mevcut Fotoğraf ${index + 1}`}
+                            className="w-full h-full object-cover rounded-3xl border border-blue-200 cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              const img = new Image()
+                              img.src = url
+                              img.onload = () => {
+                                const w = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
+                                if (w) {
+                                  w.document.write(`
+                                    <html>
+                                      <head>
+                                        <title>İrsaliye Fotoğrafı ${index + 1}</title>
+                                        <style>
+                                          body { margin:0; background:#000; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+                                          img { max-width:100%; max-height:100vh; object-fit:contain; cursor:zoom-in; }
+                                          img.zoomed { max-width:none; cursor:zoom-out; }
+                                        </style>
+                                      </head>
+                                      <body>
+                                        <img src="${url}" alt="İrsaliye Fotoğrafı ${index + 1}" onclick="this.classList.toggle('zoomed')" />
+                                      </body>
+                                    </html>
+                                  `)
+                                  w.document.close()
+                                }
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removeExistingPhoto(index)
+                            }}
+                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full z-10"
+                            title="Fotoğrafı kaldır"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Yeni Fotoğraf Önizlemeleri */}
+                {photos.length > 0 && (
+                  <div>
+                    {isEditMode && (
+                      <Label className="text-sm font-medium mb-2 block text-green-600">
+                        Yeni Eklenecek Fotoğraflar
+                      </Label>
+                    )}
+                    <div className="grid grid-cols-3 gap-2">
+                      {photoPreviewUrls.map((url, index) => (
+                        <div key={index} className="relative aspect-square">
+                          <img
+                            src={url}
+                            alt={`Fotoğraf ${index + 1}`}
+                            className="w-full h-full object-cover rounded-3xl border border-green-200 cursor-pointer hover:opacity-90 transition-opacity"
+                            onClick={() => {
+                              const img = new Image()
+                              img.src = url
+                              img.onload = () => {
+                                const w = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
+                                if (w) {
+                                  w.document.write(`
+                                    <html>
+                                      <head>
+                                        <title>Yeni Fotoğraf ${index + 1}</title>
+                                        <style>
+                                          body { margin:0; background:#000; display:flex; align-items:center; justify-content:center; min-height:100vh; }
+                                          img { max-width:100%; max-height:100vh; object-fit:contain; cursor:zoom-in; }
+                                          img.zoomed { max-width:none; cursor:zoom-out; }
+                                        </style>
+                                      </head>
+                                      <body>
+                                        <img src="${url}" alt="Yeni Fotoğraf ${index + 1}" onclick="this.classList.toggle('zoomed')" />
+                                      </body>
+                                    </html>
+                                  `)
+                                  w.document.close()
+                                }
+                              }
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              removePhoto(index)
+                            }}
+                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full z-10"
+                          >
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <p className="text-xs text-gray-500 mt-2">
+                  {isEditMode 
+                    ? `Toplam: ${existingPhotoUrls.length + photos.length}/10 fotoğraf • En az 1 fotoğraf zorunlu`
+                    : `${photos.length}/5 fotoğraf yüklendi • En az 1 fotoğraf zorunlu`
+                  }
+                </p>
+            </div>
+          )}
         </div>
 
         <DialogFooter className="gap-3">
@@ -555,21 +722,26 @@ export default function PartialDeliveryModal({
             İptal
           </Button>
           
-          {remainingQuantity > 0 && (
+          {(remainingQuantity > 0 || isEditMode) && (
             <Button
               onClick={handleConfirmDelivery}
-              disabled={!deliveredQuantity || parseFloat(deliveredQuantity) <= 0 || uploading || photos.length === 0}
-              className="bg-green-600 hover:bg-green-700 text-white"
+              disabled={
+                !deliveredQuantity || 
+                parseFloat(deliveredQuantity) <= 0 || 
+                uploading || 
+                (existingPhotoUrls.length + photos.length) === 0
+              }
+              className={isEditMode ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}
             >
               {uploading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Kaydediliyor...
+                  {isEditMode ? 'Güncelleniyor...' : 'Kaydediliyor...'}
                 </>
               ) : (
                 <>
                   <Check className="h-4 w-4 mr-2" />
-                  Teslim Alındı Kaydet
+                  {isEditMode ? 'Güncelle' : 'Teslim Alındı Kaydet'}
                 </>
               )}
             </Button>

@@ -155,6 +155,15 @@ export default function OffersPage() {
             currentOrder={currentOrder}
           />
         )
+      
+      case 'santiye_depo_yonetici':
+        // Santiye depo yöneticisi: SantiyeDepoView kullanır (onay butonları dahil)
+        return (
+          <SantiyeDepoView 
+            {...commonProps}
+            currentOrder={currentOrder}
+          />
+        )
         
       case 'site_personnel':
         return (
