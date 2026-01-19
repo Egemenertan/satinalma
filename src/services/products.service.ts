@@ -92,16 +92,42 @@ export async function fetchProducts(
   }
 
   // Calculate total stock for each product
-  const productsWithStock = (data || []).map((product: any) => {
-    const totalStock = (product.warehouse_stocks || []).reduce(
-      (sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0),
+  // Toplam = Depo Stokları (user_id: null) + Kullanıcı Zimmetleri (user_inventory)
+  const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
+    // Depo stokları (sadece user_id: null olanlar)
+    const warehouseStock = (product.warehouse_stocks || [])
+      .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
+      .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
+    
+    // Kullanıcı zimmetleri (user_inventory)
+    const supabase = createClient()
+    const { data: inventories } = await supabase
+      .from('user_inventory')
+      .select('quantity')
+      .eq('product_id', product.id)
+      .eq('status', 'active')
+    
+    const userInventoryStock = (inventories || []).reduce(
+      (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
       0
     )
+    
+    const totalStock = warehouseStock + userInventoryStock
+    
+    // Debug log (geliştirme sırasında)
+    if (userInventoryStock > 0) {
+      console.log(`📊 ${product.name}:`, {
+        depo: warehouseStock,
+        zimmet: userInventoryStock,
+        toplam: totalStock
+      })
+    }
+    
     return {
       ...product,
       total_stock: totalStock,
     }
-  })
+  }))
 
   return {
     products: productsWithStock as ProductWithDetails[],
@@ -137,10 +163,32 @@ export async function fetchProductById(id: string): Promise<ProductWithDetails |
   }
 
   // Calculate total stock
-  const totalStock = (data.warehouse_stocks || []).reduce(
-    (sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0),
+  // Toplam = Depo Stokları (user_id: null) + Kullanıcı Zimmetleri (user_inventory)
+  const warehouseStock = (data.warehouse_stocks || [])
+    .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
+    .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
+  
+  // Kullanıcı zimmetleri
+  const { data: inventories } = await supabase
+    .from('user_inventory')
+    .select('quantity')
+    .eq('product_id', id)
+    .eq('status', 'active')
+  
+  const userInventoryStock = (inventories || []).reduce(
+    (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
     0
   )
+  
+  const totalStock = warehouseStock + userInventoryStock
+  
+  // Debug log
+  console.log(`📊 ${data.name} - Toplam Stok Hesaplama:`, {
+    'Ana Depo (user_id: null)': warehouseStock,
+    'Zimmetli (user_inventory)': userInventoryStock,
+    'TOPLAM': totalStock,
+    'warehouse_stocks kayıt sayısı': data.warehouse_stocks?.length || 0
+  })
 
   return {
     ...data,

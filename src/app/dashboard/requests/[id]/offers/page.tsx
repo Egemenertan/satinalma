@@ -165,6 +165,15 @@ export default function OffersPage() {
           />
         )
         
+      case 'warehouse_manager':
+        // Warehouse manager: SantiyeDepoView kullanır (santiye_depo ile aynı yetkiler)
+        return (
+          <SantiyeDepoView 
+            {...commonProps}
+            currentOrder={currentOrder}
+          />
+        )
+        
       case 'site_personnel':
         return (
           <SitePersonnelView 

@@ -24,7 +24,8 @@ import {
   Package,
   Tag,
   UserCog,
-  Plus
+  Plus,
+  ClipboardList
 } from 'lucide-react'
 
 // Bekleyen talep sayısını getiren fetcher (rol bazlı)
@@ -89,6 +90,18 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       href: '/dashboard/requests',
       icon: FileText,
       badge: pendingCount > 0 ? pendingCount.toString() : undefined
+    },
+    {
+      id: 'inventory',
+      title: 'Zimmetlerim',
+      href: '/dashboard/inventory',
+      icon: ClipboardList
+    },
+    {
+      id: 'all-inventory',
+      title: 'Tüm Zimmetler',
+      href: '/dashboard/inventory/all',
+      icon: Package
     },
     {
       id: 'sites',

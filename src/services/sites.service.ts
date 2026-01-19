@@ -10,6 +10,7 @@ type Site = Database['public']['Tables']['sites']['Row']
 
 /**
  * Tüm şantiyeleri getir
+ * Ana Depo her zaman en üstte olacak şekilde sıralanır
  */
 export async function fetchSites() {
   const supabase = createClient()
@@ -24,7 +25,16 @@ export async function fetchSites() {
     throw error
   }
 
-  return data as Site[]
+  // Ana Depo'yu en üste taşı
+  const sites = data as Site[]
+  const anaDepoIndex = sites.findIndex(site => site.name === 'Ana Depo')
+  
+  if (anaDepoIndex > 0) {
+    const anaDepo = sites.splice(anaDepoIndex, 1)[0]
+    sites.unshift(anaDepo)
+  }
+
+  return sites
 }
 
 /**

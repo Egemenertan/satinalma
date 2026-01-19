@@ -2,6 +2,16 @@
 const nextConfig = {
   // Server Actions are now stable in Next.js 14
   // experimental.serverActions is no longer needed
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: '*.supabase.co',
+        port: '',
+        pathname: '/storage/v1/object/public/**',
+      },
+    ],
+  },
   async headers() {
     return [
       {

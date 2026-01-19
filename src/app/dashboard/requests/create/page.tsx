@@ -49,6 +49,8 @@ import {
 } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
+import { ProductSearchBar } from '@/components/ProductSearchBar'
+import { SPECIAL_SITE_ID, SPECIAL_SITE_PRODUCT_CATEGORIES } from '@/lib/constants'
 
 
 
@@ -181,7 +183,9 @@ export default function CreatePurchaseRequestPage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [isCheckingSite, setIsCheckingSite] = useState(true) // Kullanıcı şantiye kontrolü için
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false) // Genel Merkez Ofisi kullanıcısı mı?
+  const [isSpecialSiteUser, setIsSpecialSiteUser] = useState(false) // Özel site (products kullanan) kullanıcısı mı?
   const [searchQuery, setSearchQuery] = useState('')
+  const [productSearchQuery, setProductSearchQuery] = useState('')
   const [displayedSearchResults, setDisplayedSearchResults] = useState<Array<{
     class: string
     group: string
@@ -215,6 +219,7 @@ export default function CreatePurchaseRequestPage() {
     image_urls: string[]
     uploaded_images: File[]  // Her malzeme için ayrı yüklenen dosyalar
     image_preview_urls: string[]  // Her malzeme için ayrı önizleme URL'leri
+    product_id?: string      // Products tablosundan seçilen ürün ID'si (opsiyonel)
   }>>([])
   
   const [currentMaterialIndex, setCurrentMaterialIndex] = useState(0)
@@ -278,6 +283,12 @@ export default function CreatePurchaseRequestPage() {
                 construction_site: siteData.name,
                 construction_site_id: siteData.id
               }))
+              
+              // Özel site kontrolü - Products tablosunu kullanacak mı?
+              if (siteData.id === SPECIAL_SITE_ID) {
+                setIsSpecialSiteUser(true)
+              }
+              
                 setCurrentStep(2) // Step 1'i atla - doğrudan kategori seçimine geç
               }
             } else if (userSiteIds.length > 1) {
@@ -994,7 +1005,8 @@ export default function CreatePurchaseRequestPage() {
             specifications: material.specifications, // Her malzeme için ayrı teknik özellikler
             purpose: material.purpose, // Her malzeme için ayrı kullanım amacı
             delivery_date: material.delivery_date, // Her malzeme için ayrı teslimat tarihi
-            image_urls: imageUrls
+            image_urls: imageUrls,
+            product_id: material.product_id // Products tablosundan seçilen ürün ID'si
           }
         })
       )
@@ -1034,10 +1046,52 @@ export default function CreatePurchaseRequestPage() {
     router.back()
   }
 
+  // Product seçme handler'ı (Özel site için)
+  const handleProductSelect = (product: any) => {
+    const newMaterial = {
+      id: `temp-${Date.now()}`,
+      material_class: product.category?.name || 'Genel',
+      material_group: product.brand?.name || '',
+      material_item_name: product.name,
+      material_name: product.name,
+      material_description: product.name,
+      unit: product.unit || 'adet',
+      quantity: '1',
+      brand: product.brand?.name || '',
+      specifications: '',
+      purpose: '',
+      delivery_date: '',
+      image_urls: [],
+      uploaded_images: [],
+      image_preview_urls: [],
+      product_id: product.id // Products tablosundan gelen ID'yi kaydet
+    }
+
+    setSelectedMaterials(prev => [...prev, newMaterial])
+    setCurrentMaterialIndex(selectedMaterials.length)
+    setProductSearchQuery('')
+    showToast(`${product.name} eklendi`, 'success')
+  }
+
   // Search Bar Component
   const renderSearchBar = () => {
     if (currentStep < 2 || currentStep > 5) return null
 
+    // Özel site için ProductSearchBar göster
+    if (isSpecialSiteUser) {
+      return (
+        <ProductSearchBar
+          value={productSearchQuery}
+          onChange={setProductSearchQuery}
+          onProductSelect={handleProductSelect}
+          categoryIds={SPECIAL_SITE_PRODUCT_CATEGORIES as any}
+          placeholder="Ürün ara (Bilgisayar, Ofis Malzemeleri, Reklam)..."
+          className="mb-4"
+        />
+      )
+    }
+
+    // Normal kullanıcılar için MaterialSearchBar
     return (
       <MaterialSearchBar
         value={searchQuery}

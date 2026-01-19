@@ -13,7 +13,7 @@ export type UserRole =
   | 'admin'
   | 'site_personnel' // Şantiye personeli - sadece requests sayfasına erişim
   | 'site_manager' // Şantiye yöneticisi - dashboard ve requests sayfalarına erişim
-  | 'warehouse_manager' // Depo yöneticisi - site_manager ile aynı yetkiler
+  | 'warehouse_manager' // Depo yöneticisi - dashboard, requests, products, brands ve reports erişimi
   | 'purchasing_officer' // Satın alma sorumlusu - site_manager ile aynı yetkiler
   | 'santiye_depo' // Şantiye depo - tüm satın alma taleplerini görüntüleyebilir
   | 'santiye_depo_yonetici' // Şantiye depo yöneticisi - santiye_depo + talep onaylama yetkisi

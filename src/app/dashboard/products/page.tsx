@@ -15,7 +15,7 @@ import { useToast } from '@/components/ui/toast'
 import {
   ProductStatsCards,
   ProductFilters,
-  ProductsGrid,
+  ProductsTable,
   ProductModal,
 } from './components'
 
@@ -143,8 +143,8 @@ export default function ProductsPage() {
         </CardHeader>
 
         <CardContent>
-          {/* Products Grid */}
-          <ProductsGrid
+          {/* Products Table */}
+          <ProductsTable
             products={products}
             isLoading={isLoading}
             onProductClick={handleOpenViewModal}

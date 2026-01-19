@@ -352,6 +352,9 @@ export type Database = {
           supplier_name: string | null
           product_condition: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek' | null
           assigned_to: string | null
+          unit_price: number | null
+          currency: string | null
+          invoice_images: string[] | null
           created_at: string
         }
         Insert: {
@@ -370,6 +373,9 @@ export type Database = {
           supplier_name?: string | null
           product_condition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek' | null
           assigned_to?: string | null
+          unit_price?: number | null
+          currency?: string | null
+          invoice_images?: string[] | null
           created_at?: string
         }
         Update: {
@@ -388,6 +394,9 @@ export type Database = {
           supplier_name?: string | null
           product_condition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek' | null
           assigned_to?: string | null
+          unit_price?: number | null
+          currency?: string | null
+          invoice_images?: string[] | null
           created_at?: string
         }
         Relationships: [
@@ -611,6 +620,7 @@ export type Database = {
         | "warehouse_manager"
         | "purchasing_officer"
         | "santiye_depo"
+        | "santiye_depo_yonetici"
     }
   }
 }

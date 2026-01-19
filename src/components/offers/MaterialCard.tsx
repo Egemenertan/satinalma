@@ -27,6 +27,13 @@ interface MaterialCardProps {
   onOrderReturn?: (order: any, materialItem: any) => void  // İade işlemi fonksiyonu
   hideTopDeliveryButtons?: boolean  // Sağ üstteki teslim alma butonlarını gizle
   onShipmentSuccess?: () => void  // Gönderim başarılı olduğunda tetiklenecek callback
+  productStock?: {  // Products tablosundan gelen stok bilgisi
+    totalAvailable: number
+    warehouses: Array<{
+      name: string
+      quantity: number
+    }>
+  }
 }
 
 export default function MaterialCard({ 
@@ -45,7 +52,8 @@ export default function MaterialCard({
   onOrderDeliveryConfirmation,
   onOrderReturn,
   hideTopDeliveryButtons = false,
-  onShipmentSuccess
+  onShipmentSuccess,
+  productStock
 }: MaterialCardProps) {
   const [sendQuantities, setSendQuantities] = useState<{[key: string]: string}>({})
   const [sendingItem, setSendingItem] = useState(false)
@@ -970,6 +978,39 @@ export default function MaterialCard({
           {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) && !isReturnReorderStatus() ? (
             <div className="space-y-3 sm:space-y-4">
               <h6 className="text-xs sm:text-sm font-medium text-gray-700">Gönderim İşlemleri</h6>
+              
+              {/* Stok Bilgisi - Warehouse Manager için */}
+              {productStock && productStock.warehouses && productStock.warehouses.length > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-2xl p-3">
+                  <div className="flex items-start gap-2">
+                    <Package className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-blue-900">Depo Stok Durumu</span>
+                        <span className={`text-sm font-bold ${productStock.totalAvailable > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          Toplam: {productStock.totalAvailable} {item.unit || 'adet'}
+                        </span>
+                      </div>
+                      
+                      {/* Her Depo İçin Ayrı Satır */}
+                      <div className="space-y-1">
+                        {productStock.warehouses.map((warehouse, idx) => (
+                          <div key={idx} className="flex items-center justify-between text-xs bg-white rounded-lg px-2 py-1.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400"></span>
+                              <span className="text-gray-700 font-medium">{warehouse.name}</span>
+                            </div>
+                            <span className={`font-semibold ${warehouse.quantity > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {warehouse.quantity} {item.unit || 'adet'}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+              
               <div className="flex flex-col gap-2 sm:gap-3">
                 <div className="flex-1">
                   <label className="block text-[10px] sm:text-xs font-medium text-gray-600 mb-1.5 sm:mb-2">

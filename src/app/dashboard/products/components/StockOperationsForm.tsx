@@ -15,7 +15,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchSites } from '@/services/sites.service'
 import { addStock, removeStock, transferStock, adjustStock } from '@/services/stock.service'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck, Upload, X, FileText } from 'lucide-react'
+import { validateImageFile } from '@/lib/utils/imageUpload'
 
 type OperationType = 'giriş' | 'çıkış' | 'transfer' | 'düzeltme'
 
@@ -35,8 +36,13 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
     product_condition: 'yeni' as 'yeni' | 'kullanılmış' | 'arızalı' | 'hek', // Ürün durumu (sadece giriş için)
     assigned_to: '', // Zimmet alan (sadece transfer için)
     quantity: '',
+    unit_price: '', // Birim fiyat (sadece giriş için)
+    currency: 'TRY', // Para birimi (sadece giriş için)
     reason: '',
   })
+  const [invoiceFiles, setInvoiceFiles] = useState<File[]>([])
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+  const [uploadError, setUploadError] = useState<string>('')
 
   // Şantiyeleri çek
   const { data: sites, isLoading: isLoadingSites } = useQuery({
@@ -60,6 +66,43 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
     },
   })
 
+  // Fatura dosyası ekleme
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    setUploadError('')
+
+    // Her dosyayı kontrol et
+    for (const file of files) {
+      const validation = validateImageFile(file)
+      if (!validation.valid) {
+        setUploadError(validation.error || 'Geçersiz dosya')
+        return
+      }
+    }
+
+    // Önizleme URL'leri oluştur
+    const newPreviewUrls = files.map((file) => {
+      if (file.type.startsWith('image/')) {
+        return URL.createObjectURL(file)
+      }
+      return '' // PDF için önizleme yok
+    })
+
+    setInvoiceFiles((prev) => [...prev, ...files])
+    setPreviewUrls((prev) => [...prev, ...newPreviewUrls])
+  }
+
+  // Dosya silme
+  const removeFile = (index: number) => {
+    // Önizleme URL'ini temizle (memory leak önleme)
+    if (previewUrls[index]) {
+      URL.revokeObjectURL(previewUrls[index])
+    }
+    
+    setInvoiceFiles((prev) => prev.filter((_, i) => i !== index))
+    setPreviewUrls((prev) => prev.filter((_, i) => i !== index))
+  }
+
   // Mutation'lar
   const stockMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -72,7 +115,10 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
             data.reason,
             undefined,
             data.supplier_name || undefined,
-            data.product_condition
+            data.product_condition,
+            data.unit_price ? parseFloat(data.unit_price) : undefined,
+            data.currency || 'TRY',
+            invoiceFiles
           )
         case 'çıkış':
           return await removeStock(
@@ -117,8 +163,17 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
         product_condition: 'yeni',
         assigned_to: '',
         quantity: '',
+        unit_price: '',
+        currency: 'TRY',
         reason: '',
       })
+      // Önizleme URL'lerini temizle
+      previewUrls.forEach((url) => {
+        if (url) URL.revokeObjectURL(url)
+      })
+      setInvoiceFiles([])
+      setPreviewUrls([])
+      setUploadError('')
       
       onSuccess?.()
     },
@@ -163,8 +218,21 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
       product_condition: 'yeni',
       assigned_to: '',
       quantity: '',
+      unit_price: '',
+      currency: 'TRY',
       reason: '',
     })
+    setInvoiceFiles([])
+    setPreviewUrls([])
+    setUploadError('')
+    
+    // Cleanup function - önizleme URL'lerini temizle
+    return () => {
+      previewUrls.forEach((url) => {
+        if (url) URL.revokeObjectURL(url)
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operationType])
 
   const operationConfig = {
@@ -367,6 +435,40 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
           </div>
         )}
 
+        {/* Birim Fiyat (Sadece Stok Girişi için) */}
+        {operationType === 'giriş' && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+            <Label htmlFor="unit_price" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Birim Fiyat (Opsiyonel)
+            </Label>
+            <div className="flex gap-2 mt-2">
+              <Input
+                id="unit_price"
+                type="number"
+                step="0.01"
+                min="0"
+                value={formData.unit_price}
+                onChange={(e) => handleChange('unit_price', e.target.value)}
+                placeholder="0.00"
+                className="flex-1 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl"
+              />
+              <Select
+                value={formData.currency}
+                onValueChange={(value) => handleChange('currency', value)}
+              >
+                <SelectTrigger className="w-24 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="TRY">TRY</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+
         {/* Miktar */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <Label htmlFor="quantity" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
@@ -384,6 +486,96 @@ export function StockOperationsForm({ productId, productName, onSuccess }: Stock
             required
           />
         </div>
+
+        {/* Fatura/Fiş Yükleme (Sadece Stok Girişi için) */}
+        {operationType === 'giriş' && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+            <Label htmlFor="invoice" className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">
+              Fatura/Fiş (Opsiyonel)
+            </Label>
+            
+            <div className="space-y-3">
+              {/* Upload Button */}
+              <label 
+                htmlFor="invoice-upload"
+                className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-gray-300 rounded-xl hover:border-gray-400 hover:bg-gray-50 transition-all cursor-pointer"
+              >
+                <Upload className="w-5 h-5 text-gray-400" />
+                <span className="text-sm text-gray-600 font-medium">
+                  Fatura veya Fiş Yükle
+                </span>
+                <input
+                  id="invoice-upload"
+                  type="file"
+                  accept="image/*,application/pdf"
+                  multiple
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
+
+              {/* Error Message */}
+              {uploadError && (
+                <p className="text-xs text-red-600 font-medium">{uploadError}</p>
+              )}
+
+              {/* Preview Files */}
+              {invoiceFiles.length > 0 && (
+                <div className="grid grid-cols-2 gap-3">
+                  {invoiceFiles.map((file, index) => (
+                    <div
+                      key={index}
+                      className="relative group bg-gray-50 rounded-xl border border-gray-200 overflow-hidden hover:shadow-md transition-all"
+                    >
+                      {/* Önizleme veya Icon */}
+                      <div className="aspect-video bg-gray-100 flex items-center justify-center">
+                        {previewUrls[index] ? (
+                          <img
+                            src={previewUrls[index]}
+                            alt={file.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <FileText className="w-12 h-12 text-gray-400" />
+                        )}
+                      </div>
+                      
+                      {/* Dosya Bilgisi */}
+                      <div className="p-3">
+                        <p className="text-xs font-medium text-gray-700 truncate" title={file.name}>
+                          {file.name}
+                        </p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {(file.size / 1024).toFixed(0)} KB
+                        </p>
+                      </div>
+
+                      {/* Silme Butonu */}
+                      <button
+                        type="button"
+                        onClick={() => removeFile(index)}
+                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+
+                      {/* PDF Badge */}
+                      {file.type === 'application/pdf' && (
+                        <div className="absolute top-2 left-2 px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">
+                          PDF
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="text-xs text-gray-500">
+                JPG, PNG, WebP veya PDF • Maksimum 5MB • Birden fazla dosya yüklenebilir
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Açıklama */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">

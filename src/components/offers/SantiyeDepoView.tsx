@@ -9,6 +9,7 @@ import PartialDeliveryModal from '@/components/PartialDeliveryModal'
 import ReturnModal from '@/components/ReturnModal'
 import RequestPDFExportModal from '@/components/RequestPDFExportModal'
 import MaterialCard from './MaterialCard'
+import WarehouseManagerMaterialCard from './WarehouseManagerMaterialCard'
 import StatusSummary from './StatusSummary'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
@@ -58,8 +59,122 @@ export default function SantiyeDepoView({
   const [rejectionReason, setRejectionReason] = useState('')
   const [userRole, setUserRole] = useState<string | null>(null)
   
+  // Product stock information
+  const [productStocks, setProductStocks] = useState<{[itemId: string]: {
+    totalAvailable: number
+    warehouses: Array<{
+      name: string
+      quantity: number
+      conditionBreakdown?: {
+        yeni?: number
+        kullanılmış?: number
+        hek?: number
+        arızalı?: number
+      }
+    }>
+  }}>({})
+  
   const supabase = createClient()
   const router = useRouter()
+
+  // Fetch product stock information for items that have product_id
+  useEffect(() => {
+    const fetchProductStocks = async () => {
+      if (!request?.purchase_request_items) return
+      
+      // Only fetch for warehouse_manager role
+      if (userRole !== 'warehouse_manager') return
+      
+      try {
+        const stocks: {[itemId: string]: {
+          totalAvailable: number
+          warehouses: Array<{
+            name: string
+            quantity: number
+            conditionBreakdown?: {
+              yeni?: number
+              kullanılmış?: number
+              hek?: number
+              arızalı?: number
+            }
+          }>
+        }} = {}
+        
+        for (const item of request.purchase_request_items) {
+          if ((item as any).product_id) {
+            console.log(`🔍 ${item.item_name} için stok sorgulanıyor... (product_id: ${(item as any).product_id})`)
+            
+            // Fetch all stock records for this product from all warehouses (only unassigned stock)
+            const { data: stockData, error } = await supabase
+              .from('warehouse_stock')
+              .select(`
+                quantity,
+                condition_breakdown,
+                warehouse:sites(name)
+              `)
+              .eq('product_id', (item as any).product_id)
+              .is('user_id', null)
+            
+            if (error) {
+              console.error(`❌ ${item.item_name} stok sorgusu hatası:`, error)
+              continue
+            }
+            
+            if (!stockData || stockData.length === 0) {
+              console.log(`⚠️ ${item.item_name} için stok kaydı bulunamadı`)
+              continue
+            }
+            
+            // Calculate total stock across all warehouses
+            const totalQuantity = stockData.reduce((sum, stock) => {
+              return sum + (parseFloat(stock.quantity?.toString() || '0') || 0)
+            }, 0)
+            
+            // Prepare warehouse details with condition breakdown
+            const warehouses = stockData
+              .filter((s: any) => s.warehouse?.name)
+              .map((s: any) => {
+                const breakdown = (s.condition_breakdown as any) || {}
+                return {
+                  name: s.warehouse.name,
+                  quantity: parseFloat(s.quantity?.toString() || '0') || 0,
+                  conditionBreakdown: {
+                    yeni: parseFloat(breakdown.yeni?.toString() || '0') || 0,
+                    kullanılmış: parseFloat(breakdown.kullanılmış?.toString() || '0') || 0,
+                    hek: parseFloat(breakdown.hek?.toString() || '0') || 0,
+                    arızalı: parseFloat(breakdown.arızalı?.toString() || '0') || 0,
+                  }
+                }
+              })
+              .sort((a, b) => b.quantity - a.quantity) // En çok stok olanlar üstte
+            
+            stocks[item.id] = {
+              totalAvailable: totalQuantity,
+              warehouses: warehouses
+            }
+            
+            console.log(`✅ ${item.item_name} stok bilgisi:`)
+            console.log(`   📊 Toplam: ${totalQuantity} ${item.unit || 'adet'}`)
+            warehouses.forEach(w => {
+              console.log(`   └─ ${w.name}: ${w.quantity} ${item.unit || 'adet'}`)
+              if (w.conditionBreakdown) {
+                console.log(`      • Yeni: ${w.conditionBreakdown.yeni}, Kullanılmış: ${w.conditionBreakdown.kullanılmış}, HEK: ${w.conditionBreakdown.hek}`)
+              }
+            })
+          } else {
+            console.log(`⚠️ ${item.item_name} için product_id yok, stok sorgulanamıyor`)
+          }
+        }
+        
+        setProductStocks(stocks)
+        console.log(`📦 Toplam ${Object.keys(stocks).length} ürün için stok bilgisi yüklendi`)
+      } catch (error) {
+        console.error('❌ Stok bilgisi alınamadı:', error)
+      }
+    }
+    
+    fetchProductStocks()
+  }, [request, userRole, supabase])
 
   // Check if user is from "Genel Merkez Ofisi" site and get user role
   useEffect(() => {
@@ -186,35 +301,101 @@ export default function SantiyeDepoView({
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
-      // Özel site ID'si kontrolü - eğer onay_bekliyor statusundaysa 'pending' yap, değilse 'satın almaya gönderildi'
+      // Ana depoda stok kontrolü yap
+      console.log('🔍 Ana depoda stok kontrolü yapılıyor...')
+      const { data: stockCheckData, error: stockCheckError } = await supabase
+        .rpc('check_main_warehouse_stock', { request_id_param: request.id })
+      
+      if (stockCheckError) {
+        console.error('❌ Stok kontrolü hatası:', stockCheckError)
+        throw new Error('Stok kontrolü yapılamadı: ' + stockCheckError.message)
+      }
+
+      // Tüm ürünlerin stokta olup olmadığını kontrol et
+      const allItemsInStock = stockCheckData && stockCheckData.length > 0 
+        ? stockCheckData.every((item: any) => item.has_stock === true)
+        : false
+
+      console.log('📊 Stok Kontrol Sonucu:', {
+        totalItems: stockCheckData?.length || 0,
+        allItemsInStock,
+        details: stockCheckData
+      })
+
+      // Özel site ID'si kontrolü
       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
       const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
       const isAwaitingApproval = request?.status === 'onay_bekliyor'
+      
+      console.log('🔍 Şantiye Depo Yöneticisi Onay - Durum Analizi:', {
+        currentStatus: request?.status,
+        siteId: request?.site_id,
+        isSpecialSite,
+        isAwaitingApproval,
+        allItemsInStock
+      })
       
       let newStatus = 'satın almaya gönderildi'
       let successMessage = 'Malzemeler satın almaya gönderildi!'
       let historyComment = 'Şantiye Depo Yöneticisi tarafından satın almaya gönderildi'
       
+      // Genel Merkez Ofisi için stok kontrolü yaparak karar ver
       if (isSpecialSite && isAwaitingApproval) {
-        newStatus = 'pending'
-        successMessage = 'Talep onaylandı!'
-        historyComment = 'Şantiye Depo Yöneticisi tarafından onaylandı'
-        console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
+        // Özel site (Genel Merkez Ofisi) için stok kontrolüne göre karar ver
+        if (allItemsInStock) {
+          newStatus = 'onaylandı'
+          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
+          historyComment = 'Şantiye Depo Yöneticisi tarafından onaylandı (Ana depoda stok mevcut)'
+          console.log('🔐 Genel Merkez Ofisi - Ana depoda stok mevcut, status: onaylandı')
+        } else {
+          // Ana depoda stok yoksa direkt satın almaya gönderildi
+          newStatus = 'satın almaya gönderildi'
+          successMessage = 'Malzemeler satın almaya gönderildi! (Ana depoda stok yok)'
+          historyComment = 'Şantiye Depo Yöneticisi tarafından satın almaya gönderildi (Genel Merkez Ofisi - Ana depoda stok yok)'
+          console.log('🔐 Genel Merkez Ofisi - Ana depoda stok yok, direkt satın almaya gönderiliyor')
+        }
+      } else {
+        // Normal durum (diğer siteler): Stok kontrolüne göre karar ver
+        if (allItemsInStock) {
+          newStatus = 'onaylandı'
+          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
+          historyComment = 'Şantiye Depo Yöneticisi tarafından onaylandı (Ana depoda stok mevcut)'
+          console.log('✅ Ana depoda stok mevcut, status: onaylandı')
+        } else {
+          // Stok yoksa direkt satın almaya gönderildi
+          newStatus = 'satın almaya gönderildi'
+          successMessage = 'Malzemeler satın almaya gönderildi! (Ana depoda stok yok)'
+          historyComment = 'Şantiye Depo Yöneticisi tarafından satın almaya gönderildi (Ana depoda stok yok)'
+          console.log('⚠️ Ana depoda stok yok, direkt satın almaya gönderiliyor')
+        }
       }
 
       // Status güncelle
-      const { error: updateError } = await supabase
+      console.log('💾 Status güncelleme işlemi başlatılıyor:', {
+        requestId: request.id,
+        oldStatus: request?.status,
+        newStatus: newStatus
+      })
+      
+      const { error: updateError, data: updateData } = await supabase
         .from('purchase_requests')
         .update({ 
           status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', request.id);
+        .eq('id', request.id)
+        .select()
 
       if (updateError) {
         console.error('❌ Status güncelleme hatası:', updateError)
         throw new Error('Status güncellenemedi: ' + updateError.message)
       }
+      
+      console.log('✅ Status başarıyla güncellendi:', {
+        requestId: request.id,
+        newStatus: updateData?.[0]?.status,
+        updateResult: updateData
+      })
 
       // Approval history ekle
       const { error: historyError } = await supabase
@@ -502,6 +683,24 @@ export default function SantiyeDepoView({
               // Bu malzeme için düzenle/kaldır butonları gizlenmeli mi?
               const shouldHideButtons = isDepotUnavailable || isPartiallyShipped || isFullyShipped
               
+              // Warehouse manager için özel kart göster
+              if (userRole === 'warehouse_manager') {
+                return (
+                  <WarehouseManagerMaterialCard
+                    key={item.id}
+                    item={item}
+                    index={index}
+                    request={request}
+                    shipmentData={shipmentData}
+                    onRefresh={onRefresh}
+                    showToast={showToast}
+                    totalItems={request.purchase_request_items.length}
+                    productStock={productStocks[item.id]}
+                    onPDFExport={() => setShowPDFExportModal(true)}
+                  />
+                )
+              }
+              
               return (
                 <MaterialCard
                   key={item.id}
@@ -520,6 +719,7 @@ export default function SantiyeDepoView({
                   onOrderDeliveryConfirmation={handleOrderDeliveryConfirmation}
                   onOrderReturn={handleOrderReturn}
                   hideTopDeliveryButtons={true}  // Sağ üstteki teslim alma butonlarını gizle
+                  productStock={productStocks[item.id]}  // Stok bilgisini ekle
                   onShipmentSuccess={() => {
                     // Gönderim başarılı olduğunda PDF export modalını aç (sadece Genel Merkez Ofisi kullanıcıları için)
                     console.log('🎯 Gönderim başarılı callback tetiklendi:', {

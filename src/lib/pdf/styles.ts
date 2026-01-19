@@ -346,6 +346,82 @@ export const getPDFStyles = (): string => `
     color: #999;
     font-style: italic;
   }
+
+  /* PDF Header - For Zimmet PDFs */
+  .pdf-header {
+    margin-bottom: 25px;
+    padding-bottom: 15px;
+    border-bottom: 2px solid #000;
+  }
+
+  .header-content {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .logo-section {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+  }
+
+  .logo {
+    width: 50px;
+    height: 50px;
+    object-fit: contain;
+  }
+
+  .header-title {
+    font-size: 14pt;
+    font-weight: 700;
+    color: #000;
+    margin-bottom: 4px;
+  }
+
+  .header-subtitle {
+    font-size: 10pt;
+    color: #666;
+    font-weight: 400;
+  }
+
+  .header-date {
+    text-align: right;
+    font-size: 9pt;
+    color: #666;
+  }
+
+  /* Info Card - For Zimmet PDFs */
+  .info-card {
+    background: #fff;
+    padding: 0;
+  }
+
+  .info-row {
+    display: flex;
+    margin-bottom: 8px;
+    align-items: flex-start;
+  }
+
+  .info-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .info-row .info-label {
+    width: 150px;
+    font-size: 9pt;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  .info-row .info-value {
+    flex: 1;
+    font-size: 10pt;
+    color: #000;
+    font-weight: 400;
+  }
 </style>
 `
 

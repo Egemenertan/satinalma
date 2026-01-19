@@ -6,6 +6,7 @@
 export * from './ProductCard'
 export * from './ProductFilters'
 export * from './ProductsGrid'
+export * from './ProductsTable'
 export * from './ProductModal'
 export * from './ProductStatsCards'
 export * from './ProductForm'

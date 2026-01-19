@@ -48,7 +48,7 @@ export function useOfferData(requestId: string) {
           purchase_request_items(
             id, item_name, description, quantity, unit, 
             specifications, brand, original_quantity, 
-            image_urls, purpose, delivery_date
+            image_urls, purpose, delivery_date, product_id
           )
         `)
         .eq('id', requestId)

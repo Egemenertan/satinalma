@@ -1440,7 +1440,28 @@ export default function PurchaseRequestsTable({
         throw new Error('Talep bilgisi alınamadı.')
       }
       
-      // Özel site ID'si kontrolü - eğer onay_bekliyor statusundaysa 'pending' yap, değilse 'satın almaya gönderildi'
+      // Ana depoda stok kontrolü yap
+      console.log('🔍 Ana depoda stok kontrolü yapılıyor...')
+      const { data: stockCheckData, error: stockCheckError } = await supabase
+        .rpc('check_main_warehouse_stock', { request_id_param: requestId })
+      
+      if (stockCheckError) {
+        console.error('❌ Stok kontrolü hatası:', stockCheckError)
+        throw new Error('Stok kontrolü yapılamadı: ' + stockCheckError.message)
+      }
+
+      // Tüm ürünlerin stokta olup olmadığını kontrol et
+      const allItemsInStock = stockCheckData && stockCheckData.length > 0 
+        ? stockCheckData.every((item: any) => item.has_stock === true)
+        : false
+
+      console.log('📊 Stok Kontrol Sonucu:', {
+        totalItems: stockCheckData?.length || 0,
+        allItemsInStock,
+        details: stockCheckData
+      })
+
+      // Özel site ID'si kontrolü
       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
       const isSpecialSite = requestData.site_id === SPECIAL_SITE_ID
       const isAwaitingApproval = requestData.status === 'onay_bekliyor'
@@ -1449,11 +1470,35 @@ export default function PurchaseRequestsTable({
       let successMessage = 'Talep satın almaya gönderildi!'
       let historyComment = `${roleLabel} tarafından satın almaya gönderildi`
       
+      // Genel Merkez Ofisi için stok kontrolü yaparak karar ver
       if (isSpecialSite && isAwaitingApproval) {
-        newStatus = 'pending'
-        successMessage = 'Talep onaylandı!'
-        historyComment = `${roleLabel} tarafından onaylandı`
-        console.log('🔐 Özel site için onay işlemi: onay_bekliyor → pending')
+        // Özel site (Genel Merkez Ofisi) için stok kontrolüne göre karar ver
+        if (allItemsInStock) {
+          newStatus = 'onaylandı'
+          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
+          historyComment = `${roleLabel} tarafından onaylandı (Ana depoda stok mevcut)`
+          console.log('🔐 Genel Merkez Ofisi - Ana depoda stok mevcut, status: onaylandı')
+        } else {
+          // Ana depoda stok yoksa direkt satın almaya gönderildi
+          newStatus = 'satın almaya gönderildi'
+          successMessage = 'Talep satın almaya gönderildi! (Ana depoda stok yok)'
+          historyComment = `${roleLabel} tarafından satın almaya gönderildi (Genel Merkez Ofisi - Ana depoda stok yok)`
+          console.log('🔐 Genel Merkez Ofisi - Ana depoda stok yok, direkt satın almaya gönderiliyor')
+        }
+      } else {
+        // Normal durum (diğer siteler): Stok kontrolüne göre karar ver
+        if (allItemsInStock) {
+          newStatus = 'onaylandı'
+          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
+          historyComment = `${roleLabel} tarafından onaylandı (Ana depoda stok mevcut)`
+          console.log('✅ Ana depoda stok mevcut, status: onaylandı')
+        } else {
+          // Stok yoksa direkt satın almaya gönderildi
+          newStatus = 'satın almaya gönderildi'
+          successMessage = 'Talep satın almaya gönderildi! (Ana depoda stok yok)'
+          historyComment = `${roleLabel} tarafından satın almaya gönderildi (Ana depoda stok yok)`
+          console.log('⚠️ Ana depoda stok yok, direkt satın almaya gönderiliyor')
+        }
       }
       
       // Optimistic update - UI'ı hemen güncelle

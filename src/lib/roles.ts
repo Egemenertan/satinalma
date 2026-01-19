@@ -19,7 +19,7 @@ export const roleDescriptions: Record<UserRole, string> = {
   admin: 'Sistem yönetimi ve kullanıcı kontrolü',
   site_personnel: 'Sadece talep görüntüleme yetkisi',
   site_manager: 'Talep yönetimi ve onay yetkisi',
-  warehouse_manager: 'Dashboard ve talep yönetimi yetkisi',
+  warehouse_manager: 'Dashboard, talep, ürün ve marka yönetimi yetkisi',
   purchasing_officer: 'Dashboard ve talep yönetimi yetkisi',
   santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi',
   santiye_depo_yonetici: 'Depo işlemleri ve talep onaylama yetkisi (Şantiye Depo + Site Manager)'
@@ -65,15 +65,17 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
     return true
   }
   
-  // Site yöneticisi sadece requests sayfasına erişebilir
+  // Site yöneticisi sadece requests ve inventory sayfasına erişebilir
   if (userRole === 'site_manager') {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
-           page.startsWith('/dashboard/requests/')
+           page.startsWith('/dashboard/requests/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory'
   }
   
-  // Depo yöneticisi dashboard ve requests sayfalarına erişebilir
+  // Depo yöneticisi dashboard, requests, inventory, products, brands ve reports sayfalarına erişebilir
   if (userRole === 'warehouse_manager') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
@@ -81,27 +83,10 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
            page.startsWith('/dashboard/requests/') ||
-           page === 'reports' ||
-           page === '/dashboard/reports'
-  }
-  
-  // Purchasing officer dashboard, requests, suppliers, sites, orders, products, brands ve reports sayfalarına erişebilir
-  if (userRole === 'purchasing_officer') {
-    return page === 'dashboard' || 
-           page === '/dashboard' ||
-           page === 'requests' || 
-           page === '/dashboard/requests' || 
-           page === '/dashboard/requests/create' ||
-           page.startsWith('/dashboard/requests/') ||
-           page === 'suppliers' ||
-           page === '/dashboard/suppliers' ||
-           page.startsWith('/dashboard/suppliers/') ||
-           page === 'sites' ||
-           page === '/dashboard/sites' ||
-           page.startsWith('/dashboard/sites/') ||
-           page === 'orders' ||
-           page === '/dashboard/orders' ||
-           page.startsWith('/dashboard/orders/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory' ||
+           page === 'all-inventory' ||
+           page === '/dashboard/inventory/all' ||
            page === 'products' ||
            page === '/dashboard/products' ||
            page.startsWith('/dashboard/products/') ||
@@ -112,19 +97,46 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/reports'
   }
   
-  // Site personeli sadece requests sayfasına ve talep oluşturma sayfasına erişebilir
+  // Purchasing officer dashboard, requests, inventory, suppliers, sites, orders ve reports sayfalarına erişebilir
+  if (userRole === 'purchasing_officer') {
+    return page === 'dashboard' || 
+           page === '/dashboard' ||
+           page === 'requests' || 
+           page === '/dashboard/requests' || 
+           page === '/dashboard/requests/create' ||
+           page.startsWith('/dashboard/requests/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory' ||
+           page === 'suppliers' ||
+           page === '/dashboard/suppliers' ||
+           page.startsWith('/dashboard/suppliers/') ||
+           page === 'sites' ||
+           page === '/dashboard/sites' ||
+           page.startsWith('/dashboard/sites/') ||
+           page === 'orders' ||
+           page === '/dashboard/orders' ||
+           page.startsWith('/dashboard/orders/') ||
+           page === 'reports' ||
+           page === '/dashboard/reports'
+  }
+  
+  // Site personeli sadece requests ve inventory sayfasına erişebilir
   if (userRole === 'site_personnel') {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
-           page.startsWith('/dashboard/requests/')
+           page.startsWith('/dashboard/requests/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory'
   }
   
-  // Santiye depo sadece requests sayfasına erişebilir (site personnel ile aynı)
+  // Santiye depo sadece requests ve inventory sayfasına erişebilir
   if (userRole === 'santiye_depo') {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
-           page.startsWith('/dashboard/requests/')
+           page.startsWith('/dashboard/requests/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory'
   }
   
   // Santiye depo yöneticisi - site_manager ile aynı yetkilere sahip
@@ -132,12 +144,15 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
-           page.startsWith('/dashboard/requests/')
+           page.startsWith('/dashboard/requests/') ||
+           page === 'inventory' ||
+           page === '/dashboard/inventory'
   }
   
-  // Normal kullanıcılar hiçbir sayfaya erişemez
+  
+  // Normal kullanıcılar sadece inventory sayfasına erişebilir
   if (userRole === 'user') {
-    return false
+    return page === 'inventory' || page === '/dashboard/inventory'
   }
   
   return false
@@ -146,33 +161,34 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
 // Sidebar menü öğelerini filtreleme
 export const getAccessibleMenuItems = (userRole: UserRole) => {
   if (userRole === 'site_manager') {
-    return ['requests'] // Sadece requests menüsü
+    return ['requests', 'inventory'] // Requests ve zimmet menüsü
   }
   
   if (userRole === 'warehouse_manager') {
-    return ['dashboard', 'requests', 'products', 'brands', 'reports'] // Dashboard, requests, products, brands ve reports
+    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'products', 'brands', 'reports'] // Dashboard, requests, zimmet, tüm zimmetler, products, brands ve reports
   }
   
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports'] // Dashboard, requests, suppliers, sites, orders, products, brands ve reports
+    return ['dashboard', 'requests', 'inventory', 'suppliers', 'sites', 'orders', 'reports'] // Dashboard, requests, zimmet, suppliers, sites, orders ve reports
   }
   
   if (userRole === 'site_personnel') {
-    return ['requests'] // Sadece requests menüsü
+    return ['requests', 'inventory'] // Requests ve zimmet menüsü
   }
   
   if (userRole === 'santiye_depo') {
-    return ['requests'] // Sadece requests menüsü
+    return ['requests', 'inventory'] // Requests ve zimmet menüsü
   }
   
   if (userRole === 'santiye_depo_yonetici') {
-    return ['requests'] // Sadece requests menüsü (site_manager gibi)
+    return ['requests', 'inventory'] // Requests ve zimmet menüsü (site_manager gibi)
   }
   
+  
   if (userRole === 'user') {
-    return [] // User rolü hiçbir menüye erişemez
+    return ['inventory'] // User rolü sadece zimmet sayfasına erişebilir
   }
   
   // Admin ve manager tüm menülere erişebilir
-  return ['dashboard', 'requests', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
+  return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
 }

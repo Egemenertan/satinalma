@@ -5,6 +5,7 @@
 
 import { createClient } from '@/lib/supabase/client'
 import type { Database } from '@/types/database.types'
+import { uploadInvoiceImages } from '@/lib/utils/imageUpload'
 
 type WarehouseStock = Database['public']['Tables']['warehouse_stock']['Row']
 type WarehouseStockInsert = Database['public']['Tables']['warehouse_stock']['Insert']
@@ -218,7 +219,10 @@ export async function updateStockWithMovement(
   referenceType?: string,
   supplierName?: string,
   productCondition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek',
-  assignedTo?: string
+  assignedTo?: string,
+  unitPrice?: number,
+  currency?: string,
+  invoiceFiles?: File[]
 ): Promise<WarehouseStock> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -309,15 +313,37 @@ export async function updateStockWithMovement(
     supplier_name: supplierName,
     product_condition: productCondition,
     assigned_to: assignedTo,
+    unit_price: unitPrice,
+    currency: currency || 'TRY',
   }
 
-  const { error: movementError } = await supabase
+  // İlk önce hareketi ekle ve ID'sini al
+  const { data: insertedMovement, error: movementError } = await supabase
     .from('stock_movements')
     .insert(movementData)
+    .select('id')
+    .single()
 
   if (movementError) {
     console.error('Stock movement create error:', movementError)
     // Hareket kaydı oluşturulamasa bile stok güncellemesi başarılı
+    return updatedStock as WarehouseStock
+  }
+
+  // Fatura resimleri varsa yükle ve güncelle
+  if (invoiceFiles && invoiceFiles.length > 0 && insertedMovement) {
+    try {
+      const imageUrls = await uploadInvoiceImages(invoiceFiles, insertedMovement.id)
+      
+      // Movement kaydını resim URL'leriyle güncelle
+      await supabase
+        .from('stock_movements')
+        .update({ invoice_images: imageUrls })
+        .eq('id', insertedMovement.id)
+    } catch (uploadError) {
+      console.error('Invoice upload error:', uploadError)
+      // Upload hatası kritik değil, devam et
+    }
   }
 
   return updatedStock as WarehouseStock
@@ -333,7 +359,10 @@ export async function addStock(
   reason?: string,
   referenceId?: string,
   supplierName?: string,
-  productCondition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek'
+  productCondition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek',
+  unitPrice?: number,
+  currency?: string,
+  invoiceFiles?: File[]
 ): Promise<WarehouseStock> {
   return await updateStockWithMovement(
     productId,
@@ -344,7 +373,11 @@ export async function addStock(
     referenceId,
     'manual',
     supplierName,
-    productCondition
+    productCondition,
+    undefined,
+    unitPrice,
+    currency,
+    invoiceFiles
   )
 }
 

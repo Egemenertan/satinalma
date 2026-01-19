@@ -6,7 +6,6 @@
 
 'use client'
 
-import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
@@ -21,9 +20,6 @@ import {
   X,
   TrendingDown,
   AlertCircle,
-  FileText,
-  ChevronDown,
-  ChevronUp,
 } from 'lucide-react'
 import { useProduct } from '../hooks'
 import { useQuery } from '@tanstack/react-query'
@@ -31,7 +27,7 @@ import { fetchStockByProduct, fetchStockMovements } from '@/services/stock.servi
 import type { ProductModalTab } from '../hooks/useProductModal'
 import { ProductForm } from './ProductForm'
 import { StockOperationsForm } from './StockOperationsForm'
-import { generateStockMovementPDF } from '@/services/pdf.service'
+import { ProductInfoTab, ProductImagesTab, ProductStockTab, ProductHistoryTab } from './tabs'
 
 interface ProductModalProps {
   isOpen: boolean
@@ -55,7 +51,6 @@ export function ProductModal({
   isSaving = false,
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
-  const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
 
   // Stok verileri
   const { data: stockData } = useQuery({
@@ -64,11 +59,11 @@ export function ProductModal({
     enabled: !!productId && (activeTab === 'stock' || activeTab === 'movements'),
   })
 
-  // Stok hareketleri
+  // Stok hareketleri (info ve history tablarında kullanılıyor)
   const { data: movementsData } = useQuery({
     queryKey: ['stock-movements', productId],
     queryFn: () => (productId ? fetchStockMovements({ productId }, 1, 50) : null),
-    enabled: !!productId && activeTab === 'history',
+    enabled: !!productId && (activeTab === 'history' || activeTab === 'info'),
   })
 
   // Create modunda productId olması gerekmez
@@ -93,19 +88,6 @@ export function ProductModal({
 
   // Edit veya create modunda form göster
   const showForm = mode === 'edit' || mode === 'create'
-
-  // Accordion toggle
-  const toggleStockExpand = (stockId: string) => {
-    setExpandedStockIds((prev) => {
-      const newSet = new Set(prev)
-      if (newSet.has(stockId)) {
-        newSet.delete(stockId)
-      } else {
-        newSet.add(stockId)
-      }
-      return newSet
-    })
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -229,181 +211,22 @@ export function ProductModal({
                       isSaving={isSaving}
                     />
                   ) : product ? (
-                    <>
-                      {/* Apple Style Info Cards */}
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ürün Adı</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">{product.name}</p>
-                        </div>
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">SKU</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">{product.sku || '-'}</p>
-                        </div>
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Kategori</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">
-                            {product.category?.name || '-'}
-                          </p>
-                        </div>
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ürün Tipi</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">
-                            {product.product_type || '-'}
-                          </p>
-                        </div>
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">{product.unit || '-'}</p>
-                        </div>
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim Fiyat</label>
-                          <p className="text-lg font-semibold text-gray-900 mt-2">
-                            {product.unit_price
-                              ? `${Number(product.unit_price).toLocaleString('tr-TR', {
-                                  minimumFractionDigits: 2,
-                                })} ${product.currency || 'TRY'}`
-                              : '-'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {product.description && (
-                        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 shadow-sm">
-                          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">
-                            Açıklama
-                          </label>
-                          <p className="text-gray-900 leading-relaxed">{product.description}</p>
-                        </div>
-                      )}
-                    </>
+                    <ProductInfoTab product={product} movementsData={movementsData} />
                   ) : null}
                 </TabsContent>
 
                 {/* Resimler Tab */}
-                <TabsContent value="images" className="p-8 m-0">
-                  {product?.images && Array.isArray(product.images) && product.images.length > 0 ? (
-                    <div className="grid grid-cols-3 gap-6">
-                      {product.images.map((image, index) => (
-                        <div
-                          key={index}
-                          className="relative aspect-square rounded-3xl overflow-hidden bg-white/80 backdrop-blur-xl border border-gray-200/50 shadow-sm hover:shadow-md transition-all"
-                        >
-                          <img
-                            src={image}
-                            alt={`${product.name} - ${index + 1}`}
-                            className="w-full h-full object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16">
-                      <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                        <ImageIcon className="w-10 h-10 text-gray-400" />
-                      </div>
-                      <p className="text-gray-500 text-lg font-medium">Henüz resim eklenmemiş</p>
-                    </div>
-                  )}
+                <TabsContent value="images" className="p-8 m-0 space-y-6">
+                  {product && <ProductImagesTab product={product} />}
                 </TabsContent>
 
                 {/* Stok Durumu Tab */}
-                <TabsContent value="stock" className="p-8 m-0">
-                  {stockData && stockData.length > 0 ? (
-                    <div className="space-y-4">
-                      {stockData.map((stock) => {
-                        const breakdown = (stock.condition_breakdown as any) || {}
-                        const isExpanded = expandedStockIds.has(stock.id)
-                        
-                        // 0'dan büyük değerleri filtrele
-                        const activeConditions = Object.entries(breakdown).filter(
-                          ([_, qty]) => Number(qty) > 0
-                        )
-
-                        return (
-                          <div
-                            key={stock.id}
-                            className="bg-white/80 backdrop-blur-xl rounded-3xl border border-gray-200/50 shadow-sm hover:shadow-md transition-all overflow-hidden"
-                          >
-                            {/* Header - Tıklanabilir */}
-                            <button
-                              onClick={() => toggleStockExpand(stock.id)}
-                              className="w-full p-6 flex items-center justify-between hover:bg-gray-50/50 transition-all"
-                            >
-                              <div className="text-left">
-                                <p className="font-semibold text-gray-900 text-lg">
-                                  {stock.warehouse?.name || 'Depo Belirtilmemiş'}
-                                </p>
-                                <p className="text-sm text-gray-500 mt-1 font-medium">
-                                  Min: {stock.min_stock_level || 0} | Max: {stock.max_stock_level || '-'}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-4">
-                                <div className="text-right">
-                                  <p className="text-3xl font-bold text-gray-900">
-                                    {parseFloat(stock.quantity.toString()).toLocaleString('tr-TR')}
-                                  </p>
-                                  <p className="text-sm text-gray-500 font-medium">{product?.unit || ''}</p>
-                                </div>
-                                {activeConditions.length > 0 && (
-                                  isExpanded ? (
-                                    <ChevronUp className="w-5 h-5 text-gray-400" />
-                                  ) : (
-                                    <ChevronDown className="w-5 h-5 text-gray-400" />
-                                  )
-                                )}
-                              </div>
-                            </button>
-
-                            {/* Breakdown - Açılır Alan */}
-                            {isExpanded && activeConditions.length > 0 && (
-                              <div className="px-6 pb-6 pt-0 border-t border-gray-200/50">
-                                <div className="grid grid-cols-2 gap-3 mt-4">
-                                  {activeConditions.map(([condition, qty]) => {
-                                    const conditionConfig = {
-                                      yeni: { icon: '🆕', label: 'Yeni', color: 'bg-green-50 text-green-700 border-green-200' },
-                                      kullanılmış: { icon: '♻️', label: 'Kullanılmış', color: 'bg-orange-50 text-orange-700 border-orange-200' },
-                                      hek: { icon: '📦', label: 'HEK', color: 'bg-blue-50 text-blue-700 border-blue-200' },
-                                      arızalı: { icon: '⚠️', label: 'Arızalı', color: 'bg-red-50 text-red-700 border-red-200' },
-                                    }[condition] || { icon: '📦', label: condition, color: 'bg-gray-50 text-gray-700 border-gray-200' }
-
-                                    return (
-                                      <div
-                                        key={condition}
-                                        className={`rounded-2xl p-4 border ${conditionConfig.color}`}
-                                      >
-                                        <div className="flex items-center justify-between">
-                                          <span className="text-sm font-medium">
-                                            {conditionConfig.icon} {conditionConfig.label}
-                                          </span>
-                                          <span className="text-lg font-bold">
-                                            {Number(qty).toLocaleString('tr-TR')}
-                                          </span>
-                                        </div>
-                                      </div>
-                                    )
-                                  })}
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
-                      <div className="bg-gradient-to-r from-gray-900 to-gray-800 text-white rounded-3xl p-6 flex items-center justify-between shadow-lg">
-                        <p className="font-semibold text-lg">Toplam Stok</p>
-                        <p className="text-3xl font-bold">
-                          {totalStock.toLocaleString('tr-TR')} {product?.unit || ''}
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16">
-                      <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                        <Package className="w-10 h-10 text-gray-400" />
-                      </div>
-                      <p className="text-gray-500 text-lg font-medium">Stok bilgisi bulunamadı</p>
-                    </div>
-                  )}
+                <TabsContent value="stock" className="p-8 m-0 space-y-6">
+                  <ProductStockTab 
+                    product={product} 
+                    stockData={stockData || []} 
+                    totalStock={totalStock} 
+                  />
                 </TabsContent>
 
                 {/* Stok İşlemleri Tab */}
@@ -429,114 +252,7 @@ export function ProductModal({
 
                 {/* Geçmiş Tab */}
                 <TabsContent value="history" className="p-8 m-0">
-                  {movementsData && movementsData.movements.length > 0 ? (
-                    <div className="space-y-3">
-                      {movementsData.movements.map((movement: any) => (
-                        <div
-                          key={movement.id}
-                          className="bg-white/80 backdrop-blur-xl rounded-3xl p-5 border border-gray-200/50 shadow-sm hover:shadow-md transition-all flex items-center justify-between gap-4"
-                        >
-                          <div className="flex-1">
-                            <p className="font-semibold text-gray-900 text-lg">
-                              {movement.movement_type.toUpperCase()}
-                            </p>
-                            <div className="flex items-center gap-2 mt-1">
-                              <p className="text-sm text-gray-600 font-medium">
-                                {movement.warehouse?.name || '-'}
-                              </p>
-                              {movement.product_condition && (
-                                <Badge
-                                  className={`text-xs border-0 ${
-                                    movement.product_condition === 'yeni'
-                                      ? 'bg-green-100 text-green-700'
-                                      : movement.product_condition === 'kullanılmış'
-                                      ? 'bg-orange-100 text-orange-700'
-                                      : movement.product_condition === 'hek'
-                                      ? 'bg-blue-100 text-blue-700'
-                                      : 'bg-red-100 text-red-700'
-                                  }`}
-                                >
-                                  {movement.product_condition === 'yeni'
-                                    ? '🆕 Yeni'
-                                    : movement.product_condition === 'kullanılmış'
-                                    ? '♻️ Kullanılmış'
-                                    : movement.product_condition === 'hek'
-                                    ? '📦 HEK'
-                                    : '⚠️ Arızalı'}
-                                </Badge>
-                              )}
-                            </div>
-                            {movement.reason && (
-                              <p className="text-xs text-gray-500 mt-1 italic">
-                                {movement.reason}
-                              </p>
-                            )}
-                            <p className="text-xs text-gray-400 mt-2">
-                              {new Date(movement.created_at).toLocaleDateString('tr-TR', {
-                                year: 'numeric',
-                                month: 'long',
-                                day: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit',
-                              })}
-                            </p>
-                          </div>
-                          <div className="text-right flex items-center gap-4">
-                            <div>
-                              <p className="text-2xl font-bold text-gray-900">
-                                {movement.movement_type === 'giriş' ? '+' : '-'}
-                                {parseFloat(movement.quantity).toLocaleString('tr-TR')}
-                              </p>
-                              <p className="text-sm text-gray-500 font-medium mt-1">
-                                {movement.previous_quantity?.toLocaleString('tr-TR')} →{' '}
-                                {movement.new_quantity?.toLocaleString('tr-TR')}
-                              </p>
-                            </div>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (product) {
-                                  generateStockMovementPDF({
-                                    transaction: {
-                                      id: movement.id,
-                                      quantity: movement.quantity,
-                                      movement_type: movement.movement_type,
-                                      reason: movement.reason,
-                                      created_at: movement.created_at,
-                                      supplier_name: movement.supplier_name,
-                                      product_condition: movement.product_condition,
-                                      warehouse: movement.warehouse,
-                                    },
-                                    productDetails: {
-                                      name: product.name,
-                                      sku: product.sku,
-                                      unit: product.unit,
-                                      unit_price: product.unit_price as any,
-                                      currency: product.currency,
-                                      category: product.category,
-                                      brand: product.brand,
-                                    },
-                                  })
-                                }
-                              }}
-                              className="rounded-xl border-gray-300 hover:bg-gray-50 hover:border-gray-400 transition-all flex-shrink-0"
-                              title="PDF İndir"
-                            >
-                              <FileText className="w-4 h-4 text-gray-600" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-16">
-                      <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                        <History className="w-10 h-10 text-gray-400" />
-                      </div>
-                      <p className="text-gray-500 text-lg font-medium">Henüz hareket kaydı yok</p>
-                    </div>
-                  )}
+                  <ProductHistoryTab product={product} movementsData={movementsData} />
                 </TabsContent>
               </div>
             </Tabs>
