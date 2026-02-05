@@ -9,3 +9,6 @@ export type { PDFData, PDFInvoiceData, PDFOrderData, PDFRequestData, PDFStatisti
 export { generateRequestSubmittedPDF } from './requestPdfGenerator'
 export type { RequestSubmittedPDFData, RequestMaterialItem } from './requestPdfComponents'
 
+// Zimmet PDF
+export { generateTeslimPDF, generateSayimPDF } from './zimmetPdfGenerator'
+export type { ZimmetItemData } from './zimmetPdfGenerator'

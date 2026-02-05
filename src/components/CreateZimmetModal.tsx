@@ -30,6 +30,7 @@ interface Product {
   unit: string
   category: string | null
   product_type: string | null
+  total_stock?: number
 }
 
 interface UserProfile {
@@ -123,14 +124,40 @@ export default function CreateZimmetModal({
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase
+      // Ürünleri çek
+      const { data: productsData, error: productsError } = await supabase
         .from('products')
         .select('id, name, unit, category, product_type')
         .order('name')
 
-      if (error) throw error
-      setProducts(data || [])
-      setFilteredProducts(data || [])
+      if (productsError) throw productsError
+
+      // Her ürün için toplam stok miktarını hesapla
+      const productsWithStock = await Promise.all(
+        (productsData || []).map(async (product) => {
+          const { data: stockData, error: stockError } = await supabase
+            .from('warehouse_stock')
+            .select('quantity')
+            .eq('product_id', product.id)
+            .is('user_id', null)
+
+          if (stockError) {
+            console.error(`Ürün ${product.id} için stok bilgisi alınamadı:`, stockError)
+            return { ...product, total_stock: 0 }
+          }
+
+          // Tüm depolardaki toplam miktarı hesapla
+          const totalStock = (stockData || []).reduce(
+            (sum, stock) => sum + parseFloat(stock.quantity.toString()),
+            0
+          )
+
+          return { ...product, total_stock: totalStock }
+        })
+      )
+
+      setProducts(productsWithStock)
+      setFilteredProducts(productsWithStock)
     } catch (error) {
       console.error('Ürünler yüklenemedi:', error)
       showToast('Ürünler yüklenemedi', 'error')
@@ -524,7 +551,19 @@ export default function CreateZimmetModal({
                             )}
                           </div>
                           <div className="flex-1">
-                            <p className="text-sm font-semibold text-gray-900">{product.name}</p>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-900">{product.name}</p>
+                              {product.total_stock !== undefined && (
+                                <Badge className={`${
+                                  product.total_stock > 0 
+                                    ? 'bg-green-100 text-green-700' 
+                                    : 'bg-red-100 text-red-700'
+                                } text-xs font-semibold`}>
+                                  <Package className="w-3 h-3 mr-1" />
+                                  {product.total_stock} {product.unit}
+                                </Badge>
+                              )}
+                            </div>
                             <div className="flex items-center gap-2 mt-1">
                               <span className="text-xs text-gray-500">Birim: {product.unit}</span>
                               {product.category && (

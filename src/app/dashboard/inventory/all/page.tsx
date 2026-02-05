@@ -70,7 +70,7 @@ export default function AllInventoryPage() {
   }, [])
 
   useEffect(() => {
-    if (userRole === 'warehouse_manager') {
+    if (userRole && userRole !== 'user') {
       fetchAllInventory()
     }
   }, [userRole])
@@ -93,7 +93,7 @@ export default function AllInventoryPage() {
         .eq('id', user.id)
         .single()
 
-      if (profile?.role !== 'warehouse_manager' && profile?.role !== 'admin' && profile?.role !== 'manager') {
+      if (profile?.role !== 'warehouse_manager' && profile?.role !== 'admin' && profile?.role !== 'manager' && profile?.role !== 'site_manager') {
         showToast('Bu sayfaya erişim yetkiniz yok', 'error')
         router.push('/dashboard')
         return
@@ -110,7 +110,10 @@ export default function AllInventoryPage() {
     try {
       setLoading(true)
 
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) return
+
+      let query = supabase
         .from('user_inventory')
         .select(`
           *,
@@ -119,7 +122,13 @@ export default function AllInventoryPage() {
           purchase_request:purchase_requests(request_number, id)
         `)
         .eq('status', 'active')
-        .order('assigned_date', { ascending: false })
+
+      // Site manager ise sadece kendi oluşturduğu zimmetleri göster
+      if (userRole === 'site_manager') {
+        query = query.eq('assigned_by', user.id)
+      }
+
+      const { data, error } = await query.order('assigned_date', { ascending: false })
 
       if (error) {
         console.error('Zimmet kayıtları alınamadı:', error)
@@ -231,9 +240,14 @@ export default function AllInventoryPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Tüm Zimmetler</h1>
+            <h1 className="text-3xl font-bold text-gray-900">
+              {userRole === 'site_manager' ? 'Oluşturduğum Zimmetler' : 'Tüm Zimmetler'}
+            </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Kullanıcılara atanmış tüm ürünleri görüntüleyin
+              {userRole === 'site_manager' 
+                ? 'Oluşturduğunuz zimmetleri görüntüleyin ve yeni zimmet oluşturun'
+                : 'Kullanıcılara atanmış tüm ürünleri görüntüleyin'
+              }
             </p>
           </div>
           
@@ -324,7 +338,12 @@ export default function AllInventoryPage() {
                   Zimmet Kaydı Bulunamadı
                 </h3>
                 <p className="text-sm text-gray-600">
-                  {searchQuery ? 'Arama kriterlerinize uygun kayıt bulunamadı.' : 'Henüz hiç zimmet kaydı yok.'}
+                  {searchQuery 
+                    ? 'Arama kriterlerinize uygun kayıt bulunamadı.' 
+                    : userRole === 'site_manager'
+                      ? 'Henüz hiç zimmet oluşturmadınız.'
+                      : 'Henüz hiç zimmet kaydı yok.'
+                  }
                 </p>
               </div>
             ) : (

@@ -65,14 +65,16 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
     return true
   }
   
-  // Site yöneticisi sadece requests ve inventory sayfasına erişebilir
+  // Site yöneticisi requests, inventory ve all-inventory sayfasına erişebilir
   if (userRole === 'site_manager') {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
            page === '/dashboard/requests/create' ||
            page.startsWith('/dashboard/requests/') ||
            page === 'inventory' ||
-           page === '/dashboard/inventory'
+           page === '/dashboard/inventory' ||
+           page === 'all-inventory' ||
+           page === '/dashboard/inventory/all'
   }
   
   // Depo yöneticisi dashboard, requests, inventory, products, brands ve reports sayfalarına erişebilir
@@ -161,7 +163,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
 // Sidebar menü öğelerini filtreleme
 export const getAccessibleMenuItems = (userRole: UserRole) => {
   if (userRole === 'site_manager') {
-    return ['requests', 'inventory'] // Requests ve zimmet menüsü
+    return ['requests', 'inventory', 'all-inventory'] // Requests, zimmet ve tüm zimmetler menüsü
   }
   
   if (userRole === 'warehouse_manager') {
