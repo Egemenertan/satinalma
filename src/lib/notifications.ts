@@ -1,3 +1,6 @@
+import { createClient } from './supabase/server';
+import EmailService from './email';
+
 interface NotificationData {
   title: string;
   body: string;
@@ -83,6 +86,73 @@ export class NotificationService {
     return results;
   }
 
+  // Helper: Get user emails by user IDs
+  private static async getUserEmails(userIds: string[]): Promise<string[]> {
+    try {
+      const supabase = createClient();
+      const { data: users, error } = await supabase
+        .from('profiles')
+        .select('email')
+        .in('id', userIds);
+
+      if (error) throw error;
+      return users?.map(u => u.email).filter(Boolean) || [];
+    } catch (error) {
+      console.error('Failed to get user emails:', error);
+      return [];
+    }
+  }
+
+  // Helper: Get user emails by roles
+  private static async getUserEmailsByRoles(roles: string[], siteId?: string): Promise<string[]> {
+    try {
+      const supabase = createClient();
+      let query = supabase
+        .from('profiles')
+        .select('email')
+        .in('role', roles);
+
+      if (siteId) {
+        query = query.eq('site_id', siteId);
+      }
+
+      const { data: users, error } = await query;
+      if (error) throw error;
+      return users?.map(u => u.email).filter(Boolean) || [];
+    } catch (error) {
+      console.error('Failed to get user emails by roles:', error);
+      return [];
+    }
+  }
+
+  // Helper: Send direct email to specific users
+  private static async sendDirectEmails(
+    userEmails: string[],
+    template: { subject: string; html: string; text: string }
+  ): Promise<{ success: number; failed: number }> {
+    const emailService = new EmailService();
+    let successCount = 0;
+    let failedCount = 0;
+
+    for (const email of userEmails) {
+      try {
+        const result = await emailService.sendEmail(email, template);
+        if (result.success) {
+          successCount++;
+          console.log(`✅ Email sent to: ${email}`);
+        } else {
+          failedCount++;
+          console.error(`❌ Email failed for: ${email}`, result.error);
+        }
+      } catch (error) {
+        failedCount++;
+        console.error(`❌ Email error for: ${email}`, error);
+      }
+    }
+
+    return { success: successCount, failed: failedCount };
+  }
+
   // Send notification when new purchase request is created (Push + Email)
   static async notifyNewPurchaseRequest(
     requestId: string, 
@@ -92,6 +162,8 @@ export class NotificationService {
     siteId?: string,
     siteName?: string
   ) {
+    console.log(`📧 Yeni talep bildirimi gönderiliyor: ${requestNumber}`);
+
     const pushPayload = {
       title: 'Yeni Satın Alma Talebi',
       body: `"${requestTitle}" adlı yeni bir talep oluşturuldu`,
@@ -117,6 +189,23 @@ export class NotificationService {
       }
     };
 
+    // Direkt email gönder (ilgili rollerdeki kullanıcılara)
+    const userEmails = await this.getUserEmailsByRoles(['admin', 'manager', 'supervisor'], siteId);
+    
+    if (userEmails.length > 0) {
+      const emailService = new EmailService();
+      const template = emailService.generateNewRequestTemplate(
+        requestTitle,
+        requestNumber,
+        requesterName,
+        siteName,
+        requestId
+      );
+
+      const emailResult = await this.sendDirectEmails(userEmails, template);
+      console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
+    }
+
     return this.sendCombinedNotification(pushPayload, emailPayload);
   }
 
@@ -140,6 +229,8 @@ export class NotificationService {
       title = 'Talep Reddedildi ❌';
       body = `"${requestTitle}" talebi reddedildi`;
     }
+
+    console.log(`📧 Durum değişikliği bildirimi: ${requestNumber} - ${newStatus}`);
 
     const pushPayload = {
       title,
@@ -168,6 +259,26 @@ export class NotificationService {
       }
     };
 
+    // Direkt email gönder
+    const userEmails = userId 
+      ? await this.getUserEmails([userId])
+      : await this.getUserEmailsByRoles(['admin', 'manager']);
+    
+    if (userEmails.length > 0) {
+      const emailService = new EmailService();
+      const template = emailService.generateStatusChangeTemplate(
+        requestTitle,
+        requestNumber,
+        oldStatus,
+        newStatus,
+        comment,
+        requestId
+      );
+
+      const emailResult = await this.sendDirectEmails(userEmails, template);
+      console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
+    }
+
     return this.sendCombinedNotification(pushPayload, emailPayload);
   }
 
@@ -181,6 +292,8 @@ export class NotificationService {
     currency?: string,
     userId?: string
   ) {
+    console.log(`📧 Yeni teklif bildirimi: ${requestNumber} - ${supplierName}`);
+
     const pushPayload = {
       title: 'Yeni Teklif Alındı',
       body: `"${requestTitle}" talebi için ${supplierName} firmasından teklif geldi`,
@@ -206,6 +319,26 @@ export class NotificationService {
         requestId
       }
     };
+
+    // Direkt email gönder
+    const userEmails = userId 
+      ? await this.getUserEmails([userId])
+      : await this.getUserEmailsByRoles(['admin', 'manager']);
+    
+    if (userEmails.length > 0) {
+      const emailService = new EmailService();
+      const template = emailService.generateNewOfferTemplate(
+        requestTitle,
+        requestNumber,
+        supplierName,
+        offerAmount,
+        currency,
+        requestId
+      );
+
+      const emailResult = await this.sendDirectEmails(userEmails, template);
+      console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
+    }
 
     return this.sendCombinedNotification(pushPayload, emailPayload);
   }

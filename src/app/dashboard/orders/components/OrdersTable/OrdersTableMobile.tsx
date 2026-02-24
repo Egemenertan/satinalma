@@ -49,7 +49,7 @@ export function OrdersTableMobile({
               <div className="flex-1">
                 <div className="font-semibold text-gray-900 text-sm">
                   Talep: {group.request?.request_number ? 
-                    group.request.request_number.slice(-6) : 'Bilinmiyor'}
+                    group.request.request_number.slice(-7) : 'Bilinmiyor'}
                 </div>
                 <div className="text-xs text-gray-600 mt-1">
                   {group.request?.title || 'Başlık belirtilmemiş'}

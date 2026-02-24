@@ -2,11 +2,15 @@ import nodemailer from 'nodemailer';
 
 // E-posta konfigürasyonu
 const createTransporter = () => {
-  // Ethereal Email (test için) veya Gmail SMTP
-  const isProduction = process.env.NODE_ENV === 'production';
-  
-  if (isProduction && process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    // Production: Gmail veya diğer SMTP servisleri
+  // Eğer SMTP ayarları varsa onları kullan (development veya production)
+  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
+    console.log('📧 SMTP Ayarları:', {
+      host: process.env.SMTP_HOST,
+      port: process.env.SMTP_PORT,
+      user: process.env.SMTP_USER,
+      secure: process.env.SMTP_SECURE
+    });
+    
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: parseInt(process.env.SMTP_PORT || '587'),
@@ -15,9 +19,15 @@ const createTransporter = () => {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
       },
+      // Outlook için ek ayarlar
+      tls: {
+        ciphers: 'SSLv3',
+        rejectUnauthorized: false
+      }
     });
   } else {
-    // Development: Ethereal Email (test)
+    // Fallback: Ethereal Email (test)
+    console.log('⚠️ SMTP ayarları bulunamadı, test modu kullanılıyor');
     return nodemailer.createTransport({
       host: 'smtp.ethereal.email',
       port: 587,

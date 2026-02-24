@@ -1344,14 +1344,67 @@ export default function PurchaseRequestsTable({
 
     try {
       const supabase = createClient()
-      
+
       // Kullanıcı yetkisini kontrol et
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
         throw new Error('Kullanıcı oturumu bulunamadı')
       }
-      
-      // Önce talep items'ları sil
+
+      console.log('🗑️ Talep siliniyor:', requestToDelete.id)
+
+      // 1. Önce bu taleple ilişkili siparişleri (orders) bul
+      const { data: orders, error: ordersQueryError } = await supabase
+        .from('orders')
+        .select('id')
+        .eq('purchase_request_id', requestToDelete.id)
+
+      if (ordersQueryError) {
+        console.error('Siparişler sorgulanırken hata:', ordersQueryError)
+      }
+
+      // 2. Eğer siparişler varsa, önce onların faturalarını (invoices) sil
+      if (orders && orders.length > 0) {
+        console.log(`📦 ${orders.length} sipariş bulundu, faturaları siliniyor...`)
+        
+        const orderIds = orders.map(o => o.id)
+        
+        // Faturaları sil
+        const { error: invoicesError } = await supabase
+          .from('invoices')
+          .delete()
+          .in('order_id', orderIds)
+
+        if (invoicesError) {
+          console.error('Faturalar silinirken hata:', invoicesError)
+          // Devam et, belki fatura yoktur
+        }
+
+        // Sipariş teslimat kayıtlarını sil (order_deliveries)
+        const { error: deliveriesError } = await supabase
+          .from('order_deliveries')
+          .delete()
+          .in('order_id', orderIds)
+
+        if (deliveriesError) {
+          console.error('Teslimat kayıtları silinirken hata:', deliveriesError)
+          // Devam et
+        }
+
+        // Siparişleri sil
+        const { error: ordersError } = await supabase
+          .from('orders')
+          .delete()
+          .eq('purchase_request_id', requestToDelete.id)
+
+        if (ordersError) {
+          throw new Error(`Siparişler silinirken hata: ${ordersError.message}`)
+        }
+
+        console.log('✅ Siparişler ve faturaları silindi')
+      }
+
+      // 3. Talep items'ları sil
       const { error: itemsError } = await supabase
         .from('purchase_request_items')
         .delete()
@@ -1362,7 +1415,18 @@ export default function PurchaseRequestsTable({
         // Items silme hatası olsa da devam et, talep silinebilir
       }
 
-      // Talebi sil
+      // 4. Teklif kayıtlarını sil (offers)
+      const { error: offersError } = await supabase
+        .from('offers')
+        .delete()
+        .eq('purchase_request_id', requestToDelete.id)
+
+      if (offersError) {
+        console.error('Teklifler silinirken hata:', offersError)
+        // Devam et
+      }
+
+      // 5. En son talebi sil
       const { error: requestError } = await supabase
         .from('purchase_requests')
         .delete()
@@ -1371,6 +1435,8 @@ export default function PurchaseRequestsTable({
       if (requestError) {
         throw new Error(`Talep silinirken hata oluştu: ${requestError.message}`)
       }
+
+      console.log('✅ Talep başarıyla silindi')
 
       // Cache'i temizle
       invalidatePurchaseRequestsCache()
@@ -1396,7 +1462,12 @@ export default function PurchaseRequestsTable({
 
   // Talep silme yetkisi kontrolü
   const canDeleteRequest = (request: PurchaseRequest) => {
-    // Sadece "pending" (beklemede) statusundaki talepler silinebilir
+    // Purchasing officer tüm talepleri silebilir
+    if (userRole === 'purchasing_officer') {
+      return true
+    }
+    
+    // Diğer roller sadece "pending" (beklemede) statusundeki talepleri silebilir
     return request.status === 'pending'
   }
 

@@ -60,8 +60,7 @@ const steps = [
   { id: 3, title: 'Alt Kategori', icon: List },
   { id: 4, title: 'Malzeme Seçimi', icon: Package },
   { id: 5, title: 'Malzeme Detayları', icon: FileText },
-  { id: 6, title: 'Kullanım & Zamanlama', icon: Target },
-  { id: 7, title: 'Onay & Gönderim', icon: CheckCircle2 }
+  { id: 6, title: 'Onay & Gönderim', icon: CheckCircle2 }
 ]
 
 // Helper fonksiyonlar
@@ -902,8 +901,6 @@ export default function CreatePurchaseRequestPage() {
           material.unit && material.quantity && material.delivery_date && material.purpose
         )
       case 6:
-        return true // Step 6 artık sadece özet gösteriyor, purpose her malzemede ayrı kontrol ediliyor
-      case 7:
         return isFormValid()
       default:
         return false
@@ -1482,6 +1479,33 @@ export default function CreatePurchaseRequestPage() {
                       )
                     })}
                   </div>
+                
+                {/* Devam Et ve Başka Kategori Butonları */}
+                {formData.material_group && (
+                  <div className="mt-6 space-y-3">
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        await fetchMaterialItems(formData.material_class, formData.material_group)
+                        setTimeout(() => setCurrentStep(4), 300)
+                      }}
+                      className="w-full h-12 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <CheckCircle2 className="w-5 h-5 mr-2" />
+                      Devam Et
+                    </Button>
+                    
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCurrentStep(2)}
+                      className="w-full h-11 border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 rounded-xl font-medium transition-all duration-200"
+                    >
+                      <Grid3X3 className="w-4 h-4 mr-2" />
+                      Başka Kategoriden Ürün Ekle
+                    </Button>
+                  </div>
+                )}
               </>
             ) : (
               <div className="flex items-center justify-center py-24 bg-white rounded-3xl border border-gray-100">
@@ -1504,12 +1528,21 @@ export default function CreatePurchaseRequestPage() {
               <>
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-1">
-                  <div>
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => setCurrentStep(3)}
+                      className="w-fit h-9 px-4 rounded-xl border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 font-medium transition-all duration-200 text-sm"
+                    >
+                      <ArrowLeft className="w-4 h-4 mr-2" />
+                      Önceki Sayfa
+                    </Button>
                     <p className="text-sm text-gray-500">
                       <span className="font-semibold text-gray-900">{formData.material_group}</span> grubundan seçim yapın
                     </p>
                     {selectedMaterials.length > 0 && (
-                      <div className="mt-2 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full border border-green-100">
+                      <div className="mt-1 inline-flex items-center gap-2 px-3 py-1.5 bg-green-50 rounded-full border border-green-100">
                         <CheckCircle2 className="w-4 h-4 text-green-600" />
                         <span className="text-xs font-medium text-green-900">
                           {selectedMaterials.length} malzeme seçildi
@@ -1519,19 +1552,59 @@ export default function CreatePurchaseRequestPage() {
                   </div>
                   
                       {selectedMaterials.length > 0 && (
-                        <Button 
-                          type="button"
-                          onClick={() => {
-                            setCurrentMaterialIndex(0)
-                            setCurrentStep(5)
-                          }}
-                      className="w-full sm:w-auto h-10 px-6 rounded-xl font-medium bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-sm"
-                        >
-                      Devam Et
-                      <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
-                        </Button>
+                        <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+                          <Button 
+                            type="button"
+                            onClick={() => {
+                              setCurrentMaterialIndex(0)
+                              setCurrentStep(5)
+                            }}
+                            className="w-full sm:w-auto h-10 px-6 rounded-xl font-medium bg-green-600 hover:bg-green-700 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-sm"
+                          >
+                            Devam Et
+                            <ArrowLeft className="w-4 h-4 ml-2 rotate-180" />
+                          </Button>
+                          <Button 
+                            type="button"
+                            variant="outline"
+                            onClick={() => setCurrentStep(2)}
+                            className="w-full sm:w-auto h-10 px-4 rounded-xl border-2 border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 font-medium transition-all duration-200 text-sm"
+                          >
+                            <Grid3X3 className="w-4 h-4 mr-2" />
+                            Başka Kategoriden Ekle
+                          </Button>
+                        </div>
                       )}
                     </div>
+
+                {/* Seçilen Malzemeler - Badge Listesi */}
+                {selectedMaterials.length > 0 && (
+                  <div className="bg-white border border-gray-200 rounded-xl p-4">
+                    <h4 className="text-sm font-semibold text-gray-700 mb-3">Seçilen Malzemeler:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {selectedMaterials.map((material) => (
+                        <div
+                          key={material.id}
+                          className="inline-flex items-center gap-2 px-3 py-2 bg-green-50 border border-green-200 rounded-lg text-sm font-medium text-green-900 hover:bg-green-100 transition-all duration-200"
+                        >
+                          <Package className="w-4 h-4 text-green-600" />
+                          <span>{material.material_item_name}</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedMaterials(prev => 
+                                prev.filter(mat => mat.id !== material.id)
+                              )
+                            }}
+                            className="ml-1 w-5 h-5 rounded-full bg-green-200 hover:bg-red-500 hover:text-white text-green-700 flex items-center justify-center transition-all duration-200"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 lg:gap-3">
@@ -1690,9 +1763,20 @@ export default function CreatePurchaseRequestPage() {
 
         return (
           <div className="space-y-4">
+            {/* Önceki Sayfa Butonu */}
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setCurrentStep(4)}
+              className="w-fit h-9 px-4 rounded-xl border-gray-300 hover:border-gray-400 hover:bg-gray-50 text-gray-700 font-medium transition-all duration-200 text-sm"
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Önceki Sayfa
+            </Button>
+
             {/* Header Section */}
             <div className="bg-white border border-gray-100 rounded-xl lg:rounded-2xl p-4 lg:p-6">
-              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+              <div className="flex flex-col gap-4">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gray-900 flex items-center justify-center flex-shrink-0">
                     <FileText className="w-5 h-5 text-white" />
@@ -1705,12 +1789,20 @@ export default function CreatePurchaseRequestPage() {
                 
                 <Button 
                   type="button"
-                  variant="outline"
                   onClick={() => setCurrentStep(2)}
-                  className="h-10 px-4 rounded-xl border-gray-200 hover:bg-gray-50 text-sm font-medium"
+                  className="w-full h-12 rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                  style={{ 
+                    backgroundColor: '#222D55',
+                    color: 'white'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = '#1a2340'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = '#222D55'
+                  }}
                 >
-                  <Package className="w-4 h-4 mr-2" />
-                  Malzeme Ekle
+                  Ürün Eklemeye Devam Et
                 </Button>
               </div>
               
@@ -1981,7 +2073,7 @@ export default function CreatePurchaseRequestPage() {
 
                 {/* Material Navigation - Validation kontrolü YOK */}
                 {selectedMaterials.length > 1 && (
-                  <div className="flex gap-3 pt-4 border-t border-gray-100">
+                  <div className="flex gap-3 pt-4">
                     <Button
                       type="button"
                       variant="outline"
@@ -2010,6 +2102,24 @@ export default function CreatePurchaseRequestPage() {
                     </Button>
                   </div>
                 )}
+
+                {/* Devam Et Butonu */}
+                <div className="pt-4">
+                  <Button
+                    type="button"
+                    onClick={() => {
+                      if (isStepValid(5)) {
+                        setCurrentStep(6)
+                      } else {
+                        showToast('Lütfen tüm zorunlu alanları doldurun', 'error')
+                      }
+                    }}
+                    className="w-full h-12 bg-green-600 hover:bg-green-700 text-white rounded-xl font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                  >
+                    <CheckCircle2 className="w-5 h-5 mr-2" />
+                    Devam Et - Talebi Gönder
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -2017,91 +2127,9 @@ export default function CreatePurchaseRequestPage() {
 
       case 6:
         return (
-          <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
-            <CardHeader className="border-b border-gray-100 pb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-12 h-12 rounded-xl bg-gray-900 flex items-center justify-center flex-shrink-0">
-                  <Target className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <CardTitle className="text-xl font-semibold text-gray-900">Kullanım & Zamanlama</CardTitle>
-                  <p className="text-sm text-gray-500 mt-1">{selectedMaterials.length} malzeme için özet bilgiler</p>
-                </div>
-              </div>
-            </CardHeader>
-            
-            <CardContent className="p-6 space-y-6">
-              {/* Malzeme Özet Kartları */}
-              <div className="space-y-3">
-                {selectedMaterials.map((material, index) => (
-                  <div key={material.id} className="bg-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md transition-all">
-                    <div className="flex items-start gap-4">
-                      <div className="w-10 h-10 rounded-lg bg-gray-900 flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-sm font-bold">{index + 1}</span>
-                      </div>
-                      <div className="flex-1 space-y-3">
-                        <div>
-                          <h4 className="font-semibold text-gray-900 mb-1">{material.material_name}</h4>
-                          <p className="text-sm text-gray-500">{material.quantity} {material.unit}</p>
-                        </div>
-                        
-                        {material.purpose && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
-                            <div className="flex items-start gap-2">
-                              <Target className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
-                              <div className="flex-1">
-                                <p className="text-xs font-medium text-gray-500 mb-1">Kullanım Amacı</p>
-                                <p className="text-sm text-gray-900">{material.purpose}</p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                        
-                        {material.delivery_date && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
-                            <div className="flex items-center gap-2">
-                              <CalendarIcon className="w-4 h-4 text-gray-400" />
-                              <div className="flex-1">
-                                <p className="text-xs font-medium text-gray-500">Gerekli Tarih</p>
-                                <p className="text-sm font-medium text-gray-900">
-                                  {new Date(material.delivery_date).toLocaleDateString('tr-TR', { 
-                                    day: 'numeric', 
-                                    month: 'long', 
-                                    year: 'numeric' 
-                                  })}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Ek Notlar */}
-              <div className="border-t border-gray-100 pt-6">
-                <Label className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  Genel Talep Notları (Opsiyonel)
-                </Label>
-                <Textarea
-                  value={formData.specifications}
-                  onChange={(e) => handleInputChange('specifications', e.target.value)}
-                  placeholder="Talep ile ilgili ek notlar, özel talimatlar..."
-                  className="min-h-[120px] resize-none rounded-xl border-gray-200 focus:border-gray-900 focus:ring-gray-900/20"
-                />
-              </div>
-            </CardContent>
-          </Card>
-        )
-
-      case 7:
-        return (
           <div className="space-y-4">
             {/* Header with Submit Button */}
-            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
+            <Card className="rounded-xl lg:rounded-2xl bg-white border-0 shadow-sm">
               <CardContent className="p-6">
                 <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
                   <div className="flex items-center gap-3">
@@ -2137,7 +2165,7 @@ export default function CreatePurchaseRequestPage() {
 
             {/* Summary Stats */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
-              <Card className="rounded-xl bg-white border border-gray-100">
+              <Card className="rounded-xl bg-white border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -2151,7 +2179,7 @@ export default function CreatePurchaseRequestPage() {
                 </CardContent>
               </Card>
               
-              <Card className="rounded-xl bg-white border border-gray-100">
+              <Card className="rounded-xl bg-white border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -2165,7 +2193,7 @@ export default function CreatePurchaseRequestPage() {
                 </CardContent>
               </Card>
               
-              <Card className="rounded-xl bg-white border border-gray-100">
+              <Card className="rounded-xl bg-white border-0 shadow-sm">
                 <CardContent className="p-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
@@ -2183,14 +2211,14 @@ export default function CreatePurchaseRequestPage() {
             </div>
 
             {/* Materials List */}
-            <Card className="rounded-xl lg:rounded-2xl bg-white border border-gray-100">
-              <CardHeader className="border-b border-gray-100">
+            <Card className="rounded-xl lg:rounded-2xl bg-white border-0 shadow-sm">
+              <CardHeader className="border-0">
                 <CardTitle className="text-base font-semibold text-gray-900">Malzeme Listesi</CardTitle>
               </CardHeader>
               <CardContent className="p-6">
                 <div className="space-y-4">
                   {selectedMaterials.map((material, index) => (
-                    <div key={material.id} className="border border-gray-200 rounded-xl p-5 hover:shadow-md transition-all bg-gray-50/50">
+                    <div key={material.id} className="border-0 rounded-xl p-5 hover:shadow-md transition-all bg-gray-50">
                       {/* Header */}
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex items-start gap-3 flex-1">
@@ -2211,13 +2239,13 @@ export default function CreatePurchaseRequestPage() {
                       {/* Details Grid */}
                       <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
                         {material.brand && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <div className="bg-white rounded-lg p-3 border-0 shadow-sm">
                             <p className="text-xs font-medium text-gray-500 mb-1">Marka</p>
                             <p className="text-sm font-medium text-gray-900">{material.brand}</p>
                           </div>
                         )}
                         {material.material_item_name && (
-                          <div className="bg-white rounded-lg p-3 border border-gray-200">
+                          <div className="bg-white rounded-lg p-3 border-0 shadow-sm">
                             <p className="text-xs font-medium text-gray-500 mb-1">Malzeme Kodu</p>
                             <p className="text-sm font-medium text-gray-900">{material.material_item_name}</p>
                           </div>
@@ -2228,7 +2256,7 @@ export default function CreatePurchaseRequestPage() {
                       {(material.purpose || material.delivery_date) && (
                         <div className="space-y-3 mb-4">
                           {material.purpose && (
-                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="bg-white rounded-lg p-3 border-0 shadow-sm">
                               <div className="flex items-start gap-2">
                                 <Target className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                                 <div className="flex-1">
@@ -2239,7 +2267,7 @@ export default function CreatePurchaseRequestPage() {
                             </div>
                           )}
                           {material.delivery_date && (
-                            <div className="bg-white rounded-lg p-3 border border-gray-200">
+                            <div className="bg-white rounded-lg p-3 border-0 shadow-sm">
                               <div className="flex items-center gap-2">
                                 <CalendarIcon className="w-4 h-4 text-gray-400" />
                                 <div className="flex-1">
@@ -2260,7 +2288,7 @@ export default function CreatePurchaseRequestPage() {
                       
                       {/* Specifications */}
                       {material.specifications && (
-                        <div className="bg-white rounded-lg p-3 border border-gray-200 mb-4">
+                        <div className="bg-white rounded-lg p-3 border-0 shadow-sm mb-4">
                           <div className="flex items-start gap-2">
                             <Settings className="w-4 h-4 text-gray-400 mt-0.5 flex-shrink-0" />
                             <div className="flex-1">

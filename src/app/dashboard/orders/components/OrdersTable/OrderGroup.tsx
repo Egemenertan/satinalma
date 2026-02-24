@@ -35,7 +35,7 @@ export function OrderGroup({
           <div className="flex items-center gap-3">
             <div className="font-semibold text-gray-900">
               Talep: {group.request?.request_number ? 
-                group.request.request_number.slice(-6) : 'Bilinmiyor'}
+                group.request.request_number.slice(-7) : 'Bilinmiyor'}
             </div>
             <div className="text-sm text-gray-600">
               {group.request?.title || 'Başlık belirtilmemiş'}

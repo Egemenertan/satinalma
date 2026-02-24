@@ -927,6 +927,105 @@ export default function OrdersPage() {
     }
   }
 
+  // Seçili siparişlerin TÜM faturalarını sil
+  const handleDeleteAllInvoices = async () => {
+    const supabase = createClient()
+    setIsUploadingInvoice(true)
+
+    try {
+      // Seçili siparişlerin order ID'lerini al
+      const orderIds = Array.from(selectedOrders)
+      
+      console.log('🗑️ Siparişlerin tüm faturaları siliniyor:', orderIds.length, 'sipariş')
+
+      // Bu siparişlere ait TÜM faturaları çek
+      const { data: invoicesToDelete, error: fetchError } = await supabase
+        .from('invoices')
+        .select('id, invoice_group_id')
+        .in('order_id', orderIds)
+
+      if (fetchError) {
+        console.error('❌ Faturalar alınamadı:', fetchError)
+        throw fetchError
+      }
+
+      if (!invoicesToDelete || invoicesToDelete.length === 0) {
+        showToast('Silinecek fatura bulunamadı', 'info')
+        return
+      }
+
+      console.log('📋 Silinecek fatura sayısı:', invoicesToDelete.length)
+
+      // Tüm invoice group ID'lerini topla (tekil)
+      const invoiceGroupIds = [...new Set(
+        invoicesToDelete
+          .map(inv => inv.invoice_group_id)
+          .filter(Boolean)
+      )]
+
+      // Tüm faturaları sil
+      const { error: deleteError } = await supabase
+        .from('invoices')
+        .delete()
+        .in('order_id', orderIds)
+
+      if (deleteError) {
+        console.error('❌ Faturalar silinemedi:', deleteError)
+        throw deleteError
+      }
+
+      // Boşalan invoice group'ları sil
+      if (invoiceGroupIds.length > 0) {
+        console.log('📦 Boşalan invoice group\'ları siliniyor:', invoiceGroupIds.length)
+        
+        for (const groupId of invoiceGroupIds) {
+          // Grupta başka fatura var mı kontrol et
+          const { data: remainingInvoices, error: checkError } = await supabase
+            .from('invoices')
+            .select('id')
+            .eq('invoice_group_id', groupId)
+            .limit(1)
+
+          if (!checkError && (!remainingInvoices || remainingInvoices.length === 0)) {
+            // Grup boş, sil
+            await supabase
+              .from('invoice_groups')
+              .delete()
+              .eq('id', groupId)
+          }
+        }
+      }
+
+      showToast(`${invoicesToDelete.length} fatura başarıyla kaldırıldı`, 'success')
+      
+      // Modal'ı kapat ve state'leri temizle
+      setIsInvoiceModalOpen(false)
+      setSelectedOrderId(null)
+      setEditingInvoiceGroupId(null)
+      setOrderAmounts({})
+      setOrderCurrencies({})
+      setInvoicePhotos([])
+      setInvoiceSubtotals({})
+      setInvoiceDiscount('')
+      setInvoiceTax('')
+      setInvoiceGrandTotal('')
+      setInvoiceNotes('')
+      setIndividualInvoiceDetails([])
+      setEditedInvoiceValues({})
+      clearSelection()
+      
+      // React Query cache'i yenile
+      await queryClient.invalidateQueries({ queryKey: ['orders'] })
+      
+      console.log('✅ Tüm faturalar ve ilgili gruplar temizlendi')
+    } catch (error: any) {
+      console.error('❌ Fatura silme hatası:', error)
+      showToast('Faturalar silinirken hata oluştu: ' + (error?.message || 'Bilinmeyen hata'), 'error')
+    } finally {
+      setIsUploadingInvoice(false)
+    }
+  }
+
   // Fatura kaydetme - YENİ YAPI: invoice_groups kullanarak
   const handleSaveInvoice = async () => {
     const supabase = createClient()
@@ -1662,6 +1761,7 @@ export default function OrdersPage() {
         individualInvoiceDetails={individualInvoiceDetails}
         editedInvoiceValues={editedInvoiceValues}
         onIndividualInvoiceChange={handleIndividualInvoiceChange}
+        onDeleteInvoices={handleDeleteAllInvoices}
       />
 
 

@@ -337,6 +337,40 @@ export default function Sidebar({
       )
     }
 
+    // Mobile için kare buton tasarımı
+    if (isMobileOpen) {
+      return (
+        <Link href={item.href || '#'}>
+          <Button
+            variant="ghost"
+            className={cn(
+              "w-full h-24 transition-all duration-200 flex flex-col items-center justify-center gap-2 relative",
+              active 
+                ? "bg-black text-white hover:bg-gray-800" 
+                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+              "rounded-2xl border-2",
+              active ? "border-black" : "border-gray-200"
+            )}
+            onClick={() => {
+              setIsMobileOpen(false)
+            }}
+          >
+            <item.icon className="h-7 w-7" />
+            <span className="text-xs font-medium text-center leading-tight">{item.title}</span>
+            {item.badge && (
+              <Badge 
+                variant="secondary" 
+                className="absolute top-2 right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-red-500 text-white hover:bg-red-600 border-0 rounded-full"
+              >
+                {item.badge}
+              </Badge>
+            )}
+          </Button>
+        </Link>
+      )
+    }
+
+    // Desktop için normal tasarım
     return (
       <div className="relative">
         <Link href={item.href || '#'}>
@@ -350,16 +384,11 @@ export default function Sidebar({
                 : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
               "rounded-xl"
             )}
-            onClick={() => {
-              if (isMobileOpen) {
-                setIsMobileOpen(false)
-              }
-            }}
             onMouseEnter={() => setHoveredItem(item.title)}
             onMouseLeave={() => setHoveredItem(null)}
           >
             <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-            {(!isCollapsed || isMobileOpen) && (
+            {!isCollapsed && (
               <>
                 <span className="text-sm">{item.title}</span>
                 {item.badge && (
@@ -408,33 +437,26 @@ export default function Sidebar({
         }}
       />
 
-      {/* Mobile Overlay */}
-      {isMobileOpen && (
-        <div 
-          className="fixed inset-0 bg-black/20 backdrop-blur-sm z-40 lg:hidden transition-opacity duration-300"
-          onClick={() => setIsMobileOpen(false)}
-        />
-      )}
 
       {/* Sidebar */}
       <div 
         className={cn(
-          "fixed z-50 flex flex-col transition-all duration-500 ease-out",
+          "fixed z-50 flex flex-col transition-all duration-500 ease-out overflow-visible",
           "bg-gradient-to-br from-white to-gray-50/50 shadow-2xl backdrop-blur-xl",
           // Desktop - Ada tasarımı (sol tarafta)
           "hidden lg:flex",
           "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
           isCollapsed ? "lg:w-16" : "lg:w-64",
-          // Mobile - Ada tasarımı (SAĞDA)
-          isMobileOpen ? "flex top-3 bottom-3 right-3 w-64 rounded-3xl border border-gray-100/50" : "hidden lg:flex",
+          // Mobile - Tam sayfa
+          isMobileOpen ? "flex inset-0 w-full h-full" : "hidden lg:flex",
           className
         )}
         onMouseLeave={() => setHoveredItem(null)}
       >
         {/* Header with Logo */}
         <div className={cn(
-          "flex items-center justify-center border-b border-gray-100/50",
-          isMobileOpen ? "justify-between px-6 py-5" : "px-4 py-5"
+          "flex items-center border-b border-gray-100/50",
+          isMobileOpen ? "justify-between px-6 py-6" : "justify-center px-4 py-5"
         )}>
           {/* Logo - sadece mobile'da göster */}
           {isMobileOpen && (
@@ -445,7 +467,7 @@ export default function Sidebar({
               <img 
                 src="/blackdu.webp" 
                 alt="Logo" 
-                className="h-8 w-auto"
+                className="h-10 w-auto"
               />
             </button>
           )}
@@ -456,9 +478,9 @@ export default function Sidebar({
               variant="ghost"
               size="sm"
               onClick={() => setIsMobileOpen(false)}
-              className="h-8 w-8 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
+              className="h-10 w-10 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
             >
-              <X className="h-4 w-4" />
+              <X className="h-5 w-5" />
             </Button>
           ) : (
             <button 
@@ -475,7 +497,7 @@ export default function Sidebar({
         </div>
 
         {/* Quick Create */}
-        <div className={cn("py-3", isCollapsed && !isMobileOpen ? "px-2" : "px-4")}>
+        <div className={cn("py-4", isCollapsed && !isMobileOpen ? "px-2" : isMobileOpen ? "px-6" : "px-4")}>
           {isCollapsed && !isMobileOpen ? (
             <div className="space-y-2 flex flex-col items-center">
               {/* Hızlı Talep - Icon Only */}
@@ -526,7 +548,7 @@ export default function Sidebar({
               )}
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className={cn("space-y-3", isMobileOpen && "grid grid-cols-2 gap-3")}>
               <Button 
                 onClick={() => {
                   router.push('/dashboard/requests/create')
@@ -534,9 +556,13 @@ export default function Sidebar({
                     setIsMobileOpen(false)
                   }
                 }}
-                className="w-full h-9 bg-white hover:bg-gray-50 text-black border-2 border-black text-sm font-medium rounded-2xl transition-all duration-200"
+                className={cn(
+                  "bg-white hover:bg-gray-50 text-black border-2 border-black font-medium rounded-2xl transition-all duration-200",
+                  isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm"
+                )}
               >
-                Hızlı Talep
+                <Plus className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4 mr-2")} />
+                <span className={cn(isMobileOpen ? "text-xs" : "text-sm")}>Hızlı Talep</span>
               </Button>
               
               {/* Site Manager için Rol Yönetimi Butonu */}
@@ -549,10 +575,13 @@ export default function Sidebar({
                     }
                   }}
                   variant="outline"
-                  className="w-full h-9 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white text-sm font-medium rounded-2xl flex items-center justify-center gap-2 transition-all duration-200"
+                  className={cn(
+                    "border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white font-medium rounded-2xl transition-all duration-200",
+                    isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm flex items-center justify-center gap-2"
+                  )}
                 >
-                  <UserCog className="h-4 w-4" />
-                  Rol Yönetimi
+                  <UserCog className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4")} />
+                  <span className={cn(isMobileOpen ? "text-xs" : "text-sm")}>Rol Yönetimi</span>
                 </Button>
               )}
             </div>
@@ -561,8 +590,8 @@ export default function Sidebar({
 
         {/* Navigation */}
         <nav className={cn(
-          "flex-1 py-2 space-y-1",
-          isCollapsed ? "px-2" : "px-4"
+          "flex-1 py-4",
+          isCollapsed && !isMobileOpen ? "px-2 space-y-1 overflow-visible" : isMobileOpen ? "px-6 grid grid-cols-2 gap-3 content-start overflow-y-auto" : "px-4 space-y-1 overflow-y-auto"
         )}>
           {getNavigation(pendingCount || 0, userRole).map((item) => (
             <NavItemComponent key={item.title} item={item} />
@@ -571,8 +600,8 @@ export default function Sidebar({
 
         {/* User Profile */}
         <div className={cn(
-          "py-4 border-t border-gray-100",
-          isCollapsed && !isMobileOpen ? "px-2" : "px-4"
+          "py-5 border-t border-gray-100",
+          isCollapsed && !isMobileOpen ? "px-2" : isMobileOpen ? "px-6" : "px-4"
         )}>
           {isCollapsed && !isMobileOpen ? (
             <div className="space-y-2">
@@ -627,7 +656,38 @@ export default function Sidebar({
                 )}
               </div>
             </div>
+          ) : isMobileOpen ? (
+            // Mobile için özel tasarım
+            <div className="space-y-3">
+              <div className="flex items-center space-x-3 bg-gray-50 rounded-2xl p-4">
+                <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-base font-medium text-white">
+                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                  </span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 truncate">
+                    {userName || 'Kullanıcı'}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {userEmail}
+                  </div>
+                  <div className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md inline-block mt-1">
+                    {getRoleLabel(userRole as any)}
+                  </div>
+                </div>
+              </div>
+              <Button
+                variant="ghost"
+                className="w-full h-12 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-2xl font-medium transition-all duration-200"
+                onClick={handleLogout}
+              >
+                <LogOut className="h-5 w-5 mr-2" />
+                Çıkış Yap
+              </Button>
+            </div>
           ) : (
+            // Desktop expanded için normal tasarım
             <div className="flex flex-col space-y-2">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">

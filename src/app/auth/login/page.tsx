@@ -51,6 +51,8 @@ function LoginContent() {
           setError('Sunucuya bağlanılamıyor. İnternet bağlantınızı kontrol edin veya birkaç saniye sonra tekrar deneyin.')
         } else if (error.message.includes('Invalid login credentials')) {
           setError('Email veya şifre hatalı. Lütfen kontrol edip tekrar deneyin.')
+        } else if (error.message.includes('rate limit') || error.message.includes('too many requests')) {
+          setError('Çok fazla deneme yapıldı. Lütfen 5 dakika bekleyip tekrar deneyin veya farklı bir tarayıcı kullanın.')
         } else {
           setError(error.message)
         }

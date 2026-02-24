@@ -54,21 +54,40 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       if (searchError) {
         console.warn('⚠️ RPC arama hatası, fallback kullanılıyor:', searchError.message)
         
-        // Fallback: Basit ILIKE sorgusu
-        const { data: fallbackResults, error: fallbackError } = await supabase
-          .from('orders')
-          .select(`
-            id,
-            quantity,
-            suppliers!orders_supplier_id_fkey (name),
-            purchase_requests!orders_purchase_request_id_fkey (title, request_number),
-            purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
-          `)
+        // Fallback: Paginated sorgu ile TÜM orderları çek
+        // Supabase default 1000 satır limit'i olduğu için pagination gerekli
+        let fallbackResults: any[] = []
+        let from = 0
+        const fetchPageSize = 1000
         
-        if (fallbackError) {
-          console.error('❌ Fallback arama da başarısız:', fallbackError)
-          throw fallbackError
+        while (true) {
+          const { data: pageData, error: pageError } = await supabase
+            .from('orders')
+            .select(`
+              id,
+              quantity,
+              suppliers!orders_supplier_id_fkey (name),
+              purchase_requests!orders_purchase_request_id_fkey (title, request_number),
+              purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
+            `)
+            .range(from, from + fetchPageSize - 1)
+          
+          if (pageError) {
+            console.error('❌ Fallback arama hatası:', pageError)
+            throw pageError
+          }
+          
+          if (!pageData || pageData.length === 0) break
+          
+          fallbackResults = fallbackResults.concat(pageData)
+          
+          // Son sayfa ise dur
+          if (pageData.length < fetchPageSize) break
+          
+          from += fetchPageSize
         }
+        
+        console.log(`✅ Toplam ${fallbackResults.length} order çekildi (paginated)`)
         
         // Client-side filtreleme (fallback)
         if (fallbackResults) {

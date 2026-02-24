@@ -93,6 +93,9 @@ interface InvoiceModalProps {
     tax: string
   }>
   onIndividualInvoiceChange?: (invoiceId: string, field: 'subtotal' | 'discount' | 'tax', value: string) => void
+  
+  // Delete invoices callback - düzenleme modunda faturaları silmek için
+  onDeleteInvoices?: () => Promise<void>
 }
 
 export function InvoiceModal({
@@ -130,6 +133,7 @@ export function InvoiceModal({
   individualInvoiceDetails = [],
   editedInvoiceValues = {},
   onIndividualInvoiceChange,
+  onDeleteInvoices,
 }: InvoiceModalProps) {
   
   // Image viewer state
@@ -189,7 +193,9 @@ export function InvoiceModal({
               <div className="flex items-center gap-3">
                
                 <div>
-                  <DialogTitle className="text-4xl font-semibold text-gray-900 tracking-tight">
+                  <DialogTitle className={`text-4xl font-semibold tracking-tight ${
+                    !editingInvoiceGroupId && !selectedOrderId ? 'text-red-600' : 'text-gray-900'
+                  }`}>
                     {getModalTitle()}
                   </DialogTitle>
                   <p className="text-sm text-gray-500 mt-0.5">{getModalSubtitle()}</p>
@@ -276,8 +282,26 @@ export function InvoiceModal({
         {/* Apple Style Footer - Minimal ve ferah */}
         <div className="relative bg-gray-50 border-t border-gray-200 px-8 py-5 flex-shrink-0 rounded-b-[2rem]">
           <div className="max-w-[1000px] mx-auto flex items-center justify-between">
-            <div className="text-sm text-gray-500">
-              {selectedOrdersCount > 1 && `${selectedOrdersCount} sipariş seçildi`}
+            <div className="flex items-center gap-3">
+              {/* Fatura Kaldır Butonu - Sadece düzenleme modunda görünsün */}
+              {(editingInvoiceGroupId || (selectedOrders.length === 1 && selectedOrders[0]?.invoices?.length > 0)) && onDeleteInvoices && (
+                <Button
+                  variant="ghost"
+                  onClick={async () => {
+                    if (confirm('⚠️ İlgili faturayı silmek istediğinizden emin misiniz?\n\nBu işlem geri alınamaz ve fatura bilgileri silinecektir.')) {
+                      await onDeleteInvoices()
+                    }
+                  }}
+                  disabled={isUploadingInvoice}
+                  className="px-6 h-11 rounded-xl font-medium text-red-600 hover:bg-red-50 hover:text-red-700 transition-all border border-red-200"
+                >
+                  <X className="w-4 h-4 mr-2" />
+                  İlgili Faturayı Kaldır
+                </Button>
+              )}
+              <div className="text-sm text-gray-500">
+                {selectedOrdersCount > 1 && `${selectedOrdersCount} sipariş seçildi`}
+              </div>
             </div>
             <div className="flex items-center gap-3">
               <Button

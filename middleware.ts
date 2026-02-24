@@ -10,6 +10,7 @@ export async function middleware(request: NextRequest) {
     pathname === '/' ||
     pathname.startsWith('/_next/') ||
     pathname.startsWith('/api/public/') ||
+    pathname.startsWith('/api/auth/') || // Auth API route'ları da public
     pathname.includes('.') // .css, .js, .png, .ico etc.
     
   if (isPublicRoute) {
@@ -48,20 +49,22 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-  // Session kontrolü - sadece user bilgisini al, token refresh otomatik
-  const { data: { user }, error } = await supabase.auth.getUser()
-
-  // Protected routes
+  // Protected routes kontrol - sadece gerektiğinde user bilgisi al
   const protectedRoutes = ['/dashboard', '/admin', '/api']
   const isProtectedRoute = protectedRoutes.some(route => 
     request.nextUrl.pathname.startsWith(route)
   )
 
-  if (isProtectedRoute && (!user || error)) {
-    // Redirect to login if accessing protected route without auth
-    const redirectUrl = new URL('/auth/login', request.url)
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
-    return NextResponse.redirect(redirectUrl)
+  if (isProtectedRoute) {
+    // Session kontrolü - sadece protected route'larda user bilgisini al
+    const { data: { user }, error } = await supabase.auth.getUser()
+    
+    if (!user || error) {
+      // Redirect to login if accessing protected route without auth
+      const redirectUrl = new URL('/auth/login', request.url)
+      redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+      return NextResponse.redirect(redirectUrl)
+    }
   }
 
 
