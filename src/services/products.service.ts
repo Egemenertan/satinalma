@@ -16,6 +16,7 @@ type WarehouseStock = Database['public']['Tables']['warehouse_stock']['Row']
 export interface ProductFilters {
   search?: string
   brandId?: string
+  siteId?: string
   categoryId?: string
   productType?: string
   isActive?: boolean
@@ -57,6 +58,22 @@ export async function fetchProducts(
 
   if (filters?.brandId) {
     query = query.eq('brand_id', filters.brandId)
+  }
+  
+  // Site filtresi - warehouse_stock üzerinden
+  if (filters?.siteId) {
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .eq('warehouse_id', filters.siteId)
+    
+    const productIds = stockProducts?.map(s => s.product_id) || []
+    if (productIds.length > 0) {
+      query = query.in('id', productIds)
+    } else {
+      // Site'da hiç ürün yoksa boş sonuç dön
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
   }
 
   if (filters?.categoryId) {

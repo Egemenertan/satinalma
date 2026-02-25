@@ -1324,6 +1324,14 @@ export default function PurchaseRequestsTable({
   // Delete modal açma fonksiyonu
   const openDeleteModal = (request: PurchaseRequest, e: React.MouseEvent) => {
     e.stopPropagation() // Satır tıklamasını engelle
+    
+    console.log('📋 Delete modal açılıyor:', {
+      requestId: request.id,
+      status: request.status,
+      title: request.title,
+      canDelete: canDeleteRequest(request)
+    })
+    
     setRequestToDelete(request)
     setShowDeleteModal(true)
     setOpenDropdownId(null) // Dropdown'ı kapat
@@ -1338,7 +1346,18 @@ export default function PurchaseRequestsTable({
 
   // Talep silme fonksiyonu
   const handleDeleteRequest = async () => {
-    if (!requestToDelete) return
+    console.log('🚀 handleDeleteRequest çağrıldı')
+    
+    if (!requestToDelete) {
+      console.log('⚠️ requestToDelete null, işlem iptal')
+      return
+    }
+
+    console.log('🗑️ Talep siliniyor:', {
+      id: requestToDelete.id,
+      status: requestToDelete.status,
+      title: requestToDelete.title
+    })
 
     setIsDeleting(true)
 
@@ -1348,120 +1367,76 @@ export default function PurchaseRequestsTable({
       // Kullanıcı yetkisini kontrol et
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
+        console.error('❌ Kullanıcı oturumu bulunamadı:', userError)
         throw new Error('Kullanıcı oturumu bulunamadı')
       }
 
-      console.log('🗑️ Talep siliniyor:', requestToDelete.id)
+      console.log('✅ Kullanıcı oturumu doğrulandı:', user.id)
 
-      // 1. Önce bu taleple ilişkili siparişleri (orders) bul
-      const { data: orders, error: ordersQueryError } = await supabase
-        .from('orders')
-        .select('id')
-        .eq('purchase_request_id', requestToDelete.id)
-
-      if (ordersQueryError) {
-        console.error('Siparişler sorgulanırken hata:', ordersQueryError)
-      }
-
-      // 2. Eğer siparişler varsa, önce onların faturalarını (invoices) sil
-      if (orders && orders.length > 0) {
-        console.log(`📦 ${orders.length} sipariş bulundu, faturaları siliniyor...`)
-        
-        const orderIds = orders.map(o => o.id)
-        
-        // Faturaları sil
-        const { error: invoicesError } = await supabase
-          .from('invoices')
-          .delete()
-          .in('order_id', orderIds)
-
-        if (invoicesError) {
-          console.error('Faturalar silinirken hata:', invoicesError)
-          // Devam et, belki fatura yoktur
-        }
-
-        // Sipariş teslimat kayıtlarını sil (order_deliveries)
-        const { error: deliveriesError } = await supabase
-          .from('order_deliveries')
-          .delete()
-          .in('order_id', orderIds)
-
-        if (deliveriesError) {
-          console.error('Teslimat kayıtları silinirken hata:', deliveriesError)
-          // Devam et
-        }
-
-        // Siparişleri sil
-        const { error: ordersError } = await supabase
-          .from('orders')
-          .delete()
-          .eq('purchase_request_id', requestToDelete.id)
-
-        if (ordersError) {
-          throw new Error(`Siparişler silinirken hata: ${ordersError.message}`)
-        }
-
-        console.log('✅ Siparişler ve faturaları silindi')
-      }
-
-      // 3. Talep items'ları sil
-      const { error: itemsError } = await supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('purchase_request_id', requestToDelete.id)
-
-      if (itemsError) {
-        console.error('Talep items silme hatası:', itemsError)
-        // Items silme hatası olsa da devam et, talep silinebilir
-      }
-
-      // 4. Teklif kayıtlarını sil (offers)
-      const { error: offersError } = await supabase
-        .from('offers')
-        .delete()
-        .eq('purchase_request_id', requestToDelete.id)
-
-      if (offersError) {
-        console.error('Teklifler silinirken hata:', offersError)
-        // Devam et
-      }
-
-      // 5. En son talebi sil
-      const { error: requestError } = await supabase
+      // Sadece talebi sil - CASCADE sayesinde tüm ilişkili veriler otomatik silinir
+      // (purchase_request_items, offers, orders, invoices, order_deliveries vb.)
+      console.log('🎯 Talep satırı siliniyor...')
+      const { error: requestError, count } = await supabase
         .from('purchase_requests')
         .delete()
         .eq('id', requestToDelete.id)
 
       if (requestError) {
+        console.error('❌ Talep silme hatası:', requestError)
         throw new Error(`Talep silinirken hata oluştu: ${requestError.message}`)
       }
 
-      console.log('✅ Talep başarıyla silindi')
+      console.log('✅ Talep başarıyla silindi. Silinen satır sayısı:', count)
 
-      // Cache'i temizle
-      invalidatePurchaseRequestsCache()
-      mutate('purchase_requests_stats')
-      mutate('pending_requests_count')
-      mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
-      
-      // Veriyi yenile
-      await refreshData()
+      // Modal'ı hemen kapat
+      closeDeleteModal()
       
       // Başarı toast'ı göster
       showToast('Talep başarıyla kaldırıldı!', 'success')
+
+      // Cache'i agresif şekilde temizle
+      invalidatePurchaseRequestsCache()
       
-      // Modal'ı kapat
-      closeDeleteModal()
+      // Tüm purchase_requests key'lerini temizle
+      await mutate(
+        (key) => typeof key === 'string' && key.includes('purchase_requests'),
+        undefined,
+        { revalidate: true }
+      )
+      
+      // Stats cache'ini temizle
+      await mutate('purchase_requests_stats', undefined, { revalidate: true })
+      await mutate('pending_requests_count', undefined, { revalidate: true })
+      
+      // Sayfayı yeniden yükle (en garantili yöntem)
+      await refreshData()
+      
+      // Next.js router'ı ile server-side verisini de yenile
+      router.refresh()
+      
+      console.log('✅ Cache temizlendi ve sayfa yenilendi')
       
     } catch (error: any) {
-      console.error('Talep silme hatası:', error)
+      console.error('❌ Talep silme hatası:', error)
       showToast(`Talep silinirken hata oluştu: ${error.message}`, 'error')
+      
+      // Modal'ı kapat ve state'leri resetle
+      closeDeleteModal()
+    } finally {
+      // Her durumda isDeleting'i false yap
       setIsDeleting(false)
     }
   }
 
   // Talep silme yetkisi kontrolü
   const canDeleteRequest = (request: PurchaseRequest) => {
+    console.log('🔍 Silme yetkisi kontrolü:', {
+      requestId: request.id,
+      requestStatus: request.status,
+      userRole: userRole,
+      canDelete: userRole === 'purchasing_officer' || request.status === 'pending'
+    })
+    
     // Purchasing officer tüm talepleri silebilir
     if (userRole === 'purchasing_officer') {
       return true

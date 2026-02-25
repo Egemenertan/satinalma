@@ -39,6 +39,9 @@ interface InventoryItem {
   notes: string
   category: string | null
   consumed_quantity: number
+  serial_number?: string
+  owner_name?: string
+  owner_email?: string
   user: {
     id: string
     full_name: string
@@ -113,6 +116,7 @@ export default function AllInventoryPage() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      // User inventory'den aktif zimmetleri al
       let query = supabase
         .from('user_inventory')
         .select(`
@@ -136,8 +140,58 @@ export default function AllInventoryPage() {
         return
       }
 
-      setInventoryItems(data || [])
-      setFilteredItems(data || [])
+      // Pending zimmetleri de al (henüz giriş yapmamış kullanıcılar için)
+      // Site manager ise sadece kendi email'i ile eşleşen owner_email'leri göster
+      let pendingQuery = supabase
+        .from('pending_user_inventory')
+        .select('*')
+      
+      if (userRole === 'site_manager') {
+        // Site manager'ın email'ini al
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('email')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.email) {
+          pendingQuery = pendingQuery.eq('owner_email', profile.email)
+        }
+      }
+      
+      const { data: pendingData, error: pendingError } = await pendingQuery
+        .order('created_at', { ascending: false })
+
+      if (pendingError) {
+        console.error('Pending zimmetler alınamadı:', pendingError)
+      }
+
+      // Pending zimmetleri user_inventory formatına çevir
+      const pendingItems = (pendingData || []).map(item => ({
+        id: item.id,
+        item_name: item.item_name,
+        quantity: item.quantity,
+        unit: item.unit || 'Adet',
+        assigned_date: item.created_at,
+        status: 'active' as const,
+        notes: item.notes || '',
+        category: null,
+        consumed_quantity: 0,
+        serial_number: item.serial_number,
+        owner_name: item.owner_name,
+        owner_email: item.owner_email,
+        user: {
+          id: '00000000-0000-0000-0000-000000000001',
+          full_name: item.user_name || 'Bekliyor',
+          email: item.user_email
+        }
+      }))
+
+      // Her iki listeyi birleştir
+      const allItems = [...(data || []), ...pendingItems]
+      
+      setInventoryItems(allItems)
+      setFilteredItems(allItems)
     } catch (error) {
       console.error('Zimmet kayıtları yüklenirken hata:', error)
       showToast('Bir hata oluştu', 'error')
@@ -381,21 +435,48 @@ export default function AllInventoryPage() {
                     {filteredItems.map((item) => (
                       <tr key={item.id} className="hover:bg-gray-50 transition-colors">
                         <td className="px-6 py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-10 h-10 bg-gray-100 rounded-full flex items-center justify-center">
-                              <User className="w-5 h-5 text-gray-600" />
-                            </div>
-                            <div>
-                              <p className="text-sm font-semibold text-gray-900">
-                                {item.user?.full_name || 'İsimsiz'}
-                              </p>
-                              <p className="text-xs text-gray-500">{item.user?.email}</p>
+                          <div className="space-y-2">
+                            {/* Zimmet Sahibi (Owner) */}
+                            {item.owner_name && (
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                                  <User className="w-4 h-4 text-blue-600" />
+                                </div>
+                                <div>
+                                  <p className="text-xs text-gray-500">Zimmet Sahibi</p>
+                                  <p className="text-sm font-semibold text-gray-900">
+                                    {item.owner_name}
+                                  </p>
+                                  <p className="text-xs text-gray-400">{item.owner_email}</p>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {/* Kullanıcı (User) */}
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                                <User className="w-4 h-4 text-gray-600" />
+                              </div>
+                              <div>
+                                {item.owner_name && (
+                                  <p className="text-xs text-gray-500">2. Zimmetli</p>
+                                )}
+                                <p className="text-sm font-semibold text-gray-900">
+                                  {item.user?.full_name || 'İsimsiz'}
+                                </p>
+                                <p className="text-xs text-gray-400">{item.user?.email}</p>
+                              </div>
                             </div>
                           </div>
                         </td>
                         <td className="px-6 py-4">
                           <div>
                             <p className="text-sm font-semibold text-gray-900">{item.item_name}</p>
+                            {item.serial_number && (
+                              <p className="text-xs text-gray-500 mt-0.5">
+                                S/N: {item.serial_number}
+                              </p>
+                            )}
                             {isConsumable(item) && (
                               <div className="flex items-center gap-1 mt-1">
                                 <Flame className="w-3 h-3 text-gray-500" />

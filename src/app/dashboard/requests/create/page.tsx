@@ -271,7 +271,7 @@ export default function CreatePurchaseRequestPage() {
               // TEK SİTE: Otomatik seç ve step 1'i atla
             const { data: siteData, error: siteError } = await supabase
               .from('sites')
-              .select('id, name')
+              .select('id, name, image_url')
                 .eq('id', userSiteIds[0])
               .single()
 
@@ -294,7 +294,7 @@ export default function CreatePurchaseRequestPage() {
               // ÇOKLU SİTE: Sadece kullanıcının sitelerini göster
               const { data: userSitesData, error: sitesError } = await supabase
             .from('sites')
-            .select('id, name')
+            .select('id, name, image_url')
                 .in('id', userSiteIds)
             .order('name')
 
@@ -303,44 +303,53 @@ export default function CreatePurchaseRequestPage() {
           } else {
                 setSites(userSitesData || [])
             
-            // Şantiye resimlerini storage'dan çek
+            // Şantiye resimlerini database'den veya storage'dan çek
                 if (userSitesData && userSitesData.length > 0) {
               const imageUrls = {}
-              
-              // Proje isimleri ve dosya adları eşleştirmesi
-              const imageMapping = {
-                'courtyard': 'courtyard.webp',
-                'la casalia': 'lacasalia.webp',
-                'la isla': 'laisla.webp',
-                'natulux': 'natulux.webp',
-                'querencia': 'querencia.webp',
-                'four seasons life 3': 'fourseosonlife3.webp',
-                'fourseasons': 'fourseosonlife3.webp',
-                'd-point': 'dpointhero.webp',
-                'dpoint': 'dpointhero.webp'
-              }
-              
+
                   for (const site of userSitesData) {
                 try {
-                  // Şantiye adını küçük harfe çevir ve eşleşme ara
-                  const siteName = site.name.toLowerCase()
-                  let imageFileName = null
-                  
-                  // Exact match veya partial match ara
-                  for (const [key, fileName] of Object.entries(imageMapping)) {
-                    if (siteName.includes(key) || key.includes(siteName)) {
-                      imageFileName = fileName
-                      break
+                  // Önce database'deki image_url'i kullan
+                  if (site.image_url) {
+                    imageUrls[site.name] = site.image_url
+                    console.log(`✅ ${site.name} görseli database'den alındı:`, site.image_url)
+                  } else {
+                    // Fallback: Storage'dan eşleştirme ile çek
+                    const imageMapping = {
+                      'courtyard': 'courtyardresort.webp',
+                      'courtyard resort': 'courtyardresort.webp',
+                      'genel merkez': 'merkez.jpeg',
+                      'merkez ofis': 'merkez.jpeg',
+                      'genel merkez ofisi': 'merkez.jpeg',
+                      'la casalia': 'lacasalia.webp',
+                      'la isla': 'laisla.webp',
+                      'natulux': 'natulux.webp',
+                      'querencia': 'querencia.webp',
+                      'four seasons life 3': 'fourseosonlife3.webp',
+                      'fourseasons': 'fourseosonlife3.webp',
+                      'd-point': 'dpointhero.webp',
+                      'dpoint': 'dpointhero.webp'
                     }
-                  }
-                  
-                  if (imageFileName) {
-                    const { data: imageData } = supabase.storage
-                      .from('satinalma')
-                      .getPublicUrl(imageFileName)
                     
-                    if (imageData.publicUrl) {
-                      imageUrls[site.name] = imageData.publicUrl
+                    const siteName = site.name.toLowerCase()
+                    let imageFileName = null
+
+                    for (const [key, fileName] of Object.entries(imageMapping)) {
+                      if (siteName.includes(key) || key.includes(siteName)) {
+                        imageFileName = fileName
+                        break
+                      }
+                    }
+
+                    if (imageFileName) {
+                      const { data: imageData } = supabase.storage
+                        .from('satinalma')
+                        .getPublicUrl(imageFileName)
+
+                      if (imageData.publicUrl) {
+                        imageUrls[site.name] = imageData.publicUrl
+                        console.log(`✅ ${site.name} görseli storage'dan alındı:`, imageData.publicUrl)
+                      }
                     }
                   }
                 } catch (error) {

@@ -169,7 +169,7 @@ export default function DashboardLayout({
       {/* Desktop Layout - Sidebar artık ada tasarımında, boşluklar ayarlandı */}
       <main className="min-h-screen transition-all duration-500 hidden lg:block lg:pl-[5.5rem]">
         <div className="h-full overflow-y-auto">
-          <div className="p-8">
+          <div className="px-10 py-10">
             {children}
           </div>
         </div>
@@ -178,7 +178,7 @@ export default function DashboardLayout({
       {/* Mobile Layout */}
       <main className="min-h-screen pt-[4.75rem] lg:hidden">
         <div className="min-h-[calc(100vh-4.75rem)]">
-          <div className="p-4 sm:p-6">
+          <div className="px-4 py-6 sm:px-6">
             {children}
           </div>
         </div>

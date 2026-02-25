@@ -5,7 +5,6 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Card, CardContent } from '@/components/ui/card'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
@@ -24,10 +23,62 @@ function LoginContent() {
   // URL parametrelerini kontrol et
   useEffect(() => {
     const urlError = searchParams.get('error')
+    console.log('🔍 URL error parameter:', urlError)
+    
     if (urlError === 'access_denied') {
       setError('Bu hesap dashboard\'a erişim yetkisine sahip değil. Lütfen sistem yöneticisine başvurun.')
+    } else if (urlError === 'no_session') {
+      setError('Microsoft girişi başarısız oldu. Lütfen tekrar deneyin.')
+    } else if (urlError === 'session_error') {
+      setError('Oturum hatası. Lütfen tekrar giriş yapın.')
+    } else if (urlError === 'profile_error') {
+      setError('Profil bilgileri alınamadı. Lütfen sistem yöneticisine başvurun.')
+    } else if (urlError === 'callback_failed') {
+      setError('Giriş işlemi tamamlanamadı. Lütfen tekrar deneyin.')
+    } else if (urlError === 'profile_creation_failed') {
+      setError('Profil oluşturulamadı. Lütfen sistem yöneticisine başvurun.')
+    } else if (urlError === 'unauthorized_domain') {
+      setError('Bu email adresi ile giriş yapılamaz. Sadece @dovecgroup.com email adresleri kullanılabilir.')
+    } else if (urlError) {
+      setError(`Giriş hatası: ${urlError}`)
     }
   }, [searchParams])
+
+  const handleMicrosoftLogin = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      console.log('🔐 Microsoft login başlatılıyor...')
+      console.log('🌐 Current origin:', window.location.origin)
+      
+      // Redirect URL'i açıkça belirt
+      const redirectUrl = `${window.location.origin}/auth/callback`
+      console.log('🔗 Redirect URL:', redirectUrl)
+      
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          scopes: 'email openid profile',
+          redirectTo: redirectUrl,
+          queryParams: {
+            prompt: 'select_account' // Her seferinde hesap seçimi iste
+          }
+        }
+      })
+
+      if (error) {
+        console.error('❌ Microsoft login error:', error)
+        setError('Microsoft ile giriş yapılırken hata oluştu: ' + error.message)
+        setLoading(false)
+      }
+      // OAuth redirect olacak, loading state devam eder
+    } catch (err) {
+      console.error('🔥 Microsoft login error:', err)
+      setError('Microsoft ile giriş yapılırken bir hata oluştu')
+      setLoading(false)
+    }
+  }
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -111,33 +162,40 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex items-center justify-center py-12 px-4">
-      <div className="max-w-lg w-full space-y-8">
-        {/* Logo */}
-        <div className="text-center">
-          <img 
-            src="/d.png" 
-            alt="Logo" 
-            className="mx-auto w-24 h-24 object-contain filter brightness-0 mb-4"
-          />
-          <h1 className="text-3xl font-bold text-black">Giriş Yap</h1>
-          <p className="text-gray-600 mt-2">
-            Email ve şifrenizi girerek sisteme giriş yapın
-          </p>
-        </div>
-        
-        <Card className="border border-gray-200 rounded-3xl shadow-sm">
-          <CardContent className="p-8">
-            <form onSubmit={handleLogin} className="space-y-6">
+    <div className="min-h-screen relative grid lg:grid-cols-2 gap-0">
+      {/* Mobil Arka Plan Görseli */}
+      <div className="fixed inset-0 lg:hidden">
+        <img 
+          src="/dovec.webp" 
+          alt="Background" 
+          className="w-full h-full object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70"></div>
+      </div>
+
+      {/* Sol Taraf - Giriş Formu */}
+      <div className="relative z-10 flex items-center justify-center px-8 sm:px-12 lg:px-16 xl:px-24 py-12 lg:bg-white">
+        <div className="w-full max-w-md space-y-8">
+          {/* Başlık */}
+          <div className="text-center">
+            <h1 className="text-4xl font-bold text-white lg:text-gray-900 tracking-tight">Hoş Geldiniz</h1>
+            <p className="text-gray-200 lg:text-gray-600 mt-3 text-lg">
+              Devam etmek için giriş yapın
+            </p>
+          </div>
+          
+          {/* Form - Border'sız, sade */}
+          <div className="space-y-6">
+            <form onSubmit={handleLogin} className="space-y-5">
               {error && (
-                <Alert variant="destructive" className="rounded-2xl">
-                  <AlertDescription>{error}</AlertDescription>
+                <Alert variant="destructive" className="border-0 bg-red-50 lg:bg-red-50 bg-red-900/90 backdrop-blur-sm">
+                  <AlertDescription className="text-sm text-white lg:text-red-900">{error}</AlertDescription>
                 </Alert>
               )}
               
               {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-900">
+                <Label htmlFor="email" className="text-sm font-medium text-white lg:text-gray-700">
                   Email
                 </Label>
                 <Input
@@ -145,8 +203,8 @@ function LoginContent() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ornek@email.com"
-                  className="h-12 rounded-2xl border-gray-300 focus:border-black focus:ring-black"
+                  placeholder="ornek@dovecgroup.com"
+                  className="h-12 border border-white/30 lg:border-gray-200 bg-white/95 lg:bg-white backdrop-blur-sm shadow-sm focus:ring-2 focus:ring-white lg:focus:ring-gray-900 rounded-xl"
                   required
                   disabled={loading}
                 />
@@ -154,7 +212,7 @@ function LoginContent() {
               
               {/* Şifre */}
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-900">
+                <Label htmlFor="password" className="text-sm font-medium text-white lg:text-gray-700">
                   Şifre
                 </Label>
                 <Input
@@ -162,7 +220,7 @@ function LoginContent() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 rounded-2xl border-gray-300 focus:border-black focus:ring-black"
+                  className="h-12 border border-white/30 lg:border-gray-200 bg-white/95 lg:bg-white backdrop-blur-sm shadow-sm focus:ring-2 focus:ring-white lg:focus:ring-gray-900 rounded-xl"
                   required
                   disabled={loading}
                 />
@@ -171,7 +229,7 @@ function LoginContent() {
               {/* Submit Button */}
               <Button 
                 type="submit" 
-                className="w-full h-12 text-base text-white font-semibold bg-black hover:bg-black/90 rounded-2xl" 
+                className="w-full h-12 text-base font-semibold bg-white lg:bg-black hover:bg-white/90 lg:hover:bg-gray-800 text-gray-900 lg:text-white border border-gray-900 lg:border-0 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200" 
                 disabled={loading}
               >
                 {loading ? (
@@ -185,20 +243,57 @@ function LoginContent() {
               </Button>
             </form>
             
+            {/* Divider */}
+            <div className="relative my-8">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/30 lg:border-gray-300"></div>
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 bg-transparent lg:bg-white text-white/80 lg:text-gray-500">veya</span>
+              </div>
+            </div>
+            
+            {/* Microsoft Login Button */}
+            <Button
+              type="button"
+              onClick={handleMicrosoftLogin}
+              className="w-full h-12 text-base font-semibold bg-white/95 lg:bg-white hover:bg-white lg:hover:bg-gray-50 text-gray-900 border border-white/30 lg:border-gray-200 shadow-sm hover:shadow-md rounded-xl flex items-center justify-center gap-3 transition-all duration-200 backdrop-blur-sm"
+              disabled={loading}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M0 0h10.93v10.93H0V0z" fill="#F25022"/>
+                <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00"/>
+                <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF"/>
+                <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900"/>
+              </svg>
+              Microsoft ile Giriş Yap
+            </Button>
+            
             {/* Signup Link */}
-            <div className="mt-8 text-center">
-              <p className="text-sm text-gray-600">
+            <div className="pt-6 text-center">
+              <p className="text-sm text-white lg:text-gray-600">
                 Hesabınız yok mu?{' '}
                 <Link 
                   href="/auth/signup" 
-                  className="text-black hover:text-gray-700 font-semibold underline"
+                  className="text-white lg:text-gray-900 hover:text-white/80 lg:hover:text-gray-700 font-semibold underline"
                 >
                   Kayıt olun
                 </Link>
               </p>
             </div>
-          </CardContent>
-        </Card>
+          </div>
+        </div>
+      </div>
+
+      {/* Sağ Taraf - Görsel Alan (Ada gibi) */}
+      <div className="hidden lg:flex items-center justify-center p-8">
+        <div className="relative w-full h-full max-h-[calc(100vh-4rem)] rounded-3xl overflow-hidden">
+          <img 
+            src="/dovec.webp" 
+            alt="Dovec Group" 
+            className="w-full h-full object-cover"
+          />
+        </div>
       </div>
     </div>
   )

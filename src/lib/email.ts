@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import { sendEmailViaGraph } from './microsoft-email';
 
 // E-posta konfigürasyonu
 const createTransporter = () => {
@@ -64,12 +65,46 @@ export class EmailService {
     }
   }
 
-  // E-posta gönder
+  // E-posta gönder (Microsoft Graph API ile - 2FA destekler)
   async sendEmail(
     to: string | string[],
     template: EmailTemplate,
     attachments?: any[]
   ): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    // Önce Microsoft Graph API ile dene (2FA destekler)
+    const useGraphAPI = process.env.MICROSOFT_TENANT_ID && 
+                        process.env.MICROSOFT_CLIENT_ID && 
+                        process.env.MICROSOFT_CLIENT_SECRET &&
+                        process.env.MICROSOFT_SENDER_EMAIL;
+
+    if (useGraphAPI) {
+      console.log('📧 Microsoft Graph API kullanılıyor (2FA destekli)...');
+      try {
+        const result = await sendEmailViaGraph({
+          to,
+          subject: template.subject,
+          html: template.html,
+          text: template.text,
+          from: process.env.MICROSOFT_SENDER_EMAIL
+        });
+
+        if (result.success) {
+          console.log('✅ Email başarıyla gönderildi (Graph API)');
+          return {
+            success: true,
+            messageId: 'graph-api-' + Date.now()
+          };
+        } else {
+          console.warn('⚠️ Graph API hatası:', result.error);
+          console.warn('⚠️ Azure Portal\'da Mail.Send iznini ve admin consent\'i kontrol edin');
+        }
+      } catch (error) {
+        console.warn('⚠️ Graph API hatası, SMTP deneniyor...', error);
+      }
+    }
+
+    // Fallback: SMTP kullan (2FA varsa çalışmaz)
+    console.log('📧 SMTP kullanılıyor (2FA varsa çalışmayabilir)...');
     try {
       const mailOptions = {
         from: process.env.SMTP_FROM || '"Satın Alma Sistemi" <noreply@satinalma.com>',
@@ -82,7 +117,7 @@ export class EmailService {
 
       const info = await this.transporter.sendMail(mailOptions);
       
-      console.log('Email sent successfully:', info.messageId);
+      console.log('✅ Email sent successfully (SMTP):', info.messageId);
       
       // Development'te test URL'ini göster
       if (process.env.NODE_ENV !== 'production') {
@@ -94,7 +129,7 @@ export class EmailService {
         messageId: info.messageId
       };
     } catch (error) {
-      console.error('Email send failed:', error);
+      console.error('❌ Email send failed (SMTP):', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error'
@@ -122,6 +157,8 @@ Talep Numarası: ${requestNumber}
 Talep Başlığı: ${requestTitle}
 Talep Eden: ${requesterName}
 ${siteName ? `Şantiye: ${siteName}` : ''}
+
+Yeni bir talep oluşturuldu. Lütfen talebi inceleyin ve onaya gönderin.
 
 Talebi görüntülemek için: ${requestUrl}
 
@@ -160,10 +197,11 @@ Bu bildirim Satın Alma Yönetim Sistemi tarafından otomatik olarak gönderilmi
                 ${siteName ? `<p><strong>Şantiye:</strong> ${siteName}</p>` : ''}
             </div>
             
-            <p>Yeni bir satın alma talebi sisteme kaydedildi. Talebi incelemek ve gerekli işlemleri yapmak için aşağıdaki butona tıklayın.</p>
+            <p><strong>Yeni bir talep oluşturuldu!</strong></p>
+            <p>Lütfen talebi inceleyin ve onaya gönderin. Talebi incelemek ve gerekli işlemleri yapmak için aşağıdaki butona tıklayın.</p>
             
             <div style="text-align: center;">
-                <a href="${requestUrl}" class="button">Talebi Görüntüle</a>
+                <a href="${requestUrl}" class="button">Talebi İncele ve Onayla</a>
             </div>
             
             <p><small>Bu bağlantı çalışmıyorsa, şu adresi kopyalayın: ${requestUrl}</small></p>

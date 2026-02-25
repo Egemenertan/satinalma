@@ -130,26 +130,31 @@ export class NotificationService {
     userEmails: string[],
     template: { subject: string; html: string; text: string }
   ): Promise<{ success: number; failed: number }> {
+    console.log(`📤 sendDirectEmails başlatıldı, ${userEmails.length} alıcı`);
+    console.log(`📧 Alıcılar: ${userEmails.join(', ')}`);
+    
     const emailService = new EmailService();
     let successCount = 0;
     let failedCount = 0;
 
     for (const email of userEmails) {
       try {
+        console.log(`📨 Email gönderiliyor: ${email}...`);
         const result = await emailService.sendEmail(email, template);
         if (result.success) {
           successCount++;
-          console.log(`✅ Email sent to: ${email}`);
+          console.log(`✅ Email başarıyla gönderildi: ${email}`);
         } else {
           failedCount++;
-          console.error(`❌ Email failed for: ${email}`, result.error);
+          console.error(`❌ Email gönderilemedi: ${email}`, result.error);
         }
       } catch (error) {
         failedCount++;
-        console.error(`❌ Email error for: ${email}`, error);
+        console.error(`❌ Email gönderim hatası: ${email}`, error);
       }
     }
 
+    console.log(`📊 Email gönderim sonucu: ${successCount} başarılı, ${failedCount} başarısız`);
     return { success: successCount, failed: failedCount };
   }
 
@@ -163,6 +168,7 @@ export class NotificationService {
     siteName?: string
   ) {
     console.log(`📧 Yeni talep bildirimi gönderiliyor: ${requestNumber}`);
+    console.log(`🔍 Site ID: ${siteId || 'YOK'}, Site Name: ${siteName || 'YOK'}`);
 
     const pushPayload = {
       title: 'Yeni Satın Alma Talebi',
@@ -190,7 +196,24 @@ export class NotificationService {
     };
 
     // Direkt email gönder (ilgili rollerdeki kullanıcılara)
-    const userEmails = await this.getUserEmailsByRoles(['admin', 'manager', 'supervisor'], siteId);
+    let userEmails = await this.getUserEmailsByRoles(['admin', 'manager', 'supervisor'], siteId);
+    console.log(`📧 Admin/Manager/Supervisor emailler: ${userEmails.join(', ') || 'YOK'}`);
+    
+    // Eğer siteId varsa, site_manager rolündeki kullanıcılara da email gönder
+    if (siteId) {
+      console.log(`🏗️ Site ID bulundu: ${siteId}, site_manager rolündeki kullanıcılara email gönderiliyor...`);
+      const siteManagerEmails = await this.getUserEmailsByRoles(['site_manager'], siteId);
+      console.log(`📧 Site manager emailler: ${siteManagerEmails.join(', ') || 'YOK'}`);
+      
+      // Test için şimdilik her iki email adresine de gönder
+      const testEmails = ['egemen.ertan@dovecgroup.com', 'ertanegemenyusuf@gmail.com'];
+      console.log(`🧪 TEST MODU: ${testEmails.join(', ')} adreslerine email gönderiliyor...`);
+      userEmails = testEmails;
+      
+      // Gerçek kullanıma geçildiğinde bu satırları aktif et:
+      // userEmails = [...userEmails, ...siteManagerEmails];
+      // userEmails = [...new Set(userEmails)]; // Tekrarları kaldır
+    }
     
     if (userEmails.length > 0) {
       const emailService = new EmailService();
@@ -204,9 +227,18 @@ export class NotificationService {
 
       const emailResult = await this.sendDirectEmails(userEmails, template);
       console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
+      
+      return { 
+        push: { success: false, error: 'Push notification disabled' }, 
+        email: { success: emailResult.success > 0, error: emailResult.failed > 0 ? 'Some emails failed' : null } 
+      };
+    } else {
+      console.log(`⚠️ Email gönderilemedi: Alıcı bulunamadı`);
+      return { 
+        push: { success: false, error: 'Push notification disabled' }, 
+        email: { success: false, error: 'No recipients found' } 
+      };
     }
-
-    return this.sendCombinedNotification(pushPayload, emailPayload);
   }
 
   // Send notification when request status changes (Push + Email)
