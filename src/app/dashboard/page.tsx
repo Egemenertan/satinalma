@@ -50,16 +50,7 @@ interface RecentRequest {
 const fetchDashboardStats = async () => {
   const supabase = createClient()
   
-  // Kullanıcı rolünü ve site bilgisini çek
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
-  
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role, site_id')
-    .eq('id', user.id)
-    .single()
-  
+  // Middleware zaten auth kontrolü yaptı, gereksiz getUser() çağrısı yapmayalım
   // RLS politikaları otomatik filtreleme yapacak, normal sorgular yeterli
   const [requestsResult, suppliersResult, sitesResult] = await Promise.all([
     supabase.from('purchase_requests').select('*'),
@@ -125,9 +116,7 @@ const fetchDashboardStats = async () => {
 const fetchDailyData = async () => {
   const supabase = createClient()
   
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
-  
+  // Middleware zaten auth kontrolü yaptı, gereksiz getUser() çağrısı yapmayalım
   const { data: requests } = await supabase.from('purchase_requests').select('*')
   
   if (!requests) return []
@@ -160,9 +149,7 @@ const fetchDailyData = async () => {
 const fetchRecentRequests = async () => {
   const supabase = createClient()
   
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
-
+  // Middleware zaten auth kontrolü yaptı, gereksiz getUser() çağrısı yapmayalım
   // Son talepleri çek - RLS politikaları otomatik filtreleme yapacak
   const { data: recentRequestsData } = await supabase
     .from('purchase_requests')

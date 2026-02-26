@@ -20,6 +20,23 @@ function LoginContent() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
+  // Zaten giriş yapmış kullanıcıyı redirect et
+  useEffect(() => {
+    const checkExistingSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession()
+        if (session) {
+          console.log('✅ Kullanıcı zaten giriş yapmış, dashboard\'a yönlendiriliyor...')
+          window.location.href = '/dashboard/requests'
+        }
+      } catch (error) {
+        console.error('Session kontrolü hatası:', error)
+      }
+    }
+    
+    checkExistingSession()
+  }, [supabase])
+
   // URL parametrelerini kontrol et
   useEffect(() => {
     const urlError = searchParams.get('error')
@@ -39,6 +56,12 @@ function LoginContent() {
       setError('Profil oluşturulamadı. Lütfen sistem yöneticisine başvurun.')
     } else if (urlError === 'unauthorized_domain') {
       setError('Bu email adresi ile giriş yapılamaz. Sadece @dovecgroup.com email adresleri kullanılabilir.')
+    } else if (urlError === 'code_exchange_failed') {
+      setError('Microsoft oturum doğrulaması başarısız oldu. Lütfen tekrar deneyin.')
+    } else if (urlError === 'profile_merge_failed') {
+      setError('Hesap birleştirme hatası. Lütfen sistem yöneticisine başvurun.')
+    } else if (urlError === 'role_update_failed') {
+      setError('Rol güncelleme hatası. Lütfen sistem yöneticisine başvurun.')
     } else if (urlError) {
       setError(`Giriş hatası: ${urlError}`)
     }

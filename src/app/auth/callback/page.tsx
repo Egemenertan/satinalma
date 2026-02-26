@@ -15,40 +15,59 @@ export default function AuthCallback() {
         console.log('🔐 OAuth callback işleniyor...')
         console.log('🌐 URL:', window.location.href)
 
-        // Önce hash'ten code'u kontrol et
-        const hashParams = new URLSearchParams(window.location.hash.substring(1))
-        const accessToken = hashParams.get('access_token')
-        const error = hashParams.get('error')
-        const errorDescription = hashParams.get('error_description')
+        // URL parametrelerinden code veya error kontrolü
+        const params = new URLSearchParams(window.location.search)
+        const code = params.get('code')
+        const error = params.get('error')
+        const errorDescription = params.get('error_description')
 
-        console.log('🔍 Hash params:', { accessToken: !!accessToken, error, errorDescription })
+        console.log('🔍 URL params:', { hasCode: !!code, error, errorDescription })
 
         if (error) {
           console.error('❌ OAuth error:', error, errorDescription)
-          router.push(`/auth/login?error=${error}`)
+          window.location.href = `/auth/login?error=${error}`
           return
         }
 
-        // URL'den session bilgisini al
+        // Eğer code varsa, session'a exchange et
+        if (code) {
+          console.log('🔄 Code exchange ediliyor...')
+          const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          
+          if (exchangeError) {
+            console.error('❌ Code exchange error:', exchangeError)
+            window.location.href = '/auth/login?error=code_exchange_failed'
+            return
+          }
+          
+          console.log('✅ Code exchange başarılı, session oluşturuldu')
+          
+          // Cookie'lerin set edilmesi için kısa bir bekleme
+          await new Promise(resolve => setTimeout(resolve, 1000))
+        }
+
+        // Session bilgisini al
         const { data: { session }, error: sessionError } = await supabase.auth.getSession()
 
         console.log('🔍 Session check:', { hasSession: !!session, error: sessionError })
 
         if (sessionError) {
           console.error('❌ Session error:', sessionError)
-          router.push('/auth/login?error=session_error')
+          window.location.href = '/auth/login?error=session_error'
           return
         }
 
         if (!session) {
           console.log('⚠️  Session bulunamadı, login\'e yönlendiriliyor')
-          router.push('/auth/login?error=no_session')
+          window.location.href = '/auth/login?error=no_session'
           return
         }
 
         console.log('✅ Session bulundu:', session.user.id)
         console.log('📧 User email:', session.user.email)
         console.log('👤 User metadata:', session.user.user_metadata)
+        console.log('🔑 Access token var mı?', !!session.access_token)
+        console.log('⏰ Token expiry:', new Date(session.expires_at! * 1000).toLocaleString())
 
         // GÜVENLİK: Sadece şirket email'lerine izin ver
         const email = session.user.email || ''
@@ -58,7 +77,7 @@ export default function AuthCallback() {
         if (!isAllowedDomain) {
           console.error('❌ Yetkisiz domain:', email)
           await supabase.auth.signOut() // Oturumu kapat
-          router.push('/auth/login?error=unauthorized_domain')
+          window.location.href = '/auth/login?error=unauthorized_domain'
           return
         }
         
@@ -134,7 +153,7 @@ export default function AuthCallback() {
             
             if (newProfileError) {
               console.error('❌ Profil birleştirme başarısız:', newProfileError)
-              router.push('/auth/login?error=profile_merge_failed')
+              window.location.href = '/auth/login?error=profile_merge_failed'
               return
             }
             
@@ -186,7 +205,7 @@ export default function AuthCallback() {
 
           if (insertError) {
             console.error('❌ Profil oluşturulamadı:', insertError)
-            router.push('/auth/login?error=profile_creation_failed')
+            window.location.href = '/auth/login?error=profile_creation_failed'
             return
           }
 
@@ -194,7 +213,7 @@ export default function AuthCallback() {
           
           // Eğer user rolü verilmişse (şirket dışı email) erişim reddet
           if (defaultRole === 'user') {
-            router.push('/auth/login?error=access_denied')
+            window.location.href = '/auth/login?error=access_denied'
             return
           }
           
@@ -206,7 +225,7 @@ export default function AuthCallback() {
 
         if (profileError) {
           console.error('❌ Profile fetch error:', profileError)
-          router.push('/auth/login?error=profile_error')
+          window.location.href = '/auth/login?error=profile_error'
           return
         }
 
@@ -226,7 +245,7 @@ export default function AuthCallback() {
             
             if (updateError) {
               console.error('❌ Rol güncellenemedi:', updateError)
-              router.push('/auth/login?error=role_update_failed')
+              window.location.href = '/auth/login?error=role_update_failed'
               return
             }
             
@@ -236,7 +255,7 @@ export default function AuthCallback() {
             return
           } else {
             console.log('❌ User role detected (şirket dışı email), access denied')
-            router.push('/auth/login?error=access_denied')
+            window.location.href = '/auth/login?error=access_denied'
             return
           }
         }
@@ -254,7 +273,7 @@ export default function AuthCallback() {
 
       } catch (error) {
         console.error('🔥 Callback error:', error)
-        router.push('/auth/login?error=callback_failed')
+        window.location.href = '/auth/login?error=callback_failed'
       }
     }
 

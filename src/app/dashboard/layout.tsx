@@ -29,32 +29,46 @@ export default function DashboardLayout({
 
   // Kullanıcı rolünü çek (sadece ilk yüklemede)
   useEffect(() => {
+    let mounted = true
+    
     const checkInitialAuth = async () => {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        // Middleware zaten auth kontrolü yaptı, burada sadece session bilgisini alalım
+        // getUser() yerine getSession() kullanıyoruz - daha az API çağrısı
+        const { data: { session } } = await supabase.auth.getSession()
         
-        if (!user) {
-          // Middleware zaten redirect yapacak, burada sadece loading state'i koruyalım
+        if (!mounted) return
+        
+        if (!session) {
+          // Middleware zaten redirect yapacak
+          setIsLoading(false)
           return
         }
 
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', user.id)
+          .eq('id', session.user.id)
           .single()
+
+        if (!mounted) return
 
         const role = (profile?.role as UserRole) || 'user'
         setUserRole(role)
         setIsLoading(false)
       } catch (error) {
         console.error('Auth kontrolü hatası:', error)
-        // Hata durumunda middleware zaten redirect yapacak
-        setIsLoading(false)
+        if (mounted) {
+          setIsLoading(false)
+        }
       }
     }
 
     checkInitialAuth()
+    
+    return () => {
+      mounted = false
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []) // Sadece component mount'ta çalışır
 

@@ -18,10 +18,8 @@ export async function middleware(request: NextRequest) {
   }
 
   // Response objesini oluştur
-  let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+  let supabaseResponse = NextResponse.next({
+    request,
   })
 
   // Supabase client'ı cookie yönetimiyle oluştur
@@ -30,23 +28,12 @@ export async function middleware(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options: any) {
-          // Response cookie'lerini ayarla
-          response.cookies.set({
-            name,
-            value,
-            ...options,
-          })
-        },
-        remove(name: string, options: any) {
-          // Response cookie'lerini kaldır
-          response.cookies.set({
-            name,
-            value: '',
-            ...options,
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options)
           })
         },
       },
@@ -63,19 +50,26 @@ export async function middleware(request: NextRequest) {
     // Session kontrolü - sadece protected route'larda user bilgisini al
     const { data: { user }, error } = await supabase.auth.getUser()
     
+    // Debug: Cookie'leri logla
+    const authCookies = request.cookies.getAll().filter(c => c.name.includes('auth'))
+    console.log('🍪 Auth cookies:', authCookies.map(c => c.name))
+    console.log('👤 User check:', { hasUser: !!user, error: error?.message })
+    
     if (!user || error) {
+      console.log('❌ Auth failed, redirecting to login from:', pathname)
       // Redirect to login if accessing protected route without auth
       const redirectUrl = new URL('/auth/login', request.url)
       redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
       return NextResponse.redirect(redirectUrl)
     }
+    
+    console.log('✅ Auth successful for user:', user.id)
   }
-
 
   // Role-based access control kaldırıldı - Dashboard layout'ta kontrol ediliyor
   // Sadece auth kontrolü yeterli, performans için role sorgusu yapılmıyor
   
-  return response
+  return supabaseResponse
 }
 
 export const config = {
