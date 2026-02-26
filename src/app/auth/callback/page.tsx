@@ -21,7 +21,7 @@ export default function AuthCallback() {
         const error = params.get('error')
         const errorDescription = params.get('error_description')
 
-        console.log('🔍 URL params:', { hasCode: !!code, error, errorDescription })
+        console.log('🔍 URL params:', { code, hasCode: !!code, error, errorDescription })
 
         if (error) {
           console.error('❌ OAuth error:', error, errorDescription)
@@ -31,8 +31,14 @@ export default function AuthCallback() {
 
         // Eğer code varsa, session'a exchange et
         if (code) {
-          console.log('🔄 Code exchange ediliyor...')
+          console.log('🔄 Code exchange ediliyor... Code:', code)
           const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          
+          console.log('📦 Exchange response:', { 
+            hasSession: !!data?.session,
+            hasUser: !!data?.user,
+            error: exchangeError
+          })
           
           if (exchangeError) {
             console.error('❌ Code exchange error:', exchangeError)
@@ -44,6 +50,8 @@ export default function AuthCallback() {
           
           // Cookie'lerin set edilmesi için kısa bir bekleme
           await new Promise(resolve => setTimeout(resolve, 1000))
+        } else {
+          console.log('⚠️ URL\'de code parametresi bulunamadı!')
         }
 
         // Session bilgisini al
