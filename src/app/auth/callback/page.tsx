@@ -143,12 +143,12 @@ export default function AuthCallback() {
             
             console.log('✅ Hesap başarıyla birleştirildi! Mevcut rol korundu:', existingProfile.role)
             
-            // Dashboard'a yönlendir
+            // Dashboard'a yönlendir - window.location.href kullanarak hard refresh
             if (existingProfile.role === 'site_manager' || existingProfile.role === 'site_personnel' || 
                 existingProfile.role === 'santiye_depo' || existingProfile.role === 'santiye_depo_yonetici') {
-              router.push('/dashboard/requests')
+              window.location.href = '/dashboard/requests'
             } else {
-              router.push('/dashboard')
+              window.location.href = '/dashboard'
             }
             return
           }
@@ -198,9 +198,9 @@ export default function AuthCallback() {
             return
           }
           
-          // Şirket email'i ise direkt dashboard'a yönlendir
+          // Şirket email'i ise direkt dashboard'a yönlendir - window.location.href kullanarak hard refresh
           console.log('🚀 Şirket kullanıcısı, dashboard\'a yönlendiriliyor...')
-          router.push('/dashboard/requests')
+          window.location.href = '/dashboard/requests'
           return
         }
 
@@ -231,8 +231,8 @@ export default function AuthCallback() {
             }
             
             console.log('✅ Rol güncellendi: site_personnel')
-            // Requests sayfasına yönlendir
-            router.push('/dashboard/requests')
+            // Requests sayfasına yönlendir - window.location.href kullanarak hard refresh
+            window.location.href = '/dashboard/requests'
             return
           } else {
             console.log('❌ User role detected (şirket dışı email), access denied')
@@ -243,12 +243,13 @@ export default function AuthCallback() {
 
         console.log('🚀 Redirecting to dashboard...')
         
-        // Rol bazlı yönlendirme
+        // Rol bazlı yönlendirme - window.location.href kullanarak hard refresh
+        // Bu, cookie'lerin sunucu tarafında güncellenmesini sağlar
         if (profile?.role === 'site_manager' || profile?.role === 'site_personnel' || 
             profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_yonetici') {
-          router.push('/dashboard/requests')
+          window.location.href = '/dashboard/requests'
         } else {
-          router.push('/dashboard')
+          window.location.href = '/dashboard'
         }
 
       } catch (error) {

@@ -34,7 +34,7 @@ export default function DashboardLayout({
         const { data: { user } } = await supabase.auth.getUser()
         
         if (!user) {
-          router.push('/auth/login')
+          // Middleware zaten redirect yapacak, burada sadece loading state'i koruyalım
           return
         }
 
@@ -49,7 +49,8 @@ export default function DashboardLayout({
         setIsLoading(false)
       } catch (error) {
         console.error('Auth kontrolü hatası:', error)
-        router.push('/auth/login')
+        // Hata durumunda middleware zaten redirect yapacak
+        setIsLoading(false)
       }
     }
 

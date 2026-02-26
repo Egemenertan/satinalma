@@ -17,12 +17,14 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
+  // Response objesini oluştur
   let response = NextResponse.next({
     request: {
       headers: request.headers,
     },
   })
 
+  // Supabase client'ı cookie yönetimiyle oluştur
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -32,6 +34,7 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
+          // Response cookie'lerini ayarla
           response.cookies.set({
             name,
             value,
@@ -39,6 +42,7 @@ export async function middleware(request: NextRequest) {
           })
         },
         remove(name: string, options: any) {
+          // Response cookie'lerini kaldır
           response.cookies.set({
             name,
             value: '',
