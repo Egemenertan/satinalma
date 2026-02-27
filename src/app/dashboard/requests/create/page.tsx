@@ -1033,7 +1033,8 @@ export default function CreatePurchaseRequestPage() {
 
       showToast(result.message || 'Talep başarıyla oluşturuldu!', 'success')
       
-      // Requests sayfasına yönlendir
+      // Requests sayfasına yönlendir (cache'i temizle)
+      router.refresh()
       router.push('/dashboard/requests')
       
     } catch (error) {

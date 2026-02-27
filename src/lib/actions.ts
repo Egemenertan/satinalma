@@ -28,6 +28,13 @@ async function getAuthenticatedUser() {
     throw new Error('Kullanıcı profili bulunamadı')
   }
 
+  console.log('👤 Authenticated user:', {
+    id: userData.id,
+    email: userData.email,
+    role: userData.role,
+    full_name: userData.full_name
+  })
+
   return userData
 }
 
@@ -122,16 +129,22 @@ Bu bildirim Satın Alma Yönetim Sistemi tarafından otomatik olarak gönderilmi
       `.trim()
     }
     
-    // Test email gönder
+    // Test email gönder (5 saniye timeout ile)
     try {
-      const result = await emailService.sendEmail(testEmail, template)
+      const sendEmailPromise = emailService.sendEmail(testEmail, template)
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Total email timeout (5s)')), 5000)
+      )
+      
+      const result = await Promise.race([sendEmailPromise, timeoutPromise]) as any
+      
       if (result.success) {
         console.log(`✅ Email başarıyla gönderildi: ${testEmail}`)
       } else {
         console.error(`❌ Email gönderilemedi: ${testEmail}`, result.error)
       }
     } catch (error) {
-      console.error(`❌ Email hatası: ${testEmail}`, error)
+      console.error(`❌ Email hatası (timeout veya hata): ${testEmail}`, error)
     }
     
   } catch (error) {
@@ -166,14 +179,25 @@ export async function createPurchaseRequest(data: {
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
     // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
-    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    console.log('🔍 Kullanıcı bilgileri:', { 
+      email: user.email, 
+      role: user.role,
+      id: user.id 
+    })
+    
     let initialStatus = 'pending'
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
+      console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo') {
+      console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
+    } else if (user.role === 'santiye_depo' || user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
+      console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
+    } else {
+      console.log('⚠️ Status: pending (default - rol:', user.role, ')')
     }
     
     // Purchase request data hazırla
@@ -203,23 +227,21 @@ export async function createPurchaseRequest(data: {
       .select()
       .single()
     
-    // Eğer status "satın almaya gönderildi" ise purchasing officer'lara email gönder
+    // Eğer status "satın almaya gönderildi" ise purchasing officer'lara email gönder (arka planda)
     console.log('🔍 Email kontrolü:', { initialStatus, hasPurchaseRequest: !!purchaseRequest })
     
     if (initialStatus === 'satın almaya gönderildi' && purchaseRequest) {
-      console.log('✅ Email gönderimi başlatılıyor...')
-      try {
-        await notifyPurchasingOfficers(
-          purchaseRequest.id,
-          purchaseRequest.request_number,
-          data.material,
-          user.full_name || user.email
-        )
-        console.log('✅ Email gönderimi tamamlandı')
-      } catch (error) {
-        console.error('❌ Email bildirimi gönderilemedi:', error)
-        // Email hatası talebi engellemez
-      }
+      console.log('✅ Email gönderimi arka planda başlatılıyor...')
+      // Email'i arka planda gönder (await kullanma - işlemi bloklamaz)
+      notifyPurchasingOfficers(
+        purchaseRequest.id,
+        purchaseRequest.request_number,
+        data.material,
+        user.full_name || user.email
+      ).catch(error => {
+        console.error('❌ Email bildirimi gönderilemedi (arka plan):', error)
+      })
+      console.log('✅ Email gönderimi arka plan task olarak eklendi')
     } else {
       console.log('⏭️  Email gönderilmedi - status:', initialStatus)
     }
@@ -256,6 +278,8 @@ export async function createPurchaseRequest(data: {
       historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
     } else if (user.role === 'santiye_depo') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
+    } else if (user.role === 'purchasing_officer') {
+      historyComment = 'Talep oluşturuldu (Satın Alma Sorumlusu - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
     
     const historyData = {
@@ -539,22 +563,33 @@ export async function createMultiMaterialPurchaseRequest(data: {
     
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
-    // Eğer santiye_depo kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
+    // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
     // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
     // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için site_personnel kullanıcıları "onay_bekliyor" statusu ile oluşturur
+    console.log('🔍 Kullanıcı bilgileri (Multi):', { 
+      email: user.email, 
+      role: user.role,
+      id: user.id 
+    })
+    
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
+      console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = 'satın almaya gönderildi'
-    } else if (user.role === 'santiye_depo') {
+      console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
+    } else if (user.role === 'santiye_depo' || user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
+      console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
       // Özel site için site_personnel kullanıcıları onay bekliyor statusu ile oluşturur
       initialStatus = 'onay_bekliyor'
-      console.log('🔐 Özel site için onay bekliyor statusu atandı:', { siteId: data.site_id, userRole: user.role })
+      console.log('✅ Status: onay_bekliyor (site_personnel - özel site)')
+    } else {
+      console.log('⚠️ Status: pending (default - rol:', user.role, ')')
     }
     
     // Purchase request data hazırla
@@ -630,6 +665,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (user.role === 'santiye_depo') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
+    } else if (user.role === 'purchasing_officer') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
     
     const historyData = {
@@ -643,20 +680,19 @@ export async function createMultiMaterialPurchaseRequest(data: {
       .from('approval_history')
       .insert(historyData)
 
-    // Push notification + E-posta gönder
-    try {
-      await NotificationService.notifyNewPurchaseRequest(
-        purchaseRequest.id,
-        title,
-        requestNumber,
-        user.full_name || user.email || 'Bilinmeyen Kullanıcı',
-        data.site_id || undefined,
-        data.site_name || undefined
-      )
-    } catch (notificationError) {
-      console.error('Failed to send notifications:', notificationError)
-      // Notification hatası talebin oluşturulmasını engellemez
-    }
+    // Push notification + E-posta gönder (arka planda)
+    console.log('📧 Bildirim gönderimi arka planda başlatılıyor...')
+    NotificationService.notifyNewPurchaseRequest(
+      purchaseRequest.id,
+      title,
+      requestNumber,
+      user.full_name || user.email || 'Bilinmeyen Kullanıcı',
+      data.site_id || undefined,
+      data.site_name || undefined
+    ).catch(notificationError => {
+      console.error('❌ Bildirim gönderilemedi (arka plan):', notificationError)
+    })
+    console.log('✅ Bildirim gönderimi arka plan task olarak eklendi')
 
     revalidatePath('/dashboard/requests')
     return { 

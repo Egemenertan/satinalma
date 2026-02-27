@@ -116,6 +116,29 @@ export default function OffersPage() {
     )
   }
 
+  // Purchasing officer için "depoda mevcut değil" statusundaki taleplere erişim kontrolü
+  if (!loading && request && userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil') {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+        <div className="text-center max-w-md mx-auto p-8">
+          <div className="w-20 h-20 bg-amber-100 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-amber-600" />
+          </div>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Onay Bekleniyor</h3>
+          <p className="text-gray-600 mb-6">
+            Bu talep henüz onaylanmamıştır. Öncelikle şantiye depo yöneticisi tarafından onaylanması gerekmektedir.
+          </p>
+          <Button 
+            onClick={() => router.push('/dashboard/requests')}
+            className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 py-3 font-medium"
+          >
+            Taleplere Dön
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
   if (!request && !loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">

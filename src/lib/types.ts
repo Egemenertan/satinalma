@@ -7,16 +7,7 @@ export type Json =
   | Json[]
 
 // Kullanıcı rolleri - güncel sistem
-export type UserRole = 
-  | 'user'
-  | 'manager'
-  | 'admin'
-  | 'site_personnel' // Şantiye personeli - sadece requests sayfasına erişim
-  | 'site_manager' // Şantiye yöneticisi - dashboard ve requests sayfalarına erişim
-  | 'warehouse_manager' // Depo yöneticisi - dashboard, requests, products, brands ve reports erişimi
-  | 'purchasing_officer' // Satın alma sorumlusu - site_manager ile aynı yetkiler
-  | 'santiye_depo' // Şantiye depo - tüm satın alma taleplerini görüntüleyebilir
-  | 'santiye_depo_yonetici' // Şantiye depo yöneticisi - santiye_depo + talep onaylama yetkisi
+export type UserRole = 'admin' | 'manager' | 'user' | 'site_personnel' | 'site_manager' | 'warehouse_manager' | 'purchasing_officer' | 'santiye_depo' | 'santiye_depo_yonetici'
 
 export interface Database {
   public: {

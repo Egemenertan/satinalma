@@ -2,9 +2,9 @@ import { UserRole } from './types'
 
 // Rol etiketleri ve açıklamaları
 export const roleLabels: Record<UserRole, string> = {
-  user: 'Kullanıcı',
-  manager: 'Yönetici', 
   admin: 'Admin',
+  manager: 'Yönetici', 
+  user: 'Kullanıcı',
   site_personnel: 'Şantiye Personeli',
   site_manager: 'Şantiye Yöneticisi',
   warehouse_manager: 'Depo Yöneticisi',
@@ -14,13 +14,13 @@ export const roleLabels: Record<UserRole, string> = {
 }
 
 export const roleDescriptions: Record<UserRole, string> = {
-  user: 'Temel kullanıcı yetkileri',
-  manager: 'Yönetici yetkileri ve onay süreçleri',
   admin: 'Sistem yönetimi ve kullanıcı kontrolü',
+  manager: 'Yönetici yetkileri ve onay süreçleri',
+  user: 'Temel kullanıcı yetkileri',
   site_personnel: 'Sadece talep görüntüleme yetkisi',
   site_manager: 'Talep yönetimi ve onay yetkisi',
   warehouse_manager: 'Dashboard, talep, ürün ve marka yönetimi yetkisi',
-  purchasing_officer: 'Dashboard ve talep yönetimi yetkisi',
+  purchasing_officer: 'Dashboard, talep ve sipariş yönetimi yetkisi',
   santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi',
   santiye_depo_yonetici: 'Depo işlemleri ve talep onaylama yetkisi (Şantiye Depo + Site Manager)'
 }
@@ -55,13 +55,26 @@ export const roleGroups = {
   basic_access: ['user'] as UserRole[], // Normal kullanıcı erişimi
   limited_access: ['site_personnel', 'santiye_depo'] as UserRole[], // Sadece requests sayfası
   site_management: ['site_manager', 'warehouse_manager', 'santiye_depo_yonetici'] as UserRole[], // Dashboard ve requests sayfaları + onay yetkisi
-  purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, suppliers, sites sayfaları
+  purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, orders ve reports sayfaları
 }
+
+// Admin kontrolü için helper
+const isAdmin = (role: string): boolean => role === 'admin'
 
 // Rol bazlı sayfa erişim kontrolleri
 export const canAccessPage = (userRole: UserRole, page: string): boolean => {
-  // Admin ve manager her yere erişebilir
-  if (roleGroups.full_access.includes(userRole)) {
+  // Admin özel kontrolleri
+  if (isAdmin(userRole)) {
+    return true // Admin her yere erişebilir (admin sayfası dahil)
+  }
+  
+  // Admin sayfası sadece admin rolüne özel
+  if (page === 'admin' || page === '/dashboard/admin' || page.startsWith('/dashboard/admin/')) {
+    return isAdmin(userRole)
+  }
+  
+  // Manager her yere erişebilir (admin sayfası hariç)
+  if (userRole === 'manager') {
     return true
   }
   
@@ -99,7 +112,8 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/reports'
   }
   
-  // Purchasing officer dashboard, requests, inventory, suppliers, sites, orders ve reports sayfalarına erişebilir
+  // Purchasing officer dashboard, requests, inventory, products, orders ve reports sayfalarına erişebilir
+  // NOT: suppliers ve sites sayfalarına erişemez
   if (userRole === 'purchasing_officer') {
     return page === 'dashboard' || 
            page === '/dashboard' ||
@@ -109,12 +123,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page.startsWith('/dashboard/requests/') ||
            page === 'inventory' ||
            page === '/dashboard/inventory' ||
-           page === 'suppliers' ||
-           page === '/dashboard/suppliers' ||
-           page.startsWith('/dashboard/suppliers/') ||
-           page === 'sites' ||
-           page === '/dashboard/sites' ||
-           page.startsWith('/dashboard/sites/') ||
+           page === 'products' ||
+           page === '/dashboard/products' ||
+           page.startsWith('/dashboard/products/') ||
            page === 'orders' ||
            page === '/dashboard/orders' ||
            page.startsWith('/dashboard/orders/') ||
@@ -132,13 +143,16 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
            page === '/dashboard/inventory'
   }
   
-  // Santiye depo sadece requests ve inventory sayfasına erişebilir
+  // Santiye depo sadece requests, inventory ve products sayfasına erişebilir
   if (userRole === 'santiye_depo') {
     return page === 'requests' || 
            page === '/dashboard/requests' || 
            page.startsWith('/dashboard/requests/') ||
            page === 'inventory' ||
-           page === '/dashboard/inventory'
+           page === '/dashboard/inventory' ||
+           page === 'products' ||
+           page === '/dashboard/products' ||
+           page.startsWith('/dashboard/products/')
   }
   
   // Santiye depo yöneticisi - site_manager ile aynı yetkilere sahip
@@ -171,7 +185,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'inventory', 'suppliers', 'sites', 'orders', 'reports'] // Dashboard, requests, zimmet, suppliers, sites, orders ve reports
+    return ['dashboard', 'requests', 'inventory', 'products', 'orders', 'reports'] // Dashboard, requests, zimmet, products, orders ve reports (suppliers ve sites erişimi yok)
   }
   
   if (userRole === 'site_personnel') {
@@ -179,7 +193,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
   
   if (userRole === 'santiye_depo') {
-    return ['requests', 'inventory'] // Requests ve zimmet menüsü
+    return ['requests', 'inventory', 'products'] // Requests, zimmet ve ürünler menüsü
   }
   
   if (userRole === 'santiye_depo_yonetici') {
@@ -191,6 +205,11 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
     return ['inventory'] // User rolü sadece zimmet sayfasına erişebilir
   }
   
-  // Admin ve manager tüm menülere erişebilir
+  // Admin tüm menülere erişebilir (admin menüsü dahil)
+  if (userRole === 'admin') {
+    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'admin', 'settings']
+  }
+  
+  // Manager tüm menülere erişebilir (admin menüsü hariç)
   return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
 }

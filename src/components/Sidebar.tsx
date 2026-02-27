@@ -134,6 +134,12 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       icon: Tag
     },
     {
+      id: 'admin',
+      title: 'Admin Paneli',
+      href: '/dashboard/admin',
+      icon: UserCog
+    },
+    {
       id: 'settings',
       title: 'Ayarlar',
       href: '/dashboard/settings',

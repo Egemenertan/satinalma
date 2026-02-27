@@ -10,8 +10,12 @@ import { Package, TrendingDown, DollarSign } from 'lucide-react'
 import { useProductStats } from '../hooks'
 import { Loading } from '@/components/ui/loading'
 
-export function ProductStatsCards() {
-  const { data: stats, isLoading } = useProductStats()
+interface ProductStatsCardsProps {
+  siteId?: string
+}
+
+export function ProductStatsCards({ siteId }: ProductStatsCardsProps) {
+  const { data: stats, isLoading } = useProductStats(siteId)
 
   if (isLoading) {
     return (

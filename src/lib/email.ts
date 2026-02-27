@@ -103,7 +103,7 @@ export class EmailService {
       }
     }
 
-    // Fallback: SMTP kullan (2FA varsa çalışmaz)
+    // Fallback: SMTP kullan (2FA varsa çalışmaz) - 3 saniye timeout ile
     console.log('📧 SMTP kullanılıyor (2FA varsa çalışmayabilir)...');
     try {
       const mailOptions = {
@@ -115,7 +115,13 @@ export class EmailService {
         attachments: attachments || []
       };
 
-      const info = await this.transporter.sendMail(mailOptions);
+      // SMTP gönderimi - 3 saniye timeout ile
+      const sendMailPromise = this.transporter.sendMail(mailOptions);
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('SMTP timeout (3s)')), 3000)
+      );
+      
+      const info = await Promise.race([sendMailPromise, timeoutPromise]) as any;
       
       console.log('✅ Email sent successfully (SMTP):', info.messageId);
       

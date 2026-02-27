@@ -45,13 +45,34 @@ const fetchPageData = async () => {
   // 4. Stats sorgusu - Veritabanında aggregate fonksiyonlarını kullan
   let statsQuery = supabase
     .from('purchase_requests')
-    .select('status, urgency_level, id', { count: 'exact' })
+    .select('status, urgency_level, id, site_id', { count: 'exact' })
   
   // Role bazlı filtreleme
   if (profile?.role === 'site_personnel') {
     statsQuery = statsQuery.eq('requested_by', user.id)
   } else if (profile?.role === 'purchasing_officer') {
-    statsQuery = statsQuery.in('status', ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı'])
+    // Purchasing officer:
+    // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
+    // 2. VEYA kendi oluşturduğu tüm talepler
+    const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
+    const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+    
+    if (userSiteIds.length > 0) {
+      // Kendi sitelerine ait belirli statuslardaki talepler VEYA kendi oluşturduğu talepler
+      statsQuery = statsQuery.or(
+        `and(site_id.in.(${userSiteIds.join(',')}),status.in.(${baseStatuses.join(',')})),` +
+        `requested_by.eq.${user.id}`
+      )
+    } else {
+      // Site ID'si yoksa sadece kendi oluşturduğu talepleri göster
+      statsQuery = statsQuery.eq('requested_by', user.id)
+    }
+  } else if (profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_yonetici') {
+    // Santiye depo kullanıcıları için sadece kendi sitelerine ait talepleri göster
+    const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+    if (userSiteIds.length > 0) {
+      statsQuery = statsQuery.in('site_id', userSiteIds)
+    }
   }
   
   const { data: requests, error, count } = await statsQuery

@@ -352,32 +352,79 @@ export async function deleteProductImage(imageUrl: string): Promise<void> {
 /**
  * Ürün istatistikleri getir
  */
-export async function fetchProductStats() {
+export async function fetchProductStats(siteId?: string) {
   const supabase = createClient()
 
+  // Site filtresine göre ürün ID'lerini al
+  let productIds: string[] | undefined = undefined
+  if (siteId) {
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .eq('warehouse_id', siteId)
+    
+    productIds = stockProducts?.map(s => s.product_id) || []
+    
+    // Site'da hiç ürün yoksa boş istatistik dön
+    if (productIds.length === 0) {
+      return {
+        totalProducts: 0,
+        lowStockCount: 0,
+        totalValue: 0,
+      }
+    }
+  }
+
   // Toplam ürün sayısı
-  const { count: totalProducts } = await supabase
+  let productCountQuery = supabase
     .from('products')
     .select('*', { count: 'exact', head: true })
     .eq('is_active', true)
+  
+  if (productIds) {
+    productCountQuery = productCountQuery.in('id', productIds)
+  }
+  
+  const { count: totalProducts } = await productCountQuery
 
   // Düşük stoklu ürünler
-  const { data: lowStockProducts } = await supabase
+  let lowStockQuery = supabase
     .from('warehouse_stock')
-    .select('product_id')
-    .lt('quantity', supabase.rpc('COALESCE', { column: 'min_stock_level', default: 10 }))
+    .select('product_id, quantity, min_stock_level')
+  
+  if (siteId) {
+    lowStockQuery = lowStockQuery.eq('warehouse_id', siteId)
+  }
+  
+  const { data: allStocks } = await lowStockQuery
+  const lowStockProducts = allStocks?.filter((stock: any) => {
+    const minLevel = stock.min_stock_level || 10
+    return stock.quantity < minLevel
+  }) || []
 
-  // Toplam stok değeri (basit hesaplama)
-  const { data: products } = await supabase
+  // Toplam stok değeri
+  let productsQuery = supabase
     .from('products')
-    .select('unit_price, warehouse_stock(quantity)')
+    .select('id, unit_price, warehouse_stock(quantity, warehouse_id)')
     .eq('is_active', true)
+  
+  if (productIds) {
+    productsQuery = productsQuery.in('id', productIds)
+  }
+  
+  const { data: products } = await productsQuery
 
   let totalValue = 0
   if (products) {
     products.forEach((product: any) => {
       const price = parseFloat(product.unit_price || 0)
-      const stocks = product.warehouse_stock || []
+      let stocks = product.warehouse_stock || []
+      
+      // Eğer siteId varsa sadece o site'nin stoklarını hesapla
+      if (siteId) {
+        stocks = stocks.filter((s: any) => s.warehouse_id === siteId)
+      }
+      
       const totalQuantity = stocks.reduce(
         (sum: number, stock: any) => sum + parseFloat(stock.quantity || 0),
         0

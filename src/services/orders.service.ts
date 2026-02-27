@@ -13,7 +13,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   const supabase = createClient()
   const { page, pageSize, searchTerm, statusFilter, siteFilter, dateRange } = filters
   
-  // Kullanıcı rolünü kontrol et
+  // Kullanıcı rolünü ve site bilgisini kontrol et
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
@@ -21,7 +21,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('role')
+    .select('role, site_id')
     .eq('id', user.id)
     .single()
 
@@ -30,6 +30,11 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   if (!allowedRoles.includes(profile?.role)) {
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
+
+  // Purchasing officer için site ID'lerini al
+  const userSiteIds = profile?.role === 'purchasing_officer' && profile?.site_id
+    ? (Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
+    : null
 
   // Arama - SQL bazlı, hızlı ve etkili
   let orderIdsFromSearch: string[] = []
@@ -60,17 +65,56 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
         let from = 0
         const fetchPageSize = 1000
         
+        // Purchasing officer için site filtresi - kendi sitelerine ait veya kendi oluşturduğu talepler
+        let allowedRequestIds: string[] | null = null
+        if (userSiteIds && userSiteIds.length > 0) {
+          const { data: allowedRequests } = await supabase
+            .from('purchase_requests')
+            .select('id')
+            .or(`site_id.in.(${userSiteIds.join(',')}),requested_by.eq.${user.id}`)
+          
+          if (allowedRequests && allowedRequests.length > 0) {
+            allowedRequestIds = allowedRequests.map(req => req.id)
+          } else {
+            allowedRequestIds = []
+          }
+        } else if (profile?.role === 'purchasing_officer') {
+          // Site ID'si yoksa sadece kendi oluşturduğu talepler
+          const { data: userRequests } = await supabase
+            .from('purchase_requests')
+            .select('id')
+            .eq('requested_by', user.id)
+          
+          if (userRequests && userRequests.length > 0) {
+            allowedRequestIds = userRequests.map(req => req.id)
+          } else {
+            allowedRequestIds = []
+          }
+        }
+        
         while (true) {
-          const { data: pageData, error: pageError } = await supabase
+          let pageQuery = supabase
             .from('orders')
             .select(`
               id,
               quantity,
+              purchase_request_id,
               suppliers!orders_supplier_id_fkey (name),
               purchase_requests!orders_purchase_request_id_fkey (title, request_number),
               purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
             `)
-            .range(from, from + fetchPageSize - 1)
+          
+          // Purchasing officer için site filtresi ekle
+          if (allowedRequestIds !== null) {
+            if (allowedRequestIds.length === 0) {
+              break // Hiç izinli request yok
+            }
+            pageQuery = pageQuery.in('purchase_request_id', allowedRequestIds)
+          }
+          
+          pageQuery = pageQuery.range(from, from + fetchPageSize - 1)
+          
+          const { data: pageData, error: pageError } = await pageQuery
           
           if (pageError) {
             console.error('❌ Fallback arama hatası:', pageError)
@@ -237,6 +281,44 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     }
     
     query = query.in('id', paginatedSearchIds)
+  }
+
+  // Purchasing officer için site filtresi - kendi sitelerine ait veya kendi oluşturduğu taleplere ait siparişleri göster
+  if (userSiteIds && userSiteIds.length > 0) {
+    // Önce bu sitelere ait veya kullanıcının oluşturduğu purchase_request ID'lerini bul
+    const { data: allowedRequests } = await supabase
+      .from('purchase_requests')
+      .select('id')
+      .or(`site_id.in.(${userSiteIds.join(',')}),requested_by.eq.${user.id}`)
+    
+    if (allowedRequests && allowedRequests.length > 0) {
+      const requestIds = allowedRequests.map(req => req.id)
+      query = query.in('purchase_request_id', requestIds)
+    } else {
+      // Kullanıcının sitelerinde hiç talep/sipariş yok ve kendi oluşturduğu talep de yok
+      return {
+        orders: [],
+        totalCount: 0,
+        totalPages: 0
+      }
+    }
+  } else if (profile?.role === 'purchasing_officer') {
+    // Site ID'si yoksa sadece kendi oluşturduğu taleplere ait siparişleri göster
+    const { data: userRequests } = await supabase
+      .from('purchase_requests')
+      .select('id')
+      .eq('requested_by', user.id)
+    
+    if (userRequests && userRequests.length > 0) {
+      const requestIds = userRequests.map(req => req.id)
+      query = query.in('purchase_request_id', requestIds)
+    } else {
+      return {
+        orders: [],
+        totalCount: 0,
+        totalPages: 0
+      }
+    }
   }
 
   // Durum filtresi

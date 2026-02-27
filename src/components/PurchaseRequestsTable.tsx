@@ -284,7 +284,20 @@ const fetchPurchaseRequests = async (
         .select('id')
       
       const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
-      tempQuery = tempQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
+      
+      const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+      
+      if (userSiteIds.length > 0) {
+        // Kendi sitelerine ait belirli statuslardaki talepler VEYA kendi oluşturduğu talepler
+        tempQuery = tempQuery.or(
+          `and(site_id.in.(${userSiteIds.join(',')}),status.in.(${baseStatuses.join(',')})),` +
+          `and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil)),` +
+          `requested_by.eq.${user.id}`
+        )
+      } else {
+        // Site ID'si yoksa sadece kendi oluşturduğu talepleri göster
+        tempQuery = tempQuery.eq('requested_by', user.id)
+      }
       
       const { data: allRequests } = await tempQuery
       
@@ -330,12 +343,24 @@ const fetchPurchaseRequests = async (
   
   // Rol bazlı filtreleme
   if (effectiveRole === 'purchasing_officer') {
-    // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için 'kısmen gönderildi' ve 'depoda mevcut değil' statusları da dahil
+    // Purchasing officer:
+    // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
+    // 2. VEYA kendi oluşturduğu tüm talepler
     const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
     
-    // Özel site için ek statuslar ekle
-    countQuery = countQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
+    const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+    
+    if (userSiteIds.length > 0) {
+      // Kendi sitelerine ait belirli statuslardaki talepler VEYA kendi oluşturduğu talepler
+      countQuery = countQuery.or(
+        `and(site_id.in.(${userSiteIds.join(',')}),status.in.(${baseStatuses.join(',')})),` +
+        `and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil)),` +
+        `requested_by.eq.${user.id}`
+      )
+    } else {
+      // Site ID'si yoksa sadece kendi oluşturduğu talepleri göster
+      countQuery = countQuery.eq('requested_by', user.id)
+    }
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     countQuery = countQuery.eq('requested_by', user.id)
@@ -422,12 +447,24 @@ const fetchPurchaseRequests = async (
   
   // Rol bazlı filtreleme (aynı mantık)
   if (effectiveRole === 'purchasing_officer') {
-    // Purchasing officer tüm sitelerin taleplerini görebilir ve sadece belirli statuslardakileri görür
-    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için 'kısmen gönderildi' ve 'depoda mevcut değil' statusları da dahil
+    // Purchasing officer:
+    // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
+    // 2. VEYA kendi oluşturduğu tüm talepler
     const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
     
-    // Özel site için ek statuslar ekle
-    requestsQuery = requestsQuery.or(`status.in.(${baseStatuses.join(',')}),and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil))`)
+    const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
+    
+    if (userSiteIds.length > 0) {
+      // Kendi sitelerine ait belirli statuslardaki talepler VEYA kendi oluşturduğu talepler
+      requestsQuery = requestsQuery.or(
+        `and(site_id.in.(${userSiteIds.join(',')}),status.in.(${baseStatuses.join(',')})),` +
+        `and(site_id.eq.${SPECIAL_SITE_ID},status.in.(kısmen gönderildi,depoda mevcut değil)),` +
+        `requested_by.eq.${user.id}`
+      )
+    } else {
+      // Site ID'si yoksa sadece kendi oluşturduğu talepleri göster
+      requestsQuery = requestsQuery.eq('requested_by', user.id)
+    }
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     requestsQuery = requestsQuery.eq('requested_by', user.id)
@@ -1136,8 +1173,9 @@ export default function PurchaseRequestsTable({
         )
       }
       
-      // kısmen gönderildi ve depoda yok -> "Beklemede"
-      if (status === 'kısmen gönderildi' || status === 'depoda mevcut değil' || status === 'depoda yok') {
+      // kısmen gönderildi -> "Beklemede"
+      // depoda mevcut değil -> gerçek status'u göster (artık mapping yok)
+      if (status === 'kısmen gönderildi') {
         return (
           <div className="flex flex-col gap-1">
             <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
@@ -1272,6 +1310,12 @@ export default function PurchaseRequestsTable({
   }
 
   const handleRequestClick = (request: PurchaseRequest) => {
+    // Purchasing officer için "depoda mevcut değil" statusundaki taleplere erişim engeli
+    if (userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil') {
+      showToast('Bu talep henüz onaylanmadı. Öncelikle yönetici tarafından onaylanması gerekmektedir.', 'info')
+      return
+    }
+    
     // Tüm status'lardaki taleplere gidilebilir (draft, cancelled, rejected hariç)
     // Reddedildi talepler de görüntülenebilir (reddedilme nedeni görmek için)
     if (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') {
@@ -2145,12 +2189,19 @@ export default function PurchaseRequestsTable({
                 </div>
               </div>
             ) : (
-              filteredRequests.map((request, index) => (
+              filteredRequests.map((request, index) => {
+                // Purchasing officer için "depoda mevcut değil" statusunda tıklanamaz
+                const isClickable = (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') &&
+                                   !(userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil')
+                
+                return (
                 <div 
                   key={request.id}
-                  className={`bg-white rounded-3xl border border-gray-200 p-4 hover:shadow-md transition-all duration-200 relative ${
-                    (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') 
-                      ? 'cursor-pointer hover:border-gray-300' 
+                  className={`bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 relative ${
+                    isClickable
+                      ? 'cursor-pointer hover:border-gray-300 hover:shadow-md' 
+                      : userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil'
+                      ? 'cursor-not-allowed opacity-75'
                       : 'cursor-default'
                   }`}
                   onClick={() => handleRequestClick(request)}
@@ -2538,7 +2589,7 @@ export default function PurchaseRequestsTable({
                     </div>
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>

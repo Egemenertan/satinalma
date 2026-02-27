@@ -44,10 +44,10 @@ export function useProduct(id: string | null) {
 /**
  * Ürün istatistikleri için hook
  */
-export function useProductStats() {
+export function useProductStats(siteId?: string) {
   return useQuery({
-    queryKey: ['product-stats'],
-    queryFn: fetchProductStats,
+    queryKey: ['product-stats', siteId],
+    queryFn: () => fetchProductStats(siteId),
     staleTime: 60000, // 1 dakika
   })
 }

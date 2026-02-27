@@ -46,7 +46,7 @@ export interface EmailMessage {
 }
 
 /**
- * Microsoft Graph API ile email gönderir
+ * Microsoft Graph API ile email gönderir (3 saniye timeout)
  */
 export async function sendEmailViaGraph(message: EmailMessage): Promise<{ success: boolean; error?: string }> {
   try {
@@ -83,10 +83,16 @@ export async function sendEmailViaGraph(message: EmailMessage): Promise<{ succes
 
     console.log(`📧 Email gönderiliyor (Graph API): ${recipients.join(', ')}`);
 
-    // Email gönder
-    await client
+    // Email gönder - 3 saniye timeout ile
+    const sendEmailPromise = client
       .api(`/users/${fromEmail}/sendMail`)
       .post(emailPayload);
+    
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error('Email timeout (3s)')), 3000)
+    );
+    
+    await Promise.race([sendEmailPromise, timeoutPromise]);
 
     console.log(`✅ Email başarıyla gönderildi (Graph API): ${recipients.join(', ')}`);
 
