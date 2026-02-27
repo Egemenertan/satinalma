@@ -32,7 +32,7 @@ export default function SignupPage() {
         password,
         options: {
           data: {
-            name,
+            full_name: name,
             role: 'user'
           }
         }
