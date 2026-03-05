@@ -12,7 +12,7 @@ import type { OrderData, OrdersResponse, OrderFilters } from '@/app/dashboard/or
 export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse> {
   const supabase = createClient()
   const { page, pageSize, searchTerm, statusFilter, siteFilter, dateRange } = filters
-  
+
   // Kullanıcı rolünü ve site bilgisini kontrol et
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
@@ -31,141 +31,159 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
 
-  // Arama - SQL bazlı, hızlı ve etkili
-  let orderIdsFromSearch: string[] = []
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 1: Arama filtresi → eşleşen order ID'leri (null = filtre yok)
+  // ─────────────────────────────────────────────────────────────
+  let searchMatchIds: Set<string> | null = null
 
   if (searchTerm && searchTerm.trim()) {
-    try {
-      const search = searchTerm.trim().toLowerCase()
-      const searchPattern = `%${search}%`
-      
-      console.log('🔍 Arama yapılıyor:', search)
-      
-      // SQL ile doğrudan arama - ÇOK DAHA HIZLI!
-      // Geçici olarak RPC'yi devre dışı bırak - fallback kullan
-      const searchError = { message: 'Using fallback search' }
-      let searchResults = null
-      
-      // const { data: searchResults, error: searchError } = await supabase.rpc(
-      //   'search_orders',
-      //   { search_term: search }
-      // )
-      
-      if (searchError) {
-        console.warn('⚠️ RPC arama hatası, fallback kullanılıyor:', searchError.message)
-        
-        // Fallback: Paginated sorgu ile TÜM orderları çek
-        // Supabase default 1000 satır limit'i olduğu için pagination gerekli
-        let fallbackResults: any[] = []
-        let from = 0
-        const fetchPageSize = 1000
-        
-        // Purchasing officer için site filtresi YOK - tüm siparişleri görebilir
-        
-        while (true) {
-          let pageQuery = supabase
-            .from('orders')
-            .select(`
-              id,
-              quantity,
-              purchase_request_id,
-              suppliers!orders_supplier_id_fkey (name),
-              purchase_requests!orders_purchase_request_id_fkey (title, request_number),
-              purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
-            `)
-            .range(from, from + fetchPageSize - 1)
-          
-          const { data: pageData, error: pageError } = await pageQuery
-          
-          if (pageError) {
-            console.error('❌ Fallback arama hatası:', pageError)
-            throw pageError
-          }
-          
-          if (!pageData || pageData.length === 0) break
-          
-          fallbackResults = fallbackResults.concat(pageData)
-          
-          // Son sayfa ise dur
-          if (pageData.length < fetchPageSize) break
-          
-          from += fetchPageSize
-        }
-        
-        console.log(`✅ Toplam ${fallbackResults.length} order çekildi (paginated)`)
-        
-        // Client-side filtreleme (fallback)
-        if (fallbackResults) {
-          // Türkçe karakterleri normalize et
-          const normalizeTurkish = (text: string): string => {
-            return text
-              .toLowerCase()
-              .replace(/ı/g, 'i')
-              .replace(/İ/g, 'i')
-              .replace(/ş/g, 's')
-              .replace(/Ş/g, 's')
-              .replace(/ğ/g, 'g')
-              .replace(/Ğ/g, 'g')
-              .replace(/ü/g, 'u')
-              .replace(/Ü/g, 'u')
-              .replace(/ö/g, 'o')
-              .replace(/Ö/g, 'o')
-              .replace(/ç/g, 'c')
-              .replace(/Ç/g, 'c')
-          }
-          
-          const normalizedSearch = normalizeTurkish(search)
-          const searchWords = normalizedSearch.split(/\s+/).filter(word => word.length > 0)
-          
-          orderIdsFromSearch = fallbackResults
-            .filter((order: any) => {
-              const searchableFields = [
-                order.suppliers?.name,
-                order.purchase_requests?.title,
-                order.purchase_requests?.request_number,
-                order.purchase_request_items?.item_name,
-                order.purchase_request_items?.brand,
-                order.purchase_request_items?.specifications,
-                order.quantity ? `${order.quantity}` : null,
-                order.purchase_request_items?.unit,
-                order.quantity && order.purchase_request_items?.unit 
-                  ? `${order.quantity} ${order.purchase_request_items.unit}`
-                  : null,
-              ]
-              
-              const combinedText = normalizeTurkish(
-                searchableFields
-                  .filter(field => field && typeof field === 'string')
-                  .join(' ')
-              )
-              
-              // Her kelime geçmeli
-              return searchWords.every(word => combinedText.includes(word))
-            })
-            .map((order: any) => order.id)
-        }
-      } else {
-        // RPC başarılı - sonuçları al
-        orderIdsFromSearch = (searchResults || []).map((r: any) => r.order_id)
+    const search = searchTerm.trim().toLowerCase()
+    console.log('🔍 Arama yapılıyor:', search)
+
+    // Türkçe karakterleri normalize et
+    const normalizeTurkish = (text: string): string =>
+      text
+        .toLowerCase()
+        .replace(/ı/g, 'i')
+        .replace(/İ/g, 'i')
+        .replace(/ş/g, 's')
+        .replace(/Ş/g, 's')
+        .replace(/ğ/g, 'g')
+        .replace(/Ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/Ü/g, 'u')
+        .replace(/ö/g, 'o')
+        .replace(/Ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .replace(/Ç/g, 'c')
+
+    const normalizedSearch = normalizeTurkish(search)
+    const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0)
+
+    // Tüm orderları paginated olarak çek (Supabase 1000 limit aşımını önlemek için)
+    let allOrders: any[] = []
+    let from = 0
+    const batchSize = 1000
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('orders')
+        .select(`
+          id,
+          quantity,
+          purchase_request_id,
+          suppliers!orders_supplier_id_fkey (name),
+          purchase_requests!orders_purchase_request_id_fkey (title, request_number),
+          purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
+        `)
+        .range(from, from + batchSize - 1)
+
+      if (error) {
+        console.error('❌ Arama batch hatası:', error)
+        throw error
       }
 
-      console.log('✅ Arama sonucu:', orderIdsFromSearch.length, 'sipariş bulundu')
-
-      // Hiçbir sonuç bulunamadıysa boş döndür
-      if (orderIdsFromSearch.length === 0) {
-        return {
-          orders: [],
-          totalCount: 0,
-          totalPages: 0
-        }
-      }
-    } catch (error) {
-      console.error('❌ Arama işlemi başarısız:', error)
-      throw error
+      if (!batch || batch.length === 0) break
+      allOrders = allOrders.concat(batch)
+      if (batch.length < batchSize) break
+      from += batchSize
     }
+
+    console.log(`✅ Toplam ${allOrders.length} order çekildi (arama için)`)
+
+    searchMatchIds = new Set(
+      allOrders
+        .filter((order: any) => {
+          const fields = [
+            order.suppliers?.name,
+            order.purchase_requests?.title,
+            order.purchase_requests?.request_number,
+            order.purchase_request_items?.item_name,
+            order.purchase_request_items?.brand,
+            order.purchase_request_items?.specifications,
+            order.quantity ? `${order.quantity}` : null,
+            order.purchase_request_items?.unit,
+            order.quantity && order.purchase_request_items?.unit
+              ? `${order.quantity} ${order.purchase_request_items.unit}`
+              : null,
+          ]
+          const combined = normalizeTurkish(
+            fields.filter(f => f && typeof f === 'string').join(' ')
+          )
+          return searchWords.every(word => combined.includes(word))
+        })
+        .map((o: any) => o.id)
+    )
+
+    console.log('✅ Arama sonucu:', searchMatchIds.size, 'sipariş eşleşti')
   }
 
-  // Query builder oluştur - İLİŞKİLİ VERİLERİ TEK SORGUDA ÇEK
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 2: Şantiye filtresi → eşleşen order ID'leri (null = filtre yok)
+  // ─────────────────────────────────────────────────────────────
+  let siteMatchIds: Set<string> | null = null
+
+  if (siteFilter && siteFilter.length > 0) {
+    console.log('🏗️ Şantiye filtresi uygulanıyor:', siteFilter)
+
+    // Tüm orderları paginated çek (site_name bilgisiyle)
+    let allSiteOrders: any[] = []
+    let from = 0
+    const batchSize = 1000
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('orders')
+        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name)')
+        .range(from, from + batchSize - 1)
+
+      if (error) {
+        console.error('❌ Şantiye batch hatası:', error)
+        throw error
+      }
+
+      if (!batch || batch.length === 0) break
+      allSiteOrders = allSiteOrders.concat(batch)
+      if (batch.length < batchSize) break
+      from += batchSize
+    }
+
+    siteMatchIds = new Set(
+      allSiteOrders
+        .filter((order: any) => {
+          const siteName = order.purchase_requests?.site_name
+          return siteName && siteFilter.includes(siteName)
+        })
+        .map((o: any) => o.id)
+    )
+
+    console.log('✅ Şantiye filtresi sonucu:', siteMatchIds.size, 'sipariş eşleşti')
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 3: Kesişim (intersection) - her iki filtre de aktifse
+  // ─────────────────────────────────────────────────────────────
+  let combinedIds: string[] | null = null
+
+  if (searchMatchIds !== null && siteMatchIds !== null) {
+    // Her iki filtre de aktif → kesişim al
+    combinedIds = [...searchMatchIds].filter(id => siteMatchIds!.has(id))
+    console.log(`🔀 Kesişim: ${combinedIds.length} sipariş (arama: ${searchMatchIds.size}, şantiye: ${siteMatchIds.size})`)
+  } else if (searchMatchIds !== null) {
+    combinedIds = [...searchMatchIds]
+  } else if (siteMatchIds !== null) {
+    combinedIds = [...siteMatchIds]
+  }
+  // combinedIds === null ise hiç ID filtresi yok, normal sayfalama yapılır
+
+  // Hiç sonuç yoksa erken dön
+  if (combinedIds !== null && combinedIds.length === 0) {
+    return { orders: [], totalCount: 0, totalPages: 0 }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 4: Ana sorguyu oluştur
+  // ─────────────────────────────────────────────────────────────
   let query = supabase
     .from('orders')
     .select(`
@@ -223,63 +241,73 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       )
     `, { count: 'exact' })
 
-  // Arama filtresi - pagination'dan ÖNCE uygulanmalı
-  if (orderIdsFromSearch.length > 0) {
-    // Arama sonuçlarını pagination için böl
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 5: ID filtresi uygula (tek .in() çağrısı)
+  // ─────────────────────────────────────────────────────────────
+  if (combinedIds !== null) {
+    // Pagination → sadece bu sayfanın ID'leri
+    const totalCount = combinedIds.length
+    const totalPages = Math.ceil(totalCount / pageSize)
     const from = (page - 1) * pageSize
-    const to = from + pageSize
-    const paginatedSearchIds = orderIdsFromSearch.slice(from, to)
-    
-    console.log(`📄 Sayfa ${page}: ${paginatedSearchIds.length} sipariş gösteriliyor (toplam ${orderIdsFromSearch.length} sonuç)`)
-    
-    if (paginatedSearchIds.length === 0) {
-      // Bu sayfada hiç sonuç yok
-      return {
-        orders: [],
-        totalCount: orderIdsFromSearch.length,
-        totalPages: Math.ceil(orderIdsFromSearch.length / pageSize)
+    const pageIds = combinedIds.slice(from, from + pageSize)
+
+    console.log(`📄 Sayfa ${page}: ${pageIds.length} sipariş (toplam ${totalCount})`)
+
+    if (pageIds.length === 0) {
+      return { orders: [], totalCount, totalPages }
+    }
+
+    query = query.in('id', pageIds)
+
+    // Durum filtresi
+    if (statusFilter !== 'all') {
+      query = query.eq('status', statusFilter)
+    }
+
+    // Tarih filtresi
+    if (dateRange.from || dateRange.to) {
+      if (dateRange.from && dateRange.to) {
+        const start = new Date(dateRange.from)
+        const end = new Date(dateRange.to)
+        start.setHours(0, 0, 0, 0)
+        end.setHours(23, 59, 59, 999)
+        query = query.gte('delivery_date', start.toISOString().split('T')[0])
+        query = query.lte('delivery_date', end.toISOString().split('T')[0])
+      } else if (dateRange.from) {
+        const start = new Date(dateRange.from)
+        start.setHours(0, 0, 0, 0)
+        query = query.gte('delivery_date', start.toISOString().split('T')[0])
+      } else if (dateRange.to) {
+        const end = new Date(dateRange.to)
+        end.setHours(23, 59, 59, 999)
+        query = query.lte('delivery_date', end.toISOString().split('T')[0])
       }
     }
-    
-    query = query.in('id', paginatedSearchIds)
+
+    query = query.order('created_at', { ascending: false })
+
+    console.log('🔍 Query çalıştırılıyor...')
+    const { data, error } = await query
+
+    if (error) {
+      console.error('❌ Sipariş verisi alınırken hata:', error)
+      throw new Error(`Sipariş verileri alınamadı: ${error.message}`)
+    }
+
+    console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
+
+    const ordersWithInvoices = (data || []).map((order: any) => formatOrder(order))
+
+    return { orders: ordersWithInvoices, totalCount, totalPages }
   }
 
-  // Purchasing officer için özel filtreleme YOK - tüm siparişleri görebilir
-  // Çünkü siparişleri oluşturan purchasing officer'dır
-  // Site bazlı filtreleme sadece site_manager ve santiye rolleri için geçerlidir
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 6: ID filtresi yok → normal sayfalama
+  // ─────────────────────────────────────────────────────────────
 
   // Durum filtresi
   if (statusFilter !== 'all') {
     query = query.eq('status', statusFilter)
-  }
-
-  // Şantiye filtresi
-  if (siteFilter && siteFilter.length > 0) {
-    // purchase_requests.site_name ile filtreleme yapamayız çünkü ilişkili tablo
-    // Önce site_name'leri olan order id'lerini bulalım
-    const { data: siteOrders } = await supabase
-      .from('orders')
-      .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name)')
-    
-    if (siteOrders) {
-      const filteredOrderIds = siteOrders
-        .filter((order: any) => {
-          const siteName = order.purchase_requests?.site_name
-          return siteName && siteFilter.includes(siteName)
-        })
-        .map((order: any) => order.id)
-      
-      if (filteredOrderIds.length > 0) {
-        query = query.in('id', filteredOrderIds)
-      } else {
-        // Seçilen şantiyelerde hiç sipariş yok
-        return {
-          orders: [],
-          totalCount: 0,
-          totalPages: 0
-        }
-      }
-    }
   }
 
   // Tarih filtresi
@@ -302,16 +330,12 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     }
   }
 
-  // Pagination - sadece arama YAPILMADIYSA uygula
-  if (orderIdsFromSearch.length === 0) {
-    const from = (page - 1) * pageSize
-    const to = from + pageSize - 1
-    query = query.range(from, to)
-    console.log(`📄 Normal pagination: ${from} - ${to}`)
-  } else {
-    console.log(`📄 Arama aktif, pagination zaten uygulandı`)
-  }
-  
+  // Pagination
+  const from = (page - 1) * pageSize
+  const to = from + pageSize - 1
+  query = query.range(from, to)
+  console.log(`📄 Normal pagination: ${from} - ${to}`)
+
   query = query.order('created_at', { ascending: false })
 
   console.log('🔍 Query çalıştırılıyor...')
@@ -327,44 +351,36 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     })
     throw new Error(`Sipariş verileri alınamadı: ${error.message}`)
   }
-  
+
   console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
 
-  // ✅ VERİLER ZATEN TEK SORGUDA GELDİ - Sadece formatla
-  const ordersWithInvoices = (data || []).map((order: any) => {
-    // Teslimat fotoğraflarını düzleştir
-    const deliveryPhotosArrays: string[][] = (order.order_deliveries || [])
-      .map((d: { delivery_photos?: string[] | null }) => d.delivery_photos || [])
-    const flattenedDeliveryPhotos: string[] = deliveryPhotosArrays.flat().filter(Boolean)
+  const ordersWithInvoices = (data || []).map((order: any) => formatOrder(order))
 
-    // En son teslimat tarihini al
-    const lastDeliveredAt = order.order_deliveries?.[0]?.delivered_at || order.delivered_at
-
-    return {
-      ...order,
-      suppliers: order.suppliers || null,
-      purchase_requests: order.purchase_requests || null,
-      purchase_request_items: order.purchase_request_items || null,
-      invoices: order.invoices || [],
-      delivery_image_urls: flattenedDeliveryPhotos,
-      delivered_at: lastDeliveredAt,
-      // order_deliveries field'ini kaldır (artık gerek yok)
-      order_deliveries: undefined
-    } as OrderData
-  })
-
-  // Arama yapıldıysa, toplam sayıyı arama sonuçlarından al
-  const totalCount = orderIdsFromSearch.length > 0 ? orderIdsFromSearch.length : (count || 0)
+  const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / pageSize)
 
   console.log(`📊 Toplam: ${totalCount} sipariş, ${totalPages} sayfa`)
 
-  return {
-    orders: ordersWithInvoices,
-    totalCount,
-    totalPages
-  }
+  return { orders: ordersWithInvoices, totalCount, totalPages }
 }
 
+/**
+ * Order verisini formatla (teslimat fotoğrafları vs.)
+ */
+function formatOrder(order: any): OrderData {
+  const deliveryPhotosArrays: string[][] = (order.order_deliveries || [])
+    .map((d: { delivery_photos?: string[] | null }) => d.delivery_photos || [])
+  const flattenedDeliveryPhotos: string[] = deliveryPhotosArrays.flat().filter(Boolean)
+  const lastDeliveredAt = order.order_deliveries?.[0]?.delivered_at || order.delivered_at
 
-
+  return {
+    ...order,
+    suppliers: order.suppliers || null,
+    purchase_requests: order.purchase_requests || null,
+    purchase_request_items: order.purchase_request_items || null,
+    invoices: order.invoices || [],
+    delivery_image_urls: flattenedDeliveryPhotos,
+    delivered_at: lastDeliveredAt,
+    order_deliveries: undefined
+  } as OrderData
+}
