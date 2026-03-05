@@ -13,7 +13,9 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   const supabase = createClient()
   const { page, pageSize, searchTerm, statusFilter, siteFilter, dateRange } = filters
 
-  // Kullanıcı rolünü ve site bilgisini kontrol et
+  // ─────────────────────────────────────────────────────────────
+  // Kullanıcı rolünü ve site yetkilerini al
+  // ─────────────────────────────────────────────────────────────
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
@@ -25,14 +27,80 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     .eq('id', user.id)
     .single()
 
-  // Sadece purchasing_officer, admin ve manager erişebilir
-  const allowedRoles = ['purchasing_officer', 'admin', 'manager']
+  // Sadece purchasing_officer ve manager erişebilir
+  const allowedRoles = ['purchasing_officer', 'manager']
   if (!allowedRoles.includes(profile?.role)) {
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
 
+  // Manager tüm siteleri görür; purchasing_officer yalnızca kendi sitelerini
+  const isManager = profile?.role === 'manager'
+  // site_id kolonu UUID[] (array) — manager'da null/boş olabilir
+  const userSiteIds: string[] = isManager ? [] : (profile?.site_id ?? [])
+
+  console.log(`👤 Rol: ${profile?.role} | Site ID'leri:`, isManager ? 'TÜMÜ' : userSiteIds)
+
+  // purchasing_officer hiç siteye atanmamışsa hiç sipariş gösterme
+  if (!isManager && userSiteIds.length === 0) {
+    console.warn('⚠️ Kullanıcıya hiç site atanmamış, boş liste döndürülüyor')
+    return { orders: [], totalCount: 0, totalPages: 0 }
+  }
+
   // ─────────────────────────────────────────────────────────────
-  // ADIM 1: Arama filtresi → eşleşen order ID'leri (null = filtre yok)
+  // Yardımcı: purchase_requests üzerinden izin verilen order ID setini
+  // oluştur. Manager → null (filtre yok), PO → site_id'ye göre filtreli.
+  // ─────────────────────────────────────────────────────────────
+  async function getAllowedOrderIds(): Promise<Set<string> | null> {
+    if (isManager) return null // null = kısıt yok
+
+    // Kullanıcının site_id'lerine ait purchase_request'leri bul,
+    // oradan da order id'lerini çek
+    let allowedOrderIds: string[] = []
+    let from = 0
+    const batchSize = 1000
+
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('orders')
+        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_id)')
+        .range(from, from + batchSize - 1)
+
+      if (error) {
+        console.error('❌ Site yetki batch hatası:', error)
+        throw error
+      }
+
+      if (!batch || batch.length === 0) break
+
+      const matchingIds = batch
+        .filter((order: any) => {
+          const siteid = order.purchase_requests?.site_id
+          return siteid && userSiteIds.includes(siteid)
+        })
+        .map((o: any) => o.id)
+
+      allowedOrderIds = allowedOrderIds.concat(matchingIds)
+
+      if (batch.length < batchSize) break
+      from += batchSize
+    }
+
+    console.log(`✅ Kullanıcının erişebildiği ${allowedOrderIds.length} order bulundu`)
+    return new Set(allowedOrderIds)
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 1: Site yetki filtresi (en temel kısıt)
+  // ─────────────────────────────────────────────────────────────
+  const allowedOrderSet = await getAllowedOrderIds()
+
+  // PO ise ama hiç order bulunamadıysa
+  if (!isManager && allowedOrderSet !== null && allowedOrderSet.size === 0) {
+    return { orders: [], totalCount: 0, totalPages: 0 }
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ADIM 2: Arama filtresi → eşleşen order ID'leri (null = filtre yok)
   // ─────────────────────────────────────────────────────────────
   let searchMatchIds: Set<string> | null = null
 
@@ -60,23 +128,25 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     const normalizedSearch = normalizeTurkish(search)
     const searchWords = normalizedSearch.split(/\s+/).filter(w => w.length > 0)
 
-    // Tüm orderları paginated olarak çek (Supabase 1000 limit aşımını önlemek için)
-    let allOrders: any[] = []
+    // Sadece yetkili orderlar içinde ara
     let from = 0
     const batchSize = 1000
+    let allOrders: any[] = []
 
     while (true) {
-      const { data: batch, error } = await supabase
+      let batchQuery = supabase
         .from('orders')
         .select(`
           id,
           quantity,
           purchase_request_id,
           suppliers!orders_supplier_id_fkey (name),
-          purchase_requests!orders_purchase_request_id_fkey (title, request_number),
+          purchase_requests!orders_purchase_request_id_fkey (title, request_number, site_id),
           purchase_request_items!fk_orders_material_item_id (item_name, brand, specifications, unit)
         `)
         .range(from, from + batchSize - 1)
+
+      const { data: batch, error } = await batchQuery
 
       if (error) {
         console.error('❌ Arama batch hatası:', error)
@@ -84,12 +154,21 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       }
 
       if (!batch || batch.length === 0) break
-      allOrders = allOrders.concat(batch)
+
+      // Yetki filtresi: PO ise sadece kendi sitelerine ait orderları tut
+      const filtered = !isManager
+        ? batch.filter((o: any) => {
+          const siteid = o.purchase_requests?.site_id
+          return siteid && userSiteIds.includes(siteid)
+        })
+        : batch
+
+      allOrders = allOrders.concat(filtered)
       if (batch.length < batchSize) break
       from += batchSize
     }
 
-    console.log(`✅ Toplam ${allOrders.length} order çekildi (arama için)`)
+    console.log(`✅ Arama için ${allOrders.length} order çekildi`)
 
     searchMatchIds = new Set(
       allOrders
@@ -119,14 +198,13 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   }
 
   // ─────────────────────────────────────────────────────────────
-  // ADIM 2: Şantiye filtresi → eşleşen order ID'leri (null = filtre yok)
+  // ADIM 3: Şantiye filtresi → eşleşen order ID'leri (null = filtre yok)
   // ─────────────────────────────────────────────────────────────
   let siteMatchIds: Set<string> | null = null
 
   if (siteFilter && siteFilter.length > 0) {
     console.log('🏗️ Şantiye filtresi uygulanıyor:', siteFilter)
 
-    // Tüm orderları paginated çek (site_name bilgisiyle)
     let allSiteOrders: any[] = []
     let from = 0
     const batchSize = 1000
@@ -134,7 +212,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     while (true) {
       const { data: batch, error } = await supabase
         .from('orders')
-        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name)')
+        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name, site_id)')
         .range(from, from + batchSize - 1)
 
       if (error) {
@@ -152,37 +230,47 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       allSiteOrders
         .filter((order: any) => {
           const siteName = order.purchase_requests?.site_name
-          return siteName && siteFilter.includes(siteName)
+          // Hem şantiye adı filtresine uysun hem de yetkili site olsun
+          const siteId = order.purchase_requests?.site_id
+          const isAllowed = isManager || (siteId && userSiteIds.includes(siteId))
+          return siteName && siteFilter.includes(siteName) && isAllowed
         })
         .map((o: any) => o.id)
     )
 
-    console.log('✅ Şantiye filtresi sonucu:', siteMatchIds.size, 'sipariş eşleşti')
+    console.log('✅ Şantiye filtresi:', siteMatchIds.size, 'sipariş')
   }
 
   // ─────────────────────────────────────────────────────────────
-  // ADIM 3: Kesişim (intersection) - her iki filtre de aktifse
+  // ADIM 4: Tüm filtrelerin kesişimi
   // ─────────────────────────────────────────────────────────────
+  // Başlangıç seti: site yetki seti (manager için null = sınırsız)
   let combinedIds: string[] | null = null
 
-  if (searchMatchIds !== null && siteMatchIds !== null) {
-    // Her iki filtre de aktif → kesişim al
-    combinedIds = [...searchMatchIds].filter(id => siteMatchIds!.has(id))
-    console.log(`🔀 Kesişim: ${combinedIds.length} sipariş (arama: ${searchMatchIds.size}, şantiye: ${siteMatchIds.size})`)
-  } else if (searchMatchIds !== null) {
-    combinedIds = [...searchMatchIds]
-  } else if (siteMatchIds !== null) {
-    combinedIds = [...siteMatchIds]
-  }
-  // combinedIds === null ise hiç ID filtresi yok, normal sayfalama yapılır
+  // Aktif olan tüm ID setlerini listele (null olanlar "filtre yok" anlamına gelir)
+  const activeSets: Set<string>[] = []
+  if (allowedOrderSet !== null) activeSets.push(allowedOrderSet)
+  if (searchMatchIds !== null) activeSets.push(searchMatchIds)
+  if (siteMatchIds !== null) activeSets.push(siteMatchIds)
 
-  // Hiç sonuç yoksa erken dön
+  if (activeSets.length > 0) {
+    // En küçük setten başlayarak kesişim al (performans için)
+    const sorted = [...activeSets].sort((a, b) => a.size - b.size)
+    let intersection = [...sorted[0]]
+    for (let i = 1; i < sorted.length; i++) {
+      intersection = intersection.filter(id => sorted[i].has(id))
+    }
+    combinedIds = intersection
+    console.log(`🔀 Kesişim sonucu: ${combinedIds.length} sipariş`)
+  }
+
+  // Hiç sonuç kalmadıysa erken dön
   if (combinedIds !== null && combinedIds.length === 0) {
     return { orders: [], totalCount: 0, totalPages: 0 }
   }
 
   // ─────────────────────────────────────────────────────────────
-  // ADIM 4: Ana sorguyu oluştur
+  // ADIM 5: Ana sorguyu oluştur
   // ─────────────────────────────────────────────────────────────
   let query = supabase
     .from('orders')
@@ -242,10 +330,9 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     `, { count: 'exact' })
 
   // ─────────────────────────────────────────────────────────────
-  // ADIM 5: ID filtresi uygula (tek .in() çağrısı)
+  // ADIM 6: ID filtresi + pagination uygula
   // ─────────────────────────────────────────────────────────────
   if (combinedIds !== null) {
-    // Pagination → sadece bu sayfanın ID'leri
     const totalCount = combinedIds.length
     const totalPages = Math.ceil(totalCount / pageSize)
     const from = (page - 1) * pageSize
@@ -265,28 +352,10 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     }
 
     // Tarih filtresi
-    if (dateRange.from || dateRange.to) {
-      if (dateRange.from && dateRange.to) {
-        const start = new Date(dateRange.from)
-        const end = new Date(dateRange.to)
-        start.setHours(0, 0, 0, 0)
-        end.setHours(23, 59, 59, 999)
-        query = query.gte('delivery_date', start.toISOString().split('T')[0])
-        query = query.lte('delivery_date', end.toISOString().split('T')[0])
-      } else if (dateRange.from) {
-        const start = new Date(dateRange.from)
-        start.setHours(0, 0, 0, 0)
-        query = query.gte('delivery_date', start.toISOString().split('T')[0])
-      } else if (dateRange.to) {
-        const end = new Date(dateRange.to)
-        end.setHours(23, 59, 59, 999)
-        query = query.lte('delivery_date', end.toISOString().split('T')[0])
-      }
-    }
+    query = buildDateQuery(query, dateRange)
 
     query = query.order('created_at', { ascending: false })
 
-    console.log('🔍 Query çalıştırılıyor...')
     const { data, error } = await query
 
     if (error) {
@@ -296,13 +365,15 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
     console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
 
-    const ordersWithInvoices = (data || []).map((order: any) => formatOrder(order))
-
-    return { orders: ordersWithInvoices, totalCount, totalPages }
+    return {
+      orders: (data || []).map(formatOrder),
+      totalCount,
+      totalPages
+    }
   }
 
   // ─────────────────────────────────────────────────────────────
-  // ADIM 6: ID filtresi yok → normal sayfalama
+  // ADIM 7: ID filtresi yok (manager, tüm filtreler boş) → normal sayfalama
   // ─────────────────────────────────────────────────────────────
 
   // Durum filtresi
@@ -311,24 +382,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   }
 
   // Tarih filtresi
-  if (dateRange.from || dateRange.to) {
-    if (dateRange.from && dateRange.to) {
-      const start = new Date(dateRange.from)
-      const end = new Date(dateRange.to)
-      start.setHours(0, 0, 0, 0)
-      end.setHours(23, 59, 59, 999)
-      query = query.gte('delivery_date', start.toISOString().split('T')[0])
-      query = query.lte('delivery_date', end.toISOString().split('T')[0])
-    } else if (dateRange.from) {
-      const start = new Date(dateRange.from)
-      start.setHours(0, 0, 0, 0)
-      query = query.gte('delivery_date', start.toISOString().split('T')[0])
-    } else if (dateRange.to) {
-      const end = new Date(dateRange.to)
-      end.setHours(23, 59, 59, 999)
-      query = query.lte('delivery_date', end.toISOString().split('T')[0])
-    }
-  }
+  query = buildDateQuery(query, dateRange)
 
   // Pagination
   const from = (page - 1) * pageSize
@@ -338,7 +392,6 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
   query = query.order('created_at', { ascending: false })
 
-  console.log('🔍 Query çalıştırılıyor...')
   const { data, error, count } = await query
 
   if (error) {
@@ -347,25 +400,53 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       details: error.details,
       hint: error.hint,
       code: error.code,
-      fullError: error
     })
     throw new Error(`Sipariş verileri alınamadı: ${error.message}`)
   }
 
   console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
 
-  const ordersWithInvoices = (data || []).map((order: any) => formatOrder(order))
-
   const totalCount = count || 0
   const totalPages = Math.ceil(totalCount / pageSize)
 
   console.log(`📊 Toplam: ${totalCount} sipariş, ${totalPages} sayfa`)
 
-  return { orders: ordersWithInvoices, totalCount, totalPages }
+  return {
+    orders: (data || []).map(formatOrder),
+    totalCount,
+    totalPages
+  }
 }
 
 /**
- * Order verisini formatla (teslimat fotoğrafları vs.)
+ * Tarih filtresini sorguya uygula
+ */
+function buildDateQuery(query: any, dateRange: { from?: Date | null, to?: Date | null }): any {
+  if (!dateRange.from && !dateRange.to) return query
+
+  if (dateRange.from && dateRange.to) {
+    const start = new Date(dateRange.from)
+    const end = new Date(dateRange.to)
+    start.setHours(0, 0, 0, 0)
+    end.setHours(23, 59, 59, 999)
+    query = query
+      .gte('delivery_date', start.toISOString().split('T')[0])
+      .lte('delivery_date', end.toISOString().split('T')[0])
+  } else if (dateRange.from) {
+    const start = new Date(dateRange.from)
+    start.setHours(0, 0, 0, 0)
+    query = query.gte('delivery_date', start.toISOString().split('T')[0])
+  } else if (dateRange.to) {
+    const end = new Date(dateRange.to)
+    end.setHours(23, 59, 59, 999)
+    query = query.lte('delivery_date', end.toISOString().split('T')[0])
+  }
+
+  return query
+}
+
+/**
+ * Order verisini formatla
  */
 function formatOrder(order: any): OrderData {
   const deliveryPhotosArrays: string[][] = (order.order_deliveries || [])
