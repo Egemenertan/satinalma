@@ -47,6 +47,11 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   }
 
   // ─────────────────────────────────────────────────────────────
+  // created_at haritası: id → created_at (client-side sıralama için)
+  // ─────────────────────────────────────────────────────────────
+  const createdAtMap = new Map<string, string>()
+
+  // ─────────────────────────────────────────────────────────────
   // Yardımcı: purchase_requests üzerinden izin verilen order ID setini
   // oluştur. Manager → null (filtre yok), PO → site_id'ye göre filtreli.
   // ─────────────────────────────────────────────────────────────
@@ -62,7 +67,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     while (true) {
       const { data: batch, error } = await supabase
         .from('orders')
-        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_id)')
+        .select('id, created_at, purchase_requests!orders_purchase_request_id_fkey(site_id)')
         .range(from, from + batchSize - 1)
 
       if (error) {
@@ -71,6 +76,10 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       }
 
       if (!batch || batch.length === 0) break
+
+      batch.forEach((o: any) => {
+        if (o.created_at) createdAtMap.set(o.id, o.created_at)
+      })
 
       const matchingIds = batch
         .filter((order: any) => {
@@ -138,6 +147,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
         .from('orders')
         .select(`
           id,
+          created_at,
           quantity,
           purchase_request_id,
           suppliers!orders_supplier_id_fkey (name),
@@ -154,6 +164,10 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       }
 
       if (!batch || batch.length === 0) break
+
+      batch.forEach((o: any) => {
+        if (o.created_at) createdAtMap.set(o.id, o.created_at)
+      })
 
       // Yetki filtresi: PO ise sadece kendi sitelerine ait orderları tut
       const filtered = !isManager
@@ -212,7 +226,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     while (true) {
       const { data: batch, error } = await supabase
         .from('orders')
-        .select('id, purchase_requests!orders_purchase_request_id_fkey(site_name, site_id)')
+        .select('id, created_at, purchase_requests!orders_purchase_request_id_fkey(site_name, site_id)')
         .range(from, from + batchSize - 1)
 
       if (error) {
@@ -221,6 +235,9 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
       }
 
       if (!batch || batch.length === 0) break
+      batch.forEach((o: any) => {
+        if (o.created_at) createdAtMap.set(o.id, o.created_at)
+      })
       allSiteOrders = allSiteOrders.concat(batch)
       if (batch.length < batchSize) break
       from += batchSize
@@ -333,10 +350,18 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   // ADIM 6: ID filtresi + pagination uygula
   // ─────────────────────────────────────────────────────────────
   if (combinedIds !== null) {
-    const totalCount = combinedIds.length
+    // createdAtMap'teki değerlere göre client-side created_at DESC sıralama
+    // (ekstra Supabase sorgusu yok → URL limit hatası yok)
+    const sortedIds = [...combinedIds].sort((a, b) => {
+      const dateA = createdAtMap.get(a) ?? ''
+      const dateB = createdAtMap.get(b) ?? ''
+      return dateB.localeCompare(dateA) // DESC: yeni → eski
+    })
+
+    const totalCount = sortedIds.length
     const totalPages = Math.ceil(totalCount / pageSize)
     const from = (page - 1) * pageSize
-    const pageIds = combinedIds.slice(from, from + pageSize)
+    const pageIds = sortedIds.slice(from, from + pageSize)
 
     console.log(`📄 Sayfa ${page}: ${pageIds.length} sipariş (toplam ${totalCount})`)
 
