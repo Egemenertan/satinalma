@@ -353,6 +353,14 @@ export default function MaterialCard({
                 <span className="text-xs sm:text-sm text-gray-600 break-words">{item.specifications}</span>
               </div>
             )}
+            
+            {/* Malzeme Açıklaması - Her zaman göster */}
+            <div className="mt-2 sm:mt-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-2xl sm:rounded-3xl">
+              <span className="text-[10px] sm:text-xs font-medium text-blue-700 block mb-1">Açıklama:</span>
+              <p className="text-xs sm:text-sm text-gray-800 break-words">
+                {item.description || 'Açıklama girilmemiş'}
+              </p>
+            </div>
           </div>
           
           {/* Düzenle ve Kaldır Butonları */}

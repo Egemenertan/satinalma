@@ -3,18 +3,21 @@ import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
 import { cookies } from 'next/headers';
 import webpush from 'web-push';
 
-// VAPID setup
+// VAPID setup - only if keys are available
 const vapidKeys = {
-  publicKey: process.env.NEXT_PUBLIC_VAPID_KEY!,
-  privateKey: process.env.VAPID_PRIVATE_KEY!,
+  publicKey: process.env.NEXT_PUBLIC_VAPID_KEY || '',
+  privateKey: process.env.VAPID_PRIVATE_KEY || '',
   subject: process.env.VAPID_EMAIL || 'mailto:test@example.com'
 };
 
-webpush.setVapidDetails(
-  vapidKeys.subject,
-  vapidKeys.publicKey,
-  vapidKeys.privateKey
-);
+// Only set VAPID details if keys are provided
+if (vapidKeys.publicKey && vapidKeys.privateKey) {
+  webpush.setVapidDetails(
+    vapidKeys.subject,
+    vapidKeys.publicKey,
+    vapidKeys.privateKey
+  );
+}
 
 interface NotificationPayload {
   title: string;
@@ -27,6 +30,14 @@ interface NotificationPayload {
 
 export async function POST(request: NextRequest) {
   try {
+    // Check if VAPID keys are configured
+    if (!vapidKeys.publicKey || !vapidKeys.privateKey) {
+      return NextResponse.json(
+        { error: 'Push notifications are not configured. Please set VAPID keys in environment variables.' },
+        { status: 503 }
+      );
+    }
+
     const supabase = createRouteHandlerClient({ cookies });
     
     // Get current user and verify admin/manager role

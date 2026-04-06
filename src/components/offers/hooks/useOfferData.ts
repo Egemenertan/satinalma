@@ -223,6 +223,8 @@ export function useOfferData(requestId: string) {
           created_at,
           material_item_id,
           quantity,
+          amount,
+          currency,
           returned_quantity,
           return_notes,
           reorder_requested,
@@ -265,6 +267,8 @@ export function useOfferData(requestId: string) {
             created_at: order.created_at,
             material_item_id: order.material_item_id,
             quantity: order.quantity || 0,
+            amount: order.amount || 0,
+            currency: order.currency || 'TRY',
             returned_quantity: order.returned_quantity || 0, // İade edilen miktar
             return_notes: order.return_notes || null, // İade nedeni
             reorder_requested: order.reorder_requested, // İade sırasında yeniden sipariş istenip istenmediği

@@ -214,6 +214,14 @@ export default function SitePersonnelView({
                             {item.specifications}
                           </div>
                         )}
+                        
+                        {/* Malzeme Açıklaması - Her zaman göster */}
+                        <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+                          <span className="text-xs font-medium text-blue-700 block mb-1">Açıklama:</span>
+                          <p className="text-xs sm:text-sm text-gray-800 break-words">
+                            {item.description || 'Açıklama girilmemiş'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                     

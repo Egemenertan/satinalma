@@ -393,6 +393,14 @@ export default function WarehouseManagerMaterialCard({
                 <p className="text-xs text-gray-600">{item.specifications}</p>
               </div>
             )}
+            
+            {/* Malzeme Açıklaması - Her zaman göster */}
+            <div className="mt-2 p-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-xs font-medium text-blue-700 block mb-1">Açıklama:</span>
+              <p className="text-xs text-gray-800">
+                {item.description || 'Açıklama girilmemiş'}
+              </p>
+            </div>
           </div>
 
           <Badge className={`${isShipped ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'} flex-shrink-0`}>

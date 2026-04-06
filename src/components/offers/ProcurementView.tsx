@@ -1531,11 +1531,12 @@ DOVEC GROUP
                                   <span className="text-sm text-gray-600">• {item.specifications}</span>
                                 )}
                               </div>
-                              {item.description && (
-                                <div className="text-sm text-gray-600 mt-1">
-                                  {item.description}
-                                </div>
-                              )}
+                              <div className="mt-2 bg-gray-50 rounded-lg p-2 border border-gray-200">
+                                <span className="text-xs font-medium text-gray-700 block mb-1">Açıklama:</span>
+                                <p className="text-sm text-gray-800">
+                                  {item.description || 'Açıklama girilmemiş'}
+                                </p>
+                              </div>
                             </div>
                           </div>
                           
@@ -1911,6 +1912,16 @@ DOVEC GROUP
                                             </p>
                                           </div>
                                         </div>
+                                        
+                                        {/* Malzeme Açıklaması */}
+                                        {item.description && (
+                                          <div className="mt-2 pt-2 border-t border-green-200">
+                                            <span className="text-gray-600 text-xs block mb-1">Açıklama:</span>
+                                            <p className="text-sm text-gray-700">
+                                              {item.description}
+                                            </p>
+                                          </div>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -2143,6 +2154,16 @@ DOVEC GROUP
                                 </p>
                               </div>
                             </div>
+                            
+                            {/* Malzeme Açıklaması */}
+                            {materialItem?.description && (
+                              <div className="mt-2 pt-2 border-t border-gray-200">
+                                <span className="text-gray-600 font-medium text-xs block mb-1">Açıklama:</span>
+                                <p className="text-sm text-gray-700">
+                                  {materialItem.description}
+                                </p>
+                              </div>
+                            )}
                             
                             {order.amount > 0 && (
                               <div className="mt-2 pt-2 border-t border-gray-200">
