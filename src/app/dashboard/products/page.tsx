@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package } from 'lucide-react'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck } from 'lucide-react'
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
@@ -46,6 +46,7 @@ export default function ProductsPage() {
     searchTerm,
     brandId,
     siteId,
+    productType,
     isActive,
     currentPage,
     pageSize,
@@ -54,6 +55,7 @@ export default function ProductsPage() {
     setSearchTerm,
     setBrandId,
     setSiteId,
+    setProductType,
     setIsActive,
     setCurrentPage,
     clearFilters,
@@ -170,6 +172,8 @@ export default function ProductsPage() {
     if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
       setSiteId(userSiteId)
     }
+    // Product type'ı da temizle
+    setProductType('')
   }
 
   const handleSaveProduct = async (data: any) => {
@@ -195,7 +199,7 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Ürün Yönetimi</h1>
+          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Stok Yönetimi</h1>
           <p className="text-gray-600 text-lg font-light">
             {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
           </p>
@@ -243,7 +247,7 @@ export default function ProductsPage() {
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <Package className={`w-14 h-14 mb-3 ${!siteId ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`} />
                   <p className={`text-lg font-semibold ${!siteId ? 'text-gray-900' : 'text-gray-600 group-hover:text-gray-900'}`}>
-                    Tümü
+                    Envanter
                   </p>
                   <p className="text-sm text-gray-400 mt-1">
                     {totalCount} ürün
@@ -320,6 +324,80 @@ export default function ProductsPage() {
         </div>
       )}
 
+      {/* Product Type Filters - Tab Buttons */}
+      <div className="space-y-4">
+        <div className="flex items-center gap-3">
+          <Boxes className="w-5 h-5 text-gray-400" />
+          <h2 className="text-sm font-medium text-gray-600">Ürün Tipleri</h2>
+        </div>
+        
+        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
+          {/* Tümü */}
+          <button
+            onClick={() => {
+              setProductType('')
+              setCurrentPage(1)
+            }}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+              !productType
+                ? 'bg-gray-900 text-white shadow-lg'
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
+          >
+            <Package className="w-4 h-4" />
+            Tümü
+          </button>
+
+          {/* Demirbaş */}
+          <button
+            onClick={() => {
+              setProductType('demirbas')
+              setCurrentPage(1)
+            }}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+              productType === 'demirbas'
+                ? 'bg-blue-600 text-white shadow-lg'
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
+          >
+            <Wrench className="w-4 h-4" />
+            Demirbaş
+          </button>
+
+          {/* Sarf Malzeme */}
+          <button
+            onClick={() => {
+              setProductType('sarf_malzeme')
+              setCurrentPage(1)
+            }}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+              productType === 'sarf_malzeme'
+                ? 'bg-green-600 text-white shadow-lg'
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
+          >
+            <Boxes className="w-4 h-4" />
+            Sarf Malzeme
+          </button>
+
+          {/* Kontrol Sarf */}
+          <button
+            onClick={() => {
+              setProductType('kontrol_sarf')
+              setCurrentPage(1)
+            }}
+            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+              productType === 'kontrol_sarf'
+                ? 'bg-purple-600 text-white shadow-lg'
+                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+            }`}
+          >
+            <ClipboardCheck className="w-4 h-4" />
+            Kontrol Sarf
+          </button>
+        </div>
+      </div>
+
       {/* Products Table Card */}
       <Card className="bg-white border border-gray-200 shadow-sm rounded-3xl">
         <CardHeader className="pb-6 pt-8 px-8">
@@ -370,6 +448,7 @@ export default function ProductsPage() {
             products={products}
             isLoading={isLoading}
             onProductClick={handleOpenViewModal}
+            selectedSiteId={siteId}
           />
 
           {/* Pagination */}

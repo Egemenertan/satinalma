@@ -10,6 +10,7 @@ export function useProductFilters() {
   const [searchTerm, setSearchTerm] = useState('')
   const [brandId, setBrandId] = useState<string>('')
   const [siteId, setSiteId] = useState<string>('')
+  const [productType, setProductType] = useState<string>('')
   const [isActive, setIsActive] = useState<boolean | undefined>(true)
   const [minPrice, setMinPrice] = useState<number | undefined>(undefined)
   const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined)
@@ -23,18 +24,20 @@ export function useProductFilters() {
     if (searchTerm) f.search = searchTerm
     if (brandId) f.brandId = brandId
     if (siteId) f.siteId = siteId
+    if (productType) f.productType = productType
     if (isActive !== undefined) f.isActive = isActive
     if (minPrice !== undefined) f.minPrice = minPrice
     if (maxPrice !== undefined) f.maxPrice = maxPrice
     
     return f
-  }, [searchTerm, brandId, siteId, isActive, minPrice, maxPrice])
+  }, [searchTerm, brandId, siteId, productType, isActive, minPrice, maxPrice])
 
   // Clear all filters
   const clearFilters = useCallback(() => {
     setSearchTerm('')
     setBrandId('')
     setSiteId('')
+    setProductType('')
     setIsActive(true)
     setMinPrice(undefined)
     setMaxPrice(undefined)
@@ -49,14 +52,15 @@ export function useProductFilters() {
 
   // Has active filters
   const hasActiveFilters = useMemo(() => {
-    return !!(searchTerm || brandId || siteId || isActive !== true || minPrice !== undefined || maxPrice !== undefined)
-  }, [searchTerm, brandId, siteId, isActive, minPrice, maxPrice])
+    return !!(searchTerm || brandId || siteId || productType || isActive !== true || minPrice !== undefined || maxPrice !== undefined)
+  }, [searchTerm, brandId, siteId, productType, isActive, minPrice, maxPrice])
 
   return {
     // State
     searchTerm,
     brandId,
     siteId,
+    productType,
     isActive,
     minPrice,
     maxPrice,
@@ -69,6 +73,7 @@ export function useProductFilters() {
     setSearchTerm,
     setBrandId,
     setSiteId,
+    setProductType,
     setIsActive,
     setMinPrice,
     setMaxPrice,

@@ -5,7 +5,7 @@
 
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loading } from '@/components/ui/loading'
@@ -21,19 +21,50 @@ import {
 } from 'lucide-react'
 import type { ProductWithStock } from '../types'
 import Image from 'next/image'
+import { createClient } from '@/lib/supabase/client'
+
+interface Site {
+  id: string
+  name: string
+}
 
 interface ProductsTableProps {
   products: ProductWithStock[]
   isLoading: boolean
   onProductClick: (productId: string) => void
+  selectedSiteId?: string
 }
 
-export function ProductsTable({ products, isLoading, onProductClick }: ProductsTableProps) {
+export function ProductsTable({ products, isLoading, onProductClick, selectedSiteId }: ProductsTableProps) {
   const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
+  const [sites, setSites] = useState<Site[]>([])
+  const [loadingSites, setLoadingSites] = useState(true)
+  const supabase = createClient()
+
+  // Tüm depoları yükle
+  useEffect(() => {
+    const loadSites = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('sites')
+          .select('id, name')
+          .order('name')
+        
+        if (error) throw error
+        setSites(data || [])
+      } catch (error) {
+        console.error('Depolar yüklenirken hata:', error)
+      } finally {
+        setLoadingSites(false)
+      }
+    }
+    
+    loadSites()
+  }, [supabase])
 
   // Loading state
-  if (isLoading) {
+  if (isLoading || loadingSites) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loading size="lg" text="Ürünler yükleniyor..." />
@@ -114,29 +145,74 @@ export function ProductsTable({ products, isLoading, onProductClick }: ProductsT
     </button>
   )
 
+  // Her ürün için depo stoklarını map'e dönüştür
+  const getWarehouseStockMap = (product: ProductWithStock) => {
+    const stockMap = new Map<string, number>()
+    product.warehouse_stocks?.forEach((stock: any) => {
+      if (stock.warehouse_id) {
+        stockMap.set(stock.warehouse_id, stock.quantity || 0)
+      }
+    })
+    return stockMap
+  }
+
+  // Envanter görünümü mü (tüm depolar)?
+  const isInventoryView = !selectedSiteId
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 overflow-x-auto">
       {/* Header - Desktop Only */}
-      <div className="hidden lg:grid grid-cols-12 gap-4 px-4 pb-3 border-b border-gray-200">
-        <div className="col-span-1 flex items-center">
-          <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
+      {isInventoryView ? (
+        // Envanter görünümü - Tüm depo sütunları
+        <div className="hidden lg:flex gap-4 px-4 pb-3 border-b border-gray-200 min-w-max">
+          <div className="w-16 flex items-center flex-shrink-0">
+            <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
+          </div>
+          <div className="w-64 flex items-center flex-shrink-0">
+            <SortButton field="name">ÜRÜN ADI</SortButton>
+          </div>
+          <div className="w-40 flex items-center flex-shrink-0">
+            <SortButton field="brand">MARKA</SortButton>
+          </div>
+          <div className="w-32 flex items-center flex-shrink-0">
+            <SortButton field="sku">SKU</SortButton>
+          </div>
+          <div className="w-32 flex items-center flex-shrink-0">
+            <SortButton field="stock">TOPLAM STOK</SortButton>
+          </div>
+          {/* Her depo için ayrı sütun */}
+          {sites.map((site) => (
+            <div key={site.id} className="w-32 flex items-center flex-shrink-0">
+              <div className="flex items-center gap-1">
+                <Building2 className="w-3 h-3 text-gray-400" />
+                <span className="text-xs font-medium text-gray-500 truncate">{site.name}</span>
+              </div>
+            </div>
+          ))}
         </div>
-        <div className="col-span-3 flex items-center">
-          <SortButton field="name">ÜRÜN ADI</SortButton>
+      ) : (
+        // Tek depo görünümü - Eski yapı
+        <div className="hidden lg:grid grid-cols-12 gap-4 px-4 pb-3 border-b border-gray-200">
+          <div className="col-span-1 flex items-center">
+            <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
+          </div>
+          <div className="col-span-3 flex items-center">
+            <SortButton field="name">ÜRÜN ADI</SortButton>
+          </div>
+          <div className="col-span-2 flex items-center">
+            <SortButton field="brand">MARKA</SortButton>
+          </div>
+          <div className="col-span-2 flex items-center">
+            <SortButton field="sku">SKU</SortButton>
+          </div>
+          <div className="col-span-2 flex items-center">
+            <SortButton field="stock">STOK DURUMU</SortButton>
+          </div>
+          <div className="col-span-2 flex items-center">
+            <span className="text-xs font-medium text-gray-500">DEPOLAR</span>
+          </div>
         </div>
-        <div className="col-span-2 flex items-center">
-          <SortButton field="brand">MARKA</SortButton>
-        </div>
-        <div className="col-span-2 flex items-center">
-          <SortButton field="sku">SKU</SortButton>
-        </div>
-        <div className="col-span-2 flex items-center">
-          <SortButton field="stock">STOK DURUMU</SortButton>
-        </div>
-        <div className="col-span-2 flex items-center">
-          <span className="text-xs font-medium text-gray-500">DEPOLAR</span>
-        </div>
-      </div>
+      )}
 
       {/* Product Rows */}
       {sortedProducts.map((product) => {
@@ -144,115 +220,220 @@ export function ProductsTable({ products, isLoading, onProductClick }: ProductsT
         const StockIcon = stockStatus.icon
         const totalStock = product.total_stock || 0
         const primaryImage = product.images?.[0]
+        const warehouseStockMap = getWarehouseStockMap(product)
 
         return (
           <Card
             key={product.id}
-            className="border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer rounded-2xl overflow-hidden bg-white"
+            className={`border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer rounded-2xl overflow-hidden bg-white ${isInventoryView ? 'min-w-max' : ''}`}
             onClick={() => onProductClick(product.id)}
           >
             <CardContent className="p-4">
               {/* Desktop Layout */}
-              <div className="hidden lg:grid grid-cols-12 gap-4 items-center">
-                {/* Görsel */}
-                <div className="col-span-1">
-                  <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
-                    {primaryImage ? (
-                      <Image
-                        src={primaryImage}
-                        alt={product.name}
-                        fill
-                        className="object-cover"
-                        sizes="64px"
-                      />
+              {isInventoryView ? (
+                // Envanter görünümü - Tüm depo sütunları
+                <div className="hidden lg:flex gap-4 items-center">
+                  {/* Görsel */}
+                  <div className="w-16 flex-shrink-0">
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
+                      {primaryImage ? (
+                        <Image
+                          src={primaryImage}
+                          alt={product.name}
+                          fill
+                          className="object-cover"
+                          sizes="64px"
+                        />
+                      ) : (
+                        <Package className="w-6 h-6 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ürün Adı */}
+                  <div className="w-64 flex-shrink-0">
+                    <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
+                      {product.name}
+                    </h3>
+                    {product.description && (
+                      <p className="text-xs text-gray-500 line-clamp-1">
+                        {product.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Marka */}
+                  <div className="w-40 flex-shrink-0">
+                    {product.brand ? (
+                      <Badge 
+                        variant="secondary" 
+                        className="bg-gray-100 text-gray-700 border-0 rounded-full px-3 py-1 text-xs"
+                      >
+                        <Building2 className="w-3 h-3 mr-1" />
+                        {product.brand.name}
+                      </Badge>
                     ) : (
-                      <Package className="w-6 h-6 text-gray-400" />
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </div>
+
+                  {/* SKU */}
+                  <div className="w-32 flex-shrink-0">
+                    {product.sku ? (
+                      <div className="flex items-center gap-1.5">
+                        <Hash className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs font-mono text-gray-600">
+                          {product.sku}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </div>
+
+                  {/* Toplam Stok */}
+                  <div className="w-32 flex-shrink-0">
+                    <div className="space-y-2">
+                      <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
+                        <StockIcon className="w-3 h-3 mr-1" />
+                        {stockStatus.text}
+                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Box className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs font-semibold text-gray-700">
+                          {totalStock} {product.unit || 'adet'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Her depo için ayrı sütun */}
+                  {sites.map((site) => {
+                    const quantity = warehouseStockMap.get(site.id) || 0
+                    return (
+                      <div key={site.id} className="w-32 flex-shrink-0">
+                        <div className="flex items-center justify-center">
+                          {quantity > 0 ? (
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                              <span className="text-sm font-semibold text-blue-900">
+                                {quantity}
+                              </span>
+                              <span className="text-xs text-blue-600 ml-1">
+                                {product.unit || 'adet'}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 min-w-[60px] text-center">
+                              <span className="text-sm font-semibold text-gray-400">
+                                0
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                // Tek depo görünümü - Eski yapı
+                <div className="hidden lg:grid grid-cols-12 gap-4 items-center">
+                  {/* Görsel */}
+                  <div className="col-span-1">
+                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
+                      {primaryImage ? (
+                        <Image
+                          src={primaryImage}
+                          alt={product.name}
+                          fill
+                          className="object-cover"
+                          sizes="64px"
+                        />
+                      ) : (
+                        <Package className="w-6 h-6 text-gray-400" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ürün Adı */}
+                  <div className="col-span-3">
+                    <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
+                      {product.name}
+                    </h3>
+                    {product.description && (
+                      <p className="text-xs text-gray-500 line-clamp-1">
+                        {product.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Marka */}
+                  <div className="col-span-2">
+                    {product.brand ? (
+                      <Badge 
+                        variant="secondary" 
+                        className="bg-gray-100 text-gray-700 border-0 rounded-full px-3 py-1 text-xs"
+                      >
+                        <Building2 className="w-3 h-3 mr-1" />
+                        {product.brand.name}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </div>
+
+                  {/* SKU */}
+                  <div className="col-span-2">
+                    {product.sku ? (
+                      <div className="flex items-center gap-1.5">
+                        <Hash className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs font-mono text-gray-600">
+                          {product.sku}
+                        </span>
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">-</span>
+                    )}
+                  </div>
+
+                  {/* Stok Durumu */}
+                  <div className="col-span-2">
+                    <div className="space-y-2">
+                      <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
+                        <StockIcon className="w-3 h-3 mr-1" />
+                        {stockStatus.text}
+                      </Badge>
+                      <div className="flex items-center gap-1.5">
+                        <Box className="w-3.5 h-3.5 text-gray-400" />
+                        <span className="text-xs font-semibold text-gray-700">
+                          {totalStock} {product.unit || 'adet'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Depolar - Sadece seçili depo */}
+                  <div className="col-span-2">
+                    {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
+                      <div className="space-y-1">
+                        {product.warehouse_stocks
+                          .filter((stock: any) => stock.warehouse_id === selectedSiteId)
+                          .map((stock: any) => (
+                            <div key={stock.warehouse_id} className="flex items-center justify-between text-xs">
+                              <span className="text-gray-600 truncate mr-2">
+                                {stock.warehouses?.name || 'Depo'}
+                              </span>
+                              <span className="font-semibold text-gray-900">
+                                {stock.quantity}
+                              </span>
+                            </div>
+                          ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-400">Stok yok</span>
                     )}
                   </div>
                 </div>
-
-                {/* Ürün Adı */}
-                <div className="col-span-3">
-                  <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
-                    {product.name}
-                  </h3>
-                  {product.description && (
-                    <p className="text-xs text-gray-500 line-clamp-1">
-                      {product.description}
-                    </p>
-                  )}
-                </div>
-
-                {/* Marka */}
-                <div className="col-span-2">
-                  {product.brand ? (
-                    <Badge 
-                      variant="secondary" 
-                      className="bg-gray-100 text-gray-700 border-0 rounded-full px-3 py-1 text-xs"
-                    >
-                      <Building2 className="w-3 h-3 mr-1" />
-                      {product.brand.name}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-gray-400">-</span>
-                  )}
-                </div>
-
-                {/* SKU */}
-                <div className="col-span-2">
-                  {product.sku ? (
-                    <div className="flex items-center gap-1.5">
-                      <Hash className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-xs font-mono text-gray-600">
-                        {product.sku}
-                      </span>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">-</span>
-                  )}
-                </div>
-
-                {/* Stok Durumu */}
-                <div className="col-span-2">
-                  <div className="space-y-2">
-                    <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
-                      <StockIcon className="w-3 h-3 mr-1" />
-                      {stockStatus.text}
-                    </Badge>
-                    <div className="flex items-center gap-1.5">
-                      <Box className="w-3.5 h-3.5 text-gray-400" />
-                      <span className="text-xs font-semibold text-gray-700">
-                        {totalStock} {product.unit || 'adet'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Depolar */}
-                <div className="col-span-2">
-                  {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
-                    <div className="space-y-1">
-                      {product.warehouse_stocks.slice(0, 2).map((stock: any) => (
-                        <div key={stock.warehouse_id} className="flex items-center justify-between text-xs">
-                          <span className="text-gray-600 truncate mr-2">
-                            {stock.warehouses?.name || 'Depo'}
-                          </span>
-                          <span className="font-semibold text-gray-900">
-                            {stock.quantity}
-                          </span>
-                        </div>
-                      ))}
-                      {product.warehouse_stocks.length > 2 && (
-                        <span className="text-xs text-gray-400">
-                          +{product.warehouse_stocks.length - 2} depo daha
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <span className="text-xs text-gray-400">Depo atanmamış</span>
-                  )}
-                </div>
-              </div>
+              )}
 
               {/* Mobile Layout */}
               <div className="lg:hidden flex gap-3">

@@ -66,6 +66,28 @@ export function ProductModal({
     enabled: !!productId && (activeTab === 'history' || activeTab === 'info'),
   })
 
+  // Zimmet kayıtları (history tabında kullanılıyor)
+  const { data: inventoryData } = useQuery({
+    queryKey: ['product-inventory', productId],
+    queryFn: async () => {
+      if (!productId) return null
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      const { data, error } = await supabase
+        .from('user_inventory')
+        .select(`
+          *,
+          user:profiles!user_inventory_user_id_fkey(id, full_name, email),
+          assigned_by_profile:profiles!user_inventory_assigned_by_fkey(id, full_name, email)
+        `)
+        .eq('product_id', productId)
+        .order('assigned_date', { ascending: false })
+      
+      if (error) throw error
+      return data
+    },
+    enabled: !!productId && activeTab === 'history',
+  })
+
   // Create modunda productId olması gerekmez
   if (!isOpen) return null
 
@@ -235,6 +257,7 @@ export function ProductModal({
                     <StockOperationsForm
                       productId={product.id}
                       productName={product.name}
+                      productUnit={product.unit}
                       onSuccess={() => {
                         // Stok güncellendiğinde diğer tabları da yenile
                         onTabChange('stock')
@@ -252,7 +275,7 @@ export function ProductModal({
 
                 {/* Geçmiş Tab */}
                 <TabsContent value="history" className="p-8 m-0">
-                  <ProductHistoryTab product={product} movementsData={movementsData} />
+                  <ProductHistoryTab product={product} movementsData={movementsData} inventoryData={inventoryData} />
                 </TabsContent>
               </div>
             </Tabs>

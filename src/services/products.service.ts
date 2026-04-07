@@ -53,7 +53,28 @@ export async function fetchProducts(
 
   // Filtreleme
   if (filters?.search) {
-    query = query.or(`name.ilike.%${filters.search}%,sku.ilike.%${filters.search}%`)
+    // Önce seri numarasına göre user_inventory'de ara
+    const { data: inventoryProducts } = await supabase
+      .from('user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${filters.search}%`)
+    
+    // Pending inventory'de de ara
+    const { data: pendingProducts } = await supabase
+      .from('pending_user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${filters.search}%`)
+    
+    const inventoryProductIds = inventoryProducts?.map(inv => inv.product_id).filter(Boolean) || []
+    const pendingProductIds = pendingProducts?.map(inv => inv.product_id).filter(Boolean) || []
+    const allSerialProductIds = [...new Set([...inventoryProductIds, ...pendingProductIds])]
+    
+    // Seri numarası eşleşmesi varsa, bu ürünleri de dahil et
+    if (allSerialProductIds.length > 0) {
+      query = query.or(`name.ilike.%${filters.search}%,sku.ilike.%${filters.search}%,id.in.(${allSerialProductIds.join(',')})`)
+    } else {
+      query = query.or(`name.ilike.%${filters.search}%,sku.ilike.%${filters.search}%`)
+    }
   }
 
   if (filters?.brandId) {

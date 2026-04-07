@@ -355,3 +355,365 @@ export function generatePDFFilename(movementType: string, date: string, productN
   return `Stok_${movementType}_${sanitizedProductName}_${formattedDate}.pdf`
 }
 
+interface InventoryAssignmentPDFData {
+  inventory: {
+    id: string
+    item_name: string
+    quantity: number
+    unit: string
+    assigned_date: string
+    status: string
+    notes: string | null
+    user: {
+      full_name: string | null
+      email: string
+    } | null
+    assigned_by_profile: {
+      full_name: string | null
+      email: string
+    } | null
+  }
+  productDetails: {
+    name: string
+    sku: string | null
+    unit: string
+    brand?: {
+      name: string
+    } | null
+  }
+}
+
+/**
+ * Zimmet belgesi için PDF oluştur ve indir
+ */
+export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPDFData) {
+  const { inventory, productDetails } = data
+  
+  const user = inventory.user
+  const assignedBy = inventory.assigned_by_profile
+  
+  const statusLabels: Record<string, string> = {
+    'active': 'AKTİF',
+    'returned': 'İADE EDİLDİ',
+    'lost': 'KAYIP',
+    'damaged': 'HASARLI'
+  }
+
+  const statusColors: Record<string, string> = {
+    'active': '#10b981',
+    'returned': '#3b82f6',
+    'lost': '#ef4444',
+    'damaged': '#f97316'
+  }
+
+  const logoUrl = `${window.location.origin}/d.png`
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    @page {
+      size: A4 portrait;
+      margin: 15mm;
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    html, body {
+      width: 210mm;
+      height: 297mm;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+      font-size: 11pt;
+      line-height: 1.4;
+      color: #000000;
+      padding: 15mm;
+      background: white;
+    }
+    @media print {
+      html, body {
+        width: 210mm;
+        height: 297mm;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body {
+        padding: 15mm !important;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 15mm;
+      }
+      .logo {
+        filter: brightness(0) !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 2px solid #11402E;
+    }
+    .logo {
+      width: 80px;
+      height: 80px;
+      object-fit: contain;
+      filter: brightness(0);
+    }
+    .title-section {
+      text-align: right;
+    }
+    .title {
+      font-size: 18pt;
+      font-weight: 600;
+      color: #11402E;
+      letter-spacing: 0.5px;
+      line-height: 1.2;
+    }
+    .subtitle {
+      font-size: 9pt;
+      color: #455851;
+      margin-top: 4px;
+      line-height: 1.2;
+    }
+    .info-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9pt;
+      color: #666;
+      margin-bottom: 12px;
+    }
+    .section {
+      margin-top: 12px;
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: 9pt;
+      color: #11402E;
+      font-weight: 500;
+      margin-bottom: 6px;
+    }
+    .info-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+      gap: 6px;
+      margin-bottom: 8px;
+      font-size: 9pt;
+    }
+    .info-label {
+      color: #455851;
+      font-weight: 400;
+    }
+    .info-value {
+      color: #11402E;
+      font-weight: 600;
+    }
+    .status-badge {
+      display: inline-block;
+      background-color: #11402E;
+      color: white;
+      padding: 3px 10px;
+      border-radius: 4px;
+      font-size: 8pt;
+      font-weight: 400;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 15px;
+    }
+    thead {
+      background-color: #11402E;
+      color: white;
+    }
+    th {
+      padding: 8px 8px;
+      text-align: left;
+      font-size: 8pt;
+      font-weight: 500;
+    }
+    td {
+      padding: 10px 8px;
+      border: 1px solid #e5e5e5;
+      font-size: 8pt;
+    }
+    tbody tr {
+      background-color: #fafafa;
+    }
+    .product-name {
+      font-weight: 500;
+      color: #000;
+    }
+    .quantity {
+      font-weight: 600;
+      color: #11402E;
+      font-size: 10pt;
+    }
+    .notes-box {
+      background-color: #fafafa;
+      border: 1px solid #e5e5e5;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 8pt;
+      color: #555;
+      line-height: 1.5;
+    }
+    .signature-section {
+      margin-top: 40px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+    .signature-box {
+      text-align: center;
+      padding-top: 60px;
+      border-top: 1px solid #000;
+    }
+    .signature-label {
+      font-size: 8pt;
+      color: #666;
+      margin-top: 8px;
+    }
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 8pt;
+      color: #999;
+      padding-top: 15px;
+      border-top: 1px solid #e5e5e5;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="${logoUrl}" alt="Döveç Logo" class="logo" crossorigin="anonymous" />
+    <div class="title-section">
+      <div class="title">ZİMMET TESLİM BELGESİ</div>
+      <div class="subtitle">Stok Yönetim Sistemi</div>
+    </div>
+  </div>
+
+  <div class="info-bar">
+    <span>Belge No: ${inventory.id.slice(-8).toUpperCase()}</span>
+    <span>Tarih: ${new Date(inventory.assigned_date).toLocaleDateString('tr-TR')}</span>
+    <span>Saat: ${new Date(inventory.assigned_date).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}</span>
+  </div>
+
+  <!-- Zimmet Alan Bilgileri -->
+  <div class="section">
+    <div class="section-title">ZİMMET ALAN KİŞİ BİLGİLERİ</div>
+    <div class="info-grid">
+      <div class="info-label">Ad Soyad:</div>
+      <div class="info-value">${user?.full_name || 'Belirtilmemiş'}</div>
+      
+      <div class="info-label">E-posta:</div>
+      <div class="info-value">${user?.email || '-'}</div>
+      
+      <div class="info-label">Durum:</div>
+      <div class="info-value">
+        <span class="status-badge">
+          ${statusLabels[inventory.status] || inventory.status}
+        </span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Zimmet Veren Bilgileri -->
+  ${assignedBy ? `
+  <div class="section">
+    <div class="section-title">ZİMMET VEREN YETKİLİ</div>
+    <div class="info-grid">
+      <div class="info-label">Ad Soyad:</div>
+      <div class="info-value">${assignedBy.full_name || 'Belirtilmemiş'}</div>
+      
+      <div class="info-label">E-posta:</div>
+      <div class="info-value">${assignedBy.email || '-'}</div>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- Ürün Bilgileri -->
+  <div class="section">
+    <div class="section-title">ÜRÜN BİLGİLERİ</div>
+    <table>
+      <thead>
+        <tr>
+          <th>Ürün Adı</th>
+          <th>SKU</th>
+          <th>Marka</th>
+          <th style="text-align: center;">Miktar</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="product-name">${productDetails.name}</td>
+          <td>${productDetails.sku || '-'}</td>
+          <td>${productDetails.brand?.name || '-'}</td>
+          <td style="text-align: center;">
+            <span class="quantity">${inventory.quantity.toLocaleString('tr-TR')} ${inventory.unit}</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Notlar -->
+  ${inventory.notes ? `
+  <div class="section">
+    <div class="section-title">Notlar ve Açıklamalar</div>
+    <div class="notes-box">${inventory.notes}</div>
+  </div>
+  ` : ''}
+
+  <!-- İmza Alanları -->
+  <div class="signature-section">
+    <div class="signature-box">
+      <div style="font-weight: bold;">Zimmet Alan</div>
+      <div class="signature-label">${user?.full_name || 'İmza'}</div>
+    </div>
+    <div class="signature-box">
+      <div style="font-weight: bold;">Zimmet Veren</div>
+      <div class="signature-label">${assignedBy?.full_name || 'İmza'}</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <div>Bu belge elektronik ortamda oluşturulmuştur.</div>
+    <div style="margin-top: 4px;">Döveç Stok Yönetim Sistemi | © ${new Date().getFullYear()}</div>
+  </div>
+</body>
+</html>`
+
+  // Yeni pencerede aç ve yazdır
+  const printWindow = window.open('', '_blank', 'width=800,height=600')
+  if (printWindow) {
+    printWindow.document.write(html)
+    printWindow.document.close()
+    
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.focus()
+        printWindow.print()
+      }, 500)
+    }
+    
+    setTimeout(() => {
+      if (printWindow && !printWindow.closed) {
+        try {
+          printWindow.print()
+        } catch (e) {
+          console.error('Print error:', e)
+        }
+      }
+    }, 1000)
+  }
+}
+

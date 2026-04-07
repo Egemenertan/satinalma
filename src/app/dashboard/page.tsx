@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { 
   TrendingUp, 
@@ -177,6 +178,30 @@ const fetchRecentRequests = async () => {
 }
 
 export default function Dashboard() {
+  const router = useRouter()
+  const supabase = createClient()
+
+  // Kullanıcı rolünü kontrol et ve warehouse_manager ise products sayfasına yönlendir
+  useEffect(() => {
+    const checkUserRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        
+        if (profile?.role === 'warehouse_manager') {
+          router.replace('/dashboard/products')
+        }
+      }
+    }
+    
+    checkUserRole()
+  }, [router, supabase])
+
   // SWR ile cache'li veriler
   const { data: stats, error: statsError } = useSWR(
     'dashboard_stats',
