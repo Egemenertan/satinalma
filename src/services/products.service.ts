@@ -371,6 +371,51 @@ export async function deleteProductImage(imageUrl: string): Promise<void> {
 }
 
 /**
+ * Kategoriye göre bir sonraki stok kodunu oluştur
+ */
+export async function generateNextSKU(categoryId: string): Promise<string> {
+  const supabase = createClient()
+
+  // Kategorideki tüm ürünlerin SKU'larını al
+  const { data: products, error } = await supabase
+    .from('products')
+    .select('sku')
+    .eq('category_id', categoryId)
+    .not('sku', 'is', null)
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.error('SKU fetch error:', error)
+    throw error
+  }
+
+  // Eğer kategoride hiç ürün yoksa, başlangıç SKU'su oluştur
+  if (!products || products.length === 0) {
+    return '6500000001'
+  }
+
+  // Sadece sayısal SKU'ları filtrele ve en yüksek olanı bul
+  const numericSKUs = products
+    .map(p => p.sku)
+    .filter(sku => sku && /^\d+$/.test(sku.trim())) // Sadece rakamlardan oluşan SKU'lar
+    .map(sku => parseInt(sku, 10))
+    .filter(num => !isNaN(num))
+    .sort((a, b) => b - a) // Büyükten küçüğe sırala
+
+  // En yüksek sayısal SKU'yu bul
+  let nextNumber: number
+  if (numericSKUs.length > 0) {
+    nextNumber = numericSKUs[0] + 1
+  } else {
+    // Hiç sayısal SKU yoksa, başlangıç değeri
+    nextNumber = 6500000001
+  }
+
+  // 10 haneli formatta döndür
+  return nextNumber.toString().padStart(10, '0')
+}
+
+/**
  * Ürün istatistikleri getir
  */
 export async function fetchProductStats(siteId?: string) {

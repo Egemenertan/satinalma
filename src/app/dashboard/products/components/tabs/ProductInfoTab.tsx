@@ -6,14 +6,18 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
-import { TrendingUp, Receipt } from 'lucide-react'
+import { TrendingUp, Receipt, Hash } from 'lucide-react'
 
 interface ProductInfoTabProps {
   product: any
   movementsData: any
+  serialNumbers?: {
+    active: Array<{ serial_number: string; user?: { full_name: string } }>
+    pending: Array<{ serial_number: string; user?: { full_name: string } }>
+  } | null
 }
 
-export function ProductInfoTab({ product, movementsData }: ProductInfoTabProps) {
+export function ProductInfoTab({ product, movementsData, serialNumbers }: ProductInfoTabProps) {
   return (
     <>
       {/* Ürün Bilgi Kartları */}
@@ -61,6 +65,71 @@ export function ProductInfoTab({ product, movementsData }: ProductInfoTabProps) 
             Açıklama
           </label>
           <p className="text-gray-900 leading-relaxed">{product.description}</p>
+        </div>
+      )}
+
+      {/* Seri Numaraları */}
+      {serialNumbers && (serialNumbers.active.length > 0 || serialNumbers.pending.length > 0) && (
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 shadow-sm">
+          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+            <Hash className="w-4 h-4" />
+            Seri Numaraları
+          </label>
+          <div className="space-y-3">
+            {/* Aktif Zimmetler */}
+            {serialNumbers.active.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">Aktif Zimmetler</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {serialNumbers.active.map((item, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-green-50 rounded-xl border border-green-200"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-green-600" />
+                        <span className="text-sm font-semibold text-gray-900">
+                          {item.serial_number}
+                        </span>
+                      </div>
+                      {item.user && (
+                        <span className="text-xs text-gray-600">
+                          👤 {item.user.full_name}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Bekleyen Zimmetler */}
+            {serialNumbers.pending.length > 0 && (
+              <div>
+                <p className="text-xs font-medium text-gray-600 mb-2">Bekleyen Zimmetler</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {serialNumbers.pending.map((item, index) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-orange-50 rounded-xl border border-orange-200"
+                    >
+                      <div className="flex items-center gap-2">
+                        <Hash className="w-4 h-4 text-orange-600" />
+                        <span className="text-sm font-semibold text-gray-900">
+                          {item.serial_number}
+                        </span>
+                      </div>
+                      {item.user && (
+                        <span className="text-xs text-gray-600">
+                          👤 {item.user.full_name}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

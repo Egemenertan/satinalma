@@ -88,6 +88,48 @@ export function ProductModal({
     enabled: !!productId && activeTab === 'history',
   })
 
+  // Seri numaraları (info tabında kullanılıyor)
+  const { data: serialNumbers } = useQuery({
+    queryKey: ['product-serial-numbers', productId],
+    queryFn: async () => {
+      if (!productId) return null
+      const supabase = (await import('@/lib/supabase/client')).createClient()
+      
+      // Aktif zimmetlerdeki seri numaraları
+      const { data: activeSerials, error: activeError } = await supabase
+        .from('user_inventory')
+        .select('serial_number, user_id, profiles!user_inventory_user_id_fkey(full_name)')
+        .eq('product_id', productId)
+        .eq('status', 'active')
+        .not('serial_number', 'is', null)
+      
+      if (activeError) throw activeError
+      
+      // Bekleyen zimmetlerdeki seri numaraları
+      const { data: pendingSerials, error: pendingError } = await supabase
+        .from('pending_user_inventory')
+        .select('serial_number, user_id, profiles!pending_user_inventory_user_id_fkey(full_name)')
+        .eq('product_id', productId)
+        .not('serial_number', 'is', null)
+      
+      if (pendingError) throw pendingError
+      
+      // Veriyi düzgün formata çevir
+      const formatSerials = (data: any[]) => {
+        return data.map(item => ({
+          serial_number: item.serial_number,
+          user: item.profiles ? { full_name: item.profiles.full_name } : undefined
+        }))
+      }
+      
+      return {
+        active: formatSerials(activeSerials || []),
+        pending: formatSerials(pendingSerials || [])
+      }
+    },
+    enabled: !!productId && activeTab === 'info',
+  })
+
   // Create modunda productId olması gerekmez
   if (!isOpen) return null
 
@@ -233,7 +275,7 @@ export function ProductModal({
                       isSaving={isSaving}
                     />
                   ) : product ? (
-                    <ProductInfoTab product={product} movementsData={movementsData} />
+                    <ProductInfoTab product={product} movementsData={movementsData} serialNumbers={serialNumbers} />
                   ) : null}
                 </TabsContent>
 

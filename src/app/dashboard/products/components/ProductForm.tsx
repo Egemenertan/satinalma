@@ -15,6 +15,8 @@ import { Switch } from '@/components/ui/switch'
 import { useBrands } from '@/app/dashboard/brands/hooks'
 import { useCategories } from '../hooks'
 import type { ProductWithDetails } from '@/services/products.service'
+import { generateNextSKU } from '@/services/products.service'
+import { useToast } from '@/components/ui/toast'
 
 interface ProductFormProps {
   product?: ProductWithDetails | null
@@ -24,6 +26,7 @@ interface ProductFormProps {
 }
 
 export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFormProps) {
+  const { showToast } = useToast()
   const { data: brandsData } = useBrands()
   const brands = brandsData?.brands || []
   const { data: categories } = useCategories()
@@ -63,8 +66,20 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
     onSubmit(formData)
   }
 
-  const handleChange = (field: string, value: any) => {
+  const handleChange = async (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }))
+    
+    // Kategori değiştiğinde ve yeni ürün ekleme modundaysa otomatik SKU oluştur
+    if (field === 'category_id' && value && value !== 'none' && !product) {
+      try {
+        const nextSKU = await generateNextSKU(value)
+        setFormData(prev => ({ ...prev, sku: nextSKU }))
+        showToast(`Otomatik stok kodu oluşturuldu: ${nextSKU}`, 'success')
+      } catch (error) {
+        console.error('SKU oluşturma hatası:', error)
+        showToast('Stok kodu oluşturulurken bir hata oluştu', 'error')
+      }
+    }
   }
 
   return (
@@ -111,14 +126,21 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
         {/* SKU */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <Label htmlFor="sku" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            SKU (Stok Kodu)
+            SKU (Stok Kodu) {!product && formData.category_id && formData.category_id !== 'none' && (
+              <span className="text-green-600 font-normal">• Otomatik</span>
+            )}
           </Label>
           <Input
             id="sku"
             value={formData.sku}
             onChange={(e) => handleChange('sku', e.target.value)}
-            placeholder="Örn: XYZ-123"
-            className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl"
+            placeholder={!product ? "Kategori seçince otomatik oluşturulacak" : "Örn: XYZ-123"}
+            readOnly={!product && formData.category_id && formData.category_id !== 'none'}
+            className={`mt-2 border-0 ${
+              !product && formData.category_id && formData.category_id !== 'none'
+                ? 'bg-green-50/50 cursor-not-allowed'
+                : 'bg-gray-50/50 focus:bg-white'
+            } transition-all rounded-xl`}
           />
         </div>
 
