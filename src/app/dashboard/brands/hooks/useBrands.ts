@@ -6,6 +6,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchBrands,
+  fetchAllBrands,
   fetchBrandsWithProductCount,
   fetchBrandById,
   createBrand,
@@ -19,12 +20,23 @@ type BrandInsert = Database['public']['Tables']['brands']['Insert']
 type BrandUpdate = Database['public']['Tables']['brands']['Update']
 
 /**
- * Brands listesi için hook
+ * Brands listesi için hook (pagination ile)
  */
 export function useBrands(filters?: BrandFilters, page = 1, pageSize = 20) {
   return useQuery({
     queryKey: ['brands', filters, page, pageSize],
     queryFn: () => fetchBrands(filters, page, pageSize),
+    staleTime: 30000,
+  })
+}
+
+/**
+ * Tüm markaları getir (dropdown'lar için - pagination yok)
+ */
+export function useAllBrands(filters?: BrandFilters) {
+  return useQuery({
+    queryKey: ['all-brands', filters],
+    queryFn: () => fetchAllBrands(filters),
     staleTime: 30000,
   })
 }

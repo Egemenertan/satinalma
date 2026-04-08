@@ -64,6 +64,36 @@ export async function fetchBrands(
 }
 
 /**
+ * Tüm markaları getir (dropdown'lar için - pagination yok)
+ */
+export async function fetchAllBrands(filters?: BrandFilters): Promise<Brand[]> {
+  const supabase = createClient()
+  
+  let query = supabase
+    .from('brands')
+    .select('*')
+    .order('name', { ascending: true })
+
+  // Filtreleme
+  if (filters?.search) {
+    query = query.ilike('name', `%${filters.search}%`)
+  }
+
+  if (filters?.isActive !== undefined) {
+    query = query.eq('is_active', filters.isActive)
+  }
+
+  const { data, error } = await query
+
+  if (error) {
+    console.error('All brands fetch error:', error)
+    throw error
+  }
+
+  return data as Brand[]
+}
+
+/**
  * Ürün sayısı ile birlikte markaları getir
  */
 export async function fetchBrandsWithProductCount(

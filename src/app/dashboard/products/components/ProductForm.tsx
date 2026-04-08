@@ -12,7 +12,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
-import { useBrands } from '@/app/dashboard/brands/hooks'
+import { useAllBrands } from '@/app/dashboard/brands/hooks'
 import { useCategories } from '../hooks'
 import type { ProductWithDetails } from '@/services/products.service'
 import { generateNextSKU } from '@/services/products.service'
@@ -27,8 +27,7 @@ interface ProductFormProps {
 
 export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFormProps) {
   const { showToast } = useToast()
-  const { data: brandsData } = useBrands()
-  const brands = brandsData?.brands || []
+  const { data: brands = [] } = useAllBrands({ isActive: true })
   const { data: categories } = useCategories()
 
   const [formData, setFormData] = useState({
