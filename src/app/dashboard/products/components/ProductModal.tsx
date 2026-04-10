@@ -38,6 +38,7 @@ interface ProductModalProps {
   onTabChange: (tab: ProductModalTab) => void
   onSave?: (data: any) => void
   isSaving?: boolean
+  selectedProductIds?: string[]
 }
 
 export function ProductModal({
@@ -49,8 +50,10 @@ export function ProductModal({
   onTabChange,
   onSave,
   isSaving = false,
+  selectedProductIds = [],
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
+  const isBulkOperation = selectedProductIds.length > 1
 
   // Stok verileri
   const { data: stockData } = useQuery({
@@ -174,6 +177,8 @@ export function ProductModal({
                       ? 'Yeni Ürün Ekle'
                       : mode === 'edit'
                       ? 'Ürün Düzenle'
+                      : isBulkOperation
+                      ? `Toplu Stok İşlemi (${selectedProductIds.length} ürün)`
                       : product?.name}
                   </DialogTitle>
                   <DialogDescription className="sr-only">
@@ -181,9 +186,19 @@ export function ProductModal({
                       ? 'Yeni ürün bilgilerini girin'
                       : mode === 'edit'
                       ? 'Ürün bilgilerini düzenleyin'
+                      : isBulkOperation
+                      ? 'Seçili ürünler için toplu stok işlemi yapın'
                       : 'Ürün detaylarını görüntüleyin'}
                   </DialogDescription>
-                  {product && mode === 'view' && (
+                  {isBulkOperation && (
+                    <div className="mt-2">
+                      <Badge className="bg-blue-50 text-blue-700 border-blue-200 rounded-full px-4 py-2">
+                        <Package className="w-4 h-4 mr-2" />
+                        {selectedProductIds.length} ürün seçili - Toplu işlem modu
+                      </Badge>
+                    </div>
+                  )}
+                  {product && mode === 'view' && !isBulkOperation && (
                     <div className="flex items-center gap-2 flex-wrap mt-2">
                       {product.brand && (
                         <Badge variant="secondary" className="bg-gray-100/80 text-gray-700 border-0 rounded-full px-3 py-1">

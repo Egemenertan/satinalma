@@ -9,6 +9,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loading } from '@/components/ui/loading'
+import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Package, 
   TrendingUp, 
@@ -33,14 +34,49 @@ interface ProductsTableProps {
   isLoading: boolean
   onProductClick: (productId: string) => void
   selectedSiteId?: string
+  selectedProducts?: string[]
+  onSelectionChange?: (selectedIds: string[]) => void
 }
 
-export function ProductsTable({ products, isLoading, onProductClick, selectedSiteId }: ProductsTableProps) {
+export function ProductsTable({ 
+  products, 
+  isLoading, 
+  onProductClick, 
+  selectedSiteId,
+  selectedProducts = [],
+  onSelectionChange 
+}: ProductsTableProps) {
   const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
   const [sites, setSites] = useState<Site[]>([])
   const [loadingSites, setLoadingSites] = useState(true)
   const supabase = createClient()
+
+  // Toplu seçim fonksiyonları
+  const toggleSelectAll = () => {
+    if (!onSelectionChange) return
+    
+    if (selectedProducts.length === products.length) {
+      // Tümünü kaldır
+      onSelectionChange([])
+    } else {
+      // Tümünü seç
+      onSelectionChange(products.map(p => p.id))
+    }
+  }
+
+  const toggleSelectProduct = (productId: string) => {
+    if (!onSelectionChange) return
+    
+    if (selectedProducts.includes(productId)) {
+      onSelectionChange(selectedProducts.filter(id => id !== productId))
+    } else {
+      onSelectionChange([...selectedProducts, productId])
+    }
+  }
+
+  const isAllSelected = products.length > 0 && selectedProducts.length === products.length
+  const isSomeSelected = selectedProducts.length > 0 && selectedProducts.length < products.length
 
   // Tüm depoları yükle
   useEffect(() => {
@@ -165,6 +201,15 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
       {isInventoryView ? (
         // Envanter görünümü - Tüm depo sütunları
         <div className="hidden lg:flex gap-4 px-4 pb-3 border-b border-gray-200 min-w-max">
+          {onSelectionChange && (
+            <div className="w-10 flex items-center justify-center flex-shrink-0">
+              <Checkbox
+                checked={isAllSelected}
+                onCheckedChange={toggleSelectAll}
+                className={isSomeSelected ? 'data-[state=checked]:bg-gray-400' : ''}
+              />
+            </div>
+          )}
           <div className="w-16 flex items-center flex-shrink-0">
             <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
           </div>
@@ -192,23 +237,32 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
         </div>
       ) : (
         // Tek depo görünümü - Eski yapı
-        <div className="hidden lg:grid grid-cols-12 gap-4 px-4 pb-3 border-b border-gray-200">
-          <div className="col-span-1 flex items-center">
+        <div className="hidden lg:flex gap-4 px-4 pb-3 border-b border-gray-200">
+          {onSelectionChange && (
+            <div className="w-10 flex items-center justify-center flex-shrink-0">
+              <Checkbox
+                checked={isAllSelected}
+                onCheckedChange={toggleSelectAll}
+                className={isSomeSelected ? 'data-[state=checked]:bg-gray-400' : ''}
+              />
+            </div>
+          )}
+          <div className="w-16 flex items-center flex-shrink-0">
             <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
           </div>
-          <div className="col-span-3 flex items-center">
+          <div className="w-64 flex items-center flex-shrink-0">
             <SortButton field="name">ÜRÜN ADI</SortButton>
           </div>
-          <div className="col-span-2 flex items-center">
+          <div className="w-40 flex items-center flex-shrink-0">
             <SortButton field="brand">MARKA</SortButton>
           </div>
-          <div className="col-span-2 flex items-center">
+          <div className="w-32 flex items-center flex-shrink-0">
             <SortButton field="sku">SKU</SortButton>
           </div>
-          <div className="col-span-2 flex items-center">
+          <div className="w-32 flex items-center flex-shrink-0">
             <SortButton field="stock">STOK DURUMU</SortButton>
           </div>
-          <div className="col-span-2 flex items-center">
+          <div className="w-32 flex items-center flex-shrink-0">
             <span className="text-xs font-medium text-gray-500">DEPOLAR</span>
           </div>
         </div>
@@ -221,11 +275,14 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
         const totalStock = product.total_stock || 0
         const primaryImage = product.images?.[0]
         const warehouseStockMap = getWarehouseStockMap(product)
+        const isSelected = selectedProducts.includes(product.id)
 
         return (
           <Card
             key={product.id}
-            className={`border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer rounded-2xl overflow-hidden bg-white ${isInventoryView ? 'min-w-max' : ''}`}
+            className={`border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer rounded-2xl overflow-hidden ${
+              isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'bg-white'
+            } ${isInventoryView ? 'min-w-max' : ''}`}
             onClick={() => onProductClick(product.id)}
           >
             <CardContent className="p-4">
@@ -233,6 +290,16 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
               {isInventoryView ? (
                 // Envanter görünümü - Tüm depo sütunları
                 <div className="hidden lg:flex gap-4 items-center">
+                  {/* Checkbox */}
+                  {onSelectionChange && (
+                    <div className="w-10 flex items-center justify-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelectProduct(product.id)}
+                      />
+                    </div>
+                  )}
+                  
                   {/* Görsel */}
                   <div className="w-16 flex-shrink-0">
                     <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
@@ -335,10 +402,20 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   })}
                 </div>
               ) : (
-                // Tek depo görünümü - Eski yapı
-                <div className="hidden lg:grid grid-cols-12 gap-4 items-center">
+                // Tek depo görünümü
+                <div className="hidden lg:flex gap-4 items-center">
+                  {/* Checkbox */}
+                  {onSelectionChange && (
+                    <div className="w-10 flex items-center justify-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleSelectProduct(product.id)}
+                      />
+                    </div>
+                  )}
+                  
                   {/* Görsel */}
-                  <div className="col-span-1">
+                  <div className="w-16 flex-shrink-0">
                     <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
                       {primaryImage ? (
                         <Image
@@ -355,7 +432,7 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   </div>
 
                   {/* Ürün Adı */}
-                  <div className="col-span-3">
+                  <div className="w-64 flex-shrink-0">
                     <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
                       {product.name}
                     </h3>
@@ -367,7 +444,7 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   </div>
 
                   {/* Marka */}
-                  <div className="col-span-2">
+                  <div className="w-40 flex-shrink-0">
                     {product.brand ? (
                       <Badge 
                         variant="secondary" 
@@ -382,7 +459,7 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   </div>
 
                   {/* SKU */}
-                  <div className="col-span-2">
+                  <div className="w-32 flex-shrink-0">
                     {product.sku ? (
                       <div className="flex items-center gap-1.5">
                         <Hash className="w-3.5 h-3.5 text-gray-400" />
@@ -396,7 +473,7 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   </div>
 
                   {/* Stok Durumu */}
-                  <div className="col-span-2">
+                  <div className="w-32 flex-shrink-0">
                     <div className="space-y-2">
                       <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
                         <StockIcon className="w-3 h-3 mr-1" />
@@ -412,7 +489,7 @@ export function ProductsTable({ products, isLoading, onProductClick, selectedSit
                   </div>
 
                   {/* Depolar - Sadece seçili depo */}
-                  <div className="col-span-2">
+                  <div className="w-32 flex-shrink-0">
                     {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
                       <div className="space-y-1">
                         {product.warehouse_stocks

@@ -37,6 +37,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
     category_id: product?.category_id || '',
     product_type: product?.product_type || '',
     sku: product?.sku || '',
+    serial_numbers: '', // Virgülle ayrılmış seri numaraları
     unit: product?.unit || 'adet',
     unit_price: product?.unit_price || '',
     currency: product?.currency || 'TRY',
@@ -52,6 +53,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
         category_id: product.category_id || '',
         product_type: product.product_type || '',
         sku: product.sku || '',
+        serial_numbers: '',
         unit: product.unit || 'adet',
         unit_price: product.unit_price || '',
         currency: product.currency || 'TRY',
@@ -141,6 +143,23 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
                 : 'bg-gray-50/50 focus:bg-white'
             } transition-all rounded-xl`}
           />
+        </div>
+
+        {/* Seri Numaraları */}
+        <div className="col-span-2 bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+          <Label htmlFor="serial_numbers" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            Seri Numaraları (Opsiyonel)
+          </Label>
+          <Input
+            id="serial_numbers"
+            value={formData.serial_numbers}
+            onChange={(e) => handleChange('serial_numbers', e.target.value)}
+            placeholder="Örn: SN001, SN002, SN003 (virgülle ayırın)"
+            className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl"
+          />
+          <p className="text-xs text-gray-500 mt-2">
+            Birden fazla seri numarası girmek için virgül (,) ile ayırın
+          </p>
         </div>
 
         {/* Kategori */}

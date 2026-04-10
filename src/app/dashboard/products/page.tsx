@@ -39,6 +39,8 @@ export default function ProductsPage() {
   const [loadingSites, setLoadingSites] = useState(true)
   const [userRole, setUserRole] = useState<string>('')
   const [userSiteId, setUserSiteId] = useState<string>('')
+  const [selectedProducts, setSelectedProducts] = useState<string[]>([])
+  const [showBulkActions, setShowBulkActions] = useState(false)
   const supabase = createClient()
   
   // Hooks
@@ -119,13 +121,12 @@ export default function ProductsPage() {
           })
         )
         
-        // Sadece stoğu olan siteleri göster
+        // Tüm siteleri göster (IT depo dahil)
         // Eğer santiye_depo veya purchasing_officer ise sadece kendi sitesini göster
-        const filteredSites = sitesWithStock.filter(s => s.productCount > 0)
         if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
-          setSites(filteredSites.filter(s => s.site.id === userSiteId))
+          setSites(sitesWithStock.filter(s => s.site.id === userSiteId))
         } else {
-          setSites(filteredSites)
+          setSites(sitesWithStock)
         }
       } catch (error) {
         console.error('Sites yüklenirken hata:', error)
@@ -144,9 +145,16 @@ export default function ProductsPage() {
     selectedProductId,
     activeTab,
     openModal,
-    closeModal,
+    closeModal: originalCloseModal,
     changeTab,
   } = useProductModal()
+
+  // Modal kapatıldığında seçimleri temizle
+  const closeModal = () => {
+    originalCloseModal()
+    setSelectedProducts([])
+    setShowBulkActions(false)
+  }
 
   const createMutation = useCreateProduct()
   const updateMutation = useUpdateProduct()
@@ -166,6 +174,25 @@ export default function ProductsPage() {
     openModal(productId)
   }
 
+  const handleSelectionChange = (selectedIds: string[]) => {
+    setSelectedProducts(selectedIds)
+    setShowBulkActions(selectedIds.length > 0)
+  }
+
+  const handleBulkStockOperations = () => {
+    if (selectedProducts.length === 0) return
+    
+    showToast(`${selectedProducts.length} ürün için toplu stok işlemi başlatılıyor...`, 'info')
+    
+    // İlk seçili ürünü aç ve stok işlemleri tabına git
+    setModalMode('view')
+    openModal(selectedProducts[0])
+    changeTab('movements')
+    
+    // Modal açıldığında seçili ürünleri göster
+    // Not: Şimdilik tek ürün için modal açılıyor, gelecekte toplu işlem formu eklenebilir
+  }
+
   const handleClearFilters = () => {
     clearFilters()
     // Purchasing officer ve santiye_depo için site_id'yi koru
@@ -178,11 +205,34 @@ export default function ProductsPage() {
 
   const handleSaveProduct = async (data: any) => {
     try {
+      // Seri numaralarını ayır
+      const { serial_numbers, ...productData } = data
+      
+      // Seri numarası varsa has_serial'ı true yap ve açıklamaya ekle
+      if (serial_numbers && serial_numbers.trim()) {
+        productData.has_serial = true
+        
+        const serialNumbersList = serial_numbers
+          .split(',')
+          .map((sn: string) => sn.trim())
+          .filter((sn: string) => sn.length > 0)
+        
+        // Seri numaralarını açıklamaya ekle
+        const serialNumbersText = `\n\n--- Seri Numaraları ---\n${serialNumbersList.join('\n')}`
+        productData.description = (productData.description || '') + serialNumbersText
+      }
+      
       if (modalMode === 'create') {
-        await createMutation.mutateAsync(data)
-        showToast('Ürün başarıyla oluşturuldu!', 'success')
+        await createMutation.mutateAsync(productData)
+        
+        if (serial_numbers && serial_numbers.trim()) {
+          const serialCount = serial_numbers.split(',').filter((s: string) => s.trim()).length
+          showToast(`Ürün ve ${serialCount} seri numarası başarıyla oluşturuldu!`, 'success')
+        } else {
+          showToast('Ürün başarıyla oluşturuldu!', 'success')
+        }
       } else {
-        await updateMutation.mutateAsync({ id: selectedProductId!, updates: data })
+        await updateMutation.mutateAsync({ id: selectedProductId!, updates: productData })
         showToast('Ürün başarıyla güncellendi!', 'success')
       }
       closeModal()
@@ -449,6 +499,8 @@ export default function ProductsPage() {
             isLoading={isLoading}
             onProductClick={handleOpenViewModal}
             selectedSiteId={siteId}
+            // selectedProducts={selectedProducts}
+            // onSelectionChange={handleSelectionChange}
           />
 
           {/* Pagination */}
@@ -500,7 +552,45 @@ export default function ProductsPage() {
         onTabChange={changeTab}
         onSave={handleSaveProduct}
         isSaving={isSaving}
+        selectedProductIds={selectedProducts}
       />
+
+      {/* Bottom Action Bar - Toplu İşlemler - Şimdilik gizli */}
+      {false && showBulkActions && (
+        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-2xl z-50 border-t border-gray-700">
+          <div className="max-w-7xl mx-auto px-8 py-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/10 rounded-full px-4 py-2 backdrop-blur-sm">
+                  <span className="text-sm font-semibold">
+                    {selectedProducts.length} ürün seçildi
+                  </span>
+                </div>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setSelectedProducts([])
+                    setShowBulkActions(false)
+                  }}
+                  className="text-white hover:bg-white/10 rounded-full"
+                >
+                  Seçimi Temizle
+                </Button>
+              </div>
+              
+              <div className="flex items-center gap-3">
+                <Button
+                  onClick={handleBulkStockOperations}
+                  className="bg-white text-gray-900 hover:bg-gray-100 rounded-full px-8 py-6 font-semibold shadow-lg"
+                >
+                  <Package className="w-5 h-5 mr-2" />
+                  Toplu Stok İşlemi Yap
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
