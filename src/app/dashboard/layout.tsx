@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import NotificationPanel from '@/components/NotificationPanel'
@@ -22,6 +22,9 @@ export default function DashboardLayout({
   const [userRole, setUserRole] = useState<UserRole>('user')
   const [isLoading, setIsLoading] = useState(true)
   const [hasAccess, setHasAccess] = useState(true)
+  const [isHeaderVisible, setIsHeaderVisible] = useState(true)
+  const lastScrollY = useRef(0)
+  const ticking = useRef(false)
   
   const pathname = usePathname()
   const router = useRouter()
@@ -93,6 +96,44 @@ export default function DashboardLayout({
     }
   }, [pathname, userRole, isLoading, router])
 
+  // Mobil header scroll hide/show kontrolü
+  const handleScroll = useCallback(() => {
+    if (!ticking.current) {
+      window.requestAnimationFrame(() => {
+        const currentScrollY = window.scrollY
+        const scrollDelta = currentScrollY - lastScrollY.current
+        
+        // Eğer menü açıksa header'ı gizleme
+        if (isMobileMenuOpen || isNotificationPanelOpen) {
+          setIsHeaderVisible(true)
+          lastScrollY.current = currentScrollY
+          ticking.current = false
+          return
+        }
+        
+        // Sayfa başındaysa her zaman göster
+        if (currentScrollY < 10) {
+          setIsHeaderVisible(true)
+        } else if (scrollDelta > 8) {
+          // Aşağı scroll - gizle (8px threshold ile hassasiyeti azalt)
+          setIsHeaderVisible(false)
+        } else if (scrollDelta < -8) {
+          // Yukarı scroll - göster
+          setIsHeaderVisible(true)
+        }
+        
+        lastScrollY.current = currentScrollY
+        ticking.current = false
+      })
+      ticking.current = true
+    }
+  }, [isMobileMenuOpen, isNotificationPanelOpen])
+
+  useEffect(() => {
+    window.addEventListener('scroll', handleScroll, { passive: true })
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [handleScroll])
+
   // Bildirim paneli açıldığında sidebar'ı kapat ve tam tersi
   const handleNotificationPanelChange = (open: boolean) => {
     if (open && isMobileMenuOpen) {
@@ -140,7 +181,11 @@ export default function DashboardLayout({
   return (
     <div className="relative min-h-screen bg-gray-50">
       {/* Mobile Header - Ada Tasarımı */}
-      <header className="fixed top-3 left-3 right-3 h-16 bg-white rounded-3xl border border-gray-100/50 shadow-lg z-50 lg:hidden">
+      <header 
+        className={`fixed top-3 left-3 right-3 h-16 bg-white rounded-3xl border border-gray-100/50 shadow-lg z-50 lg:hidden transition-all duration-300 ease-out ${
+          isHeaderVisible ? 'translate-y-0 opacity-100' : '-translate-y-[calc(100%+1rem)] opacity-0'
+        }`}
+      >
         <div className="flex items-center justify-between h-full px-5">
           <button 
             onClick={() => router.push('/dashboard/requests')}

@@ -125,28 +125,38 @@ export default function SantiyeDepoView({
               continue
             }
             
-            // Calculate total stock across all warehouses
-            const totalQuantity = stockData.reduce((sum, stock) => {
-              return sum + (parseFloat(stock.quantity?.toString() || '0') || 0)
-            }, 0)
-            
             // Prepare warehouse details with condition breakdown
             const warehouses = stockData
               .filter((s: any) => s.warehouse?.name)
               .map((s: any) => {
                 const breakdown = (s.condition_breakdown as any) || {}
+                const yeni = parseFloat(breakdown.yeni?.toString() || '0') || 0
+                const kullanilmis = parseFloat(breakdown.kullanılmış?.toString() || '0') || 0
+                const hek = parseFloat(breakdown.hek?.toString() || '0') || 0
+                const arizali = parseFloat(breakdown.arızalı?.toString() || '0') || 0
+                
+                // Condition breakdown toplamı ile quantity alanından büyük olanı kullan
+                const breakdownTotal = yeni + kullanilmis + hek + arizali
+                const quantityValue = parseFloat(s.quantity?.toString() || '0') || 0
+                const effectiveQuantity = Math.max(breakdownTotal, quantityValue)
+                
                 return {
                   name: s.warehouse.name,
-                  quantity: parseFloat(s.quantity?.toString() || '0') || 0,
+                  quantity: effectiveQuantity,
                   conditionBreakdown: {
-                    yeni: parseFloat(breakdown.yeni?.toString() || '0') || 0,
-                    kullanılmış: parseFloat(breakdown.kullanılmış?.toString() || '0') || 0,
-                    hek: parseFloat(breakdown.hek?.toString() || '0') || 0,
-                    arızalı: parseFloat(breakdown.arızalı?.toString() || '0') || 0,
+                    yeni: yeni,
+                    kullanılmış: kullanilmis,
+                    hek: hek,
+                    arızalı: arizali,
                   }
                 }
               })
               .sort((a, b) => b.quantity - a.quantity) // En çok stok olanlar üstte
+            
+            // Calculate total stock across all warehouses (condition breakdown toplamlarından)
+            const totalQuantity = warehouses.reduce((sum, wh) => {
+              return sum + wh.quantity
+            }, 0)
             
             stocks[item.id] = {
               totalAvailable: totalQuantity,

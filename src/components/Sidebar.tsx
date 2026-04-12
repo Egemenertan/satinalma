@@ -448,10 +448,10 @@ export default function Sidebar({
       <div 
         className={cn(
           "fixed z-50 flex flex-col transition-all duration-500 ease-out overflow-visible",
-          "bg-gradient-to-br from-white to-gray-50/50 shadow-2xl backdrop-blur-xl",
+          "bg-white shadow-2xl",
           // Desktop - Ada tasarımı (sol tarafta)
           "hidden lg:flex",
-          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-100/50",
+          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-200",
           isCollapsed ? "lg:w-16" : "lg:w-64",
           // Mobile - Tam sayfa
           isMobileOpen ? "flex inset-0 w-full h-full" : "hidden lg:flex",

@@ -268,6 +268,7 @@ export default function OffersPage() {
                  request.status === 'gönderildi' ? 'Gönderildi' :
                  request.status === 'kısmen gönderildi' ? 'Kısmen Gönderildi' :
                  request.status === 'depoda mevcut değil' ? 'Depoda Mevcut Değil' :
+                 request.status === 'ana depoda yok' ? 'Ana Depoda Yok' :
                  request.status === 'eksik onaylandı' ? 'Eksik Onaylandı' :
                  request.status === 'alternatif onaylandı' ? 'Alternatif Onaylandı' :
                  request.status === 'satın almaya gönderildi' ? 'Satın Almaya Gönderildi' :
@@ -306,6 +307,7 @@ export default function OffersPage() {
                    request.status === 'gönderildi' ? 'Gönderildi' :
                    request.status === 'kısmen gönderildi' ? 'Kısmen Gönderildi' :
                    request.status === 'depoda mevcut değil' ? 'Depoda Mevcut Değil' :
+                   request.status === 'ana depoda yok' ? 'Ana Depoda Yok' :
                    request.status === 'eksik onaylandı' ? 'Eksik Onaylandı' :
                    request.status === 'alternatif onaylandı' ? 'Alternatif Onaylandı' :
                    request.status === 'satın almaya gönderildi' ? 'Satın Almaya Gönderildi' :

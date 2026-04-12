@@ -706,10 +706,10 @@ export default function EditPurchaseRequestPage() {
           return currentStatus === 'pending'
         }
         if (role === 'site_manager') {
-          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(currentStatus)
+          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
         }
         if (role === 'santiye_depo' || role === 'santiye_depo_yonetici') {
-          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(currentStatus)
+          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
         }
         if (role === 'admin') {
           return true

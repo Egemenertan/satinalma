@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Package, FileText, CheckCircle } from 'lucide-react'
+import { Package, FileText, CheckCircle, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 
@@ -45,6 +45,7 @@ export default function WarehouseManagerMaterialCard({
 }: WarehouseManagerMaterialCardProps) {
   const [sendQuantity, setSendQuantity] = useState<string>('')
   const [sending, setSending] = useState(false)
+  const [processingDepotStatus, setProcessingDepotStatus] = useState(false)
   const [selectedCondition, setSelectedCondition] = useState<'yeni' | 'kullanılmış' | 'hek'>('yeni')
   const supabase = createClient()
 
@@ -346,9 +347,157 @@ export default function WarehouseManagerMaterialCard({
     }
   }
 
+  const handleDepotNotAvailable = async () => {
+    if (processingDepotStatus) return
+    
+    setProcessingDepotStatus(true)
+    try {
+      console.log('🚫 Depoda mevcut değil işlemi başlıyor:', {
+        requestId: request.id,
+        itemId: item.id,
+        itemName: item.item_name,
+        currentQuantity: item.quantity
+      })
+
+      const { data: { user }, error: userError } = await supabase.auth.getUser()
+      if (userError || !user) {
+        throw new Error('Kullanıcı bilgisi alınamadı')
+      }
+
+      const itemShipmentsCheck = shipmentData[item.id]
+      const alreadyShipped = (itemShipmentsCheck?.total_shipped || 0) > 0
+      
+      if (alreadyShipped) {
+        showToast(`${item.item_name} zaten gönderilmiş.`, 'info')
+        setProcessingDepotStatus(false)
+        return
+      }
+
+      if (item.quantity <= 0) {
+        showToast(`${item.item_name} zaten işlenmiş.`, 'info')
+        setProcessingDepotStatus(false)
+        return
+      }
+
+      console.log(`🔄 ${item.item_name} için depoda yok kaydı oluşturuluyor...`)
+      
+      const originalQuantity = item.original_quantity || item.quantity
+      
+      if (item.original_quantity && item.quantity !== originalQuantity) {
+        console.log(`📊 Quantity güncelleniyor: ${item.quantity} -> ${originalQuantity} (depoda yok - original quantity'ye eşitleniyor)`)
+        
+        const { error: rpcError } = await supabase
+          .rpc('update_purchase_request_item_quantity', {
+            item_id: item.id,
+            new_quantity: originalQuantity
+          })
+        
+        if (rpcError) {
+          console.log('⚠️ RPC başarısız, direkt update deneniyor...', rpcError)
+          
+          const { error: updateError } = await supabase
+            .from('purchase_request_items')
+            .update({ quantity: originalQuantity })
+            .eq('id', item.id)
+          
+          if (updateError) {
+            console.error(`❌ ${item.item_name} miktar güncellenemedi:`, updateError)
+            throw new Error(`${item.item_name} için miktar güncellenemedi`)
+          }
+        }
+      }
+
+      const { error: shipmentError } = await supabase
+        .from('shipments')
+        .insert({
+          purchase_request_id: request.id,
+          purchase_request_item_id: item.id,
+          shipped_quantity: 0,
+          shipped_by: user.id,
+          notes: `${item.item_name} - Ana depoda yok (Warehouse Manager tarafından işaretlendi)`
+        })
+
+      if (shipmentError) {
+        console.error(`❌ ${item.item_name} shipment error:`, shipmentError)
+        throw new Error(`${item.item_name} için gönderim kaydı oluşturulamadı: ${shipmentError.message}`)
+      }
+
+      // Tüm malzemelerin durumunu kontrol et - hepsi depoda yok mu?
+      const allItems = request.purchase_request_items || []
+      const currentItemShipments = shipmentData || {}
+      
+      // Bu malzeme de dahil tüm malzemelerin depoda yok olup olmadığını kontrol et
+      let allItemsUnavailable = true
+      for (const reqItem of allItems) {
+        if (reqItem.id === item.id) {
+          // Bu malzeme için az önce depoda yok kaydı oluşturduk
+          continue
+        }
+        
+        const itemShips = currentItemShipments[reqItem.id]
+        const hasShipment = itemShips?.shipments?.length > 0
+        const isDepotUnavailable = itemShips?.shipments?.some((s: any) => s.shipped_quantity === 0)
+        const hasActualShipment = itemShips?.total_shipped > 0
+        
+        // Eğer bu malzeme için hiç shipment yoksa veya gerçek gönderim varsa, hepsi depoda yok değil
+        if (!hasShipment || hasActualShipment) {
+          allItemsUnavailable = false
+          break
+        }
+        
+        // Depoda yok değilse
+        if (!isDepotUnavailable) {
+          allItemsUnavailable = false
+          break
+        }
+      }
+      
+      // Status güncelleme - Warehouse Manager için "ana depoda yok" statusu
+      const newStatus = allItemsUnavailable ? 'ana depoda yok' : request.status
+      
+      if (allItemsUnavailable || allItems.length === 1) {
+        // Tüm malzemeler depoda yok veya tek malzeme varsa status'u güncelle
+        const { error: statusError } = await supabase
+          .from('purchase_requests')
+          .update({ 
+            status: 'ana depoda yok',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', request.id)
+        
+        if (statusError) {
+          console.error('❌ Status güncelleme hatası:', statusError)
+        } else {
+          console.log('✅ Talep statusu "ana depoda yok" olarak güncellendi')
+        }
+      } else {
+        // Kısmi durum - RPC ile normal güncelleme
+        try {
+          await supabase.rpc('update_purchase_request_status_manual', {
+            request_id: request.id
+          })
+        } catch (error) {
+          console.error('❌ Status güncelleme hatası:', error)
+        }
+      }
+      
+      console.log(`✅ ${item.item_name} için ana depoda yok işlemi tamamlandı`)
+      showToast(`${item.item_name} "Ana Depoda Yok" olarak işaretlendi.`, 'info')
+      await onRefresh()
+      invalidatePurchaseRequestsCache()
+      
+    } catch (error: any) {
+      console.error('Error updating depot status:', error)
+      showToast(error.message || 'Durum güncellenirken hata oluştu.', 'error')
+    } finally {
+      setProcessingDepotStatus(false)
+    }
+  }
+
   const itemShipments = shipmentData[item.id]
   const totalShipped = itemShipments?.total_shipped || 0
   const isShipped = totalShipped > 0
+  const isDepotUnavailable = itemShipments?.shipments?.some((s: any) => s.shipped_quantity === 0) || false
   const originalQuantity = item.original_quantity || item.quantity
   const remainingQuantity = item.quantity
 
@@ -534,7 +683,7 @@ export default function WarehouseManagerMaterialCard({
       )}
 
       {/* Gönderim İşlemleri */}
-      {!isShipped && remainingQuantity > 0 ? (
+      {!isShipped && remainingQuantity > 0 && !isDepotUnavailable ? (
         <div className="p-4">
           <div className="space-y-3">
             {/* Condition Seçimi */}
@@ -645,23 +794,57 @@ export default function WarehouseManagerMaterialCard({
               return null
             })()}
 
-            <Button
-              onClick={handleSend}
-              disabled={!sendQuantity.trim() || parseFloat(sendQuantity || '0') <= 0 || sending}
-              className="w-full h-11 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium"
-            >
-              {sending ? (
-                <>
-                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                  Gönderiliyor...
-                </>
-              ) : (
-                <>
-                  <Package className="h-4 w-4 mr-2" />
-                  Gönder
-                </>
-              )}
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleSend}
+                disabled={!sendQuantity.trim() || parseFloat(sendQuantity || '0') <= 0 || sending}
+                className="flex-1 h-11 bg-green-600 hover:bg-green-700 text-white rounded-xl font-medium"
+              >
+                {sending ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Gönderiliyor...
+                  </>
+                ) : (
+                  <>
+                    <Package className="h-4 w-4 mr-2" />
+                    Gönder
+                  </>
+                )}
+              </Button>
+              <Button
+                onClick={handleDepotNotAvailable}
+                variant="outline"
+                disabled={processingDepotStatus}
+                className="flex-1 h-11 border-red-200 rounded-xl text-red-700 hover:bg-red-50 font-medium"
+              >
+                {processingDepotStatus ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-red-700 mr-2"></div>
+                    İşleniyor...
+                  </>
+                ) : (
+                  <>
+                    <X className="h-4 w-4 mr-2" />
+                    Ana Depoda Yok
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : isDepotUnavailable ? (
+        <div className="p-4 bg-orange-50">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 bg-orange-100 rounded-full flex items-center justify-center">
+              <X className="h-5 w-5 text-orange-600" />
+            </div>
+            <div className="flex-1">
+              <h6 className="text-sm font-semibold text-orange-800">Ana Depoda Yok</h6>
+              <p className="text-xs text-orange-600 mt-1">
+                Bu malzeme ana depoda bulunmuyor ve gönderim yapılamıyor.
+              </p>
+            </div>
           </div>
         </div>
       ) : isShipped ? (

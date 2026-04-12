@@ -6,10 +6,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Loading } from '@/components/ui/loading'
-import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Package, 
   TrendingUp, 
@@ -22,12 +20,6 @@ import {
 } from 'lucide-react'
 import type { ProductWithStock } from '../types'
 import Image from 'next/image'
-import { createClient } from '@/lib/supabase/client'
-
-interface Site {
-  id: string
-  name: string
-}
 
 interface ProductsTableProps {
   products: ProductWithStock[]
@@ -48,59 +40,9 @@ export function ProductsTable({
 }: ProductsTableProps) {
   const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
-  const [sites, setSites] = useState<Site[]>([])
-  const [loadingSites, setLoadingSites] = useState(true)
-  const supabase = createClient()
-
-  // Toplu seçim fonksiyonları
-  const toggleSelectAll = () => {
-    if (!onSelectionChange) return
-    
-    if (selectedProducts.length === products.length) {
-      // Tümünü kaldır
-      onSelectionChange([])
-    } else {
-      // Tümünü seç
-      onSelectionChange(products.map(p => p.id))
-    }
-  }
-
-  const toggleSelectProduct = (productId: string) => {
-    if (!onSelectionChange) return
-    
-    if (selectedProducts.includes(productId)) {
-      onSelectionChange(selectedProducts.filter(id => id !== productId))
-    } else {
-      onSelectionChange([...selectedProducts, productId])
-    }
-  }
-
-  const isAllSelected = products.length > 0 && selectedProducts.length === products.length
-  const isSomeSelected = selectedProducts.length > 0 && selectedProducts.length < products.length
-
-  // Tüm depoları yükle
-  useEffect(() => {
-    const loadSites = async () => {
-      try {
-        const { data, error } = await supabase
-          .from('sites')
-          .select('id, name')
-          .order('name')
-        
-        if (error) throw error
-        setSites(data || [])
-      } catch (error) {
-        console.error('Depolar yüklenirken hata:', error)
-      } finally {
-        setLoadingSites(false)
-      }
-    }
-    
-    loadSites()
-  }, [supabase])
 
   // Loading state
-  if (isLoading || loadingSites) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
         <Loading size="lg" text="Ürünler yükleniyor..." />
@@ -181,92 +123,25 @@ export function ProductsTable({
     </button>
   )
 
-  // Her ürün için depo stoklarını map'e dönüştür
-  const getWarehouseStockMap = (product: ProductWithStock) => {
-    const stockMap = new Map<string, number>()
-    product.warehouse_stocks?.forEach((stock: any) => {
-      if (stock.warehouse_id) {
-        stockMap.set(stock.warehouse_id, stock.quantity || 0)
-      }
-    })
-    return stockMap
-  }
-
-  // Envanter görünümü mü (tüm depolar)?
-  const isInventoryView = !selectedSiteId
-
   return (
-    <div className="space-y-3 overflow-x-auto">
+    <div className="space-y-2 overflow-x-auto">
       {/* Header - Desktop Only */}
-      {isInventoryView ? (
-        // Envanter görünümü - Tüm depo sütunları
-        <div className="hidden lg:flex gap-4 px-4 pb-3 border-b border-gray-200 min-w-max">
-          {onSelectionChange && (
-            <div className="w-10 flex items-center justify-center flex-shrink-0">
-              <Checkbox
-                checked={isAllSelected}
-                onCheckedChange={toggleSelectAll}
-                className={isSomeSelected ? 'data-[state=checked]:bg-gray-400' : ''}
-              />
-            </div>
-          )}
-          <div className="w-16 flex items-center flex-shrink-0">
-            <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
-          </div>
-          <div className="w-64 flex items-center flex-shrink-0">
-            <SortButton field="name">ÜRÜN ADI</SortButton>
-          </div>
-          <div className="w-40 flex items-center flex-shrink-0">
-            <SortButton field="brand">MARKA</SortButton>
-          </div>
-          <div className="w-32 flex items-center flex-shrink-0">
-            <SortButton field="sku">SKU</SortButton>
-          </div>
-          <div className="w-32 flex items-center flex-shrink-0">
-            <SortButton field="stock">TOPLAM STOK</SortButton>
-          </div>
-          {/* Her depo için ayrı sütun */}
-          {sites.map((site) => (
-            <div key={site.id} className="w-32 flex items-center flex-shrink-0">
-              <div className="flex items-center gap-1">
-                <Building2 className="w-3 h-3 text-gray-400" />
-                <span className="text-xs font-medium text-gray-500 truncate">{site.name}</span>
-              </div>
-            </div>
-          ))}
+      <div className="hidden lg:grid gap-4 px-4 pb-3 border-b border-gray-200" style={{gridTemplateColumns: '80px 2fr 1fr 1fr 1fr 200px'}}>
+        <div className="text-xs font-medium text-black uppercase tracking-wider">GÖRSEL</div>
+        <div className="flex items-center">
+          <SortButton field="name">ÜRÜN ADI</SortButton>
         </div>
-      ) : (
-        // Tek depo görünümü - Eski yapı
-        <div className="hidden lg:flex gap-4 px-4 pb-3 border-b border-gray-200">
-          {onSelectionChange && (
-            <div className="w-10 flex items-center justify-center flex-shrink-0">
-              <Checkbox
-                checked={isAllSelected}
-                onCheckedChange={toggleSelectAll}
-                className={isSomeSelected ? 'data-[state=checked]:bg-gray-400' : ''}
-              />
-            </div>
-          )}
-          <div className="w-16 flex items-center flex-shrink-0">
-            <span className="text-xs font-medium text-gray-500">GÖRSEL</span>
-          </div>
-          <div className="w-64 flex items-center flex-shrink-0">
-            <SortButton field="name">ÜRÜN ADI</SortButton>
-          </div>
-          <div className="w-40 flex items-center flex-shrink-0">
-            <SortButton field="brand">MARKA</SortButton>
-          </div>
-          <div className="w-32 flex items-center flex-shrink-0">
-            <SortButton field="sku">SKU</SortButton>
-          </div>
-          <div className="w-32 flex items-center flex-shrink-0">
-            <SortButton field="stock">STOK DURUMU</SortButton>
-          </div>
-          <div className="w-32 flex items-center flex-shrink-0">
-            <span className="text-xs font-medium text-gray-500">DEPOLAR</span>
-          </div>
+        <div className="flex items-center">
+          <SortButton field="brand">MARKA</SortButton>
         </div>
-      )}
+        <div className="flex items-center">
+          <SortButton field="sku">SKU</SortButton>
+        </div>
+        <div className="flex items-center">
+          <SortButton field="stock">STOK DURUMU</SortButton>
+        </div>
+        <div className="text-xs font-medium text-black uppercase tracking-wider">DEPOLAR</div>
+      </div>
 
       {/* Product Rows */}
       {sortedProducts.map((product) => {
@@ -274,307 +149,197 @@ export function ProductsTable({
         const StockIcon = stockStatus.icon
         const totalStock = product.total_stock || 0
         const primaryImage = product.images?.[0]
-        const warehouseStockMap = getWarehouseStockMap(product)
         const isSelected = selectedProducts.includes(product.id)
 
         return (
-          <Card
+          <div
             key={product.id}
-            className={`border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer rounded-2xl overflow-hidden ${
-              isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : 'bg-white'
-            } ${isInventoryView ? 'min-w-max' : ''}`}
+            className={`bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 cursor-pointer hover:border-gray-300 hover:shadow-md ${
+              isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : ''
+            }`}
             onClick={() => onProductClick(product.id)}
           >
-            <CardContent className="p-4">
-              {/* Desktop Layout */}
-              {isInventoryView ? (
-                // Envanter görünümü - Tüm depo sütunları
-                <div className="hidden lg:flex gap-4 items-center">
-                  {/* Checkbox */}
-                  {onSelectionChange && (
-                    <div className="w-10 flex items-center justify-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelectProduct(product.id)}
-                      />
-                    </div>
+            {/* Desktop Layout */}
+            <div className="hidden lg:grid gap-4 items-center" style={{gridTemplateColumns: '80px 2fr 1fr 1fr 1fr 200px'}}>
+              {/* Görsel */}
+              <div>
+                <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
+                  {primaryImage ? (
+                    <Image
+                      src={primaryImage}
+                      alt={product.name}
+                      fill
+                      className="object-cover"
+                      sizes="64px"
+                    />
+                  ) : (
+                    <Package className="w-6 h-6 text-gray-400" />
                   )}
-                  
-                  {/* Görsel */}
-                  <div className="w-16 flex-shrink-0">
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
-                      {primaryImage ? (
-                        <Image
-                          src={primaryImage}
-                          alt={product.name}
-                          fill
-                          className="object-cover"
-                          sizes="64px"
-                        />
-                      ) : (
-                        <Package className="w-6 h-6 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Ürün Adı */}
-                  <div className="w-64 flex-shrink-0">
-                    <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
-                      {product.name}
-                    </h3>
-                    {product.description && (
-                      <p className="text-xs text-gray-500 line-clamp-1">
-                        {product.description}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Marka */}
-                  <div className="w-40 flex-shrink-0">
-                    {product.brand ? (
-                      <Badge 
-                        variant="secondary" 
-                        className="bg-gray-100 text-gray-700 border-0 rounded-full px-3 py-1 text-xs"
-                      >
-                        <Building2 className="w-3 h-3 mr-1" />
-                        {product.brand.name}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </div>
-
-                  {/* SKU */}
-                  <div className="w-32 flex-shrink-0">
-                    {product.sku ? (
-                      <div className="flex items-center gap-1.5">
-                        <Hash className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-xs font-mono text-gray-600">
-                          {product.sku}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </div>
-
-                  {/* Toplam Stok */}
-                  <div className="w-32 flex-shrink-0">
-                    <div className="space-y-2">
-                      <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
-                        <StockIcon className="w-3 h-3 mr-1" />
-                        {stockStatus.text}
-                      </Badge>
-                      <div className="flex items-center gap-1.5">
-                        <Box className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-xs font-semibold text-gray-700">
-                          {totalStock} {product.unit || 'adet'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Her depo için ayrı sütun */}
-                  {sites.map((site) => {
-                    const quantity = warehouseStockMap.get(site.id) || 0
-                    return (
-                      <div key={site.id} className="w-32 flex-shrink-0">
-                        <div className="flex items-center justify-center">
-                          {quantity > 0 ? (
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-2 min-w-[60px] text-center">
-                              <span className="text-sm font-semibold text-blue-900">
-                                {quantity}
-                              </span>
-                              <span className="text-xs text-blue-600 ml-1">
-                                {product.unit || 'adet'}
-                              </span>
-                            </div>
-                          ) : (
-                            <div className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 min-w-[60px] text-center">
-                              <span className="text-sm font-semibold text-gray-400">
-                                0
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
                 </div>
-              ) : (
-                // Tek depo görünümü
-                <div className="hidden lg:flex gap-4 items-center">
-                  {/* Checkbox */}
-                  {onSelectionChange && (
-                    <div className="w-10 flex items-center justify-center flex-shrink-0" onClick={(e) => e.stopPropagation()}>
-                      <Checkbox
-                        checked={isSelected}
-                        onCheckedChange={() => toggleSelectProduct(product.id)}
-                      />
-                    </div>
-                  )}
-                  
-                  {/* Görsel */}
-                  <div className="w-16 flex-shrink-0">
-                    <div className="relative w-16 h-16 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
-                      {primaryImage ? (
-                        <Image
-                          src={primaryImage}
-                          alt={product.name}
-                          fill
-                          className="object-cover"
-                          sizes="64px"
-                        />
-                      ) : (
-                        <Package className="w-6 h-6 text-gray-400" />
-                      )}
-                    </div>
-                  </div>
+              </div>
 
-                  {/* Ürün Adı */}
-                  <div className="w-64 flex-shrink-0">
-                    <h3 className="font-semibold text-gray-900 text-sm mb-1 line-clamp-2">
-                      {product.name}
-                    </h3>
+              {/* Ürün Adı */}
+              <div>
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 bg-gray-100 rounded-2xl">
+                    <Package className="w-3 h-3 text-gray-600" />
+                  </div>
+                  <div>
+                    <div className="font-medium text-sm text-gray-800 line-clamp-2">{product.name}</div>
                     {product.description && (
-                      <p className="text-xs text-gray-500 line-clamp-1">
-                        {product.description}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Marka */}
-                  <div className="w-40 flex-shrink-0">
-                    {product.brand ? (
-                      <Badge 
-                        variant="secondary" 
-                        className="bg-gray-100 text-gray-700 border-0 rounded-full px-3 py-1 text-xs"
-                      >
-                        <Building2 className="w-3 h-3 mr-1" />
-                        {product.brand.name}
-                      </Badge>
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </div>
-
-                  {/* SKU */}
-                  <div className="w-32 flex-shrink-0">
-                    {product.sku ? (
-                      <div className="flex items-center gap-1.5">
-                        <Hash className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-xs font-mono text-gray-600">
-                          {product.sku}
-                        </span>
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">-</span>
-                    )}
-                  </div>
-
-                  {/* Stok Durumu */}
-                  <div className="w-32 flex-shrink-0">
-                    <div className="space-y-2">
-                      <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
-                        <StockIcon className="w-3 h-3 mr-1" />
-                        {stockStatus.text}
-                      </Badge>
-                      <div className="flex items-center gap-1.5">
-                        <Box className="w-3.5 h-3.5 text-gray-400" />
-                        <span className="text-xs font-semibold text-gray-700">
-                          {totalStock} {product.unit || 'adet'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Depolar - Sadece seçili depo */}
-                  <div className="w-32 flex-shrink-0">
-                    {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
-                      <div className="space-y-1">
-                        {product.warehouse_stocks
-                          .filter((stock: any) => stock.warehouse_id === selectedSiteId)
-                          .map((stock: any) => (
-                            <div key={stock.warehouse_id} className="flex items-center justify-between text-xs">
-                              <span className="text-gray-600 truncate mr-2">
-                                {stock.warehouses?.name || 'Depo'}
-                              </span>
-                              <span className="font-semibold text-gray-900">
-                                {stock.quantity}
-                              </span>
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <span className="text-xs text-gray-400">Stok yok</span>
+                      <div className="text-xs text-gray-500 line-clamp-1">{product.description}</div>
                     )}
                   </div>
                 </div>
-              )}
+              </div>
 
-              {/* Mobile Layout */}
-              <div className="lg:hidden flex gap-3">
-                {/* Görsel */}
-                <div className="flex-shrink-0">
-                  <div className="relative w-20 h-20 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
+              {/* Marka */}
+              <div>
+                {product.brand ? (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-gray-100 rounded-2xl">
+                      <Building2 className="w-3 h-3 text-gray-600" />
+                    </div>
+                    <span className="font-medium text-sm text-gray-800">{product.brand.name}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-400">-</span>
+                )}
+              </div>
+
+              {/* SKU */}
+              <div>
+                {product.sku ? (
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 bg-gray-100 rounded-2xl">
+                      <Hash className="w-3 h-3 text-gray-600" />
+                    </div>
+                    <span className="text-xs font-mono text-gray-600">{product.sku}</span>
+                  </div>
+                ) : (
+                  <span className="text-sm text-gray-400">-</span>
+                )}
+              </div>
+
+              {/* Stok Durumu */}
+              <div>
+                <div className="space-y-2">
+                  <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
+                    <StockIcon className="w-3 h-3 mr-1" />
+                    {stockStatus.text}
+                  </Badge>
+                  <div className="flex items-center gap-1.5">
+                    <Box className="w-3.5 h-3.5 text-gray-400" />
+                    <span className="text-xs font-semibold text-gray-700">
+                      {totalStock} {product.unit || 'adet'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Depolar */}
+              <div>
+                {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
+                  <div className="flex flex-wrap gap-1.5">
+                    {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
+                      <div key={stock.warehouse_id} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                        <span className="text-xs font-medium text-blue-700">{stock.quantity}</span>
+                        <span className="text-[10px] text-blue-500 ml-1">{stock.warehouses?.name?.slice(0, 8) || 'Depo'}</span>
+                      </div>
+                    ))}
+                    {product.warehouse_stocks.length > 3 && (
+                      <div className="bg-gray-100 rounded-lg px-2 py-1">
+                        <span className="text-xs text-gray-500">+{product.warehouse_stocks.length - 3}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-xs text-gray-400">Stok yok</span>
+                )}
+              </div>
+            </div>
+
+            {/* Mobile Layout */}
+            <div className="lg:hidden space-y-3">
+              {/* Header Row - Product & Status */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Görsel */}
+                  <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200 flex-shrink-0">
                     {primaryImage ? (
                       <Image
                         src={primaryImage}
                         alt={product.name}
                         fill
                         className="object-cover"
-                        sizes="80px"
+                        sizes="56px"
                       />
                     ) : (
-                      <Package className="w-8 h-8 text-gray-400" />
+                      <Package className="w-6 h-6 text-gray-400" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-normal text-gray-800 line-clamp-2">{product.name}</div>
+                    {product.brand && (
+                      <div className="text-sm text-gray-600">{product.brand.name}</div>
                     )}
                   </div>
                 </div>
+                <div className="flex-shrink-0">
+                  <Badge className={`${stockStatus.color} border rounded-full px-2 py-0.5 text-xs`}>
+                    <StockIcon className="w-3 h-3 mr-1" />
+                    {stockStatus.text}
+                  </Badge>
+                </div>
+              </div>
 
-                {/* İçerik */}
-                <div className="flex-1 min-w-0 space-y-2">
-                  {/* Ürün Adı */}
-                  <div>
-                    <h3 className="font-semibold text-gray-900 text-sm line-clamp-2 mb-1">
-                      {product.name}
-                    </h3>
-                    {product.brand && (
-                      <Badge 
-                        variant="secondary" 
-                        className="bg-gray-100 text-gray-700 border-0 rounded-full px-2 py-0.5 text-xs"
-                      >
-                        {product.brand.name}
-                      </Badge>
-                    )}
+              {/* Info Grid */}
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {/* SKU */}
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">SKU</div>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-gray-100 rounded-lg">
+                      <Hash className="w-3 h-3 text-gray-600" />
+                    </div>
+                    <span className="font-medium text-gray-800 text-xs">
+                      {product.sku || '-'}
+                    </span>
                   </div>
+                </div>
 
-                  {/* SKU ve Stok */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {product.sku && (
-                      <div className="flex items-center gap-1">
-                        <Hash className="w-3 h-3 text-gray-400" />
-                        <span className="text-xs font-mono text-gray-600">
-                          {product.sku}
-                        </span>
-                      </div>
-                    )}
-                    <Badge className={`${stockStatus.color} border rounded-full px-2 py-0.5 text-xs`}>
-                      <StockIcon className="w-3 h-3 mr-1" />
-                      {stockStatus.text}
-                    </Badge>
-                  </div>
-
-                  {/* Toplam Stok */}
-                  <div className="flex items-center gap-1.5">
-                    <Box className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-700">
-                      Toplam: {totalStock} {product.unit || 'adet'}
+                {/* Toplam Stok */}
+                <div>
+                  <div className="text-xs text-gray-500 mb-1">Toplam Stok</div>
+                  <div className="flex items-center gap-2">
+                    <div className="p-1 bg-gray-100 rounded-lg">
+                      <Box className="w-3 h-3 text-gray-600" />
+                    </div>
+                    <span className="font-medium text-gray-800 text-xs">
+                      {totalStock} {product.unit || 'adet'}
                     </span>
                   </div>
                 </div>
               </div>
-            </CardContent>
-          </Card>
+
+              {/* Depolar */}
+              {product.warehouse_stocks && product.warehouse_stocks.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
+                  {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
+                    <div key={stock.warehouse_id} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
+                      <span className="text-xs font-medium text-blue-700">{stock.quantity}</span>
+                      <span className="text-[10px] text-blue-500 ml-1">{stock.warehouses?.name?.slice(0, 10) || 'Depo'}</span>
+                    </div>
+                  ))}
+                  {product.warehouse_stocks.length > 3 && (
+                    <div className="bg-gray-100 rounded-lg px-2 py-1">
+                      <span className="text-xs text-gray-500">+{product.warehouse_stocks.length - 3}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
         )
       })}
     </div>

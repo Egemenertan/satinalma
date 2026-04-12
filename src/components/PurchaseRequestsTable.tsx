@@ -1214,7 +1214,7 @@ export default function PurchaseRequestsTable({
       'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
       'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
       'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
-      'depoda yok': { label: 'Depoda Yok', className: 'bg-red-100 text-red-800 border-0' },
+      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-orange-100 text-orange-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
       'iade var': { label: 'İade Var', className: 'bg-orange-100 text-orange-800 border-0' },
       'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
@@ -2339,13 +2339,13 @@ export default function PurchaseRequestsTable({
                         const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
                         const isSpecialSite = request.site_id === SPECIAL_SITE_ID
                         
-                        // Özel site: sadece onay_bekliyor statusunda göster
+                        // Özel site: onay_bekliyor veya ana depoda yok statusunda göster
                         if (isSpecialSite) {
-                          return request.status === 'onay_bekliyor'
+                          return request.status === 'onay_bekliyor' || request.status === 'ana depoda yok'
                         }
                         
-                        // Normal siteler: kısmen gönderildi veya depoda mevcut değil
-                        return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil'
+                        // Normal siteler: kısmen gönderildi, depoda mevcut değil veya ana depoda yok
+                        return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil' || request.status === 'ana depoda yok'
                       })() && (
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
@@ -2483,13 +2483,13 @@ export default function PurchaseRequestsTable({
                       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
                       const isSpecialSite = request.site_id === SPECIAL_SITE_ID
                       
-                      // Özel site: sadece onay_bekliyor statusunda göster
+                      // Özel site: onay_bekliyor veya ana depoda yok statusunda göster
                       if (isSpecialSite) {
-                        return request.status === 'onay_bekliyor'
+                        return request.status === 'onay_bekliyor' || request.status === 'ana depoda yok'
                       }
                       
-                      // Normal siteler: kısmen gönderildi veya depoda mevcut değil
-                      return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil'
+                      // Normal siteler: kısmen gönderildi, depoda mevcut değil veya ana depoda yok
+                      return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil' || request.status === 'ana depoda yok'
                     })() && (
                       <div className="pt-2">
                         <Button

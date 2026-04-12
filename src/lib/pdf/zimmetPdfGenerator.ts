@@ -15,6 +15,9 @@ export interface ZimmetItemData {
   notes?: string
   category: string | null
   consumed_quantity: number
+  serial_number?: string
+  owner_name?: string
+  owner_email?: string
   user: {
     id: string
     full_name: string
@@ -425,6 +428,55 @@ const generateSayimPDFHTML = (item: ZimmetItemData): string => {
 }
 
 /**
+ * Aynı sekmede print dialog aç (iframe kullanarak)
+ */
+const printInSameTab = (htmlContent: string): Promise<void> => {
+  return new Promise((resolve) => {
+    // Mevcut iframe'i temizle
+    const existingFrame = document.getElementById('print-frame')
+    if (existingFrame) {
+      existingFrame.remove()
+    }
+    
+    // Gizli iframe oluştur
+    const iframe = document.createElement('iframe')
+    iframe.id = 'print-frame'
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = 'none'
+    document.body.appendChild(iframe)
+    
+    const iframeDoc = iframe.contentWindow?.document
+    if (!iframeDoc) {
+      resolve()
+      return
+    }
+    
+    iframeDoc.open()
+    iframeDoc.write(htmlContent)
+    iframeDoc.close()
+    
+    // İçeriğin yüklenmesini bekle ve print dialog'u aç
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } catch (e) {
+        console.error('Print hatası:', e)
+      }
+      // Hemen resolve et - print dialog kullanıcı tarafından kapatılacak
+      setTimeout(() => {
+        iframe.remove()
+        resolve()
+      }, 500)
+    }, 500)
+  })
+}
+
+/**
  * Teslim Tesellüm PDF'i oluştur ve yazdır
  */
 export const generateTeslimPDF = async (item: ZimmetItemData): Promise<void> => {
@@ -432,23 +484,7 @@ export const generateTeslimPDF = async (item: ZimmetItemData): Promise<void> => 
     console.log('📋 Teslim Tesellüm PDF oluşturuluyor:', item.item_name)
     
     const htmlContent = generateTeslimPDFHTML(item)
-    
-    // Yeni pencerede aç ve yazdır
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      throw new Error('Pop-up engellendi. Lütfen pop-up engelleyicisini devre dışı bırakın.')
-    }
-    
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
-    
-    // Print dialog'u aç
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-      }, 500)
-    }
+    await printInSameTab(htmlContent)
     
     console.log('✅ Teslim Tesellüm PDF oluşturuldu')
   } catch (error) {
@@ -465,27 +501,198 @@ export const generateSayimPDF = async (item: ZimmetItemData): Promise<void> => {
     console.log('📋 Sayım Tutanağı PDF oluşturuluyor:', item.item_name)
     
     const htmlContent = generateSayimPDFHTML(item)
-    
-    // Yeni pencerede aç ve yazdır
-    const printWindow = window.open('', '_blank')
-    if (!printWindow) {
-      throw new Error('Pop-up engellendi. Lütfen pop-up engelleyicisini devre dışı bırakın.')
-    }
-    
-    printWindow.document.write(htmlContent)
-    printWindow.document.close()
-    
-    // Print dialog'u aç
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.focus()
-        printWindow.print()
-      }, 500)
-    }
+    await printInSameTab(htmlContent)
     
     console.log('✅ Sayım Tutanağı PDF oluşturuldu')
   } catch (error) {
     console.error('❌ Sayım Tutanağı PDF oluşturma hatası:', error)
+    throw error
+  }
+}
+
+/**
+ * Zimmet İade Belgesi PDF HTML'i oluştur
+ */
+const generateIadePDFHTML = (item: ZimmetItemData): string => {
+  const teslimEden = item.user?.full_name || 'Belirtilmemiş'
+  const teslimEdenEmail = item.user?.email || ''
+  const teslimAlan = item.owner_name || 'Şirket Yetkilisi'
+  const teslimAlanEmail = item.owner_email || ''
+
+  return `
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zimmet İade Belgesi - ${item.item_name}</title>
+  ${getPDFStyles()}
+  <style>
+    .signature-section {
+      margin-top: 60px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 40px;
+    }
+    
+    .signature-box {
+      text-align: center;
+    }
+    
+    .signature-line {
+      border-top: 2px solid #000000;
+      margin-bottom: 8px;
+      height: 80px;
+    }
+    
+    .signature-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: #000000;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    
+    .signature-name {
+      font-size: 10px;
+      color: #666666;
+      margin-top: 4px;
+    }
+    
+    .declaration {
+      background: #f8f9fa;
+      padding: 15px;
+      margin-top: 30px;
+      border-left: 3px solid #000000;
+      font-size: 10px;
+      line-height: 1.6;
+      color: #333333;
+    }
+    
+    .iade-badge {
+      display: inline-block;
+      background: #dc2626;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="pdf-header">
+      <div class="header-content">
+        <div class="logo-section">
+          <img src="${getLogoUrl()}" alt="DOVEC Logo" class="logo" onerror="this.onerror=null; this.src='/d.png';" />
+          <div>
+            <div class="header-title">ZİMMET İADE BELGESİ</div>
+            <div class="header-subtitle">Malzeme Teslim Formu</div>
+          </div>
+        </div>
+        <div class="header-date">
+          <div>İade Tarihi:</div>
+          <div>${getCurrentDate()}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- İade Edilen Ürün Bilgileri -->
+    <div class="section">
+      <div class="section-title">İADE EDİLEN ÜRÜN BİLGİLERİ</div>
+      <div class="info-card">
+        <div class="info-row">
+          <div class="info-label">Ürün Adı</div>
+          <div class="info-value" style="font-weight: 600; font-size: 13px;">${item.item_name}</div>
+        </div>
+        ${item.serial_number ? `
+        <div class="info-row">
+          <div class="info-label">Seri Numarası</div>
+          <div class="info-value">${item.serial_number}</div>
+        </div>
+        ` : ''}
+        <div class="info-row">
+          <div class="info-label">Miktar</div>
+          <div class="info-value">${item.quantity} ${item.unit}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">İlk Zimmet Tarihi</div>
+          <div class="info-value">${formatDate(item.assigned_date)}</div>
+        </div>
+        ${item.purchase_request ? `
+        <div class="info-row">
+          <div class="info-label">Talep No</div>
+          <div class="info-value">${item.purchase_request.request_number}</div>
+        </div>
+        ` : ''}
+      </div>
+    </div>
+
+    <!-- Teslim Bilgileri -->
+    <div class="section">
+      <div class="section-title">TESLİM BİLGİLERİ</div>
+      <div class="info-card">
+        <div class="info-row">
+          <div class="info-label">Teslim Eden (İade Eden)</div>
+          <div class="info-value">${teslimEden}${teslimEdenEmail ? ` (${teslimEdenEmail})` : ''}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">Teslim Alan</div>
+          <div class="info-value">${teslimAlan}${teslimAlanEmail ? ` (${teslimAlanEmail})` : ''}</div>
+        </div>
+        <div class="info-row">
+          <div class="info-label">İade Tarihi</div>
+          <div class="info-value">${getCurrentDate()}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Beyanname -->
+    <div class="declaration">
+      <strong>Beyan:</strong><br/>
+      Yukarıda belirtilen ürünü eksiksiz ve sağlam olarak teslim ettiğimi beyan ederim. 
+      Bu ürün ile ilgili zimmet sorumluluğum bu belgenin imzalanması ile sona ermiştir.
+    </div>
+
+    <!-- İmza Bölümü -->
+    <div class="signature-section">
+      <div class="signature-box">
+        <div class="signature-line"></div>
+        <div class="signature-label">Teslim Eden</div>
+        <div class="signature-name">${teslimEden}</div>
+        <div class="signature-name">Tarih: ${getCurrentDate()}</div>
+      </div>
+      <div class="signature-box">
+        <div class="signature-line"></div>
+        <div class="signature-label">Teslim Alan</div>
+        <div class="signature-name">${teslimAlan}</div>
+        <div class="signature-name">Tarih: ${getCurrentDate()}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `.trim()
+}
+
+/**
+ * Zimmet İade Belgesi PDF'i oluştur ve yazdır
+ */
+export const generateIadePDF = async (item: ZimmetItemData): Promise<void> => {
+  try {
+    console.log('📋 Zimmet İade Belgesi PDF oluşturuluyor:', item.item_name)
+    
+    const htmlContent = generateIadePDFHTML(item)
+    await printInSameTab(htmlContent)
+    
+    console.log('✅ Zimmet İade Belgesi PDF oluşturuldu')
+  } catch (error) {
+    console.error('❌ Zimmet İade Belgesi PDF oluşturma hatası:', error)
     throw error
   }
 }

@@ -29,7 +29,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
 
   // Site Manager düzenleme yetkisi kontrolü
   const canEditRequest = () => {
-    return request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil'
+    return request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil' || request?.status === 'ana depoda yok'
   }
 
   // Edit sayfasına yönlendir
@@ -287,8 +287,8 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
   const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
   
   const showApprovalButton = isSpecialSite 
-    ? request?.status === 'onay_bekliyor'  // Özel site: sadece onay_bekliyor
-    : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil')  // Normal siteler
+    ? (request?.status === 'onay_bekliyor' || request?.status === 'ana depoda yok')  // Özel site: onay_bekliyor ve ana depoda yok
+    : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil' || request?.status === 'ana depoda yok')  // Normal siteler
 
   // materialOrders'ı array formatına çevir (backward compatibility)
   const materialOrdersArray = Array.isArray(props.materialOrders) 
@@ -327,7 +327,9 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
                   ? 'Bu talep onayınızı bekliyor. Onaylayarak talebi ilerletebilir veya reddedebilirsiniz.'
                   : request?.status === 'kısmen gönderildi' 
                     ? 'Kısmen gönderilen malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
-                    : 'Depoda mevcut olmayan malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
+                    : request?.status === 'ana depoda yok'
+                      ? 'Ana depoda mevcut olmayan malzemeler için satın alma talebinde bulunabilirsiniz.'
+                      : 'Depoda mevcut olmayan malzemeler için talep düzenleyebilir veya satın alma talebinde bulunabilirsiniz.'
                 }
               </p>
               
