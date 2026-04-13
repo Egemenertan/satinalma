@@ -51,16 +51,15 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     queryFn: fetchSites,
   })
 
-  // Çalışanları çek (profiles tablosundan)
+  // Çalışanları çek (employees tablosundan)
   const { data: employees, isLoading: isLoadingEmployees } = useQuery({
     queryKey: ['employees'],
     queryFn: async () => {
       const supabase = createClient()
       const { data, error } = await supabase
-        .from('profiles')
-        .select('id, full_name, email')
-        .eq('is_active', true)
-        .order('full_name')
+        .from('employees')
+        .select('id, first_name, work_email')
+        .order('first_name')
       
       if (error) throw error
       return data
@@ -149,26 +148,32 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
           if (!data.assigned_to) {
             throw new Error('Lütfen zimmet alacak kullanıcıyı seçin')
           }
+          if (!data.warehouse_id) {
+            throw new Error('Lütfen depo seçin')
+          }
           
           const supabase = createClient()
           
-          // 1. Ürünün stok kayıtlarını al (en fazla stoğu olan depoyu kullan)
-          const { data: stockRecords, error: stockError } = await supabase
-            .from('warehouse_stock')
-            .select('warehouse_id, quantity, warehouse:sites(id, name)')
-            .eq('product_id', productId)
-            .gt('quantity', 0)
-            .order('quantity', { ascending: false })
+          // Seçilen çalışanın bilgilerini al
+          const selectedEmployee = employees?.find(e => e.id === data.assigned_to)
+          if (!selectedEmployee) {
+            throw new Error('Seçilen çalışan bulunamadı')
+          }
           
-          if (stockError || !stockRecords || stockRecords.length === 0) {
-            throw new Error('Hiçbir depoda bu üründen stok bulunamadı')
+          // 1. Seçilen depodaki stok miktarını ve condition_breakdown'ı kontrol et
+          const { data: stockRecord, error: stockError } = await supabase
+            .from('warehouse_stock')
+            .select('quantity, condition_breakdown')
+            .eq('product_id', productId)
+            .eq('warehouse_id', data.warehouse_id)
+            .single()
+          
+          if (stockError || !stockRecord) {
+            throw new Error('Bu depoda ürün stoğu bulunamadı')
           }
           
           const requestedQuantity = parseFloat(data.quantity)
-          
-          // En fazla stoğu olan depoyu seç
-          const selectedWarehouse = stockRecords[0]
-          const currentQuantity = parseFloat(selectedWarehouse.quantity.toString())
+          const currentQuantity = parseFloat(stockRecord.quantity.toString())
           
           if (currentQuantity < requestedQuantity) {
             throw new Error(`Yeterli stok yok. Mevcut: ${currentQuantity} ${productUnit || 'adet'}`)
@@ -176,22 +181,39 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
           
           const newQuantity = currentQuantity - requestedQuantity
           
-          // 2. Depodan stok düş
+          // condition_breakdown'ı güncelle (önce yeni, sonra kullanılmış, sonra diğerlerinden düş)
+          const breakdown = (stockRecord.condition_breakdown as Record<string, number>) || {}
+          let remainingToDeduct = requestedQuantity
+          const conditionOrder = ['yeni', 'kullanılmış', 'hek', 'arızalı']
+          
+          for (const condition of conditionOrder) {
+            if (remainingToDeduct <= 0) break
+            const conditionQty = breakdown[condition] || 0
+            if (conditionQty > 0) {
+              const deductAmount = Math.min(conditionQty, remainingToDeduct)
+              breakdown[condition] = conditionQty - deductAmount
+              remainingToDeduct -= deductAmount
+            }
+          }
+          
+          // 2. Depodan stok düş (quantity ve condition_breakdown birlikte)
           const { error: updateError } = await supabase
             .from('warehouse_stock')
-            .update({ quantity: newQuantity })
+            .update({ 
+              quantity: newQuantity,
+              condition_breakdown: breakdown
+            })
             .eq('product_id', productId)
-            .eq('warehouse_id', selectedWarehouse.warehouse_id)
+            .eq('warehouse_id', data.warehouse_id)
           
           if (updateError) throw new Error('Depo stoğu güncellenemedi')
           
-          // 3. user_inventory'ye ekle
+          // 3. user_inventory'ye ekle - owner olarak kaydet
           const { data: { user } } = await supabase.auth.getUser()
           
           const { error: inventoryError } = await supabase
             .from('user_inventory')
             .insert({
-              user_id: data.assigned_to,
               product_id: productId,
               item_name: productName,
               quantity: requestedQuantity,
@@ -201,20 +223,23 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
               status: 'active',
               notes: data.reason || 'Ürün detayından zimmet verildi',
               category: null,
-              consumed_quantity: 0
+              consumed_quantity: 0,
+              owner_name: selectedEmployee.first_name,
+              owner_email: selectedEmployee.work_email,
+              source_warehouse_id: data.warehouse_id
             })
           
-          if (inventoryError) throw new Error('Zimmet kaydı oluşturulamadı')
+          if (inventoryError) throw new Error('Zimmet kaydı oluşturulamadı: ' + inventoryError.message)
           
           // 4. Stok hareketi kaydet
           const { error: movementError } = await supabase
             .from('stock_movements')
             .insert({
               product_id: productId,
-              warehouse_id: selectedWarehouse.warehouse_id,
+              warehouse_id: data.warehouse_id,
               movement_type: 'çıkış',
               quantity: requestedQuantity,
-              notes: `Zimmet: ${data.reason || 'Kullanıcıya zimmet verildi'}`,
+              reason: `Zimmet: ${selectedEmployee.first_name} - ${data.reason || 'Kullanıcıya zimmet verildi'}`,
               created_by: user?.id
             })
           
@@ -265,7 +290,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     e.preventDefault()
     
     // Validasyon
-    if (operationType !== 'zimmet' && !formData.warehouse_id) {
+    if (!formData.warehouse_id) {
       alert('Lütfen depo seçin')
       return
     }
@@ -389,30 +414,28 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
           <p className="text-lg font-semibold text-gray-900 mt-1">{productName}</p>
         </div>
 
-        {/* Kaynak Depo - Zimmet için gizli */}
-        {operationType !== 'zimmet' && (
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="warehouse_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-              {operationType === 'transfer' ? 'Kaynak Depo *' : 'Depo *'}
-            </Label>
-            <Select
-              value={formData.warehouse_id || 'none'}
-              onValueChange={(value) => handleChange('warehouse_id', value === 'none' ? '' : value)}
-            >
-              <SelectTrigger className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
-                <SelectValue placeholder="Depo seçin" />
-              </SelectTrigger>
-              <SelectContent className="rounded-2xl">
-                <SelectItem value="none">Depo seçin</SelectItem>
-                {sites?.map((site) => (
-                  <SelectItem key={site.id} value={site.id}>
-                    {site.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-        )}
+        {/* Kaynak Depo */}
+        <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+          <Label htmlFor="warehouse_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            {operationType === 'transfer' ? 'Kaynak Depo *' : operationType === 'zimmet' ? 'Zimmet Edilecek Depo *' : 'Depo *'}
+          </Label>
+          <Select
+            value={formData.warehouse_id || 'none'}
+            onValueChange={(value) => handleChange('warehouse_id', value === 'none' ? '' : value)}
+          >
+            <SelectTrigger className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
+              <SelectValue placeholder="Depo seçin" />
+            </SelectTrigger>
+            <SelectContent className="rounded-2xl">
+              <SelectItem value="none">Depo seçin</SelectItem>
+              {sites?.map((site) => (
+                <SelectItem key={site.id} value={site.id}>
+                  {site.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
         {/* Hedef Depo (Sadece Transfer için) */}
         {operationType === 'transfer' && (
@@ -455,11 +478,14 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
               <SelectTrigger className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
                 <SelectValue placeholder="Çalışan seçin" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent className="max-h-[300px]">
                 {operationType === 'transfer' && <SelectItem value="none">Zimmet yok</SelectItem>}
                 {employees?.map((employee) => (
                   <SelectItem key={employee.id} value={employee.id}>
-                    {employee.full_name || employee.email}
+                    <div className="flex flex-col">
+                      <span>{employee.first_name}</span>
+                      <span className="text-xs text-gray-500">{employee.work_email}</span>
+                    </div>
                   </SelectItem>
                 ))}
               </SelectContent>

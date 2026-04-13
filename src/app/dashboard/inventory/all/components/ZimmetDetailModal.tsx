@@ -66,7 +66,7 @@ interface ZimmetDetail {
     id: string
     full_name: string
     email: string
-  }
+  } | null
   assigned_by_profile?: {
     full_name: string
     email: string
@@ -115,77 +115,34 @@ export default function ZimmetDetailModal({
     try {
       setLoading(true)
       
-      // Check if it's from pending_user_inventory or user_inventory
-      const { data: pendingData } = await supabase
-        .from('pending_user_inventory')
-        .select('*')
+      // Sadece user_inventory'den veri çek
+      const { data, error } = await supabase
+        .from('user_inventory')
+        .select(`
+          *,
+          user:user_id(id, full_name, email),
+          assigned_by_profile:assigned_by(full_name, email),
+          purchase_request:purchase_requests(request_number, id)
+        `)
         .eq('id', zimmetId)
         .single()
       
-      if (pendingData) {
-        // It's a pending zimmet
-        setZimmet({
-          id: pendingData.id,
-          item_name: pendingData.item_name,
-          quantity: pendingData.quantity,
-          unit: pendingData.unit || 'Adet',
-          assigned_date: pendingData.created_at,
-          status: 'active',
-          notes: pendingData.notes || '',
-          category: null,
-          consumed_quantity: 0,
-          serial_number: pendingData.serial_number,
-          owner_name: pendingData.owner_name,
-          owner_email: pendingData.owner_email,
-          user: {
-            id: '00000000-0000-0000-0000-000000000001',
-            full_name: pendingData.user_name || 'Bekliyor',
-            email: pendingData.user_email || ''
-          }
-        })
-        
-        // Eğer user_email varsa, employees tablosundan id'yi bul
-        if (pendingData.user_email) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('id')
-            .eq('work_email', pendingData.user_email)
-            .single()
-          
-          if (employee) {
-            setSelectedUserId(employee.id)
-          }
-        }
-      } else {
-        // It's from user_inventory
-        const { data, error } = await supabase
-          .from('user_inventory')
-          .select(`
-            *,
-            user:user_id(id, full_name, email),
-            assigned_by_profile:assigned_by(full_name, email),
-            purchase_request:purchase_requests(request_number, id)
-          `)
-          .eq('id', zimmetId)
+      if (error) throw error
+      setZimmet(data as any)
+      
+      // Eğer pending_user_email varsa, employees'den id bul
+      if (data.pending_user_email) {
+        const { data: employee } = await supabase
+          .from('employees')
+          .select('id')
+          .eq('work_email', data.pending_user_email)
           .single()
         
-        if (error) throw error
-        setZimmet(data as any)
-        
-        // Eğer pending_user_email varsa, employees'den id bul
-        if (data.pending_user_email) {
-          const { data: employee } = await supabase
-            .from('employees')
-            .select('id')
-            .eq('work_email', data.pending_user_email)
-            .single()
-          
-          if (employee) {
-            setSelectedUserId(employee.id)
-          }
-        } else {
-          setSelectedUserId(data.user_id)
+        if (employee) {
+          setSelectedUserId(employee.id)
         }
+      } else if (data.user_id) {
+        setSelectedUserId(data.user_id)
       }
     } catch (error) {
       console.error('Zimmet detayı alınamadı:', error)
@@ -222,54 +179,39 @@ export default function ZimmetDetailModal({
         return
       }
       
-      // Check if it's pending or regular zimmet
-      if (zimmet.owner_name) {
-        // It's a pending zimmet - update pending_user_inventory
+      // employees tablosundan seçilen kişinin email'i ile profiles'dan user_id bulunmalı
+      const { data: profileData } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('email', selectedEmployee.work_email)
+        .single()
+      
+      if (profileData) {
+        // Kullanıcı sisteme kayıtlı - user_id'yi güncelle, pending bilgilerini temizle
         const { error } = await supabase
-          .from('pending_user_inventory')
+          .from('user_inventory')
           .update({ 
-            user_email: selectedEmployee.work_email,
-            user_name: selectedEmployee.first_name
+            user_id: profileData.id,
+            pending_user_name: null,
+            pending_user_email: null
           })
           .eq('id', zimmet.id)
         
         if (error) throw error
       } else {
-        // It's a regular zimmet - update user_inventory
-        // employees tablosundan seçilen kişinin email'i ile profiles'dan user_id bulunmalı
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', selectedEmployee.work_email)
-          .single()
+        // Kullanıcı henüz sisteme login olmamış
+        // pending_user_name ve pending_user_email alanlarına kaydet
+        const { error } = await supabase
+          .from('user_inventory')
+          .update({ 
+            pending_user_name: selectedEmployee.first_name,
+            pending_user_email: selectedEmployee.work_email
+          })
+          .eq('id', zimmet.id)
         
-        if (profileData) {
-          // Kullanıcı sisteme kayıtlı - user_id'yi güncelle, pending bilgilerini temizle
-          const { error } = await supabase
-            .from('user_inventory')
-            .update({ 
-              user_id: profileData.id,
-              pending_user_name: null,
-              pending_user_email: null
-            })
-            .eq('id', zimmet.id)
-          
-          if (error) throw error
-        } else {
-          // Kullanıcı henüz sisteme login olmamış
-          // pending_user_name ve pending_user_email alanlarına kaydet
-          const { error } = await supabase
-            .from('user_inventory')
-            .update({ 
-              pending_user_name: selectedEmployee.first_name,
-              pending_user_email: selectedEmployee.work_email
-            })
-            .eq('id', zimmet.id)
-          
-          if (error) throw error
-          
-          showToast('Çalışan bilgisi kaydedildi (kullanıcı sisteme giriş yapınca otomatik eşleşecek)', 'info')
-        }
+        if (error) throw error
+        
+        showToast('Çalışan bilgisi kaydedildi (kullanıcı sisteme giriş yapınca otomatik eşleşecek)', 'info')
       }
       
       showToast('Zimmetli kişi güncellendi', 'success')
@@ -329,21 +271,21 @@ export default function ZimmetDetailModal({
         showToast('PDF oluşturulamadı ama işlem devam ediyor', 'info')
       }
       
-      // Eğer owner varsa (2. zimmetli durumu), sadece user_email'i temizle
       if (zimmet.owner_name) {
-        // Pending inventory'de ise user bilgilerini temizle
+        // owner var (2. zimmetli durumu), sadece pending_user bilgilerini temizle
         const { error } = await supabase
-          .from('pending_user_inventory')
+          .from('user_inventory')
           .update({ 
-            user_email: null, 
-            user_name: null 
+            pending_user_name: null, 
+            pending_user_email: null,
+            user_id: null
           })
           .eq('id', zimmet.id)
         
         if (error) throw error
         showToast('2. zimmetli kaldırıldı', 'success')
       } else {
-        // Owner yoksa (normal zimmet), zimmet kaydını sil
+        // Normal zimmet - user_inventory'den sil
         const { error } = await supabase
           .from('user_inventory')
           .delete()
@@ -489,7 +431,7 @@ export default function ZimmetDetailModal({
                       <p className="text-xs text-gray-500 mt-0.5">{zimmet.pending_user_email}</p>
                     )}
                   </div>
-                ) : zimmet.user.full_name !== 'Bekliyor' && (
+                ) : zimmet.user && zimmet.user.full_name !== 'Bekliyor' && (
                   <div className="bg-gray-50 rounded-xl p-4">
                     <p className="text-xs font-medium text-gray-500 mb-2">Mevcut Kullanıcı</p>
                     <p className="text-sm font-medium text-gray-900">{zimmet.user.full_name}</p>
@@ -502,7 +444,7 @@ export default function ZimmetDetailModal({
                 {/* Kullanıcı Değiştir */}
                 <div className="relative">
                   <p className="text-xs font-medium text-gray-500 mb-2">
-                    {zimmet.user.full_name === 'Bekliyor' ? 'Kullanıcı Ata' : 'Kullanıcı Değiştir'}
+                    {!zimmet.user || zimmet.user.full_name === 'Bekliyor' ? 'Kullanıcı Ata' : 'Kullanıcı Değiştir'}
                   </p>
                   <button
                     type="button"
@@ -620,7 +562,7 @@ export default function ZimmetDetailModal({
                 
                 <div className="hidden sm:flex flex-1"></div>
                 
-                {zimmet.user.full_name !== 'Bekliyor' && (
+                {(zimmet.owner_name || (zimmet.user && zimmet.user.full_name !== 'Bekliyor')) && (
                   <Button
                     onClick={handlePrintPDF}
                     variant="outline"

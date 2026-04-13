@@ -185,24 +185,21 @@ function LoginContent() {
   }
 
   return (
-    <div className="min-h-screen relative grid lg:grid-cols-2 gap-0">
-      {/* Mobil Arka Plan Görseli */}
-      <div className="fixed inset-0 lg:hidden">
-        <img 
-          src="/dovec.webp" 
-          alt="Background" 
-          className="w-full h-full object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/50 to-black/70"></div>
-      </div>
-
+    <div className="min-h-screen relative grid lg:grid-cols-2 gap-0 bg-white">
       {/* Sol Taraf - Giriş Formu */}
-      <div className="relative z-10 flex items-center justify-center px-8 sm:px-12 lg:px-16 xl:px-24 py-12 lg:bg-white">
+      <div className="relative z-10 flex items-center justify-center px-8 sm:px-12 lg:px-16 xl:px-24 py-12 bg-white">
         <div className="w-full max-w-md space-y-8">
-          {/* Başlık */}
+          {/* Logo ve Başlık */}
           <div className="text-center">
-            <h1 className="text-4xl font-bold text-white lg:text-gray-900 tracking-tight">Hoş Geldiniz</h1>
-            <p className="text-gray-200 lg:text-gray-600 mt-3 text-lg">
+            <div className="flex justify-center mb-6">
+              <img 
+                src="/d.png" 
+                alt="Dovec Logo" 
+                className="h-12 w-auto invert"
+              />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Hoş Geldiniz</h1>
+            <p className="text-gray-600 mt-3 text-lg">
               Devam etmek için giriş yapın
             </p>
           </div>
@@ -211,14 +208,14 @@ function LoginContent() {
           <div className="space-y-6">
             <form onSubmit={handleLogin} className="space-y-5">
               {error && (
-                <Alert variant="destructive" className="border-0 bg-red-50 lg:bg-red-50 bg-red-900/90 backdrop-blur-sm">
-                  <AlertDescription className="text-sm text-white lg:text-red-900">{error}</AlertDescription>
+                <Alert variant="destructive" className="border-0 bg-red-50">
+                  <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
                 </Alert>
               )}
               
               {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-white lg:text-gray-700">
+                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
                   Email
                 </Label>
                 <Input
@@ -227,7 +224,7 @@ function LoginContent() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="ornek@dovecgroup.com"
-                  className="h-12 border border-white/30 lg:border-gray-200 bg-white/95 lg:bg-white backdrop-blur-sm shadow-sm focus:ring-2 focus:ring-white lg:focus:ring-gray-900 rounded-xl"
+                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
                   required
                   disabled={loading}
                 />
@@ -235,7 +232,7 @@ function LoginContent() {
               
               {/* Şifre */}
               <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-white lg:text-gray-700">
+                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
                   Şifre
                 </Label>
                 <Input
@@ -243,7 +240,7 @@ function LoginContent() {
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 border border-white/30 lg:border-gray-200 bg-white/95 lg:bg-white backdrop-blur-sm shadow-sm focus:ring-2 focus:ring-white lg:focus:ring-gray-900 rounded-xl"
+                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
                   required
                   disabled={loading}
                 />
@@ -252,7 +249,7 @@ function LoginContent() {
               {/* Submit Button */}
               <Button 
                 type="submit" 
-                className="w-full h-12 text-base font-semibold bg-white lg:bg-black hover:bg-white/90 lg:hover:bg-gray-800 text-gray-900 lg:text-white border border-gray-900 lg:border-0 rounded-xl shadow-lg hover:shadow-xl transition-all duration-200" 
+                className="w-full h-12 text-base font-semibold bg-black hover:bg-gray-800 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200" 
                 disabled={loading}
               >
                 {loading ? (
@@ -269,10 +266,10 @@ function LoginContent() {
             {/* Divider */}
             <div className="relative my-8">
               <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-white/30 lg:border-gray-300"></div>
+                <div className="w-full border-t border-gray-300"></div>
               </div>
               <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-transparent lg:bg-white text-white/80 lg:text-gray-500">veya</span>
+                <span className="px-4 bg-white text-gray-500">veya</span>
               </div>
             </div>
             
@@ -280,7 +277,7 @@ function LoginContent() {
             <Button
               type="button"
               onClick={handleMicrosoftLogin}
-              className="w-full h-12 text-base font-semibold bg-white/95 lg:bg-white hover:bg-white lg:hover:bg-gray-50 text-gray-900 border border-white/30 lg:border-gray-200 shadow-sm hover:shadow-md rounded-xl flex items-center justify-center gap-3 transition-all duration-200 backdrop-blur-sm"
+              className="w-full h-12 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border border-gray-200 shadow-sm hover:shadow-md rounded-xl flex items-center justify-center gap-3 transition-all duration-200"
               disabled={loading}
             >
               <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -294,11 +291,11 @@ function LoginContent() {
             
             {/* Signup Link */}
             <div className="pt-6 text-center">
-              <p className="text-sm text-white lg:text-gray-600">
+              <p className="text-sm text-gray-600">
                 Hesabınız yok mu?{' '}
                 <Link 
                   href="/auth/signup" 
-                  className="text-white lg:text-gray-900 hover:text-white/80 lg:hover:text-gray-700 font-semibold underline"
+                  className="text-gray-900 hover:text-gray-700 font-semibold underline"
                 >
                   Kayıt olun
                 </Link>

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -16,7 +16,8 @@ import {
   Flame,
   MoreVertical,
   FileText,
-  Plus
+  Plus,
+  X
 } from 'lucide-react'
 import {
   DropdownMenu,
@@ -43,6 +44,8 @@ interface InventoryItem {
   serial_number?: string
   owner_name?: string
   owner_email?: string
+  pending_user_name?: string
+  pending_user_email?: string
   user: {
     id: string
     full_name: string
@@ -58,14 +61,299 @@ interface InventoryItem {
   }
 }
 
+// Status badge helper - component dışında tanımlandığı için her render'da yeniden oluşmaz
+const getStatusBadge = (status: string) => {
+  switch (status) {
+    case 'active':
+      return <Badge className="bg-gray-900 text-white"><CheckCircle className="w-3 h-3 mr-1" />Aktif</Badge>
+    case 'returned':
+      return <Badge className="bg-gray-600 text-white"><CheckCircle className="w-3 h-3 mr-1" />İade Edildi</Badge>
+    case 'lost':
+      return <Badge className="bg-gray-400 text-gray-900"><XCircle className="w-3 h-3 mr-1" />Kayıp</Badge>
+    case 'damaged':
+      return <Badge className="bg-gray-300 text-gray-900"><AlertTriangle className="w-3 h-3 mr-1" />Hasarlı</Badge>
+    default:
+      return <Badge className="bg-gray-100 text-gray-700">{status}</Badge>
+  }
+}
+
+const isConsumable = (item: InventoryItem) => {
+  return item.category === 'kontrollü sarf' || item.category === 'sarf malzemesi'
+}
+
+const getRemainingQuantity = (item: InventoryItem) => {
+  return item.quantity - (item.consumed_quantity || 0)
+}
+
+// Memoized Row Component - sadece item veya callback değişirse re-render olur
+interface InventoryRowProps {
+  item: InventoryItem
+  onRowClick: (id: string) => void
+  onExportPDF: (item: InventoryItem, type: 'teslim' | 'sayim') => void
+}
+
+const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF }: InventoryRowProps) {
+  const handleRowClick = useCallback(() => {
+    onRowClick(item.id)
+  }, [item.id, onRowClick])
+
+  const handleTeslimPDF = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onExportPDF(item, 'teslim')
+  }, [item, onExportPDF])
+
+  const handleSayimPDF = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    onExportPDF(item, 'sayim')
+  }, [item, onExportPDF])
+
+  return (
+    <div 
+      className="bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 cursor-pointer hover:border-gray-300 hover:shadow-md"
+      onClick={handleRowClick}
+    >
+      {/* Desktop Layout */}
+      <div className="hidden lg:grid gap-4 items-center" style={{gridTemplateColumns: '1.5fr 2fr 1fr 1fr 1fr 1fr 100px'}}>
+        {/* Kullanıcı */}
+        <div>
+          <div className="flex items-center gap-2">
+            <div className={`p-1.5 rounded-2xl ${item.owner_name ? 'bg-blue-100' : 'bg-gray-100'}`}>
+              <User className={`w-3 h-3 ${item.owner_name ? 'text-blue-600' : 'text-gray-600'}`} />
+            </div>
+            <div>
+              <div className="font-medium text-sm text-gray-800">
+                {item.owner_name || item.user?.full_name || 'Belirtilmemiş'}
+              </div>
+              {item.owner_name && (item.pending_user_name || (item.user?.full_name && item.user.full_name !== 'Bekliyor')) && (
+                <div className="text-xs text-gray-500">
+                  2. Zimmetli: {item.pending_user_name || item.user?.full_name}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Ürün */}
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-gray-100 rounded-2xl">
+              <Package className="w-3 h-3 text-gray-600" />
+            </div>
+            <div>
+              <div className="font-medium text-sm text-gray-800">{item.item_name}</div>
+              {item.serial_number && (
+                <div className="text-xs text-gray-500">S/N: {item.serial_number}</div>
+              )}
+            </div>
+          </div>
+          {isConsumable(item) && (
+            <div className="flex items-center gap-1 mt-1 ml-8">
+              <Flame className="w-3 h-3 text-orange-500" />
+              <span className="text-xs text-orange-600">Sarf</span>
+              <span className="text-xs text-gray-400 ml-1">
+                (Kalan: {getRemainingQuantity(item)} {item.unit})
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Miktar */}
+        <div>
+          <span className="font-semibold text-sm text-gray-900">{item.quantity} {item.unit}</span>
+        </div>
+
+        {/* Tarih */}
+        <div>
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 bg-gray-100 rounded-2xl">
+              <Calendar className="w-3 h-3 text-black" />
+            </div>
+            <div className="text-sm">
+              <div className="font-medium text-gray-800">
+                {new Date(item.assigned_date).toLocaleDateString('tr-TR', {
+                  day: '2-digit',
+                  month: 'short',
+                  year: 'numeric'
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Talep No */}
+        <div>
+          {item.purchase_request ? (
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 bg-gray-100 rounded-2xl">
+                <FileText className="w-3 h-3 text-black" />
+              </div>
+              <span className="font-medium text-sm text-gray-800">{item.purchase_request.request_number}</span>
+            </div>
+          ) : (
+            <span className="text-sm text-gray-400">-</span>
+          )}
+        </div>
+
+        {/* Durum */}
+        <div>
+          {getStatusBadge(item.status)}
+        </div>
+
+        {/* İşlem */}
+        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+          <DropdownMenu modal={false}>
+            <DropdownMenuTrigger asChild>
+              <button className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg inline-flex items-center justify-center transition-colors">
+                <MoreVertical className="h-4 w-4 text-gray-500" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56 bg-white z-[100]">
+              <DropdownMenuItem
+                onClick={handleTeslimPDF}
+                className="cursor-pointer hover:bg-gray-100"
+              >
+                <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-gray-900">Teslim Tesellüm PDF</span>
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={handleSayimPDF}
+                className="cursor-pointer hover:bg-gray-100"
+              >
+                <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                <span className="text-gray-900">Sayım Tutanağı PDF</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </div>
+
+      {/* Mobile Layout */}
+      <div className="lg:hidden space-y-3">
+        {/* Header Row - Product & Status */}
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="font-normal text-gray-800 mb-1">{item.item_name}</div>
+            {item.serial_number && (
+              <div className="text-sm text-gray-600">S/N: {item.serial_number}</div>
+            )}
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {getStatusBadge(item.status)}
+            <div onClick={(e) => e.stopPropagation()}>
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <button className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg flex items-center justify-center transition-colors">
+                    <MoreVertical className="h-4 w-4 text-gray-500" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48 bg-white z-[100]">
+                  <DropdownMenuItem
+                    onClick={handleTeslimPDF}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                    <span>Teslim PDF</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleSayimPDF}
+                    className="cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 mr-2 text-gray-600" />
+                    <span>Sayım PDF</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
+          </div>
+        </div>
+
+        {/* Info Grid */}
+        <div className="grid grid-cols-2 gap-3 text-sm">
+          {/* Kullanıcı */}
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Kullanıcı</div>
+            <div className="flex items-center gap-2">
+              <div className={`p-1 rounded-lg ${item.owner_name ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                <User className={`w-3 h-3 ${item.owner_name ? 'text-blue-600' : 'text-gray-600'}`} />
+              </div>
+              <div>
+                <span className="font-medium text-gray-800 text-xs">
+                  {item.owner_name || item.user?.full_name || 'Belirtilmemiş'}
+                </span>
+                {item.owner_name && (item.pending_user_name || (item.user?.full_name && item.user.full_name !== 'Bekliyor')) && (
+                  <div className="text-[10px] text-gray-500">
+                    2. Zimmetli: {item.pending_user_name || item.user?.full_name}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Miktar */}
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Miktar</div>
+            <div className="flex items-center gap-2">
+              <div className="p-1 bg-gray-100 rounded-lg">
+                <Package className="w-3 h-3 text-gray-600" />
+              </div>
+              <span className="font-medium text-gray-800 text-xs">
+                {item.quantity} {item.unit}
+              </span>
+            </div>
+          </div>
+
+          {/* Tarih */}
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Tarih</div>
+            <div className="flex items-center gap-2">
+              <div className="p-1 bg-gray-100 rounded-lg">
+                <Calendar className="w-3 h-3 text-black" />
+              </div>
+              <span className="font-medium text-gray-800 text-xs">
+                {new Date(item.assigned_date).toLocaleDateString('tr-TR', {
+                  day: '2-digit',
+                  month: 'short'
+                })}
+              </span>
+            </div>
+          </div>
+
+          {/* Talep No */}
+          <div>
+            <div className="text-xs text-gray-500 mb-1">Talep No</div>
+            <div className="flex items-center gap-2">
+              <div className="p-1 bg-gray-100 rounded-lg">
+                <FileText className="w-3 h-3 text-black" />
+              </div>
+              <span className="font-medium text-gray-800 text-xs">
+                {item.purchase_request?.request_number || '-'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Consumable indicator */}
+        {isConsumable(item) && (
+          <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
+            <Flame className="w-4 h-4 text-orange-500" />
+            <span className="text-xs text-orange-600 font-medium">Sarf Malzemesi</span>
+            <span className="text-xs text-gray-400 ml-auto">
+              Kalan: {getRemainingQuantity(item)} {item.unit}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+})
+
 export default function AllInventoryPage() {
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([])
-  const [filteredItems, setFilteredItems] = useState<InventoryItem[]>([])
-  const [paginatedItems, setPaginatedItems] = useState<InventoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [currentPage, setCurrentPage] = useState(1)
-  const [pageSize] = useState(30)
+  const pageSize = 30
   const [userRole, setUserRole] = useState<string | null>(null)
   const [showCreateModal, setShowCreateModal] = useState(false)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -73,6 +361,38 @@ export default function AllInventoryPage() {
   const supabase = createClient()
   const { showToast } = useToast()
   const router = useRouter()
+  const debounceTimerRef = useRef<NodeJS.Timeout | null>(null)
+
+  // Debounced search - 150ms bekle (daha responsive)
+  useEffect(() => {
+    // Eğer search temizlendiyse anında güncelle
+    if (!searchQuery.trim()) {
+      setDebouncedSearch('')
+      setCurrentPage(1)
+      return
+    }
+    
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current)
+    }
+    debounceTimerRef.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim())
+      setCurrentPage(1)
+    }, 150)
+
+    return () => {
+      if (debounceTimerRef.current) {
+        clearTimeout(debounceTimerRef.current)
+      }
+    }
+  }, [searchQuery])
+
+  // Search temizleme fonksiyonu
+  const clearSearch = useCallback(() => {
+    setSearchQuery('')
+    setDebouncedSearch('')
+    setCurrentPage(1)
+  }, [])
 
   useEffect(() => {
     checkUserRole()
@@ -84,17 +404,32 @@ export default function AllInventoryPage() {
     }
   }, [userRole])
 
-  useEffect(() => {
-    filterItems()
-  }, [searchQuery, inventoryItems])
+  // Filtered items - useMemo ile hesapla, state değil
+  // Türkçe karakter desteği için toLocaleLowerCase('tr-TR') kullanılıyor
+  const filteredItems = useMemo(() => {
+    if (!debouncedSearch.trim()) {
+      return inventoryItems
+    }
+    const query = debouncedSearch.toLocaleLowerCase('tr-TR')
+    return inventoryItems.filter(item =>
+      item.item_name.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.user?.full_name?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.user?.email?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.owner_name?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.owner_email?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.pending_user_name?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.pending_user_email?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.serial_number?.toLocaleLowerCase('tr-TR').includes(query) ||
+      item.purchase_request?.request_number?.toLocaleLowerCase('tr-TR').includes(query)
+    )
+  }, [debouncedSearch, inventoryItems])
 
-  useEffect(() => {
-    paginateItems()
-  }, [filteredItems, currentPage])
-
-  useEffect(() => {
-    setCurrentPage(1)
-  }, [searchQuery])
+  // Paginated items - useMemo ile hesapla
+  const paginatedItems = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize
+    const endIndex = startIndex + pageSize
+    return filteredItems.slice(startIndex, endIndex)
+  }, [filteredItems, currentPage, pageSize])
 
   const checkUserRole = async () => {
     try {
@@ -154,58 +489,7 @@ export default function AllInventoryPage() {
         return
       }
 
-      // Pending zimmetleri de al (henüz giriş yapmamış kullanıcılar için)
-      // Site manager ise sadece kendi email'i ile eşleşen owner_email'leri göster
-      let pendingQuery = supabase
-        .from('pending_user_inventory')
-        .select('*')
-      
-      if (userRole === 'site_manager') {
-        // Site manager'ın email'ini al
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('email')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile?.email) {
-          pendingQuery = pendingQuery.eq('owner_email', profile.email)
-        }
-      }
-      
-      const { data: pendingData, error: pendingError } = await pendingQuery
-        .order('created_at', { ascending: false })
-
-      if (pendingError) {
-        console.error('Pending zimmetler alınamadı:', pendingError)
-      }
-
-      // Pending zimmetleri user_inventory formatına çevir
-      const pendingItems = (pendingData || []).map(item => ({
-        id: item.id,
-        item_name: item.item_name,
-        quantity: item.quantity,
-        unit: item.unit || 'Adet',
-        assigned_date: item.created_at,
-        status: 'active' as const,
-        notes: item.notes || '',
-        category: null,
-        consumed_quantity: 0,
-        serial_number: item.serial_number,
-        owner_name: item.owner_name,
-        owner_email: item.owner_email,
-        user: {
-          id: '00000000-0000-0000-0000-000000000001',
-          full_name: item.user_name || 'Bekliyor',
-          email: item.user_email
-        }
-      }))
-
-      // Her iki listeyi birleştir
-      const allItems = [...(data || []), ...pendingItems]
-      
-      setInventoryItems(allItems)
-      setFilteredItems(allItems)
+      setInventoryItems(data || [])
     } catch (error) {
       console.error('Zimmet kayıtları yüklenirken hata:', error)
       showToast('Bir hata oluştu', 'error')
@@ -214,53 +498,13 @@ export default function AllInventoryPage() {
     }
   }
 
-  const filterItems = () => {
-    if (!searchQuery.trim()) {
-      setFilteredItems(inventoryItems)
-      return
-    }
-
-    const query = searchQuery.toLowerCase()
-    const filtered = inventoryItems.filter(item => 
-      item.item_name.toLowerCase().includes(query) ||
-      item.user?.full_name?.toLowerCase().includes(query) ||
-      item.user?.email?.toLowerCase().includes(query) ||
-      item.owner_name?.toLowerCase().includes(query) ||
-      item.owner_email?.toLowerCase().includes(query) ||
-      item.serial_number?.toLowerCase().includes(query) ||
-      item.purchase_request?.request_number?.toLowerCase().includes(query)
-    )
-    setFilteredItems(filtered)
-  }
-
-  const paginateItems = () => {
-    const startIndex = (currentPage - 1) * pageSize
-    const endIndex = startIndex + pageSize
-    setPaginatedItems(filteredItems.slice(startIndex, endIndex))
-  }
-
   const totalPages = Math.ceil(filteredItems.length / pageSize)
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'active':
-        return <Badge className="bg-gray-900 text-white"><CheckCircle className="w-3 h-3 mr-1" />Aktif</Badge>
-      case 'returned':
-        return <Badge className="bg-gray-600 text-white"><CheckCircle className="w-3 h-3 mr-1" />İade Edildi</Badge>
-      case 'lost':
-        return <Badge className="bg-gray-400 text-gray-900"><XCircle className="w-3 h-3 mr-1" />Kayıp</Badge>
-      case 'damaged':
-        return <Badge className="bg-gray-300 text-gray-900"><AlertTriangle className="w-3 h-3 mr-1" />Hasarlı</Badge>
-      default:
-        return <Badge className="bg-gray-100 text-gray-700">{status}</Badge>
-    }
-  }
-
-  const handleExportPDF = async (item: InventoryItem, type: 'teslim' | 'sayim') => {
+  // PDF export handler - useCallback ile memoize edildi
+  const handleExportPDF = useCallback(async (item: InventoryItem, type: 'teslim' | 'sayim') => {
     try {
       showToast('PDF oluşturuluyor...', 'info')
       
-      // Import PDF generators directly from the file
       const { generateTeslimPDF, generateSayimPDF } = await import('@/lib/pdf/zimmetPdfGenerator')
       
       if (type === 'teslim') {
@@ -275,17 +519,15 @@ export default function AllInventoryPage() {
       console.error('PDF export hatası:', error)
       showToast('PDF oluşturulamadı', 'error')
     }
-  }
+  }, [showToast])
 
-  const isConsumable = (item: InventoryItem) => {
-    return item.category === 'kontrollü sarf' || item.category === 'sarf malzemesi'
-  }
+  // Row click handler - useCallback ile memoize edildi
+  const handleRowClick = useCallback((id: string) => {
+    setSelectedZimmetId(id)
+    setShowDetailModal(true)
+  }, [])
 
-  const getRemainingQuantity = (item: InventoryItem) => {
-    return item.quantity - (item.consumed_quantity || 0)
-  }
-
-  const getTotalStats = () => {
+  const stats = useMemo(() => {
     const activeItems = inventoryItems.filter(item => item.status === 'active')
     const totalQuantity = activeItems.reduce((sum, item) => sum + item.quantity, 0)
     const uniqueUsers = new Set(activeItems.map(item => item.user?.id)).size
@@ -295,9 +537,7 @@ export default function AllInventoryPage() {
       totalQuantity,
       uniqueUsers
     }
-  }
-
-  const stats = getTotalStats()
+  }, [inventoryItems])
 
   if (loading) {
     return (
@@ -396,8 +636,17 @@ export default function AllInventoryPage() {
                   placeholder="Ürün, seri no, kullanıcı ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 sm:pl-10 h-9 sm:h-10 rounded-lg sm:rounded-xl text-sm"
+                  className="pl-9 sm:pl-10 pr-9 h-9 sm:h-10 rounded-lg sm:rounded-xl text-sm"
                 />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={clearSearch}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
               </div>
             </div>
           </CardHeader>
@@ -433,253 +682,14 @@ export default function AllInventoryPage() {
                   <div className="text-xs font-medium text-black uppercase tracking-wider text-right">İşlem</div>
                 </div>
 
-                {/* Rows */}
+                {/* Rows - Memoized component kullanılıyor */}
                 {paginatedItems.map((item) => (
-                  <div 
-                    key={item.id} 
-                    className="bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 cursor-pointer hover:border-gray-300 hover:shadow-md"
-                    onClick={() => {
-                      setSelectedZimmetId(item.id)
-                      setShowDetailModal(true)
-                    }}
-                  >
-                    {/* Desktop Layout */}
-                    <div className="hidden lg:grid gap-4 items-center" style={{gridTemplateColumns: '1.5fr 2fr 1fr 1fr 1fr 1fr 100px'}}>
-                      {/* Kullanıcı */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <div className={`p-1.5 rounded-2xl ${item.owner_name ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                            <User className={`w-3 h-3 ${item.owner_name ? 'text-blue-600' : 'text-gray-600'}`} />
-                          </div>
-                          <div>
-                            <div className="font-medium text-sm text-gray-800">
-                              {item.owner_name || item.user?.full_name || 'Belirtilmemiş'}
-                            </div>
-                            {item.owner_name && item.user?.full_name && item.user.full_name !== 'Bekliyor' && (
-                              <div className="text-xs text-gray-500">
-                                2. Zimmetli: {item.user.full_name}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Ürün */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 bg-gray-100 rounded-2xl">
-                            <Package className="w-3 h-3 text-gray-600" />
-                          </div>
-                          <div>
-                            <div className="font-medium text-sm text-gray-800">{item.item_name}</div>
-                            {item.serial_number && (
-                              <div className="text-xs text-gray-500">S/N: {item.serial_number}</div>
-                            )}
-                          </div>
-                        </div>
-                        {isConsumable(item) && (
-                          <div className="flex items-center gap-1 mt-1 ml-8">
-                            <Flame className="w-3 h-3 text-orange-500" />
-                            <span className="text-xs text-orange-600">Sarf</span>
-                            <span className="text-xs text-gray-400 ml-1">
-                              (Kalan: {getRemainingQuantity(item)} {item.unit})
-                            </span>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Miktar */}
-                      <div>
-                        <span className="font-semibold text-sm text-gray-900">{item.quantity} {item.unit}</span>
-                      </div>
-
-                      {/* Tarih */}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <div className="p-1.5 bg-gray-100 rounded-2xl">
-                            <Calendar className="w-3 h-3 text-black" />
-                          </div>
-                          <div className="text-sm">
-                            <div className="font-medium text-gray-800">
-                              {new Date(item.assigned_date).toLocaleDateString('tr-TR', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Talep No */}
-                      <div>
-                        {item.purchase_request ? (
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-gray-100 rounded-2xl">
-                              <FileText className="w-3 h-3 text-black" />
-                            </div>
-                            <span className="font-medium text-sm text-gray-800">{item.purchase_request.request_number}</span>
-                          </div>
-                        ) : (
-                          <span className="text-sm text-gray-400">-</span>
-                        )}
-                      </div>
-
-                      {/* Durum */}
-                      <div>
-                        {getStatusBadge(item.status)}
-                      </div>
-
-                      {/* İşlem */}
-                      <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-                        <DropdownMenu modal={false}>
-                          <DropdownMenuTrigger asChild>
-                            <button className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg inline-flex items-center justify-center transition-colors">
-                              <MoreVertical className="h-4 w-4 text-gray-500" />
-                            </button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end" className="w-56 bg-white z-[100]">
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleExportPDF(item, 'teslim')
-                              }}
-                              className="cursor-pointer hover:bg-gray-100"
-                            >
-                              <FileText className="w-4 h-4 mr-2 text-gray-600" />
-                              <span className="text-gray-900">Teslim Tesellüm PDF</span>
-                            </DropdownMenuItem>
-                            <DropdownMenuItem
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleExportPDF(item, 'sayim')
-                              }}
-                              className="cursor-pointer hover:bg-gray-100"
-                            >
-                              <FileText className="w-4 h-4 mr-2 text-gray-600" />
-                              <span className="text-gray-900">Sayım Tutanağı PDF</span>
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </div>
-                    </div>
-
-                    {/* Mobile Layout */}
-                    <div className="lg:hidden space-y-3">
-                      {/* Header Row - Product & Status */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-normal text-gray-800 mb-1">{item.item_name}</div>
-                          {item.serial_number && (
-                            <div className="text-sm text-gray-600">S/N: {item.serial_number}</div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 flex-shrink-0">
-                          {getStatusBadge(item.status)}
-                          <div onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenu modal={false}>
-                              <DropdownMenuTrigger asChild>
-                                <button className="h-8 w-8 p-0 hover:bg-gray-100 rounded-lg flex items-center justify-center transition-colors">
-                                  <MoreVertical className="h-4 w-4 text-gray-500" />
-                                </button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end" className="w-48 bg-white z-[100]">
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleExportPDF(item, 'teslim')
-                                  }}
-                                  className="cursor-pointer"
-                                >
-                                  <FileText className="w-4 h-4 mr-2 text-gray-600" />
-                                  <span>Teslim PDF</span>
-                                </DropdownMenuItem>
-                                <DropdownMenuItem
-                                  onClick={(e) => {
-                                    e.stopPropagation()
-                                    handleExportPDF(item, 'sayim')
-                                  }}
-                                  className="cursor-pointer"
-                                >
-                                  <FileText className="w-4 h-4 mr-2 text-gray-600" />
-                                  <span>Sayım PDF</span>
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Info Grid */}
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        {/* Kullanıcı */}
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Kullanıcı</div>
-                          <div className="flex items-center gap-2">
-                            <div className={`p-1 rounded-lg ${item.owner_name ? 'bg-blue-100' : 'bg-gray-100'}`}>
-                              <User className={`w-3 h-3 ${item.owner_name ? 'text-blue-600' : 'text-gray-600'}`} />
-                            </div>
-                            <span className="font-medium text-gray-800 text-xs">
-                              {item.owner_name || item.user?.full_name || 'Belirtilmemiş'}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Miktar */}
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Miktar</div>
-                          <div className="flex items-center gap-2">
-                            <div className="p-1 bg-gray-100 rounded-lg">
-                              <Package className="w-3 h-3 text-gray-600" />
-                            </div>
-                            <span className="font-medium text-gray-800 text-xs">
-                              {item.quantity} {item.unit}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Tarih */}
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Tarih</div>
-                          <div className="flex items-center gap-2">
-                            <div className="p-1 bg-gray-100 rounded-lg">
-                              <Calendar className="w-3 h-3 text-black" />
-                            </div>
-                            <span className="font-medium text-gray-800 text-xs">
-                              {new Date(item.assigned_date).toLocaleDateString('tr-TR', {
-                                day: '2-digit',
-                                month: 'short'
-                              })}
-                            </span>
-                          </div>
-                        </div>
-
-                        {/* Talep No */}
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Talep No</div>
-                          <div className="flex items-center gap-2">
-                            <div className="p-1 bg-gray-100 rounded-lg">
-                              <FileText className="w-3 h-3 text-black" />
-                            </div>
-                            <span className="font-medium text-gray-800 text-xs">
-                              {item.purchase_request?.request_number || '-'}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Consumable indicator */}
-                      {isConsumable(item) && (
-                        <div className="flex items-center gap-2 pt-2 border-t border-gray-100">
-                          <Flame className="w-4 h-4 text-orange-500" />
-                          <span className="text-xs text-orange-600 font-medium">Sarf Malzemesi</span>
-                          <span className="text-xs text-gray-400 ml-auto">
-                            Kalan: {getRemainingQuantity(item)} {item.unit}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+                  <InventoryRow
+                    key={item.id}
+                    item={item}
+                    onRowClick={handleRowClick}
+                    onExportPDF={handleExportPDF}
+                  />
                 ))}
               </div>
             )}

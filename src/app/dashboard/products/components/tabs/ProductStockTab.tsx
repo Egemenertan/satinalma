@@ -6,7 +6,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Package, ChevronDown, ChevronUp, User, Users } from 'lucide-react'
+import { Package, ChevronDown, User, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ProductStockTabProps {
@@ -18,10 +18,15 @@ interface ProductStockTabProps {
 interface UserInventory {
   id: string
   quantity: number
+  owner_name: string | null
+  owner_email: string | null
+  pending_user_name: string | null
+  pending_user_email: string | null
+  source_warehouse_id: string | null
   user: {
     full_name: string
     email: string
-  }
+  } | null
   assigned_date: string
   status: string
 }
@@ -49,6 +54,11 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           quantity,
           assigned_date,
           status,
+          owner_name,
+          owner_email,
+          pending_user_name,
+          pending_user_email,
+          source_warehouse_id,
           user:profiles!user_inventory_user_id_fkey(full_name, email)
         `)
         .eq('product_id', product.id)
@@ -192,6 +202,16 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
             const activeConditions = Object.entries(breakdown).filter(
               ([_, qty]) => Number(qty) > 0
             )
+            
+            // Bu depodan yapılan zimmetler
+            const warehouseZimmetler = userInventories.filter(
+              inv => inv.source_warehouse_id === stock.warehouse_id
+            )
+            const zimmetliMiktar = warehouseZimmetler.reduce(
+              (sum, inv) => sum + parseFloat(inv.quantity.toString()), 0
+            )
+            const mevcutMiktar = parseFloat(stock.quantity.toString())
+            const totalMiktar = mevcutMiktar + zimmetliMiktar
 
             return (
               <div
@@ -206,53 +226,89 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                     <p className="font-semibold text-gray-900 text-base">
                       {stock.warehouse?.name || 'Depo Belirtilmemiş'}
                     </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Min: {stock.min_stock_level || 0} | Max: {stock.max_stock_level || '-'}
-                    </p>
+                    <div className="flex gap-3 mt-1">
+                      <span className="text-xs text-gray-500">
+                        Mevcut: <span className="font-semibold text-green-600">{mevcutMiktar.toLocaleString('tr-TR')}</span>
+                      </span>
+                      {zimmetliMiktar > 0 && (
+                        <span className="text-xs text-gray-500">
+                          Zimmetli: <span className="font-semibold text-blue-600">{zimmetliMiktar.toLocaleString('tr-TR')}</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
                       <p className="text-2xl font-bold text-gray-900">
-                        {parseFloat(stock.quantity.toString()).toLocaleString('tr-TR')}
+                        {totalMiktar.toLocaleString('tr-TR')}
                       </p>
-                      <p className="text-xs text-gray-500">{product?.unit || ''}</p>
+                      <p className="text-xs text-gray-500">Toplam {product?.unit || ''}</p>
                     </div>
-                    {activeConditions.length > 0 && (
-                      isExpanded ? (
-                        <ChevronUp className="w-5 h-5 text-gray-400" />
-                      ) : (
-                        <ChevronDown className="w-5 h-5 text-gray-400" />
-                      )
-                    )}
+                    <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
                   </div>
                 </button>
 
-                {isExpanded && activeConditions.length > 0 && (
+                {isExpanded && (
                   <div className="px-5 pb-5 pt-0 border-t border-gray-200">
-                    <div className="space-y-2 mt-4">
-                      {activeConditions.map(([condition, qty]) => {
-                        const conditionConfig = {
-                          yeni: { label: 'Yeni' },
-                          kullanılmış: { label: 'Kullanılmış' },
-                          hek: { label: 'HEK' },
-                          arızalı: { label: 'Arızalı' },
-                        }[condition] || { label: condition }
+                    {/* Durum Breakdown */}
+                    {activeConditions.length > 0 && (
+                      <div className="space-y-2 mt-4">
+                        <p className="text-xs font-semibold text-gray-500 uppercase">Durum Dağılımı</p>
+                        {activeConditions.map(([condition, qty]) => {
+                          const conditionConfig = {
+                            yeni: { label: 'Yeni' },
+                            kullanılmış: { label: 'Kullanılmış' },
+                            hek: { label: 'HEK' },
+                            arızalı: { label: 'Arızalı' },
+                          }[condition] || { label: condition }
 
-                        return (
-                          <div
-                            key={condition}
-                            className="flex items-center justify-between p-2 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
-                          >
-                            <span className="text-xs font-medium text-gray-700">
-                              {conditionConfig.label}
-                            </span>
-                            <span className="text-sm font-semibold text-gray-900">
-                              {Number(qty).toLocaleString('tr-TR')}
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
+                          return (
+                            <div
+                              key={condition}
+                              className="flex items-center justify-between p-2 border border-gray-200 rounded hover:bg-gray-50 transition-colors"
+                            >
+                              <span className="text-xs font-medium text-gray-700">
+                                {conditionConfig.label}
+                              </span>
+                              <span className="text-sm font-semibold text-gray-900">
+                                {Number(qty).toLocaleString('tr-TR')}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* Bu Depodan Zimmetliler */}
+                    {warehouseZimmetler.length > 0 && (
+                      <div className="space-y-2 mt-4">
+                        <p className="text-xs font-semibold text-gray-500 uppercase">Zimmetli Kullanıcılar</p>
+                        {warehouseZimmetler.map((inv) => {
+                          const displayName = inv.owner_name || inv.user?.full_name || 'İsimsiz'
+                          const displayEmail = inv.owner_email || inv.user?.email || ''
+                          
+                          return (
+                            <div
+                              key={inv.id}
+                              className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded"
+                            >
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-blue-600" />
+                                <div>
+                                  <span className="text-xs font-medium text-gray-900">{displayName}</span>
+                                  {displayEmail && (
+                                    <span className="text-xs text-gray-500 ml-1">({displayEmail})</span>
+                                  )}
+                                </div>
+                              </div>
+                              <span className="text-sm font-semibold text-blue-600">
+                                {parseFloat(inv.quantity.toString()).toLocaleString('tr-TR')} {product?.unit || ''}
+                              </span>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -295,52 +351,61 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                   </p>
                   <p className="text-xs text-gray-500">{product?.unit || ''}</p>
                 </div>
-                {showUserInventories ? (
-                  <ChevronUp className="w-5 h-5 text-gray-400" />
-                ) : (
-                  <ChevronDown className="w-5 h-5 text-gray-400" />
-                )}
+                <ChevronDown className={`w-5 h-5 text-gray-400 transition-transform ${showUserInventories ? 'rotate-180' : ''}`} />
               </div>
             </button>
 
             {showUserInventories && (
               <div className="border-t border-gray-200">
                 <div className="divide-y divide-gray-100">
-                  {userInventories.map((inventory) => (
-                    <div
-                      key={inventory.id}
-                      className="p-4 hover:bg-gray-50 transition-colors"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                            <User className="w-4 h-4 text-gray-600" />
+                    {userInventories.map((inventory) => {
+                    const displayName = inventory.owner_name || inventory.user?.full_name || 'İsimsiz'
+                    const displayEmail = inventory.owner_email || inventory.user?.email || ''
+                    const secondaryUser = inventory.pending_user_name
+                    
+                    return (
+                      <div
+                        key={inventory.id}
+                        className="p-4 hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                              <User className="w-4 h-4 text-gray-600" />
+                            </div>
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">
+                                {displayName}
+                              </p>
+                              {displayEmail && (
+                                <p className="text-xs text-gray-500">
+                                  {displayEmail}
+                                </p>
+                              )}
+                              {secondaryUser && (
+                                <p className="text-xs text-blue-600">
+                                  2. Zimmetli: {secondaryUser}
+                                </p>
+                              )}
+                              <p className="text-xs text-gray-400 mt-0.5">
+                                {new Date(inventory.assigned_date).toLocaleDateString('tr-TR', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                  year: 'numeric'
+                                })}
+                              </p>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-sm font-semibold text-gray-900">
-                              {inventory.user?.full_name || 'İsimsiz'}
+                          <div className="text-right">
+                            <p className="text-lg font-bold text-gray-900">
+                              {parseFloat(inventory.quantity.toString()).toLocaleString('tr-TR')}
                             </p>
-                            <p className="text-xs text-gray-500">
-                              {inventory.user?.email}
-                            </p>
-                            <p className="text-xs text-gray-400 mt-0.5">
-                              {new Date(inventory.assigned_date).toLocaleDateString('tr-TR', {
-                                day: '2-digit',
-                                month: 'short',
-                                year: 'numeric'
-                              })}
-                            </p>
+                            <p className="text-xs text-gray-500">{product?.unit || ''}</p>
                           </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-lg font-bold text-gray-900">
-                            {parseFloat(inventory.quantity.toString()).toLocaleString('tr-TR')}
-                          </p>
-                          <p className="text-xs text-gray-500">{product?.unit || ''}</p>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
