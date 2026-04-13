@@ -8,6 +8,7 @@
 import { useState, useEffect } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Loading } from '@/components/ui/loading'
+import { Checkbox } from '@/components/ui/checkbox'
 import { 
   Package, 
   TrendingUp, 
@@ -16,7 +17,8 @@ import {
   Building2,
   Hash,
   Box,
-  ArrowUpDown
+  ArrowUpDown,
+  Check
 } from 'lucide-react'
 import type { ProductWithStock } from '../types'
 import Image from 'next/image'
@@ -123,10 +125,56 @@ export function ProductsTable({
     </button>
   )
 
+  const handleCheckboxClick = (e: React.MouseEvent, productId: string) => {
+    e.stopPropagation()
+    if (!onSelectionChange) return
+    
+    if (selectedProducts.includes(productId)) {
+      onSelectionChange(selectedProducts.filter(id => id !== productId))
+    } else {
+      onSelectionChange([...selectedProducts, productId])
+    }
+  }
+
+  const handleSelectAll = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!onSelectionChange) return
+    
+    if (selectedProducts.length === sortedProducts.length) {
+      onSelectionChange([])
+    } else {
+      onSelectionChange(sortedProducts.map(p => p.id))
+    }
+  }
+
+  const isAllSelected = sortedProducts.length > 0 && selectedProducts.length === sortedProducts.length
+  const isSomeSelected = selectedProducts.length > 0 && selectedProducts.length < sortedProducts.length
+
+  const showCheckboxes = !!onSelectionChange
+
   return (
     <div className="space-y-2 overflow-x-auto">
       {/* Header - Desktop Only */}
-      <div className="hidden lg:grid gap-4 px-4 pb-3 border-b border-gray-200" style={{gridTemplateColumns: '80px 2fr 1fr 1fr 1fr 200px'}}>
+      <div className="hidden lg:grid gap-4 px-4 pb-3 border-b border-gray-200" style={{gridTemplateColumns: showCheckboxes ? '40px 80px 2fr 1fr 1fr 1fr 200px' : '80px 2fr 1fr 1fr 1fr 200px'}}>
+        {/* Checkbox Header */}
+        {showCheckboxes && (
+          <div className="flex items-center">
+            <button
+              onClick={handleSelectAll}
+              className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                isAllSelected
+                  ? 'bg-gray-900 border-gray-900'
+                  : isSomeSelected
+                  ? 'bg-gray-400 border-gray-400'
+                  : 'border-gray-300 hover:border-gray-400'
+              }`}
+            >
+              {(isAllSelected || isSomeSelected) && (
+                <Check className="w-3 h-3 text-white" />
+              )}
+            </button>
+          </div>
+        )}
         <div className="text-xs font-medium text-black uppercase tracking-wider">GÖRSEL</div>
         <div className="flex items-center">
           <SortButton field="name">ÜRÜN ADI</SortButton>
@@ -160,7 +208,25 @@ export function ProductsTable({
             onClick={() => onProductClick(product.id)}
           >
             {/* Desktop Layout */}
-            <div className="hidden lg:grid gap-4 items-center" style={{gridTemplateColumns: '80px 2fr 1fr 1fr 1fr 200px'}}>
+            <div className="hidden lg:grid gap-4 items-center" style={{gridTemplateColumns: showCheckboxes ? '40px 80px 2fr 1fr 1fr 1fr 200px' : '80px 2fr 1fr 1fr 1fr 200px'}}>
+              {/* Checkbox */}
+              {showCheckboxes && (
+                <div className="flex items-center" onClick={(e) => e.stopPropagation()}>
+                  <button
+                    onClick={(e) => handleCheckboxClick(e, product.id)}
+                    className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      isSelected
+                        ? 'bg-gray-900 border-gray-900'
+                        : 'border-gray-300 hover:border-gray-400'
+                    }`}
+                  >
+                    {isSelected && (
+                      <Check className="w-3 h-3 text-white" />
+                    )}
+                  </button>
+                </div>
+              )}
+
               {/* Görsel */}
               <div>
                 <div className="relative w-16 h-16 rounded-2xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200">
@@ -264,6 +330,23 @@ export function ProductsTable({
               {/* Header Row - Product & Status */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 flex-1 min-w-0">
+                  {/* Checkbox - Mobile */}
+                  {showCheckboxes && (
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={(e) => handleCheckboxClick(e, product.id)}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                          isSelected
+                            ? 'bg-gray-900 border-gray-900'
+                            : 'border-gray-300 hover:border-gray-400'
+                        }`}
+                      >
+                        {isSelected && (
+                          <Check className="w-3 h-3 text-white" />
+                        )}
+                      </button>
+                    </div>
+                  )}
                   {/* Görsel */}
                   <div className="relative w-14 h-14 rounded-xl overflow-hidden bg-gray-50 flex items-center justify-center border border-gray-200 flex-shrink-0">
                     {primaryImage ? (

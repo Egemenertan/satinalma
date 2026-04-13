@@ -86,7 +86,7 @@ export function CategoryTabs({
 
   if (isLoading) {
     return (
-      <div className="bg-white rounded-2xl border border-gray-100 p-6">
+      <div className="py-4">
         <div className="flex items-center justify-center gap-3">
           <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
           <span className="text-gray-500">Kategoriler yükleniyor...</span>
@@ -98,11 +98,11 @@ export function CategoryTabs({
   return (
     <div className="space-y-3">
       {/* Ana Kategori Tabs */}
-      <div className="relative bg-white rounded-2xl border border-gray-100 px-3 py-4">
+      <div className="relative px-1">
         {showLeftArrow && (
           <button
             onClick={() => scroll(scrollContainerRef.current, 'left')}
-            className="absolute left-1 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
           >
             <ChevronLeft className="w-4 h-4 text-gray-600" />
           </button>
@@ -110,7 +110,7 @@ export function CategoryTabs({
         
         <div
           ref={scrollContainerRef}
-          className="flex gap-3 overflow-x-auto scrollbar-hide scroll-smooth px-1"
+          className="flex gap-3 overflow-x-auto scrollbar-hide scroll-smooth"
           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
         >
           {categories.map((category) => {
@@ -125,10 +125,10 @@ export function CategoryTabs({
                 onClick={() => onCategorySelect(category.name)}
                 className={`
                   relative flex-shrink-0 min-w-[120px] h-24 rounded-xl overflow-hidden
-                  transition-all duration-300 group
+                  transition-all duration-200 group
                   ${isSelected 
-                    ? 'ring-2 ring-gray-900 ring-offset-2 shadow-lg scale-[1.02]' 
-                    : 'hover:shadow-md hover:scale-[1.01]'
+                    ? 'ring-2 ring-gray-900 shadow-lg' 
+                    : 'hover:shadow-md'
                   }
                 `}
               >
@@ -141,7 +141,7 @@ export function CategoryTabs({
                     <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-black/50' : 'bg-black/30 group-hover:bg-black/40'}`} />
                   </>
                 ) : (
-                  <div className={`absolute inset-0 ${isSelected ? 'bg-gray-900' : 'bg-gray-100 group-hover:bg-gray-200'}`} />
+                  <div className={`absolute inset-0 ${isSelected ? 'bg-gray-900' : 'bg-white border border-gray-200 rounded-xl'}`} />
                 )}
                 
                 <div className="relative h-full flex flex-col items-center justify-center p-3 z-10">
@@ -169,7 +169,7 @@ export function CategoryTabs({
         {showRightArrow && (
           <button
             onClick={() => scroll(scrollContainerRef.current, 'right')}
-            className="absolute right-1 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
           >
             <ChevronRight className="w-4 h-4 text-gray-600" />
           </button>
@@ -200,7 +200,7 @@ export function CategoryTabs({
                 transition-all duration-200
                 ${!selectedSubCategory 
                   ? 'bg-gray-900 text-white shadow-md' 
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                 }
               `}
             >
@@ -217,7 +217,7 @@ export function CategoryTabs({
                     transition-all duration-200
                     ${isSelected 
                       ? 'bg-gray-900 text-white shadow-md' 
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
                     }
                   `}
                 >

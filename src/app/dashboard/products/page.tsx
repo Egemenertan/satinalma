@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck } from 'lucide-react'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus } from 'lucide-react'
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
@@ -19,6 +19,7 @@ import {
   ProductsTable,
   ProductModal,
 } from './components'
+import CreateZimmetModal from '@/components/CreateZimmetModal'
 
 interface Site {
   id: string
@@ -41,6 +42,7 @@ export default function ProductsPage() {
   const [userSiteId, setUserSiteId] = useState<string>('')
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [showBulkActions, setShowBulkActions] = useState(false)
+  const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
   const supabase = createClient()
   
   // Hooks
@@ -187,15 +189,15 @@ export default function ProductsPage() {
   const handleBulkStockOperations = () => {
     if (selectedProducts.length === 0) return
     
-    showToast(`${selectedProducts.length} ürün için toplu stok işlemi başlatılıyor...`, 'info')
-    
-    // İlk seçili ürünü aç ve stok işlemleri tabına git
-    setModalMode('view')
-    openModal(selectedProducts[0])
-    changeTab('movements')
-    
-    // Modal açıldığında seçili ürünleri göster
-    // Not: Şimdilik tek ürün için modal açılıyor, gelecekte toplu işlem formu eklenebilir
+    // Toplu zimmet modal'ını aç
+    setShowBulkZimmetModal(true)
+  }
+
+  const handleBulkZimmetSuccess = () => {
+    setShowBulkZimmetModal(false)
+    setSelectedProducts([])
+    setShowBulkActions(false)
+    showToast('Toplu zimmet işlemi başarıyla tamamlandı!', 'success')
   }
 
   const handleClearFilters = () => {
@@ -560,8 +562,8 @@ export default function ProductsPage() {
         selectedProductIds={selectedProducts}
       />
 
-      {/* Bottom Action Bar - Toplu İşlemler - Şimdilik gizli */}
-      {false && showBulkActions && (
+      {/* Bottom Action Bar - Toplu İşlemler */}
+      {showBulkActions && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-2xl z-50 border-t border-gray-700">
           <div className="max-w-7xl mx-auto px-8 py-6">
             <div className="flex items-center justify-between">
@@ -588,14 +590,23 @@ export default function ProductsPage() {
                   onClick={handleBulkStockOperations}
                   className="bg-white text-gray-900 hover:bg-gray-100 rounded-full px-8 py-6 font-semibold shadow-lg"
                 >
-                  <Package className="w-5 h-5 mr-2" />
-                  Toplu Stok İşlemi Yap
+                  <UserPlus className="w-5 h-5 mr-2" />
+                  Toplu Zimmet Oluştur
                 </Button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* Bulk Zimmet Modal */}
+      <CreateZimmetModal
+        open={showBulkZimmetModal}
+        onOpenChange={setShowBulkZimmetModal}
+        onSuccess={handleBulkZimmetSuccess}
+        showToast={showToast}
+        initialSelectedProducts={selectedProducts}
+      />
     </div>
   )
 }

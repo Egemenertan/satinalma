@@ -1,16 +1,13 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent } from '@/components/ui/card'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 import { createMultiMaterialPurchaseRequest } from '@/lib/actions'
 import { 
   ArrowLeft, 
-  Building2, 
-  Search,
   Loader2,
   Package
 } from 'lucide-react'
@@ -79,11 +76,6 @@ export default function CreatePurchaseRequestPage() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
   const [productSearchQuery, setProductSearchQuery] = useState('')
-  
-  // Scroll hide/show state for category tabs
-  const [isCategoryTabsVisible, setIsCategoryTabsVisible] = useState(true)
-  const lastScrollY = useRef(0)
-  const ticking = useRef(false)
   
   // Create Material Modal
   const [showCreateMaterialModal, setShowCreateMaterialModal] = useState(false)
@@ -503,36 +495,6 @@ export default function CreatePurchaseRequestPage() {
     return !isGenelMerkezUser
   })
 
-  // Scroll handler for category tabs hide/show
-  const handleScroll = useCallback(() => {
-    if (!ticking.current) {
-      window.requestAnimationFrame(() => {
-        const currentScrollY = window.scrollY
-        const scrollDelta = currentScrollY - lastScrollY.current
-        
-        // Sayfa başındaysa her zaman göster
-        if (currentScrollY < 50) {
-          setIsCategoryTabsVisible(true)
-        } else if (scrollDelta > 10) {
-          // Aşağı scroll - gizle
-          setIsCategoryTabsVisible(false)
-        } else if (scrollDelta < -10) {
-          // Yukarı scroll - göster
-          setIsCategoryTabsVisible(true)
-        }
-        
-        lastScrollY.current = currentScrollY
-        ticking.current = false
-      })
-      ticking.current = true
-    }
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener('scroll', handleScroll, { passive: true })
-    return () => window.removeEventListener('scroll', handleScroll)
-  }, [handleScroll])
-
   // Loading state
   if (isCheckingSite) {
     return (
@@ -599,75 +561,45 @@ export default function CreatePurchaseRequestPage() {
   // Shopping step (main)
   return (
     <div className="min-h-screen pb-24">
-      {/* Header */}
-      <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-gray-100">
-        <div className="px-4 py-3">
-          <div className="flex items-center justify-between gap-4 mb-3">
-            <Button 
-              variant="ghost" 
-              onClick={() => router.back()}
-              className="rounded-xl border border-gray-200 h-9 px-3"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              Geri
-            </Button>
-
-            {(selectedSite || userSite) && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100 rounded-lg">
-                <Building2 className="w-4 h-4 text-gray-500" />
-                <span className="text-sm font-medium text-gray-700">
-                  {selectedSite?.name || userSite?.name}
-                </span>
-              </div>
-            )}
-          </div>
-
-          {/* Search Bar */}
-          <div className="mb-3">
-            {isSpecialSiteUser ? (
-              <ProductSearchBar
-                value={productSearchQuery}
-                onChange={setProductSearchQuery}
-                onProductSelect={handleProductSelect}
-                categoryIds={SPECIAL_SITE_PRODUCT_CATEGORIES as any}
-                placeholder="Ürün ara (Bilgisayar, Ofis Malzemeleri, Reklam)..."
-                className="w-full"
-              />
-            ) : (
-              <MaterialSearchBar
-                value={searchQuery}
-                onChange={setSearchQuery}
-                onResultClick={handleSearchResultClick}
-                onCreateNewClick={() => {
-                  setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: searchQuery })
-                  setShowCreateMaterialModal(true)
-                }}
-                onEnterSearch={() => {}}
-                restrictToStationery={isGenelMerkezUser}
-                className="w-full"
-              />
-            )}
-          </div>
-
-          {/* Category Tabs */}
-          <div 
-            className={`transition-all duration-300 ease-out overflow-hidden ${
-              isCategoryTabsVisible 
-                ? 'max-h-[500px] opacity-100' 
-                : 'max-h-0 opacity-0'
-            }`}
-          >
-            <CategoryTabs
-              categories={filteredCategories}
-              selectedCategory={selectedCategory}
-              onCategorySelect={setSelectedCategory}
-              subCategories={subCategories}
-              selectedSubCategory={selectedSubCategory}
-              onSubCategorySelect={setSelectedSubCategory}
-              isLoading={isCategoriesLoading}
+      {/* Search & Categories */}
+      <div className="px-4 pt-4">
+        {/* Search Bar */}
+        <div className="mb-3">
+          {isSpecialSiteUser ? (
+            <ProductSearchBar
+              value={productSearchQuery}
+              onChange={setProductSearchQuery}
+              onProductSelect={handleProductSelect}
+              categoryIds={SPECIAL_SITE_PRODUCT_CATEGORIES as any}
+              placeholder="Ürün ara (Bilgisayar, Ofis Malzemeleri, Reklam)..."
+              className="w-full"
             />
-          </div>
+          ) : (
+            <MaterialSearchBar
+              value={searchQuery}
+              onChange={setSearchQuery}
+              onResultClick={handleSearchResultClick}
+              onCreateNewClick={() => {
+                setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: searchQuery })
+                setShowCreateMaterialModal(true)
+              }}
+              onEnterSearch={() => {}}
+              restrictToStationery={isGenelMerkezUser}
+              className="w-full"
+            />
+          )}
         </div>
+
+        {/* Category Tabs */}
+        <CategoryTabs
+          categories={filteredCategories}
+          selectedCategory={selectedCategory}
+          onCategorySelect={setSelectedCategory}
+          subCategories={subCategories}
+          selectedSubCategory={selectedSubCategory}
+          onSubCategorySelect={setSelectedSubCategory}
+          isLoading={isCategoriesLoading}
+        />
       </div>
 
       {/* Materials Grid */}

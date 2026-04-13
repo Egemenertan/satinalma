@@ -61,13 +61,15 @@ interface CreateZimmetModalProps {
   onOpenChange: (open: boolean) => void
   onSuccess: () => void
   showToast: (message: string, type: 'success' | 'error' | 'info') => void
+  initialSelectedProducts?: string[]
 }
 
 export default function CreateZimmetModal({
   open,
   onOpenChange,
   onSuccess,
-  showToast
+  showToast,
+  initialSelectedProducts = []
 }: CreateZimmetModalProps) {
   const [step, setStep] = useState(1)
   const [selectedUserId, setSelectedUserId] = useState<string>('')
@@ -90,6 +92,19 @@ export default function CreateZimmetModal({
       resetModal()
     }
   }, [open])
+
+  // initialSelectedProducts değiştiğinde ve products yüklendiyse, seçili ürünleri ayarla
+  useEffect(() => {
+    if (open && initialSelectedProducts.length > 0 && products.length > 0) {
+      // Sadece products listesinde bulunan ID'leri seç
+      const validProductIds = initialSelectedProducts.filter(id => 
+        products.some(p => p.id === id)
+      )
+      if (validProductIds.length > 0) {
+        setSelectedProducts(validProductIds)
+      }
+    }
+  }, [open, initialSelectedProducts, products])
 
   useEffect(() => {
     filterProducts()
@@ -240,19 +255,32 @@ export default function CreateZimmetModal({
       
       setWarehouseStocks(stocks)
 
-      // Ürün detaylarını hazırla
-      const details: SelectedProduct[] = selectedProducts.map(productId => {
-        const product = products.find(p => p.id === productId)!
-        const stock = stocks[productId]
-        const firstStock = stock && stock.length > 0 ? stock[0] : null
-        return {
-          ...product,
-          quantity: 1,
-          stockType: 'new',
-          warehouseId: firstStock?.warehouse_id || '',
-          availableStock: firstStock ? parseFloat(firstStock.quantity.toString()) : 0
-        }
-      })
+      // Ürün detaylarını hazırla - sadece products listesinde bulunanları dahil et
+      const details: SelectedProduct[] = selectedProducts
+        .map(productId => {
+          const product = products.find(p => p.id === productId)
+          if (!product) {
+            console.warn(`Ürün bulunamadı: ${productId}`)
+            return null
+          }
+          const stock = stocks[productId]
+          const firstStock = stock && stock.length > 0 ? stock[0] : null
+          const detail: SelectedProduct = {
+            ...product,
+            quantity: 1,
+            stockType: 'new',
+            warehouseId: firstStock?.warehouse_id || '',
+            availableStock: firstStock ? parseFloat(firstStock.quantity.toString()) : 0
+          }
+          return detail
+        })
+        .filter((detail): detail is SelectedProduct => detail !== null)
+
+      if (details.length === 0) {
+        showToast('Seçilen ürünler için bilgi alınamadı', 'error')
+        setLoadingData(false)
+        return
+      }
       
       setProductDetails(details)
       setLoadingData(false)
