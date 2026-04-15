@@ -438,4 +438,74 @@ export class NotificationService {
       siteId
     });
   }
+
+  /**
+   * GMO department head'lerine departman bazlı bildirim gönder
+   * @param requestId - Purchase request ID
+   * @param department - Departman adı (Marketing, IT, HR, vb.)
+   */
+  static async notifyDepartmentHeadForApproval(requestId: string, department: string): Promise<void> {
+    try {
+      const supabase = createClient()
+      const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+      
+      console.log(`📧 Department head bildirimi gönderiliyor: ${department} departmanı için request ${requestId}`)
+      
+      // Belirtilen departmandaki department_head kullanıcılarını bul
+      const { data: departmentHeads, error: headsError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('role', 'department_head')
+        .contains('site_id', [GMO_SITE_ID])
+        .eq('department', department)
+        .eq('is_active', true)
+
+      if (headsError) {
+        console.error('❌ Department head sorgu hatası:', headsError)
+        return
+      }
+
+      if (!departmentHeads || departmentHeads.length === 0) {
+        console.warn(`⚠️ ${department} departmanında aktif department_head bulunamadı`)
+        return
+      }
+
+      console.log(`📧 ${department} departmanı için ${departmentHeads.length} department_head'e bildirim gönderiliyor...`)
+
+      // Talep detaylarını al
+      const { data: request } = await supabase
+        .from('purchase_requests')
+        .select(`
+          *,
+          profiles:requested_by (full_name, email)
+        `)
+        .eq('id', requestId)
+        .single()
+
+      if (!request) {
+        console.error('❌ Talep bulunamadı:', requestId)
+        return
+      }
+
+      // Her department_head'e bildirim gönder
+      for (const head of departmentHeads) {
+        // In-app notification
+        await supabase.from('notifications').insert({
+          user_id: head.id,
+          title: `Yeni Talep Onayınızı Bekliyor (${department})`,
+          message: `${request.profiles?.full_name || 'Bir kullanıcı'} tarafından ${request.request_number} numaralı talep oluşturuldu. Departman onayınız bekleniyor.`,
+          type: 'approval_required',
+          reference_type: 'purchase_request',
+          reference_id: requestId,
+          is_read: false
+        })
+
+        console.log(`✉️ ${head.full_name || head.email} - bildirim gönderildi`)
+      }
+
+      console.log(`✅ ${department} departmanı için ${departmentHeads.length} bildirim gönderildi`)
+    } catch (error) {
+      console.error('❌ notifyDepartmentHeadForApproval hatası:', error)
+    }
+  }
 }

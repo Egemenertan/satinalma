@@ -238,13 +238,38 @@ export default function ZimmetDetailModal({
       // Get updated user info
       const selectedEmployee = employees.find(e => e.id === selectedUserId)
       
-      const pdfData = {
-        ...zimmet,
-        user: selectedEmployee ? {
+      // Kullanıcı bilgisi oluştur - öncelik sırası:
+      // 1. Seçilen çalışan
+      // 2. Profiles'dan gelen user bilgisi
+      // 3. Pending user bilgisi (sisteme giriş yapmamış kullanıcılar için)
+      let userData = null
+      
+      if (selectedEmployee) {
+        userData = {
           id: selectedEmployee.id,
           full_name: selectedEmployee.first_name,
           email: selectedEmployee.work_email
-        } : zimmet.user
+        }
+      } else if (zimmet.user) {
+        userData = zimmet.user
+      } else if (zimmet.pending_user_name || zimmet.pending_user_email) {
+        // Sisteme giriş yapmamış kullanıcı için pending bilgilerini kullan
+        userData = {
+          id: zimmet.user_id || '',
+          full_name: zimmet.pending_user_name || zimmet.owner_name || 'Belirtilmemiş',
+          email: zimmet.pending_user_email || zimmet.owner_email || 'Belirtilmemiş'
+        }
+      }
+
+      // Kullanıcı bilgisi yoksa hata ver
+      if (!userData) {
+        showToast('Kullanıcı bilgisi bulunamadı. Lütfen bir çalışan seçin.', 'error')
+        return
+      }
+      
+      const pdfData = {
+        ...zimmet,
+        user: userData
       }
       
       await generateTeslimPDF(pdfData as any)
@@ -264,8 +289,29 @@ export default function ZimmetDetailModal({
       // Önce iade belgesi PDF'i oluştur
       try {
         const { generateIadePDF } = await import('@/lib/pdf/zimmetPdfGenerator')
-        await generateIadePDF(zimmet as any)
-        showToast('Zimmet İade Belgesi PDF\'i oluşturuldu', 'success')
+        
+        // Kullanıcı bilgisi oluştur - pending bilgilerini de kullan
+        let userData = zimmet.user
+        
+        if (!userData && (zimmet.pending_user_name || zimmet.pending_user_email)) {
+          userData = {
+            id: zimmet.user_id || '',
+            full_name: zimmet.pending_user_name || zimmet.owner_name || 'Belirtilmemiş',
+            email: zimmet.pending_user_email || zimmet.owner_email || 'Belirtilmemiş'
+          }
+        }
+        
+        if (!userData) {
+          console.warn('⚠️ Kullanıcı bilgisi olmadan iade PDF\'i oluşturulamadı')
+          showToast('Kullanıcı bilgisi eksik, PDF oluşturulamadı', 'info')
+        } else {
+          const pdfData = {
+            ...zimmet,
+            user: userData
+          }
+          await generateIadePDF(pdfData as any)
+          showToast('Zimmet İade Belgesi PDF\'i oluşturuldu', 'success')
+        }
       } catch (pdfError) {
         console.error('PDF oluşturma hatası:', pdfError)
         showToast('PDF oluşturulamadı ama işlem devam ediyor', 'info')

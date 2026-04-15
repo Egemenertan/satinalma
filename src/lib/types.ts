@@ -7,7 +7,7 @@ export type Json =
   | Json[]
 
 // Kullanıcı rolleri - güncel sistem
-export type UserRole = 'admin' | 'manager' | 'user' | 'site_personnel' | 'site_manager' | 'warehouse_manager' | 'purchasing_officer' | 'santiye_depo' | 'santiye_depo_yonetici'
+export type UserRole = 'admin' | 'manager' | 'user' | 'site_personnel' | 'site_manager' | 'warehouse_manager' | 'purchasing_officer' | 'santiye_depo' | 'santiye_depo_yonetici' | 'department_head'
 
 export interface Database {
   public: {

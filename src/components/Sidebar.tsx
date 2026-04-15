@@ -312,8 +312,8 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               active 
-                ? "bg-black text-white hover:bg-gray-800" 
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
               "rounded-xl"
             )}
             onClick={() => toggleExpanded(item.title)}
@@ -352,10 +352,10 @@ export default function Sidebar({
             className={cn(
               "w-full h-24 transition-all duration-200 flex flex-col items-center justify-center gap-2 relative",
               active 
-                ? "bg-black text-white hover:bg-gray-800" 
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
-              "rounded-2xl border-2",
-              active ? "border-black" : "border-gray-200"
+                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
+              "rounded-2xl border",
+              active ? "border-[#d6002a]" : "border-gray-200"
             )}
             onClick={() => {
               setIsMobileOpen(false)
@@ -366,7 +366,7 @@ export default function Sidebar({
             {item.badge && (
               <Badge 
                 variant="secondary" 
-                className="absolute top-2 right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-red-500 text-white hover:bg-red-600 border-0 rounded-full"
+                className="absolute top-2 right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-[#d6002a] text-white hover:bg-[#b80024] border-0 rounded-full"
               >
                 {item.badge}
               </Badge>
@@ -386,8 +386,8 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               active 
-                ? "bg-black text-white hover:bg-gray-800" 
-                : "text-gray-600 hover:text-gray-900 hover:bg-gray-50",
+                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
               "rounded-xl"
             )}
             onMouseEnter={() => setHoveredItem(item.title)}
@@ -400,7 +400,7 @@ export default function Sidebar({
                 {item.badge && (
                   <Badge 
                     variant="secondary" 
-                    className="ml-auto h-5 px-2 text-xs bg-red-500 text-white hover:bg-red-600 border-0"
+                    className="ml-auto h-5 px-2 text-xs bg-[#d6002a] text-white hover:bg-[#b80024] border-0"
                   >
                     {item.badge}
                   </Badge>
@@ -418,7 +418,7 @@ export default function Sidebar({
               {item.badge && (
                 <Badge 
                   variant="secondary" 
-                  className="ml-2 h-4 px-1.5 text-xs bg-red-500 text-white border-0"
+                  className="ml-2 h-4 px-1.5 text-xs bg-[#d6002a] text-white border-0"
                 >
                   {item.badge}
                 </Badge>
@@ -448,10 +448,10 @@ export default function Sidebar({
       <div 
         className={cn(
           "fixed z-50 flex flex-col transition-all duration-500 ease-out overflow-visible",
-          "bg-white shadow-2xl",
+          "bg-white shadow-lg",
           // Desktop - Ada tasarımı (sol tarafta)
           "hidden lg:flex",
-          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-200",
+          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-200/60",
           isCollapsed ? "lg:w-16" : "lg:w-64",
           // Mobile - Tam sayfa
           isMobileOpen ? "flex inset-0 w-full h-full" : "hidden lg:flex",
@@ -461,7 +461,7 @@ export default function Sidebar({
       >
         {/* Header with Logo */}
         <div className={cn(
-          "flex items-center border-b border-gray-100/50",
+          "flex items-center border-b border-gray-100",
           isMobileOpen ? "justify-between px-6 py-6" : "justify-center px-4 py-5"
         )}>
           {/* Logo - sadece mobile'da göster */}
@@ -512,7 +512,7 @@ export default function Sidebar({
                   onClick={() => router.push('/dashboard/requests/create')}
                   onMouseEnter={() => setHoveredItem('quick-create')}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className="w-10 h-10 bg-white hover:bg-gray-50 text-black border-2 border-black rounded-full flex items-center justify-center transition-all duration-200"
+                  className="w-10 h-10 bg-white hover:bg-gray-50 text-[#d6002a] border-2 border-[#d6002a] rounded-full flex items-center justify-center transition-all duration-200 hover:bg-[#d6002a] hover:text-white"
                 >
                   <Plus className="h-5 w-5" />
                 </Button>
@@ -536,7 +536,7 @@ export default function Sidebar({
                     onMouseEnter={() => setHoveredItem('role-management')}
                     onMouseLeave={() => setHoveredItem(null)}
                     variant="outline"
-                    className="w-full h-10 border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white rounded-xl flex items-center justify-center transition-all duration-200"
+                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-[#d6002a] hover:text-white hover:border-[#d6002a] rounded-xl flex items-center justify-center transition-all duration-200"
                   >
                     <UserCog className="h-4 w-4" />
                   </Button>
@@ -563,7 +563,7 @@ export default function Sidebar({
                   }
                 }}
                 className={cn(
-                  "bg-white hover:bg-gray-50 text-black border-2 border-black font-medium rounded-2xl transition-all duration-200",
+                  "bg-white hover:bg-[#d6002a] text-[#d6002a] hover:text-white border-2 border-[#d6002a] font-medium rounded-2xl transition-all duration-200",
                   isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm"
                 )}
               >
@@ -582,7 +582,7 @@ export default function Sidebar({
                   }}
                   variant="outline"
                   className={cn(
-                    "border-gray-300 text-gray-900 hover:bg-gray-900 hover:text-white font-medium rounded-2xl transition-all duration-200",
+                    "border-gray-300 text-gray-700 hover:bg-[#d6002a] hover:text-white hover:border-[#d6002a] font-medium rounded-2xl transition-all duration-200",
                     isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm flex items-center justify-center gap-2"
                   )}
                 >
@@ -610,63 +610,34 @@ export default function Sidebar({
           isCollapsed && !isMobileOpen ? "px-2" : isMobileOpen ? "px-6" : "px-4"
         )}>
           {isCollapsed && !isMobileOpen ? (
-            <div className="space-y-2">
-              {/* User Avatar with Tooltip */}
-              <div className="relative flex justify-center">
-                <button
-                  onMouseEnter={() => setHoveredItem('user-profile')}
-                  onMouseLeave={() => setHoveredItem(null)}
-                  className="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center hover:ring-2 hover:ring-orange-300 transition-all duration-200"
-                >
-                  <span className="text-sm font-medium text-white">
-                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
-                  </span>
-                </button>
-                
-                {/* User Profile Tooltip */}
-                {hoveredItem === 'user-profile' && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                    <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200 min-w-[180px]">
-                      <div className="text-sm font-medium">{userName || 'Kullanıcı'}</div>
-                      <div className="text-xs text-gray-300 mt-0.5">{userEmail}</div>
-                      <div className="text-xs font-medium text-orange-300 mt-1 bg-orange-500/20 px-2 py-0.5 rounded inline-block">
-                        {getRoleLabel(userRole as any)}
-                      </div>
-                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                    </div>
-                  </div>
-                )}
-              </div>
+            // Desktop collapsed - Sadece logout butonu
+            <div className="relative flex justify-center">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-10 w-10 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+                onClick={handleLogout}
+                onMouseEnter={() => setHoveredItem('logout')}
+                onMouseLeave={() => setHoveredItem(null)}
+              >
+                <LogOut className="h-4 w-4" />
+              </Button>
               
-              {/* Logout Button with Tooltip */}
-              <div className="relative flex justify-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-10 w-10 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
-                  onClick={handleLogout}
-                  onMouseEnter={() => setHoveredItem('logout')}
-                  onMouseLeave={() => setHoveredItem(null)}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-                
-                {/* Logout Tooltip */}
-                {hoveredItem === 'logout' && (
-                  <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                    <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
-                      Çıkış Yap
-                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
-                    </div>
+              {/* Logout Tooltip */}
+              {hoveredItem === 'logout' && (
+                <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
+                  <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                    Çıkış Yap
+                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
           ) : isMobileOpen ? (
             // Mobile için özel tasarım
             <div className="space-y-3">
-              <div className="flex items-center space-x-3 bg-gray-50 rounded-2xl p-4">
-                <div className="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="flex items-center space-x-3 bg-gray-50/50 rounded-2xl p-4 border border-gray-100">
+                <div className="w-12 h-12 bg-[#d6002a] rounded-full flex items-center justify-center flex-shrink-0">
                   <span className="text-base font-medium text-white">
                     {userName ? userName.charAt(0).toUpperCase() : 'U'}
                   </span>
@@ -677,9 +648,6 @@ export default function Sidebar({
                   </div>
                   <div className="text-xs text-gray-500 truncate">
                     {userEmail}
-                  </div>
-                  <div className="text-xs font-medium text-orange-600 bg-orange-50 px-2 py-0.5 rounded-md inline-block mt-1">
-                    {getRoleLabel(userRole as any)}
                   </div>
                 </div>
               </div>
@@ -693,38 +661,15 @@ export default function Sidebar({
               </Button>
             </div>
           ) : (
-            // Desktop expanded için normal tasarım
-            <div className="flex flex-col space-y-2">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-orange-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs font-medium text-white">
-                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
-                  </span>
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 truncate">
-                    {userName || 'Kullanıcı'}
-                  </div>
-                  <div className="text-xs text-gray-500 truncate">
-                    {userEmail}
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 w-6 p-0 text-gray-400 hover:text-gray-600"
-                  onClick={handleLogout}
-                >
-                  <LogOut className="h-4 w-4" />
-                </Button>
-              </div>
-              {/* Rol Bilgisi */}
-              <div className="pl-11">
-                <div className="text-xs font-medium text-gray-700 bg-gray-100 px-2 py-1 rounded-md inline-block">
-                  {getRoleLabel(userRole as any)}
-                </div>
-              </div>
-            </div>
+            // Desktop expanded - Sadece logout butonu
+            <Button
+              variant="ghost"
+              className="w-full h-10 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl font-medium transition-all duration-200"
+              onClick={handleLogout}
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              <span className="text-sm">Çıkış Yap</span>
+            </Button>
           )}
         </div>
       </div>

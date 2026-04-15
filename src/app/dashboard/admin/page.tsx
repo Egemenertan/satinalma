@@ -140,6 +140,7 @@ export default function AdminPage() {
       site_personnel: 'bg-indigo-100 text-indigo-700',
       santiye_depo: 'bg-amber-100 text-amber-700',
       santiye_depo_yonetici: 'bg-pink-100 text-pink-700',
+      department_head: 'bg-violet-100 text-violet-700',
       user: 'bg-gray-100 text-gray-700'
     }
     return colors[role] || colors.user

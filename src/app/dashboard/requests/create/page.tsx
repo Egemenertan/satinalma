@@ -466,6 +466,11 @@ export default function CreatePurchaseRequestPage() {
 
       showToast(result.message || 'Talep başarıyla oluşturuldu!', 'success')
       router.refresh()
+      try {
+        sessionStorage.setItem('requests_scroll_from_create', '1')
+      } catch {
+        /* ignore */
+      }
       router.push('/dashboard/requests')
       
     } catch (error) {
@@ -498,10 +503,10 @@ export default function CreatePurchaseRequestPage() {
   // Loading state
   if (isCheckingSite) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-white">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto mb-4" />
-          <p className="text-gray-500">Yükleniyor...</p>
+          <p className="text-gray-600 font-medium">Yükleniyor...</p>
         </div>
       </div>
     )
@@ -510,19 +515,21 @@ export default function CreatePurchaseRequestPage() {
   // Site selection step
   if (pageStep === 'site-selection' && sites.length > 0) {
     return (
-      <div className="min-h-screen px-4 py-6">
-        <div className="max-w-4xl mx-auto">
+      <div className="min-h-screen px-4 py-6 bg-gradient-to-br from-gray-50 to-white">
+        <div className="max-w-5xl mx-auto">
           <Button 
             variant="ghost" 
             onClick={() => router.back()}
-            className="mb-6 rounded-xl border border-gray-200"
+            className="mb-8 rounded-2xl border border-gray-200 hover:bg-gray-50 transition-all"
           >
             <ArrowLeft className="w-4 h-4 mr-2" />
             Geri
           </Button>
 
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">Lokasyon Seçin</h1>
-          <p className="text-gray-500 mb-8">Talep oluşturmak için bir lokasyon seçin</p>
+          <div className="text-center mb-10">
+            <h1 className="text-3xl font-bold text-gray-900 mb-2">Lokasyon Seçin</h1>
+            <p className="text-gray-600">Talep oluşturmak için bir lokasyon seçin</p>
+          </div>
 
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {sites.map((site) => {
@@ -532,20 +539,24 @@ export default function CreatePurchaseRequestPage() {
                   key={site.id}
                   type="button"
                   onClick={() => handleSiteSelect(site)}
-                  className="aspect-square p-4 rounded-2xl transition-all duration-200 relative overflow-hidden hover:shadow-lg hover:scale-[1.02]"
+                  className="aspect-square p-4 rounded-3xl transition-all duration-200 relative overflow-hidden hover:shadow-lg hover:scale-[1.02] group border border-gray-200"
                   style={{
                     backgroundImage: hasImage ? `url(${siteImages[site.name]})` : 'none',
                     backgroundSize: 'cover',
                     backgroundPosition: 'center',
-                    backgroundColor: hasImage ? 'transparent' : '#f3f4f6'
+                    backgroundColor: hasImage ? 'transparent' : '#f9fafb'
                   }}
                 >
-                  {hasImage && (
-                    <div className="absolute inset-0 bg-black/30 hover:bg-black/40 transition-colors" />
+                  {hasImage ? (
+                    <>
+                      <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-200" />
+                      <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                    </>
+                  ) : (
+                    <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-white transition-all duration-200" />
                   )}
-                  <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-black/80 via-black/40 to-transparent" />
                   <div className="absolute bottom-0 left-0 right-0 p-4 z-10">
-                    <span className={`text-center leading-tight font-medium block text-lg ${hasImage ? 'text-white' : 'text-gray-700'}`}>
+                    <span className={`text-center leading-tight font-semibold block text-base ${hasImage ? 'text-white drop-shadow-lg' : 'text-gray-800'} transition-colors`}>
                       {site.name}
                     </span>
                   </div>
@@ -560,9 +571,9 @@ export default function CreatePurchaseRequestPage() {
 
   // Shopping step (main)
   return (
-    <div className="min-h-screen pb-24">
+    <div className="min-h-screen pb-24 bg-gradient-to-br from-gray-50 to-white">
       {/* Search & Categories */}
-      <div className="px-4 pt-4">
+      <div className="px-4 pt-6">
         {/* Search Bar */}
         <div className="mb-3">
           {isSpecialSiteUser ? (
@@ -608,24 +619,24 @@ export default function CreatePurchaseRequestPage() {
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
               <Loader2 className="w-8 h-8 animate-spin text-gray-400 mx-auto mb-4" />
-              <p className="text-gray-500">Ürünler yükleniyor...</p>
+              <p className="text-gray-600 font-medium">Ürünler yükleniyor...</p>
             </div>
           </div>
         ) : materials.length === 0 ? (
           <div className="flex items-center justify-center py-24">
             <div className="text-center">
-              <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gray-100 flex items-center justify-center">
-                <Package className="w-8 h-8 text-gray-400" />
+              <div className="w-20 h-20 mx-auto mb-6 rounded-2xl bg-gray-100 flex items-center justify-center">
+                <Package className="w-10 h-10 text-gray-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Ürün Bulunamadı</h3>
-              <p className="text-gray-500 text-sm mb-4">Bu kategoride henüz ürün bulunmuyor</p>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Ürün Bulunamadı</h3>
+              <p className="text-gray-600 text-sm mb-6">Bu kategoride henüz ürün bulunmuyor</p>
               <Button
                 variant="outline"
                 onClick={() => {
                   setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: '' })
                   setShowCreateMaterialModal(true)
                 }}
-                className="rounded-xl"
+                className="rounded-2xl border-gray-200 hover:bg-gray-50 transition-all"
               >
                 <Package className="w-4 h-4 mr-2" />
                 Yeni Malzeme Ekle

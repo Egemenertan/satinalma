@@ -13,6 +13,7 @@ import SantiyeDepoView from '@/components/offers/SantiyeDepoView'
 import SitePersonnelView from '@/components/offers/SitePersonnelView'
 import SiteManagerView from '@/components/offers/SiteManagerView'
 import ProcurementView from '@/components/offers/ProcurementView'
+import DepartmentHeadView from '@/components/offers/DepartmentHeadView'
 
 export default function OffersPage() {
   const params = useParams()
@@ -91,15 +92,15 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md mx-auto">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="h-10 w-10 text-red-500" />
+          <div className="w-20 h-20 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-[#d6002a]" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Bir Hata Oluştu</h3>
           <p className="text-gray-600 mb-6">{error}</p>
           <div className="flex gap-3 justify-center">
             <Button 
               onClick={handleRetry}
-              className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 py-3 font-medium"
+              className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
             >
               Tekrar Dene
             </Button>
@@ -130,7 +131,7 @@ export default function OffersPage() {
           </p>
           <Button 
             onClick={() => router.push('/dashboard/requests')}
-            className="bg-blue-600 hover:bg-blue-700 rounded-xl px-6 py-3 font-medium"
+            className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
           >
             Taleplere Dön
           </Button>
@@ -143,14 +144,14 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="h-10 w-10 text-red-500" />
+          <div className="w-20 h-20 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-[#d6002a]" />
           </div>
-          <h3 className="text-xl font-semibold text-white mb-2">Talep Bulunamadı</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">Talep Bulunamadı</h3>
           <p className="text-gray-600 mb-6">Aradığınız talep mevcut değil veya erişim izniniz yok.</p>
           <Button 
             onClick={() => router.push('/dashboard/requests')}
-            className="bg-gray-800 hover:bg-gray-900 rounded-xl px-6 py-3 font-medium"
+            className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
           >
             Taleplere Dön
           </Button>
@@ -168,6 +169,31 @@ export default function OffersPage() {
       shipmentData,
       onRefresh: refreshData,
       showToast
+    }
+
+    // GMO için department_head kontrolü (EN ÜSTTE - diğer rollerin ÖNCESİNDE)
+    const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    
+    if (userRole === 'department_head') {
+      // Sadece GMO + departman_onayı_bekliyor statusu için DepartmentHeadView
+      if (request.site_id === GMO_SITE_ID && request.status === 'departman_onayı_bekliyor') {
+        return (
+          <DepartmentHeadView 
+            request={request}
+            onRefresh={refreshData}
+            showToast={showToast}
+          />
+        )
+      } else {
+        // Diğer durumlarda sadece görüntüleme (SitePersonnelView readonly)
+        return (
+          <SitePersonnelView 
+            {...commonProps}
+            currentOrder={currentOrder}
+            readOnly={true}
+          />
+        )
+      }
     }
 
     switch (userRole) {

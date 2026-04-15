@@ -17,7 +17,7 @@ module.exports = {
     },
     extend: {
       fontFamily: {
-        'helvetica-neue': ['Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+        'helvetica-neue': ['Akkurat', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
       },
       fontWeight: {
         'light': '300',
@@ -31,8 +31,18 @@ module.exports = {
         background: "hsl(var(--background))",
         foreground: "hsl(var(--foreground))",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "#d6002a",
+          foreground: "#ffffff",
+          50: "#fef2f2",
+          100: "#fee2e2",
+          200: "#fecaca",
+          300: "#fca5a5",
+          400: "#f87171",
+          500: "#d6002a",
+          600: "#b80024",
+          700: "#9a001f",
+          800: "#7c001a",
+          900: "#5e0014",
         },
         secondary: {
           DEFAULT: "hsl(var(--secondary))",
@@ -47,8 +57,8 @@ module.exports = {
           foreground: "hsl(var(--muted-foreground))",
         },
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "#d6002a",
+          foreground: "#ffffff",
         },
         popover: {
           DEFAULT: "hsl(var(--popover))",
@@ -58,11 +68,28 @@ module.exports = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        elegant: {
+          black: "#0a0a0a",
+          red: "#d6002a",
+          gray: {
+            50: "#fafafa",
+            100: "#f5f5f5",
+            200: "#e5e5e5",
+            300: "#d4d4d4",
+            400: "#a3a3a3",
+            500: "#737373",
+            600: "#525252",
+            700: "#404040",
+            800: "#262626",
+            900: "#171717",
+          },
+        },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        '4xl': '2rem',
       },
       keyframes: {
         "accordion-down": {

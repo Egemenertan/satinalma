@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
+import DashboardHeader from '@/components/DashboardHeader'
 import NotificationPanel from '@/components/NotificationPanel'
 // import AIChatbot from '@/components/AIChatbot'
 import { Button } from '@/components/ui/button'
@@ -221,6 +222,9 @@ export default function DashboardLayout({
         setIsMobileOpen={handleSidebarMobileChange}
       />
 
+      {/* Desktop Header */}
+      <DashboardHeader />
+
       {/* Desktop Notification Panel */}
       <div className="hidden lg:block">
         <NotificationPanel 
@@ -232,7 +236,7 @@ export default function DashboardLayout({
       {/* Desktop Layout - Sidebar artık ada tasarımında, boşluklar ayarlandı */}
       <main className="min-h-screen transition-all duration-500 hidden lg:block lg:pl-[5.5rem]">
         <div className="h-full overflow-y-auto">
-          <div className="px-10 py-10">
+          <div className="px-10 pt-20 pb-10">
             {children}
           </div>
         </div>

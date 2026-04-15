@@ -256,8 +256,8 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2">Stok Yönetimi</h1>
-          <p className="text-gray-600 text-lg font-light">
+          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#d6002a] inline-block">Stok Yönetimi</h1>
+          <p className="text-gray-600 text-base mt-4">
             {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
           </p>
         </div>

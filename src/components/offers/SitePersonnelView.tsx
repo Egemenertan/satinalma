@@ -15,6 +15,7 @@ interface SitePersonnelViewProps extends Pick<OffersPageProps, 'request' | 'mate
   canEditRequest?: () => boolean  // Site Manager'dan geçirilen fonksiyon
   handleEditRequest?: () => void  // Site Manager'dan geçirilen fonksiyon
   hideDeliveryButtons?: boolean   // Site Manager için teslim alma butonlarını gizle
+  readOnly?: boolean              // department_head vb. için sadece görüntüleme
 }
 
 export default function SitePersonnelView({ 
@@ -27,7 +28,8 @@ export default function SitePersonnelView({
   showToast,
   canEditRequest: externalCanEditRequest,
   handleEditRequest: externalHandleEditRequest,
-  hideDeliveryButtons = false
+  hideDeliveryButtons = false,
+  readOnly = false
 }: SitePersonnelViewProps) {
   const router = useRouter()
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false)
@@ -152,7 +154,7 @@ export default function SitePersonnelView({
             </div>
             
             {/* Site Personnel Edit Butonu */}
-            {canEditRequest() && (
+            {!readOnly && canEditRequest() && (
               <Button
                 onClick={handleEditRequest}
                 variant="outline"

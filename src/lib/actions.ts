@@ -573,7 +573,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     })
     
     let initialStatus = 'pending'
-    const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
     
     if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
@@ -585,9 +585,13 @@ export async function createMultiMaterialPurchaseRequest(data: {
       initialStatus = 'depoda mevcut değil'
       console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
-      // Özel site için site_personnel kullanıcıları onay bekliyor statusu ile oluşturur
-      initialStatus = 'onay_bekliyor'
-      console.log('✅ Status: onay_bekliyor (site_personnel - özel site)')
+      // GMO için departman onayı gerekli
+      initialStatus = 'departman_onayı_bekliyor'
+      console.log('✅ Status: departman_onayı_bekliyor (site_personnel - GMO - departman onayı)')
+    } else if (user.role === 'department_head' && data.site_id === SPECIAL_SITE_ID) {
+      // GMO department_head kendi talebi oluşturursa direkt pending
+      initialStatus = 'pending'
+      console.log('✅ Status: pending (department_head - GMO - kendi talebi)')
     } else {
       console.log('⚠️ Status: pending (default - rol:', user.role, ')')
     }
@@ -679,6 +683,25 @@ export async function createMultiMaterialPurchaseRequest(data: {
     await supabase
       .from('approval_history')
       .insert(historyData)
+
+    // GMO departman onayı için özel bildirim
+    if (initialStatus === 'departman_onayı_bekliyor') {
+      const requestDepartment = user.department || 'Genel'
+      console.log(`📧 GMO departman onayı bildirimi gönderiliyor (${requestDepartment})...`)
+      
+      // Department head'lere departman bazlı bildirim gönder
+      // Not: notifyDepartmentHeadForApproval fonksiyonu notifications.ts'te tanımlanacak
+      if (typeof NotificationService.notifyDepartmentHeadForApproval === 'function') {
+        NotificationService.notifyDepartmentHeadForApproval(
+          purchaseRequest.id,
+          requestDepartment
+        ).catch(error => {
+          console.error('❌ Department head bildirimi gönderilemedi:', error)
+        })
+      } else {
+        console.log('TODO: notifyDepartmentHeadForApproval fonksiyonu henüz tanımlanmadı')
+      }
+    }
 
     // Push notification + E-posta gönder (arka planda)
     console.log('📧 Bildirim gönderimi arka planda başlatılıyor...')

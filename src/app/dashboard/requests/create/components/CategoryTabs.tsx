@@ -96,9 +96,9 @@ export function CategoryTabs({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4 mb-6">
       {/* Ana Kategori Tabs */}
-      <div className="relative px-1">
+      <div className="relative px-1 py-2">
         {showLeftArrow && (
           <button
             onClick={() => scroll(scrollContainerRef.current, 'left')}
@@ -124,11 +124,11 @@ export function CategoryTabs({
                 key={category.id}
                 onClick={() => onCategorySelect(category.name)}
                 className={`
-                  relative flex-shrink-0 min-w-[120px] h-24 rounded-xl overflow-hidden
-                  transition-all duration-200 group
+                  relative flex-shrink-0 min-w-[120px] h-24 rounded-2xl overflow-hidden
+                  transition-all duration-300 group
                   ${isSelected 
-                    ? 'ring-2 ring-gray-900 shadow-lg' 
-                    : 'hover:shadow-md'
+                    ? 'ring-2 ring-[#d6002a] shadow-md' 
+                    : 'hover:shadow-md hover:scale-[1.02]'
                   }
                 `}
               >
@@ -138,27 +138,27 @@ export function CategoryTabs({
                       className="absolute inset-0 bg-cover bg-center"
                       style={{ backgroundImage: `url(${categoryImage})` }}
                     />
-                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-black/50' : 'bg-black/30 group-hover:bg-black/40'}`} />
+                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#d6002a]/80' : 'bg-black/30 group-hover:bg-[#d6002a]/50'}`} />
                   </>
                 ) : (
-                  <div className={`absolute inset-0 ${isSelected ? 'bg-gray-900' : 'bg-white border border-gray-200 rounded-xl'}`} />
+                  <div className={`absolute inset-0 ${isSelected ? 'bg-gradient-to-br from-[#d6002a] to-[#b80024]' : 'bg-white border border-gray-200 rounded-2xl group-hover:border-[#d6002a]/30'}`} />
                 )}
                 
                 <div className="relative h-full flex flex-col items-center justify-center p-3 z-10">
                   <div className="w-8 h-8 flex items-center justify-center mb-2">
-                    <IconComponent className={`w-5 h-5 ${categoryImage || isSelected ? 'text-white drop-shadow-sm' : 'text-gray-600'}`} />
+                    <IconComponent className={`w-5 h-5 transition-all duration-300 ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-600 group-hover:text-[#d6002a]'}`} />
                   </div>
                   <span className={`
-                    text-xs font-medium text-center line-clamp-2 leading-tight
-                    ${categoryImage || isSelected ? 'text-white drop-shadow-sm' : 'text-gray-700'}
+                    text-xs font-medium text-center line-clamp-2 leading-tight transition-all duration-300
+                    ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-700 group-hover:text-[#d6002a]'}
                   `}>
                     {category.name}
                   </span>
                 </div>
 
                 {isSelected && (
-                  <div className="absolute top-1.5 right-1.5 w-5 h-5 bg-white rounded-full flex items-center justify-center shadow-sm">
-                    <Icons.Check className="w-3 h-3 text-gray-900" />
+                  <div className="absolute top-2 right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg animate-scale-in">
+                    <Icons.Check className="w-4 h-4 text-[#d6002a]" />
                   </div>
                 )}
               </button>
@@ -178,7 +178,7 @@ export function CategoryTabs({
 
       {/* Alt Kategori Chips */}
       {selectedCategory && subCategories.length > 0 && (
-        <div className="relative">
+        <div className="relative py-2">
           {showSubLeftArrow && (
             <button
               onClick={() => scroll(subScrollContainerRef.current, 'left')}
@@ -190,17 +190,17 @@ export function CategoryTabs({
 
           <div
             ref={subScrollContainerRef}
-            className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-1 py-1"
+            className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-1 py-2"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             <button
               onClick={() => onSubCategorySelect('')}
               className={`
-                flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium
+                flex-shrink-0 px-5 py-2.5 rounded-full text-sm font-medium
                 transition-all duration-200
                 ${!selectedSubCategory 
-                  ? 'bg-gray-900 text-white shadow-md' 
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                  ? 'bg-[#d6002a] text-white shadow-sm' 
+                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                 }
               `}
             >
@@ -213,11 +213,11 @@ export function CategoryTabs({
                   key={subCategory.id}
                   onClick={() => onSubCategorySelect(subCategory.name)}
                   className={`
-                    flex-shrink-0 px-4 py-2 rounded-full text-sm font-medium
+                    flex-shrink-0 px-5 py-2.5 rounded-full text-sm font-medium
                     transition-all duration-200
                     ${isSelected 
-                      ? 'bg-gray-900 text-white shadow-md' 
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+                      ? 'bg-[#d6002a] text-white shadow-sm' 
+                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                     }
                   `}
                 >

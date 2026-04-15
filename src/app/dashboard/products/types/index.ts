@@ -26,13 +26,13 @@ export type StockMovementInsert = Database['public']['Tables']['stock_movements'
 
 export type MovementType = 'giriş' | 'çıkış' | 'transfer' | 'düzeltme'
 
-export interface ProductWithBrand extends Product {
+export interface ProductWithBrand extends Omit<Product, 'category'> {
   brand?: Brand | null
   category?: ProductCategory | null
   total_stock?: number
 }
 
-export interface ProductWithStock extends Product {
+export interface ProductWithStock extends Omit<Product, 'category'> {
   brand?: Brand | null
   category?: ProductCategory | null
   warehouse_stocks?: WarehouseStockWithDetails[]

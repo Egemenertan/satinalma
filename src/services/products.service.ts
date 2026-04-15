@@ -24,7 +24,7 @@ export interface ProductFilters {
   maxPrice?: number
 }
 
-export interface ProductWithDetails extends Product {
+export interface ProductWithDetails extends Omit<Product, 'category'> {
   brand?: Brand | null
   category?: ProductCategory | null
   total_stock?: number
@@ -499,10 +499,49 @@ export async function fetchProductStats(siteId?: string) {
     })
   }
 
+  // En çok stoklu 5 ürün
+  let topProductsQuery = supabase
+    .from('products')
+    .select('id, name, warehouse_stock(quantity, warehouse_id)')
+    .eq('is_active', true)
+  
+  if (productIds) {
+    topProductsQuery = topProductsQuery.in('id', productIds)
+  }
+  
+  const { data: allProducts } = await topProductsQuery
+  
+  // Her ürün için toplam stok hesapla
+  const productsWithStock = (allProducts || []).map((product: any) => {
+    let stocks = product.warehouse_stock || []
+    
+    // Eğer siteId varsa sadece o site'nin stoklarını hesapla
+    if (siteId) {
+      stocks = stocks.filter((s: any) => s.warehouse_id === siteId)
+    }
+    
+    const totalStock = stocks.reduce(
+      (sum: number, stock: any) => sum + parseFloat(stock.quantity || 0),
+      0
+    )
+    
+    return {
+      name: product.name,
+      count: Math.round(totalStock)
+    }
+  })
+  
+  // En çok stoklu 10 ürünü seç
+  const topProducts = productsWithStock
+    .filter(p => p.count > 0)
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 10)
+
   return {
     totalProducts: totalProducts || 0,
     lowStockCount: lowStockProducts?.length || 0,
     totalValue: Math.round(totalValue * 100) / 100,
+    topProducts
   }
 }
 

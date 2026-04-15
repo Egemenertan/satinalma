@@ -5,6 +5,40 @@
 
 import { getPDFStyles } from './styles'
 
+/**
+ * Email adresini dovecgroup.com domain'i ile düzeltir
+ */
+const normalizeEmail = (email: string | undefined, name?: string): string => {
+  if (!email || email === 'Belirtilmemiş') {
+    if (name && name !== 'Belirtilmemiş') {
+      // İsimden email oluştur
+      const normalized = name.toLowerCase()
+        .replace(/ş/g, 's')
+        .replace(/ğ/g, 'g')
+        .replace(/ü/g, 'u')
+        .replace(/ö/g, 'o')
+        .replace(/ç/g, 'c')
+        .replace(/ı/g, 'i')
+        .replace(/\s+/g, '.')
+      return `${normalized}@dovecgroup.com`
+    }
+    return ''
+  }
+  
+  // Eğer email'de @ yoksa, dovecgroup.com ekle
+  if (!email.includes('@')) {
+    return `${email}@dovecgroup.com`
+  }
+  
+  // Eğer domain dovecgroup.com değilse, değiştir
+  if (!email.endsWith('@dovecgroup.com')) {
+    const username = email.split('@')[0]
+    return `${username}@dovecgroup.com`
+  }
+  
+  return email
+}
+
 export interface ZimmetItemData {
   id: string
   item_name: string
@@ -194,16 +228,21 @@ const generateTeslimPDFHTML = (item: ZimmetItemData): string => {
       <div class="info-card">
         <div class="info-row">
           <div class="info-label">Ad Soyad</div>
-          <div class="info-value">${item.user.full_name}</div>
+          <div class="info-value">${item.user?.full_name || 'Belirtilmemiş'}</div>
         </div>
         <div class="info-row">
           <div class="info-label">E-posta</div>
-          <div class="info-value">${item.user.email}</div>
+          <div class="info-value">${normalizeEmail(item.user?.email, item.user?.full_name) || 'Belirtilmemiş'}</div>
         </div>
-        ${item.assigned_by_profile ? `
+        ${item.owner_name ? `
         <div class="info-row">
           <div class="info-label">Teslim Eden</div>
-          <div class="info-value">${item.assigned_by_profile.full_name} (${item.assigned_by_profile.email})</div>
+          <div class="info-value">${item.owner_name} (${normalizeEmail(item.owner_email, item.owner_name)})</div>
+        </div>
+        ` : item.assigned_by_profile ? `
+        <div class="info-row">
+          <div class="info-label">Teslim Eden</div>
+          <div class="info-value">${item.assigned_by_profile.full_name} (${normalizeEmail(item.assigned_by_profile.email, item.assigned_by_profile.full_name)})</div>
         </div>
         ` : ''}
       </div>
@@ -222,13 +261,13 @@ const generateTeslimPDFHTML = (item: ZimmetItemData): string => {
       <div class="signature-box">
         <div class="signature-line"></div>
         <div class="signature-label">Teslim Eden</div>
-        <div class="signature-name">${item.assigned_by_profile?.full_name || 'Depo Yöneticisi'}</div>
+        <div class="signature-name">${item.owner_name || item.assigned_by_profile?.full_name || 'Depo Yöneticisi'}</div>
         <div class="signature-name">Tarih: ${getCurrentDate()}</div>
       </div>
       <div class="signature-box">
         <div class="signature-line"></div>
         <div class="signature-label">Teslim Alan</div>
-        <div class="signature-name">${item.user.full_name}</div>
+        <div class="signature-name">${item.user?.full_name || 'Belirtilmemiş'}</div>
         <div class="signature-name">Tarih: ${getCurrentDate()}</div>
       </div>
     </div>
@@ -347,7 +386,7 @@ const generateSayimPDFHTML = (item: ZimmetItemData): string => {
       <div class="info-card">
         <div class="info-row">
           <div class="info-label">Kullanıcı</div>
-          <div class="info-value">${item.user.full_name} (${item.user.email})</div>
+          <div class="info-value">${item.user?.full_name || 'Belirtilmemiş'} (${normalizeEmail(item.user?.email, item.user?.full_name) || 'Belirtilmemiş'})</div>
         </div>
         <div class="info-row">
           <div class="info-label">İlk Teslim Tarihi</div>
@@ -515,9 +554,9 @@ export const generateSayimPDF = async (item: ZimmetItemData): Promise<void> => {
  */
 const generateIadePDFHTML = (item: ZimmetItemData): string => {
   const teslimEden = item.user?.full_name || 'Belirtilmemiş'
-  const teslimEdenEmail = item.user?.email || ''
+  const teslimEdenEmail = normalizeEmail(item.user?.email, item.user?.full_name)
   const teslimAlan = item.owner_name || 'Şirket Yetkilisi'
-  const teslimAlanEmail = item.owner_email || ''
+  const teslimAlanEmail = normalizeEmail(item.owner_email, item.owner_name)
 
   return `
 <!DOCTYPE html>

@@ -364,6 +364,9 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     countQuery = countQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'warehouse_manager') {
+    // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
+    countQuery = countQuery.neq('status', 'departman_onayı_bekliyor')
   } else if (effectiveRole === 'santiye_depo') {
     // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
     if (profile?.site_id) {
@@ -468,6 +471,9 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     requestsQuery = requestsQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'warehouse_manager') {
+    // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
+    requestsQuery = requestsQuery.neq('status', 'departman_onayı_bekliyor')
   } else if (effectiveRole === 'santiye_depo') {
     // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
     if (profile?.site_id) {
@@ -985,7 +991,7 @@ export default function PurchaseRequestsTable({
     if (deliveredMaterials === totalMaterials) {
       return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#2C5444' }, rounded: 'rounded-xl' }
     } else if (deliveredMaterials > 0 || partialMaterials > 0) {
-      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-700', rounded: 'rounded-full' }
+      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-[#d6002a]/10 text-[#d6002a]', rounded: 'rounded-full' }
     }
     
     return null
@@ -1134,10 +1140,10 @@ export default function PurchaseRequestsTable({
           <div className="flex flex-wrap gap-1">
             <Badge 
               variant="outline" 
-              className=" text-red-700 border-0 rounded-full text-xs font-medium px-1 py-0.5"
+              className=" text-[#d6002a] border-0 rounded-full text-xs font-medium px-1 py-0.5"
             >
               <span className="flex items-center gap-1">
-                <RotateCcw className="w-3 h-3 text-red-600" />
+                <RotateCcw className="w-3 h-3 text-[#d6002a]" />
                 İade Var
               </span>
             </Badge>
@@ -1205,21 +1211,22 @@ export default function PurchaseRequestsTable({
       pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
       'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
       'onay_bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
+      'departman_onayı_bekliyor': { label: '🔔 Departman Onayı Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200 border' },
       'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
       'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
       'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'ordered': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
-      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-orange-100 text-orange-800 border-0' },
-      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-orange-100 text-orange-800 border-0' },
-      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
-      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-orange-100 text-orange-800 border-0' },
+      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
-      'iade var': { label: 'İade Var', className: 'bg-orange-100 text-orange-800 border-0' },
+      'iade var': { label: 'İade Var', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
       'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
-      'reddedildi': { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
-      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
+      'reddedildi': { label: 'Reddedildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      rejected: { label: 'Reddedildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
       
       // Eski statuslar için backward compatibility
@@ -1244,10 +1251,10 @@ export default function PurchaseRequestsTable({
           <div className="flex flex-wrap gap-1">
             <Badge 
               variant="outline" 
-              className="border-red-500 text-red-700 border-1 rounded-full text-xs font-medium px-1 py-0.5"
+              className="border-[#d6002a] text-[#d6002a] border-1 rounded-full text-xs font-medium px-1 py-0.5"
             >
               <span className="flex items-center gap-1">
-                <RotateCcw className="w-3 h-3 text-red-600" />
+                <RotateCcw className="w-3 h-3 text-[#d6002a]" />
                 İade Var
               </span>
             </Badge>
@@ -1261,12 +1268,12 @@ export default function PurchaseRequestsTable({
     const urgencyConfig = {
       critical: { 
         label: 'Kritik', 
-        className: 'bg-red-100 text-red-800 border-0',
+        className: 'bg-[#d6002a]/10 text-[#d6002a] border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       high: { 
         label: 'Yüksek', 
-        className: 'bg-orange-100 text-orange-800 border-0',
+        className: 'bg-[#d6002a]/10 text-[#d6002a] border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       normal: { 
@@ -1810,7 +1817,7 @@ export default function PurchaseRequestsTable({
                             }`}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-orange-400"></span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-[#d6002a]"></span>
                               <span className="font-medium text-sm">Kısmen Teslim Alındı</span>
                             </div>
                           </button>
@@ -1922,7 +1929,7 @@ export default function PurchaseRequestsTable({
                   {unorderedOnlyFilter && (
                     <Badge 
                       variant="outline" 
-                      className="bg-red-500 text-white border-0 gap-1 cursor-pointer hover:bg-red-600 animate-pulse"
+                      className="bg-[#d6002a] text-white border-0 gap-1 cursor-pointer hover:bg-[#b80024] animate-pulse"
                       onClick={() => {
                         setUnorderedOnlyFilter(false)
                         if (onUnorderedFilterChange) {
@@ -1939,7 +1946,7 @@ export default function PurchaseRequestsTable({
                   {overdueOnlyFilter && (
                     <Badge 
                       variant="outline" 
-                      className="bg-orange-500 text-white border-0 gap-1 cursor-pointer hover:bg-orange-600 animate-pulse"
+                      className="bg-[#d6002a] text-white border-0 gap-1 cursor-pointer hover:bg-[#b80024] animate-pulse"
                       onClick={() => {
                         setOverdueOnlyFilter(false)
                         if (onOverdueFilterChange) {
@@ -2067,7 +2074,7 @@ export default function PurchaseRequestsTable({
                         }}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'kismen_teslim_alindi' ? 'bg-gray-100 font-medium' : ''}`}
                       >
-                        <span className="w-2 h-2 rounded-full bg-orange-400"></span>
+                        <span className="w-2 h-2 rounded-full bg-[#d6002a]"></span>
                         Kısmen Teslim Alındı
                       </button>
                       <button
@@ -2162,9 +2169,9 @@ export default function PurchaseRequestsTable({
                 <Loading size="md" text="Yükleniyor..." />
               </div>
             ) : error ? (
-              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-red-500">
+              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-[#d6002a]">
                 <div className="flex flex-col items-center gap-2">
-                  <AlertTriangle className="w-8 h-8 text-red-300" />
+                  <AlertTriangle className="w-8 h-8 text-[#d6002a]/50" />
                   <span>Veriler yüklenirken hata oluştu</span>
                   <Button 
                     variant="outline" 
@@ -2313,7 +2320,7 @@ export default function PurchaseRequestsTable({
                         {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
                           <Badge 
                             variant="outline" 
-                            className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            className="bg-[#d6002a] text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                             title={`${request.unordered_materials_count} malzemenin siparişi verilmedi!`}
                           >
                             {request.unordered_materials_count}
@@ -2323,7 +2330,7 @@ export default function PurchaseRequestsTable({
                         {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
                           <Badge 
                             variant="outline" 
-                            className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            className="bg-[#d6002a] text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                             title={`${request.overdue_deliveries_count} siparişin teslim tarihi geçti!`}
                           >
                             {request.overdue_deliveries_count}
@@ -2381,7 +2388,7 @@ export default function PurchaseRequestsTable({
                           {canDeleteRequest(request) ? (
                             <button
                               onClick={(e) => openDeleteModal(request, e)}
-                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
+                              className="w-full text-left px-3 py-2 text-sm text-[#d6002a] hover:bg-[#d6002a]/5 flex items-center gap-2"
                             >
                               <Trash2 className="w-4 h-4" />
                               Kaldır
@@ -2668,7 +2675,7 @@ export default function PurchaseRequestsTable({
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-8 h-8 p-0 rounded-xl ${
                           currentPage === pageNum 
-                            ? 'bg-black text-white' 
+                            ? 'bg-[#d6002a] text-white' 
                             : 'border-gray-200 hover:bg-gray-50'
                         }`}
                       >
@@ -2755,7 +2762,7 @@ export default function PurchaseRequestsTable({
         <DialogContent className="sm:max-w-md bg-white rounded-2xl border-0 shadow-xl">
           <DialogHeader className="text-center pb-2">
             <DialogTitle className="flex items-center justify-center gap-2 text-gray-800 text-lg font-medium">
-              <Trash2 className="w-5 h-5 text-red-500" />
+              <Trash2 className="w-5 h-5 text-[#d6002a]" />
               Talebi Kaldır
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm mt-2">
@@ -2807,7 +2814,7 @@ export default function PurchaseRequestsTable({
               variant="destructive"
               onClick={handleDeleteRequest}
               disabled={isDeleting}
-              className="flex-1 bg-red-500 hover:bg-red-600 rounded-xl border-0"
+              className="flex-1 bg-[#d6002a] hover:bg-[#b80024] rounded-xl border-0"
             >
               {isDeleting ? (
                 <>
