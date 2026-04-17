@@ -219,9 +219,10 @@ export default function AuthCallback() {
 
           console.log('✅ Profil oluşturuldu, rol:', defaultRole)
           
-          // Eğer user rolü verilmişse (şirket dışı email) erişim reddet
+          // Eğer user rolü verilmişse (şirket dışı email) onay bekle mesajı göster
           if (defaultRole === 'user') {
-            window.location.href = '/auth/login?error=access_denied'
+            await supabase.auth.signOut()
+            window.location.href = '/auth/login?approval_pending=true'
             return
           }
           
@@ -262,8 +263,9 @@ export default function AuthCallback() {
             window.location.href = '/dashboard/requests'
             return
           } else {
-            console.log('❌ User role detected (şirket dışı email), access denied')
-            window.location.href = '/auth/login?error=access_denied'
+            console.log('❌ User role detected (şirket dışı email), pending approval')
+            await supabase.auth.signOut()
+            window.location.href = '/auth/login?approval_pending=true'
             return
           }
         }

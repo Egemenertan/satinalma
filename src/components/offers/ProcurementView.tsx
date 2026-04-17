@@ -7,9 +7,10 @@ import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { 
   Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, 
-  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight 
+  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight, Trash2 
 } from 'lucide-react'
 import { OffersPageProps, Offer, CURRENCIES, getCurrencySymbol } from './types'
 import { createClient } from '@/lib/supabase/client'
@@ -102,6 +103,11 @@ export default function ProcurementView({
   const [editingOrder, setEditingOrder] = useState<any | null>(null)
   const [isEditOrderModalOpen, setIsEditOrderModalOpen] = useState(false)
 
+  // Malzeme silme state'leri
+  const [itemToDelete, setItemToDelete] = useState<any | null>(null)
+  const [isDeleteItemModalOpen, setIsDeleteItemModalOpen] = useState(false)
+  const [deletingItem, setDeletingItem] = useState(false)
+
   // Multi-select functions
   const toggleMaterialSelection = (materialId: string) => {
     const newSelected = new Set(selectedMaterials)
@@ -154,6 +160,56 @@ export default function ProcurementView({
   const clearMaterialSelection = () => {
     setSelectedMaterials(new Set())
     setIsMultiSelectMode(false)
+  }
+
+  // Malzeme silme fonksiyonları
+  const handleDeleteItemClick = (item: any) => {
+    // En az 1 malzeme kalmalı kontrolü
+    if (!request?.purchase_request_items || request.purchase_request_items.length <= 1) {
+      showToast('Talep en az bir malzeme içermelidir', 'error')
+      return
+    }
+    
+    setItemToDelete(item)
+    setIsDeleteItemModalOpen(true)
+  }
+
+  const confirmDeleteItem = async () => {
+    if (!itemToDelete) return
+    
+    try {
+      setDeletingItem(true)
+      
+      // Purchase request item'ı sil
+      const { error: deleteError } = await supabase
+        .from('purchase_request_items')
+        .delete()
+        .eq('id', itemToDelete.id)
+      
+      if (deleteError) {
+        throw deleteError
+      }
+      
+      showToast('Malzeme başarıyla kaldırıldı', 'success')
+      
+      // Sayfayı yenile
+      await onRefresh()
+      
+      // Modal'ı kapat
+      setIsDeleteItemModalOpen(false)
+      setItemToDelete(null)
+      
+    } catch (error) {
+      console.error('Malzeme silme hatası:', error)
+      showToast('Malzeme silinirken bir hata oluştu', 'error')
+    } finally {
+      setDeletingItem(false)
+    }
+  }
+
+  const cancelDeleteItem = () => {
+    setIsDeleteItemModalOpen(false)
+    setItemToDelete(null)
   }
 
   // Helper function: Ortak tedarikçi bul
@@ -1540,7 +1596,7 @@ DOVEC GROUP
                             </div>
                           </div>
                           
-                          {/* PDF Export ve Tedarikçi Durumu */}
+                          {/* PDF Export, Kaldır ve Tedarikçi Durumu */}
                           <div className="flex items-start gap-3">
                             {/* PDF Export Butonu */}
                             <Button
@@ -1556,6 +1612,23 @@ DOVEC GROUP
                               <Download className="h-3 w-3 mr-1" />
                               PDF
                             </Button>
+                            
+                            {/* Kaldır Butonu */}
+                            {request.purchase_request_items.length > 1 && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteItemClick(item)
+                                }}
+                                className="h-8 px-3 text-xs bg-white hover:bg-red-50 border-gray-200 text-red-600 hover:text-red-700 hover:border-red-300 shadow-sm"
+                                title="Malzemeyi Kaldır"
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Kaldır
+                              </Button>
+                            )}
                             
                             {/* Tedarikçi Durumu Badge */}
                             <div className="text-right">
@@ -3860,6 +3933,77 @@ DOVEC GROUP
           </div>
         </div>
       )}
+
+      {/* Malzeme Silme Onay Modalı */}
+      <Dialog open={isDeleteItemModalOpen} onOpenChange={setIsDeleteItemModalOpen}>
+        <DialogContent className="sm:max-w-md bg-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-900">
+              <Trash2 className="w-5 h-5 text-red-600" />
+              Malzemeyi Kaldır
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="py-4">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-4">
+              <div className="flex items-start gap-3">
+                <div className="w-8 h-8 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                  <Trash2 className="w-4 h-4 text-red-600" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-red-900 mb-1">
+                    Malzeme Silinecek
+                  </h4>
+                  {itemToDelete && (
+                    <p className="text-sm text-red-800">
+                      "<strong>{itemToDelete.item_name}</strong>" 
+                      malzemesi talepten tamamen kaldırılacaktır.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+            
+            <p className="text-sm text-gray-600 mb-4">
+              Bu işlem geri alınamaz. Malzemeyi kaldırmak istediğinizden emin misiniz?
+            </p>
+            
+            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
+              <strong>Not:</strong> Talep en az bir malzeme içermelidir. Son malzeme silinemez.
+            </div>
+          </div>
+
+          <DialogFooter className="gap-3">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={cancelDeleteItem}
+              disabled={deletingItem}
+              className="flex-1"
+            >
+              İptal
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmDeleteItem}
+              disabled={deletingItem}
+              className="flex-1 bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deletingItem ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
+                  Kaldırılıyor...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Kaldır
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   )
 }

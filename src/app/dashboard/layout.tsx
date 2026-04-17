@@ -79,6 +79,16 @@ export default function DashboardLayout({
   // Sayfa erişim kontrolü (pathname değiştiğinde)
   useEffect(() => {
     if (!isLoading && userRole) {
+      // User rolü dashboard'a erişemez - login sayfasına yönlendir
+      if (userRole === 'user') {
+        const signOutAndRedirect = async () => {
+          await supabase.auth.signOut()
+          window.location.href = '/auth/login?approval_pending=true'
+        }
+        signOutAndRedirect()
+        return
+      }
+      
       const hasPageAccess = canAccessPage(userRole, pathname)
       setHasAccess(hasPageAccess)
       
@@ -95,7 +105,7 @@ export default function DashboardLayout({
         }
       }
     }
-  }, [pathname, userRole, isLoading, router])
+  }, [pathname, userRole, isLoading, router, supabase])
 
   // Mobil header scroll hide/show kontrolü
   const handleScroll = useCallback(() => {

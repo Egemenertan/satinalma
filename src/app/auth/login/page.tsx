@@ -16,6 +16,7 @@ function LoginContent() {
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [pendingApproval, setPendingApproval] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
@@ -40,10 +41,17 @@ function LoginContent() {
   // URL parametrelerini kontrol et
   useEffect(() => {
     const urlError = searchParams.get('error')
+    const approvalPending = searchParams.get('approval_pending')
     console.log('🔍 URL error parameter:', urlError)
+    console.log('🔍 Approval pending:', approvalPending)
+    
+    if (approvalPending === 'true') {
+      setPendingApproval(true)
+      return
+    }
     
     if (urlError === 'access_denied') {
-      setError('Bu hesap dashboard\'a erişim yetkisine sahip değil. Lütfen sistem yöneticisine başvurun.')
+      setPendingApproval(true)
     } else if (urlError === 'no_session') {
       setError('Microsoft girişi başarısız oldu. Lütfen tekrar deneyin.')
     } else if (urlError === 'session_error') {
@@ -154,8 +162,10 @@ function LoginContent() {
         if (profile) {
           // User rolü dashboard'a erişemez
           if (profile.role === 'user') {
-            console.log('❌ User role detected, denying access')
-            setError('Bu hesap dashboard\'a erişim yetkisine sahip değil. Lütfen sistem yöneticisine başvurun.')
+            console.log('❌ User role detected, pending admin approval')
+            // Oturumu kapat ve kullanıcıya friendly mesaj göster
+            await supabase.auth.signOut()
+            setPendingApproval(true)
             return
           }
           
@@ -207,6 +217,17 @@ function LoginContent() {
           {/* Form - Border'sız, sade */}
           <div className="space-y-6">
             <form onSubmit={handleLogin} className="space-y-5">
+              {pendingApproval && (
+                <Alert className="border-0 bg-blue-50">
+                  <AlertDescription className="text-sm text-blue-900">
+                    <div className="space-y-2">
+                      <p className="font-semibold">Giriş Başarılı!</p>
+                      <p>Hesabınız oluşturuldu ancak dashboard'a erişebilmek için sistem yöneticisinin onayı bekleniyor.</p>
+                    </div>
+                  </AlertDescription>
+                </Alert>
+              )}
+              
               {error && (
                 <Alert variant="destructive" className="border-0 bg-red-50">
                   <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
