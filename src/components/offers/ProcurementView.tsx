@@ -164,12 +164,6 @@ export default function ProcurementView({
 
   // Malzeme silme fonksiyonları
   const handleDeleteItemClick = (item: any) => {
-    // En az 1 malzeme kalmalı kontrolü
-    if (!request?.purchase_request_items || request.purchase_request_items.length <= 1) {
-      showToast('Talep en az bir malzeme içermelidir', 'error')
-      return
-    }
-    
     setItemToDelete(item)
     setIsDeleteItemModalOpen(true)
   }
@@ -180,24 +174,111 @@ export default function ProcurementView({
     try {
       setDeletingItem(true)
       
-      // Purchase request item'ı sil
-      const { error: deleteError } = await supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('id', itemToDelete.id)
+      const isLastItem = request?.purchase_request_items?.length === 1
       
-      if (deleteError) {
-        throw deleteError
+      if (isLastItem) {
+        // Son malzeme - talebi tamamen sil (CASCADE ile ilişkili tüm kayıtlar silinecek)
+        const { error: deleteRequestError } = await supabase
+          .from('purchase_requests')
+          .delete()
+          .eq('id', request.id)
+        
+        if (deleteRequestError) {
+          throw deleteRequestError
+        }
+        
+        showToast('Son malzeme kaldırıldı. Talep ve tüm ilişkili siparişler silindi.', 'success')
+        
+        // Modal'ı kapat
+        setIsDeleteItemModalOpen(false)
+        setItemToDelete(null)
+        
+        // Requests sayfasına yönlendir
+        router.push('/dashboard/requests')
+        
+      } else {
+        // Bu malzeme için oluşturulmuş siparişleri bul
+        const { data: existingOrders, error: ordersError } = await supabase
+          .from('orders')
+          .select('id')
+          .eq('material_item_id', itemToDelete.id)
+        
+        if (ordersError) {
+          console.error('Siparişler kontrol edilirken hata:', ordersError)
+        }
+        
+        // Eğer sipariş varsa önce onları ve ilişkili kayıtları sil
+        if (existingOrders && existingOrders.length > 0) {
+          console.log(`${existingOrders.length} sipariş bulundu, siliniyor...`)
+          
+          // Her sipariş için order_deliveries'leri sil
+          for (const order of existingOrders) {
+            const { error: deliveriesError } = await supabase
+              .from('order_deliveries')
+              .delete()
+              .eq('order_id', order.id)
+            
+            if (deliveriesError) {
+              console.error('Teslimatlar silinirken hata:', deliveriesError)
+            }
+            
+            // Invoices'ları sil
+            const { error: invoicesError } = await supabase
+              .from('invoices')
+              .delete()
+              .eq('order_id', order.id)
+            
+            if (invoicesError) {
+              console.error('Faturalar silinirken hata:', invoicesError)
+            }
+          }
+          
+          // Siparişleri sil
+          const { error: deleteOrdersError } = await supabase
+            .from('orders')
+            .delete()
+            .eq('material_item_id', itemToDelete.id)
+          
+          if (deleteOrdersError) {
+            console.error('Siparişler silinirken hata:', deleteOrdersError)
+            throw deleteOrdersError
+          }
+        }
+        
+        // Shipment kayıtlarını sil
+        const { error: shipmentsError } = await supabase
+          .from('shipments')
+          .delete()
+          .eq('purchase_request_item_id', itemToDelete.id)
+        
+        if (shipmentsError) {
+          console.error('Gönderi kayıtları silinirken hata:', shipmentsError)
+        }
+        
+        // Son olarak malzemeyi sil
+        const { error: deleteError } = await supabase
+          .from('purchase_request_items')
+          .delete()
+          .eq('id', itemToDelete.id)
+        
+        if (deleteError) {
+          throw deleteError
+        }
+        
+        const orderCount = existingOrders?.length || 0
+        const successMessage = orderCount > 0 
+          ? `Malzeme ve ${orderCount} sipariş başarıyla kaldırıldı` 
+          : 'Malzeme başarıyla kaldırıldı'
+        
+        showToast(successMessage, 'success')
+        
+        // Sayfayı yenile
+        await onRefresh()
+        
+        // Modal'ı kapat
+        setIsDeleteItemModalOpen(false)
+        setItemToDelete(null)
       }
-      
-      showToast('Malzeme başarıyla kaldırıldı', 'success')
-      
-      // Sayfayı yenile
-      await onRefresh()
-      
-      // Modal'ı kapat
-      setIsDeleteItemModalOpen(false)
-      setItemToDelete(null)
       
     } catch (error) {
       console.error('Malzeme silme hatası:', error)
@@ -1442,8 +1523,11 @@ DOVEC GROUP
             <div className="space-y-4">
               
               {(() => {
-                // Aktif malzemeler: quantity > 0 VEYA hiç sipariş kaydı yok
-                const activeItems = request.purchase_request_items.filter(item => {
+                // TÜM MALZEMELERİ GÖSTER - Purchasing officer hepsini görmeli ve yönetebilmeli
+                const allItems = request.purchase_request_items || []
+                
+                // Aktif malzemeler (sipariş yönetimi için)
+                const activeItems = allItems.filter(item => {
                   // Eğer quantity > 0 ise kesinlikle göster
                   if (item.quantity > 0) return true
                   
@@ -1463,13 +1547,13 @@ DOVEC GROUP
                   return false
                 })
                 
-                return activeItems.length === 0 ? (
-                  // Tüm malzemeler gönderildi veya sipariş verildi
+                return allItems.length === 0 ? (
+                  // Hiç malzeme yok
                   <div className="text-center py-4">
-                   
+                    <p className="text-gray-500">Malzeme bulunamadı</p>
                   </div>
                 ) : (
-                  activeItems
+                  allItems
                   .map((item, index) => {
                     const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
                     
@@ -1614,21 +1698,19 @@ DOVEC GROUP
                             </Button>
                             
                             {/* Kaldır Butonu */}
-                            {request.purchase_request_items.length > 1 && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDeleteItemClick(item)
-                                }}
-                                className="h-8 px-3 text-xs bg-white hover:bg-red-50 border-gray-200 text-red-600 hover:text-red-700 hover:border-red-300 shadow-sm"
-                                title="Malzemeyi Kaldır"
-                              >
-                                <Trash2 className="h-3 w-3 mr-1" />
-                                Kaldır
-                              </Button>
-                            )}
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteItemClick(item)
+                              }}
+                              className="h-8 px-3 text-xs bg-white hover:bg-red-50 border-gray-200 text-red-600 hover:text-red-700 hover:border-red-300 shadow-sm"
+                              title="Malzemeyi Kaldır"
+                            >
+                              <Trash2 className="h-3 w-3 mr-1" />
+                              Kaldır
+                            </Button>
                             
                             {/* Tedarikçi Durumu Badge */}
                             <div className="text-right">
@@ -1864,25 +1946,40 @@ DOVEC GROUP
                             </div>
                           </div>
                         ) : (
-                          <div className="text-center py-4">
-                            <div className="mb-3">
+                          <div className="py-4">
+                            <div className="mb-3 text-center">
                               <p className="text-sm text-gray-600 mb-2">Bu malzeme için henüz tedarikçi atanmamış</p>
                             </div>
-                            <Button
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                setCurrentMaterialForAssignment({
-                                  id: item.id,
-                                  name: item.item_name,
-                                  unit: item.unit
-                                })
-                                setIsAssignSupplierModalOpen(true)
-                              }}
-                              className="bg-black hover:bg-gray-900 text-white rounded-md"
-                            >
-                              <Building2 className="h-4 w-4 mr-2" />
-                              Tedarikçi Ata
-                            </Button>
+                            <div className="flex items-center justify-center gap-3">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setCurrentMaterialForAssignment({
+                                    id: item.id,
+                                    name: item.item_name,
+                                    unit: item.unit
+                                  })
+                                  setIsAssignSupplierModalOpen(true)
+                                }}
+                                className="bg-black hover:bg-gray-900 text-white rounded-md"
+                              >
+                                <Building2 className="h-4 w-4 mr-2" />
+                                Tedarikçi Ata
+                              </Button>
+                              
+                              {/* Kaldır Butonu - Tedarikçi olmayan malzemeler için */}
+                              <Button
+                                variant="outline"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  handleDeleteItemClick(item)
+                                }}
+                                className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Kaldır
+                              </Button>
+                            </div>
                           </div>
                         )}
                         
@@ -2017,6 +2114,22 @@ DOVEC GROUP
                                       <div className="text-xs text-green-700">adet</div>
                                     </div>
                                   </div>
+                                </div>
+                                
+                                {/* Kaldır Butonu - Sipariş Verilmiş Malzemeler için */}
+                                <div className="mt-3 pt-3 border-t border-green-200">
+                                  <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handleDeleteItemClick(item)
+                                    }}
+                                    className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 hover:border-red-300"
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2" />
+                                    Bu Malzemeyi Talepten Kaldır
+                                  </Button>
                                 </div>
                               </div>
                             </div>
@@ -3952,12 +4065,40 @@ DOVEC GROUP
                 </div>
                 <div>
                   <h4 className="text-sm font-medium text-red-900 mb-1">
-                    Malzeme Silinecek
+                    {request?.purchase_request_items?.length === 1 
+                      ? 'Talep Silinecek' 
+                      : 'Malzeme Silinecek'
+                    }
                   </h4>
                   {itemToDelete && (
                     <p className="text-sm text-red-800">
-                      "<strong>{itemToDelete.item_name}</strong>" 
-                      malzemesi talepten tamamen kaldırılacaktır.
+                      {request?.purchase_request_items?.length === 1 ? (
+                        <>
+                          "<strong>{itemToDelete.item_name}</strong>" son malzemedir. 
+                          Kaldırıldığında <strong>talep tamamen silinecektir</strong>.
+                        </>
+                      ) : (
+                        <>
+                          "<strong>{itemToDelete.item_name}</strong>" 
+                          malzemesi talepten tamamen kaldırılacaktır.
+                          {(() => {
+                            // Bu malzeme için sipariş var mı kontrol et
+                            const itemOrders = Array.isArray(materialOrders) 
+                              ? materialOrders.filter((order: any) => order.material_item_id === itemToDelete.id)
+                              : []
+                            
+                            if (itemOrders.length > 0) {
+                              return (
+                                <span className="block mt-2 font-semibold">
+                                  Bu malzeme için <strong>{itemOrders.length} sipariş</strong> var. 
+                                  Bunlar da silinecektir.
+                                </span>
+                              )
+                            }
+                            return null
+                          })()}
+                        </>
+                      )}
                     </p>
                   )}
                 </div>
@@ -3965,12 +4106,30 @@ DOVEC GROUP
             </div>
             
             <p className="text-sm text-gray-600 mb-4">
-              Bu işlem geri alınamaz. Malzemeyi kaldırmak istediğinizden emin misiniz?
+              Bu işlem geri alınamaz. {request?.purchase_request_items?.length === 1 
+                ? 'Talebi silmek' 
+                : 'Malzemeyi kaldırmak'
+              } istediğinizden emin misiniz?
             </p>
             
-            <div className="text-xs text-gray-500 bg-gray-50 rounded-lg p-3">
-              <strong>Not:</strong> Talep en az bir malzeme içermelidir. Son malzeme silinemez.
-            </div>
+            {request?.purchase_request_items?.length === 1 ? (
+              <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <strong>⚠️ Uyarı:</strong> Bu son malzemedir. Kaldırıldığında talep ve tüm ilişkili siparişler otomatik olarak silinecek ve talepler sayfasına yönlendirileceksiniz.
+              </div>
+            ) : itemToDelete && (() => {
+              const itemOrders = Array.isArray(materialOrders) 
+                ? materialOrders.filter((order: any) => order.material_item_id === itemToDelete.id)
+                : []
+              
+              if (itemOrders.length > 0) {
+                return (
+                  <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <strong>⚠️ Uyarı:</strong> Bu malzeme için oluşturulmuş <strong>{itemOrders.length} sipariş</strong>, teslimatlar ve faturalar da silinecektir.
+                  </div>
+                )
+              }
+              return null
+            })()}
           </div>
 
           <DialogFooter className="gap-3">
@@ -3992,12 +4151,12 @@ DOVEC GROUP
               {deletingItem ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin mr-2" />
-                  Kaldırılıyor...
+                  {request?.purchase_request_items?.length === 1 ? 'Siliniyor...' : 'Kaldırılıyor...'}
                 </>
               ) : (
                 <>
                   <Trash2 className="w-4 h-4 mr-2" />
-                  Kaldır
+                  {request?.purchase_request_items?.length === 1 ? 'Talebi Sil' : 'Kaldır'}
                 </>
               )}
             </Button>
