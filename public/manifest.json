@@ -1,59 +1,53 @@
 {
-  "name": "Satın Alma Yönetim Sistemi",
-  "short_name": "Satın Alma",
-  "description": "Şantiye satın alma talepleri için modern yönetim sistemi",
-  "theme_color": "#000000",
-  "background_color": "#ffffff",
-  "display": "standalone",
-  "orientation": "portrait",
-  "scope": "/",
-  "start_url": "/",
-  "icons": [
+  "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
+  "manifestVersion": "1.17",
+  "version": "1.0.0",
+  "id": "7a4fc406-0f4a-49ac-9d8d-196f466e358f",
+  "developer": {
+    "name": "Döveç Lojistik",
+    "websiteUrl": "https://www.dovec.app",
+    "privacyUrl": "https://www.dovec.app/privacy",
+    "termsOfUseUrl": "https://www.dovec.app/terms"
+  },
+  "name": {
+    "short": "Lojistik",
+    "full": "Döveç Lojistik Yönetim Sistemi"
+  },
+  "description": {
+    "short": "Lojistik ve satın alma taleplerini yönetin",
+    "full": "Lojistik operasyonlarınızı ve satın alma taleplerini Microsoft 365 üzerinden oluşturun, takip edin ve yönetin. Outlook, Teams ve diğer Microsoft uygulamalarından direkt erişim."
+  },
+  "icons": {
+    "color": "color.png",
+    "outline": "outline.png"
+  },
+  "accentColor": "#0078D4",
+  "staticTabs": [
     {
-      "src": "/blackdu.webp",
-      "sizes": "16x16",
-      "type": "image/webp"
+      "entityId": "requests",
+      "name": "Talepler",
+      "contentUrl": "https://www.dovec.app/dashboard/requests",
+      "websiteUrl": "https://www.dovec.app/dashboard/requests",
+      "scopes": ["personal"]
     },
     {
-      "src": "/blackdu.webp",
-      "sizes": "32x32",
-      "type": "image/webp"
-    },
-    {
-      "src": "/blackdu.webp",
-      "sizes": "48x48",
-      "type": "image/webp"
-    },
-    {
-      "src": "/blackdu.webp",
-      "sizes": "192x192",
-      "type": "image/webp"
-    },
-    {
-      "src": "/blackdu.webp",
-      "sizes": "512x512",
-      "type": "image/webp"
+      "entityId": "create-request",
+      "name": "Yeni Talep",
+      "contentUrl": "https://www.dovec.app/dashboard/requests/create",
+      "websiteUrl": "https://www.dovec.app/dashboard/requests/create",
+      "scopes": ["personal"]
     }
   ],
-  "categories": ["business", "productivity"],
-  "lang": "tr",
-  "dir": "ltr",
-  "prefer_related_applications": false,
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Yeni Talep",
-      "short_name": "Talep",
-      "description": "Yeni satın alma talebi oluştur",
-      "url": "/dashboard/requests/create",
-      "icons": [{ "src": "/blackdu.webp", "sizes": "32x32" }]
-    },
-    {
-      "name": "Talepler",
-      "short_name": "Talepler",
-      "description": "Tüm talepleri görüntüle",
-      "url": "/dashboard/requests",
-      "icons": [{ "src": "/blackdu.webp", "sizes": "32x32" }]
-    }
-  ]
+  "permissions": [
+    "identity",
+    "messageTeamMembers"
+  ],
+  "validDomains": [
+    "www.dovec.app",
+    "dovec.app"
+  ],
+  "webApplicationInfo": {
+    "id": "7a4fc406-0f4a-49ac-9d8d-196f466e358f",
+    "resource": "https://www.dovec.app"
+  }
 }
