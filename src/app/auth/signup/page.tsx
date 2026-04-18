@@ -98,89 +98,34 @@ export default function SignupPage() {
                 className="h-12 w-auto invert"
               />
             </div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Kayıt Ol</h1>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Kayıt Ol</h1>
             <p className="text-gray-600 mt-3 text-lg">
-              Sisteme kayıt olmak için bilgilerinizi girin
+              Microsoft hesabınız ile kayıt olun
             </p>
           </div>
           
           {/* Form - Border'sız, sade */}
           <div className="space-y-6">
-            <form onSubmit={handleSignup} className="space-y-5">
-              {error && (
-                <Alert variant="destructive" className="border-0 bg-red-50">
-                  <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              {/* Ad Soyad */}
-              <div className="space-y-2">
-                <Label htmlFor="name" className="text-sm font-medium text-gray-700">
-                  Ad Soyad
-                </Label>
-                <Input
-                  id="name"
-                  type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ahmet Demir"
-                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
-                  required
-                  disabled={loading}
-                />
-              </div>
-
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ornek@dovecgroup.com"
-                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              
-              {/* Şifre */}
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Şifre
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
-                  required
-                  disabled={loading}
-                  minLength={6}
-                />
-                <p className="text-xs text-gray-500">En az 6 karakter olmalıdır</p>
-              </div>
-              
-              {/* Submit Button */}
-              <Button 
-                type="submit" 
-                className="w-full h-12 text-base font-semibold bg-black hover:bg-gray-800 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200" 
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Hesap oluşturuluyor...
-                  </>
-                ) : (
-                  'Hesap Oluştur'
-                )}
-              </Button>
-            </form>
+            {error && (
+              <Alert variant="destructive" className="border-0 bg-red-50">
+                <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
+              </Alert>
+            )}
+            
+            {/* Microsoft ile Kayıt Ol Butonu */}
+            <Button 
+              type="button"
+              onClick={() => window.location.href = '/auth/login'}
+              className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3 transition-all duration-200"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M0 0h10.93v10.93H0V0z" fill="#F25022"/>
+                <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00"/>
+                <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF"/>
+                <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900"/>
+              </svg>
+              Microsoft ile Kayıt Ol
+            </Button>
             
             {/* Login Link */}
             <div className="pt-6 text-center">

@@ -4,8 +4,17 @@ import { sendEmailViaGraph, checkGraphEmailConfiguration } from '@/lib/microsoft
 /**
  * Test endpoint for Microsoft Graph email sending
  * GET /api/email/test-graph?email=user@company.com
+ * GÜVENLİK: Sadece development ortamında çalışır
  */
 export async function GET(request: NextRequest) {
+  // Production'da endpoint'i kapat
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const email = searchParams.get('email');

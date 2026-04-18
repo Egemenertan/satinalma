@@ -2,6 +2,10 @@
 const nextConfig = {
   // Server Actions are now stable in Next.js 14
   // experimental.serverActions is no longer needed
+  
+  // GÜVENLİK: Powered by header'ını kaldır
+  poweredByHeader: false,
+  
   images: {
     remotePatterns: [
       {
@@ -12,16 +16,58 @@ const nextConfig = {
       },
     ],
   },
+  
   async headers() {
+    // Güvenlik header'ları
+    const securityHeaders = [
+      {
+        key: 'X-DNS-Prefetch-Control',
+        value: 'on'
+      },
+      {
+        key: 'Strict-Transport-Security',
+        value: 'max-age=63072000; includeSubDomains; preload'
+      },
+      {
+        key: 'X-Frame-Options',
+        value: 'ALLOW-FROM https://outlook.office.com https://outlook.office365.com'
+      },
+      {
+        key: 'X-Content-Type-Options',
+        value: 'nosniff'
+      },
+      {
+        key: 'Referrer-Policy',
+        value: 'strict-origin-when-cross-origin'
+      },
+      {
+        key: 'Permissions-Policy',
+        value: 'camera=(), microphone=(), geolocation=()'
+      },
+      {
+        key: 'X-Robots-Tag',
+        value: 'noindex, nofollow, noarchive, nosnippet, noimageindex, nocache',
+      },
+      // Content Security Policy - Restrictive but allowing necessary resources
+      {
+        key: 'Content-Security-Policy',
+        value: [
+          "default-src 'self'",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://challenges.cloudflare.com https://appsforoffice.microsoft.com",
+          "style-src 'self' 'unsafe-inline'",
+          "img-src 'self' data: blob: https://*.supabase.co",
+          "font-src 'self' data:",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://graph.microsoft.com https://login.microsoftonline.com https://*.office.com https://*.office365.com",
+          "frame-src 'self' https://challenges.cloudflare.com https://*.office.com https://*.office365.com",
+          "worker-src 'self' blob:",
+        ].join('; ')
+      }
+    ];
+
     return [
       {
         source: '/:path*',
-        headers: [
-          {
-            key: 'X-Robots-Tag',
-            value: 'noindex, nofollow, noarchive, nosnippet, noimageindex, nocache',
-          },
-        ],
+        headers: securityHeaders,
       },
       {
         source: '/sw.js',

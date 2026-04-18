@@ -37,31 +37,65 @@ export default function DashboardLayout({
     
     const checkInitialAuth = async () => {
       try {
-        // Middleware zaten auth kontrolü yaptı, burada sadece session bilgisini alalım
-        // getUser() yerine getSession() kullanıyoruz - daha az API çağrısı
-        const { data: { session } } = await supabase.auth.getSession()
+        // İlk önce getUser() ile user bilgisini al - bu daha güvenilir
+        const { data: { user }, error: userError } = await supabase.auth.getUser()
         
         if (!mounted) return
         
-        if (!session) {
-          // Middleware zaten redirect yapacak
+        if (userError || !user) {
+          console.error('❌ User error:', userError?.message)
+          // Session yok, middleware redirect yapacak
           setIsLoading(false)
           return
         }
 
-        const { data: profile } = await supabase
+        console.log('✅ User found:', user.id)
+
+        // Profil bilgisini çek - retry mekanizması ile
+        let profile = null
+        let profileError = null
+        
+        // İlk deneme
+        const result = await supabase
           .from('profiles')
           .select('role')
-          .eq('id', session.user.id)
+          .eq('id', user.id)
           .single()
+        
+        profile = result.data
+        profileError = result.error
+
+        // Eğer profil alınamazsa, kısa bir süre bekleyip tekrar dene
+        if (profileError && mounted) {
+          console.warn('⚠️ Profile error, retrying...:', profileError.message)
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          const retryResult = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('id', user.id)
+            .single()
+          
+          profile = retryResult.data
+          profileError = retryResult.error
+        }
 
         if (!mounted) return
 
+        if (profileError) {
+          console.error('❌ Profile error after retry:', profileError.message, profileError)
+          // RLS hatası alıyorsa, kullanıcıyı logout yap
+          await supabase.auth.signOut()
+          window.location.href = '/auth/login?error=profile_access_denied'
+          return
+        }
+
+        console.log('✅ Profile found:', profile?.role)
         const role = (profile?.role as UserRole) || 'user'
         setUserRole(role)
         setIsLoading(false)
       } catch (error) {
-        console.error('Auth kontrolü hatası:', error)
+        console.error('❌ Auth kontrolü hatası:', error)
         if (mounted) {
           setIsLoading(false)
         }

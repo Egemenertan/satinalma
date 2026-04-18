@@ -4,6 +4,14 @@ import { NextResponse } from 'next/server'
 export const dynamic = 'force-dynamic'
 
 export async function GET() {
+  // GÜVENLİK: Production'da endpoint'i kapat
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404 }
+    );
+  }
+
   try {
     // Test verisi
     const testPayload = {

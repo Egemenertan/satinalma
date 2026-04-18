@@ -20,6 +20,14 @@ if (vapidKeys.publicKey && vapidKeys.privateKey) {
 }
 
 export async function POST(request: NextRequest) {
+  // GÜVENLİK: Production'da endpoint'i kapat
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404 }
+    );
+  }
+
   try {
     // Check if VAPID keys are configured
     if (!vapidKeys.publicKey || !vapidKeys.privateKey) {

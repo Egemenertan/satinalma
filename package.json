@@ -56,6 +56,7 @@
     "react-day-picker": "^9.11.1",
     "react-dom": "^18",
     "react-hook-form": "^7.50.1",
+    "server-only": "^0.0.1",
     "swr": "^2.3.6",
     "tailwind-merge": "^2.2.1",
     "tailwindcss-animate": "^1.0.7",
@@ -65,6 +66,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.1.0",
     "@types/node": "^20",
+    "@types/office-js": "^1.0.589",
     "@types/react": "^18",
     "@types/react-dom": "^18",
     "autoprefixer": "^10.4.21",

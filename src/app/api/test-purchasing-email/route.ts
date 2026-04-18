@@ -4,8 +4,17 @@ import EmailService from '@/lib/email';
 /**
  * Test endpoint for purchasing officer email
  * GET /api/test-purchasing-email
+ * GÜVENLİK: Sadece development ortamında çalışır
  */
 export async function GET() {
+  // Production'da endpoint'i kapat
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json(
+      { error: 'Not found' },
+      { status: 404 }
+    );
+  }
+
   try {
     const testEmail = 'ertanegemenyusuf@gmail.com';
     const requestId = 'test-123';

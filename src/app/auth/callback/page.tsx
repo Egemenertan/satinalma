@@ -182,8 +182,8 @@ export default function AuthCallback() {
           
           console.log('📝 Yeni profil oluşturuluyor...')
           
-          // Şirket email'i ise site_personnel, değilse user rolü ver
-          const defaultRole = isCompanyEmail ? 'site_personnel' : 'user'
+          // TÜM kullanıcılar için site_personnel rolü ver
+          const defaultRole = 'site_personnel'
           
           // Site personnel için default şantiyeler: Merkez Ofis ve Courtyard
           const DEFAULT_SITES = {
@@ -191,9 +191,8 @@ export default function AuthCallback() {
             COURTYARD: '18e8e316-1291-429d-a591-5cec97d235b7'
           }
           
-          const defaultSiteIds = isCompanyEmail && defaultRole === 'site_personnel' 
-            ? [DEFAULT_SITES.MERKEZ_OFIS, DEFAULT_SITES.COURTYARD]
-            : null
+          // Her kullanıcıya default şantiyeleri ata
+          const defaultSiteIds = [DEFAULT_SITES.MERKEZ_OFIS, DEFAULT_SITES.COURTYARD]
           
           console.log('📧 Email:', email)
           console.log('🏢 Şirket email\'i:', isCompanyEmail)
@@ -219,15 +218,8 @@ export default function AuthCallback() {
 
           console.log('✅ Profil oluşturuldu, rol:', defaultRole)
           
-          // Eğer user rolü verilmişse (şirket dışı email) onay bekle mesajı göster
-          if (defaultRole === 'user') {
-            await supabase.auth.signOut()
-            window.location.href = '/auth/login?approval_pending=true'
-            return
-          }
-          
-          // Şirket email'i ise direkt dashboard'a yönlendir - window.location.href kullanarak hard refresh
-          console.log('🚀 Şirket kullanıcısı, dashboard\'a yönlendiriliyor...')
+          // Tüm kullanıcılar direkt dashboard'a yönlendir - window.location.href kullanarak hard refresh
+          console.log('🚀 Kullanıcı dashboard\'a yönlendiriliyor...')
           window.location.href = '/dashboard/requests'
           return
         }
@@ -238,36 +230,35 @@ export default function AuthCallback() {
           return
         }
 
-        // User rolü dashboard'a erişemez - ama şirket email'i ise otomatik güncelle
+        // Eğer kullanıcı hala 'user' rolündeyse, otomatik olarak site_personnel'e yükselt
         if (profile?.role === 'user') {
-          const email = session.user.email || ''
-          const isCompanyEmail = email.endsWith('@dovecgroup.com')
+          console.log('🔄 Eski user rolü tespit edildi, rol güncelleniyor: user → site_personnel')
           
-          if (isCompanyEmail) {
-            console.log('🔄 Şirket email\'i tespit edildi, rol güncelleniyor: user → site_personnel')
-            
-            // Rolü otomatik güncelle
-            const { error: updateError } = await supabase
-              .from('profiles')
-              .update({ role: 'site_personnel' })
-              .eq('id', session.user.id)
-            
-            if (updateError) {
-              console.error('❌ Rol güncellenemedi:', updateError)
-              window.location.href = '/auth/login?error=role_update_failed'
-              return
-            }
-            
-            console.log('✅ Rol güncellendi: site_personnel')
-            // Requests sayfasına yönlendir - window.location.href kullanarak hard refresh
-            window.location.href = '/dashboard/requests'
-            return
-          } else {
-            console.log('❌ User role detected (şirket dışı email), pending approval')
-            await supabase.auth.signOut()
-            window.location.href = '/auth/login?approval_pending=true'
+          // Default şantiyeleri ekle
+          const DEFAULT_SITES = {
+            MERKEZ_OFIS: '9cf48170-f37f-4fc2-91d8-fe65e5f5b921',
+            COURTYARD: '18e8e316-1291-429d-a591-5cec97d235b7'
+          }
+          
+          // Rolü ve şantiyeleri otomatik güncelle
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ 
+              role: 'site_personnel',
+              site_id: [DEFAULT_SITES.MERKEZ_OFIS, DEFAULT_SITES.COURTYARD]
+            })
+            .eq('id', session.user.id)
+          
+          if (updateError) {
+            console.error('❌ Rol güncellenemedi:', updateError)
+            window.location.href = '/auth/login?error=role_update_failed'
             return
           }
+          
+          console.log('✅ Rol güncellendi: site_personnel')
+          // Requests sayfasına yönlendir - window.location.href kullanarak hard refresh
+          window.location.href = '/dashboard/requests'
+          return
         }
 
         console.log('🚀 Redirecting to dashboard...')

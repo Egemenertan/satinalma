@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Icon Generator - Satın Alma</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            max-width: 600px;
+        }
+        h1 { color: #0078D4; margin-bottom: 20px; }
+        .icon-preview {
+            display: flex;
+            gap: 20px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .icon-item {
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            display: block;
+            margin: 10px auto;
+        }
+        button {
+            background: #0078D4;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            margin: 5px;
+        }
+        button:hover { background: #005a9e; }
+        .info {
+            background: #e7f3ff;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 20px;
+            border-left: 4px solid #0078D4;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 Satın Alma - Outlook İkonları</h1>
+        <p>Bu sayfa ile Outlook eklentisi için gerekli ikonları oluşturabilirsiniz.</p>
+        
+        <div class="icon-preview">
+            <div class="icon-item">
+                <h3>16x16</h3>
+                <canvas id="icon16" width="16" height="16"></canvas>
+                <button onclick="downloadIcon('icon16', 16)">İndir</button>
+            </div>
+            <div class="icon-item">
+                <h3>32x32</h3>
+                <canvas id="icon32" width="32" height="32"></canvas>
+                <button onclick="downloadIcon('icon32', 32)">İndir</button>
+            </div>
+            <div class="icon-item">
+                <h3>80x80</h3>
+                <canvas id="icon80" width="80" height="80"></canvas>
+                <button onclick="downloadIcon('icon80', 80)">İndir</button>
+            </div>
+        </div>
+
+        <button onclick="downloadAll()" style="width: 100%; font-size: 16px; padding: 15px;">
+            🎨 Tüm İkonları İndir
+        </button>
+
+        <div class="info">
+            <strong>💡 Kullanım:</strong><br>
+            1. "Tüm İkonları İndir" butonuna tıklayın<br>
+            2. İndirilen dosyaları <code>public/assets/</code> klasörüne kopyalayın<br>
+            3. Outlook'a manifest dosyasını yükleyin
+        </div>
+    </div>
+
+    <script>
+        function createIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // Microsoft mavi arka plan
+            ctx.fillStyle = '#0078D4';
+            ctx.fillRect(0, 0, size, size);
+            
+            // Beyaz metin - SA (Satın Alma)
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${Math.floor(size * 0.5)}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('SA', size / 2, size / 2);
+        }
+
+        function downloadIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const link = document.createElement('a');
+            link.download = `icon-${size}.png`;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+
+        function downloadAll() {
+            setTimeout(() => downloadIcon('icon16', 16), 100);
+            setTimeout(() => downloadIcon('icon32', 32), 300);
+            setTimeout(() => downloadIcon('icon80', 80), 500);
+        }
+
+        // Sayfa yüklendiğinde ikonları oluştur
+        window.onload = () => {
+            createIcon('icon16', 16);
+            createIcon('icon32', 32);
+            createIcon('icon80', 80);
+        };
+    </script>
+</body>
+</html>

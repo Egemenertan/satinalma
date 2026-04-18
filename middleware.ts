@@ -59,20 +59,26 @@ export async function middleware(request: NextRequest) {
     // Session kontrolü - sadece protected route'larda user bilgisini al
     const { data: { user }, error } = await supabase.auth.getUser()
     
-    // Debug: Cookie'leri logla
-    const authCookies = request.cookies.getAll().filter(c => c.name.includes('auth'))
-    console.log('🍪 Auth cookies:', authCookies.map(c => c.name))
-    console.log('👤 User check:', { hasUser: !!user, error: error?.message })
+    // Debug logging sadece development'ta
+    if (process.env.NODE_ENV === 'development') {
+      const authCookies = request.cookies.getAll().filter(c => c.name.includes('auth'))
+      console.log('🍪 Auth cookies:', authCookies.map(c => c.name))
+      console.log('👤 User check:', { hasUser: !!user, error: error?.message })
+    }
     
     if (!user || error) {
-      console.log('❌ Auth failed, redirecting to login from:', pathname)
+      if (process.env.NODE_ENV === 'development') {
+        console.log('❌ Auth failed, redirecting to login from:', pathname)
+      }
       // Redirect to login if accessing protected route without auth
       const redirectUrl = new URL('/auth/login', request.url)
       redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
       return NextResponse.redirect(redirectUrl)
     }
     
-    console.log('✅ Auth successful for user:', user.id)
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ Auth successful for user:', user.id)
+    }
   }
 
   // Role-based access control kaldırıldı - Dashboard layout'ta kontrol ediliyor

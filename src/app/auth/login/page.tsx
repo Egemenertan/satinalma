@@ -208,120 +208,55 @@ function LoginContent() {
                 className="h-12 w-auto invert"
               />
             </div>
-            <h1 className="text-2xl font-bold text-gray-900 tracking-tight">Hoş Geldiniz</h1>
+            <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Hoş Geldiniz</h1>
             <p className="text-gray-600 mt-3 text-lg">
-              Devam etmek için giriş yapın
+              Microsoft hesabınız ile devam edin
             </p>
           </div>
           
           {/* Form - Border'sız, sade */}
           <div className="space-y-6">
-            <form onSubmit={handleLogin} className="space-y-5">
-              {pendingApproval && (
-                <Alert className="border-0 bg-blue-50">
-                  <AlertDescription className="text-sm text-blue-900">
-                    <div className="space-y-2">
-                      <p className="font-semibold">Giriş Başarılı!</p>
-                      <p>Hesabınız oluşturuldu ancak dashboard'a erişebilmek için sistem yöneticisinin onayı bekleniyor.</p>
-                    </div>
-                  </AlertDescription>
-                </Alert>
-              )}
-              
-              {error && (
-                <Alert variant="destructive" className="border-0 bg-red-50">
-                  <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
-                </Alert>
-              )}
-              
-              {/* Email */}
-              <div className="space-y-2">
-                <Label htmlFor="email" className="text-sm font-medium text-gray-700">
-                  Email
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="ornek@dovecgroup.com"
-                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              
-              {/* Şifre */}
-              <div className="space-y-2">
-                <Label htmlFor="password" className="text-sm font-medium text-gray-700">
-                  Şifre
-                </Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 border border-gray-200 bg-white shadow-sm focus:ring-2 focus:ring-gray-900 rounded-xl"
-                  required
-                  disabled={loading}
-                />
-              </div>
-              
-              {/* Submit Button */}
-              <Button 
-                type="submit" 
-                className="w-full h-12 text-base font-semibold bg-black hover:bg-gray-800 text-white rounded-xl shadow-lg hover:shadow-xl transition-all duration-200" 
-                disabled={loading}
-              >
-                {loading ? (
-                  <>
-                    <InlineLoading className="mr-2" />
-                    Giriş yapılıyor...
-                  </>
-                ) : (
-                  'Giriş Yap'
-                )}
-              </Button>
-            </form>
+            {pendingApproval && (
+              <Alert className="border-0 bg-blue-50">
+                <AlertDescription className="text-sm text-blue-900">
+                  <div className="space-y-2">
+                    <p className="font-semibold">Giriş Başarılı!</p>
+                    <p>Hesabınız oluşturuldu ancak dashboard'a erişebilmek için sistem yöneticisinin onayı bekleniyor.</p>
+                  </div>
+                </AlertDescription>
+              </Alert>
+            )}
             
-            {/* Divider */}
-            <div className="relative my-8">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-4 bg-white text-gray-500">veya</span>
-              </div>
-            </div>
+            {error && (
+              <Alert variant="destructive" className="border-0 bg-red-50">
+                <AlertDescription className="text-sm text-red-900">{error}</AlertDescription>
+              </Alert>
+            )}
             
             {/* Microsoft Login Button */}
             <Button
               type="button"
               onClick={handleMicrosoftLogin}
-              className="w-full h-12 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border border-gray-200 shadow-sm hover:shadow-md rounded-xl flex items-center justify-center gap-3 transition-all duration-200"
+              className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3 transition-all duration-200"
               disabled={loading}
             >
-              <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M0 0h10.93v10.93H0V0z" fill="#F25022"/>
-                <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00"/>
-                <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF"/>
-                <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900"/>
-              </svg>
-              Microsoft ile Giriş Yap
+              {loading ? (
+                <>
+                  <InlineLoading className="mr-2" />
+                  Giriş yapılıyor...
+                </>
+              ) : (
+                <>
+                  <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M0 0h10.93v10.93H0V0z" fill="#F25022"/>
+                    <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00"/>
+                    <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF"/>
+                    <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900"/>
+                  </svg>
+                  Microsoft ile Giriş Yap
+                </>
+              )}
             </Button>
-            
-            {/* Signup Link */}
-            <div className="pt-6 text-center">
-              <p className="text-sm text-gray-600">
-                Hesabınız yok mu?{' '}
-                <Link 
-                  href="/auth/signup" 
-                  className="text-gray-900 hover:text-gray-700 font-semibold underline"
-                >
-                  Kayıt olun
-                </Link>
-              </p>
-            </div>
           </div>
         </div>
       </div>

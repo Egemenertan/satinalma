@@ -118,15 +118,25 @@ export default function CreatePurchaseRequestPage() {
       if (user) {
         const { data: profileData, error: profileError } = await supabase
           .from('profiles')
-          .select('site_id, construction_site_id')
+          .select('site_id, construction_site_id, role')
           .eq('id', user.id)
           .single()
 
         if (!profileError && profileData) {
+          // KRİTİK GÜVENLİK: Site ID kontrolü
+          const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(profileData.role)
+          
           if (profileData.site_id && Array.isArray(profileData.site_id) && profileData.site_id.length > 0) {
             userSiteIds = profileData.site_id
           } else if (profileData.construction_site_id) {
             userSiteIds = [profileData.construction_site_id]
+          }
+          
+          // Eğer site_id zorunlu olan rollerde site ataması yoksa, geri gönder
+          if (requiresSiteId && userSiteIds.length === 0) {
+            showToast('Site ataması yapılmadan talep oluşturamazsınız. Lütfen yöneticinize başvurun.', 'error')
+            router.push('/dashboard/requests')
+            return
           }
 
           if (userSiteIds.length === 1) {

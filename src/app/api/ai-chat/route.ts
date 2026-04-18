@@ -38,6 +38,33 @@ interface ChatMessage {
 
 export async function POST(request: NextRequest) {
   try {
+    // GÜVENLİK: Önce authentication kontrolü yap
+    const authSupabase = createClient()
+    const { data: { user }, error: authError } = await authSupabase.auth.getUser()
+    
+    if (authError || !user) {
+      return NextResponse.json(
+        { error: 'Yetkisiz erişim. Lütfen giriş yapın.' },
+        { status: 401 }
+      )
+    }
+
+    // Kullanıcının rolünü kontrol et
+    const { data: profile } = await authSupabase
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .single()
+
+    // Sadece belirli roller AI chat kullanabilir
+    const allowedRoles = ['admin', 'manager', 'purchasing_officer', 'warehouse_manager']
+    if (!profile || !allowedRoles.includes(profile.role)) {
+      return NextResponse.json(
+        { error: 'Bu özelliğe erişim yetkiniz yok.' },
+        { status: 403 }
+      )
+    }
+
     const { message, context, conversationHistory = [] } = await request.json()
     
     if (!message || !message.trim()) {
@@ -49,6 +76,7 @@ export async function POST(request: NextRequest) {
 
     // Supabase client - use service role for AI full database access
     // Service role key bypasses RLS and has full access
+    // SADECE AUTHENTICATED VE YETKİLİ KULLANICILAR İÇİN
     const supabase = createSupabaseClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -60,7 +88,7 @@ export async function POST(request: NextRequest) {
       }
     )
     
-    console.log('🔑 Using Supabase client with service role for AI access')
+    console.log(`🔑 Using Supabase client with service role for AI access - User: ${user.id}, Role: ${profile.role}`)
 
     // Dashboard verilerini çek
     const dashboardData = await fetchDashboardData(supabase)

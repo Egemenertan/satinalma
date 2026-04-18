@@ -451,6 +451,13 @@ export default function RequestsPage() {
     }
   }, [])
 
+  // Site ID kontrolü - site_personnel, site_manager, santiye_depo ve santiye_depo_yonetici rolleri için
+  const hasSiteAssignment = userSiteId && (
+    Array.isArray(userSiteId) ? userSiteId.length > 0 : true
+  )
+  const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(userRole)
+  const showSiteWarning = requiresSiteId && !hasSiteAssignment
+
   return (
     <div className="px-0 pb-6 space-y-6 sm:space-y-8">
       {/* Welcome Message */}
@@ -458,6 +465,24 @@ export default function RequestsPage() {
         <p className="text-lg text-gray-700">
           Merhaba <span className="font-medium text-gray-900">{userInfo?.displayName}</span>, hoşgeldin! 👋
         </p>
+        
+        {/* Site Ataması Yapılmamış Uyarısı - KRİTİK */}
+        {showSiteWarning && (
+          <div className="flex items-start gap-3 p-4 bg-red-50 border-2 border-red-200 rounded-2xl">
+            <div className="flex-shrink-0 mt-0.5">
+              <AlertTriangle className="w-6 h-6 text-red-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-red-900">
+                Site Ataması Bekleniyor
+              </p>
+              <p className="text-sm text-red-700 mt-1">
+               Talep oluşturabilmek için lütfen departman yöneticinizin giriş yapmasını bekleyin.
+              </p>
+            
+            </div>
+          </div>
+        )}
         
         {/* Sipariş Bekleyen Talepler Uyarısı - Sadece Purchasing Officer için */}
         {userRole === 'purchasing_officer' && pendingOrdersCount > 0 && (
@@ -525,8 +550,10 @@ export default function RequestsPage() {
           </div>
           <div className="flex items-center gap-4">
             <Button 
-              onClick={() => router.push('/dashboard/requests/create')}
-              className="px-8 py-5 rounded-2xl text-md bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200"
+              onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
+              disabled={showSiteWarning}
+              className="px-8 py-5 rounded-2xl text-md bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+              title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
             >
               
               Yeni Talep Oluştur
@@ -543,8 +570,10 @@ export default function RequestsPage() {
             {/* Mobile: Create Request Button */}
             <div className="mt-4">
               <Button 
-                onClick={() => router.push('/dashboard/requests/create')}
-                className="w-1/2 h-12 rounded-2xl text-sm font-medium bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
+                onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
+                disabled={showSiteWarning}
+                className="w-1/2 h-12 rounded-2xl text-sm font-medium bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+                title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
               >
                 <Plus className="w-5 h-5" />
                 Yeni Talep
