@@ -33,8 +33,8 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://www.dovec.app/outlook"/>
-        <RequestedHeight>450</RequestedHeight>
+        <SourceLocation DefaultValue="https://www.dovec.app/dashboard/requests"/>
+        <RequestedHeight>600</RequestedHeight>
       </DesktopSettings>
     </Form>
   </FormSettings>
@@ -87,9 +87,8 @@
                     <bt:Image size="32" resid="Icon.32x32"/>
                     <bt:Image size="80" resid="Icon.80x80"/>
                   </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <SourceLocation resid="Taskpane.Url"/>
-                    <SupportsPinning>true</SupportsPinning>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>openFullApp</FunctionName>
                   </Action>
                 </Control>
               </Group>
@@ -97,7 +96,7 @@
             </CustomTab>
           </ExtensionPoint>
 
-          <!-- Task Pane Butonu -->
+          <!-- Message Read - Tab Default -->
           <ExtensionPoint xsi:type="MessageReadCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgReadGroup">
@@ -113,15 +112,15 @@
                     <bt:Image size="32" resid="Icon.32x32"/>
                     <bt:Image size="80" resid="Icon.80x80"/>
                   </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <SourceLocation resid="Taskpane.Url"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>openFullApp</FunctionName>
                   </Action>
                 </Control>
               </Group>
             </OfficeTab>
           </ExtensionPoint>
 
-          <!-- Yeni mesaj oluştururken -->
+          <!-- Message Compose - Yeni mesaj oluştururken -->
           <ExtensionPoint xsi:type="MessageComposeCommandSurface">
             <OfficeTab id="TabDefault">
               <Group id="msgComposeGroup">
@@ -137,8 +136,8 @@
                     <bt:Image size="32" resid="Icon.32x32"/>
                     <bt:Image size="80" resid="Icon.80x80"/>
                   </Icon>
-                  <Action xsi:type="ShowTaskpane">
-                    <SourceLocation resid="Taskpane.Url"/>
+                  <Action xsi:type="ExecuteFunction">
+                    <FunctionName>openFullApp</FunctionName>
                   </Action>
                 </Control>
               </Group>
@@ -156,7 +155,8 @@
       </bt:Images>
       <bt:Urls>
         <bt:Url id="Commands.Url" DefaultValue="https://www.dovec.app/outlook/commands.html"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://www.dovec.app/outlook"/>
+        <bt:Url id="Functions.Url" DefaultValue="https://www.dovec.app/outlook/functions.js"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://www.dovec.app/dashboard/requests"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="Satın Alma"/>
