@@ -9,15 +9,15 @@
   <!-- App kimliği - Benzersiz bir ID -->
   <Id>7a4fc406-0f4a-49ac-9d8d-196f466e358f</Id>
   <Version>1.0.0.0</Version>
-  <ProviderName>Satın Alma Sistemi</ProviderName>
+  <ProviderName>Döveç Lojistik</ProviderName>
   <DefaultLocale>tr-TR</DefaultLocale>
   
   <!-- Uygulamanın adı -->
   <DisplayName DefaultValue="Satın Alma Talepleri"/>
   <Description DefaultValue="Şantiye satın alma taleplerini Outlook üzerinden yönetin"/>
-  <IconUrl DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/assets/icon-32.png"/>
-  <HighResolutionIconUrl DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/assets/icon-80.png"/>
-  <SupportUrl DefaultValue="https://trimester-commence-nastily.ngrok-free.dev"/>
+  <IconUrl DefaultValue="https://www.dovec.app/assets/icon-80.png"/>
+  <HighResolutionIconUrl DefaultValue="https://www.dovec.app/assets/icon-80.png"/>
+  <SupportUrl DefaultValue="https://www.dovec.app"/>
 
   <!-- Gerekli Office sürümleri -->
   <Hosts>
@@ -33,7 +33,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/outlook"/>
+        <SourceLocation DefaultValue="https://www.dovec.app/outlook"/>
         <RequestedHeight>450</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -49,15 +49,53 @@
   <!-- Task Pane açıldığında -->
   <VersionOverrides xmlns="http://schemas.microsoft.com/office/mailappversionoverrides" xsi:type="VersionOverridesV1_0">
     <Requirements>
-      <bt:Sets DefaultMinVersion="1.3">
+      <bt:Sets DefaultMinVersion="1.5">
         <bt:Set Name="Mailbox"/>
       </bt:Sets>
     </Requirements>
 
     <Hosts>
       <Host xsi:type="MailHost">
+        <!-- Eklentiyi sidebar'da göster -->
+        <Runtimes>
+          <Runtime resid="Taskpane.Url">
+            <Override type="javascript" resid="Commands.Url"/>
+          </Runtime>
+        </Runtimes>
+        
         <DesktopFormFactor>
           <FunctionFile resid="Commands.Url"/>
+          
+          <!-- Eklenti her zaman gösterilsin -->
+          <ExtensionPoint xsi:type="MessageReadCommandSurface">
+            <CustomTab id="SatinAlmaTab">
+              <Group id="satinAlmaGroup">
+                <Label resid="GroupLabel"/>
+                <Icon>
+                  <bt:Image size="16" resid="Icon.16x16"/>
+                  <bt:Image size="32" resid="Icon.32x32"/>
+                  <bt:Image size="80" resid="Icon.80x80"/>
+                </Icon>
+                <Control xsi:type="Button" id="satinAlmaButton">
+                  <Label resid="TaskpaneButton.Label"/>
+                  <Supertip>
+                    <Title resid="TaskpaneButton.Label"/>
+                    <Description resid="TaskpaneButton.Tooltip"/>
+                  </Supertip>
+                  <Icon>
+                    <bt:Image size="16" resid="Icon.16x16"/>
+                    <bt:Image size="32" resid="Icon.32x32"/>
+                    <bt:Image size="80" resid="Icon.80x80"/>
+                  </Icon>
+                  <Action xsi:type="ShowTaskpane">
+                    <SourceLocation resid="Taskpane.Url"/>
+                    <SupportsPinning>true</SupportsPinning>
+                  </Action>
+                </Control>
+              </Group>
+              <Label resid="GroupLabel"/>
+            </CustomTab>
+          </ExtensionPoint>
 
           <!-- Task Pane Butonu -->
           <ExtensionPoint xsi:type="MessageReadCommandSurface">
@@ -112,13 +150,13 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/assets/icon-16.png"/>
-        <bt:Image id="Icon.32x32" DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/assets/icon-32.png"/>
-        <bt:Image id="Icon.80x80" DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/assets/icon-80.png"/>
+        <bt:Image id="Icon.16x16" DefaultValue="https://www.dovec.app/assets/icon-80.png"/>
+        <bt:Image id="Icon.32x32" DefaultValue="https://www.dovec.app/assets/icon-80.png"/>
+        <bt:Image id="Icon.80x80" DefaultValue="https://www.dovec.app/assets/icon-80.png"/>
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Commands.Url" DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/outlook/commands.html"/>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://trimester-commence-nastily.ngrok-free.dev/outlook"/>
+        <bt:Url id="Commands.Url" DefaultValue="https://www.dovec.app/outlook/commands.html"/>
+        <bt:Url id="Taskpane.Url" DefaultValue="https://www.dovec.app/outlook"/>
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="Satın Alma"/>
