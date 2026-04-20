@@ -40,7 +40,275 @@ export async function fetchProducts(
   pageSize = 20
 ) {
   const supabase = createClient()
+  const searchTerm = filters?.search?.trim()
   
+  console.log('🔍 fetchProducts called with:', { filters, searchTerm, page, pageSize })
+  
+  // Site ve arama birlikte varsa özel mantık kullan
+  if (filters?.siteId && searchTerm) {
+    console.log('🏢 Site + Search mode:', { siteId: filters.siteId, searchTerm })
+    
+    // Önce site'deki ürün ID'lerini al
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .eq('warehouse_id', filters.siteId)
+    
+    const siteProductIds = stockProducts?.map(s => s.product_id) || []
+    console.log('📦 Site product IDs count:', siteProductIds.length)
+    
+    if (siteProductIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+    
+    // Name ile eşleşenleri ayrı sorgula
+    const { data: nameMatches } = await supabase
+      .from('products')
+      .select('id')
+      .in('id', siteProductIds)
+      .ilike('name', `%${searchTerm}%`)
+    
+    // SKU ile eşleşenleri ayrı sorgula
+    const { data: skuMatches } = await supabase
+      .from('products')
+      .select('id')
+      .in('id', siteProductIds)
+      .ilike('sku', `%${searchTerm}%`)
+    
+    // Seri numarasına göre ara
+    const { data: inventoryProducts } = await supabase
+      .from('user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${searchTerm}%`)
+    
+    const { data: pendingProducts } = await supabase
+      .from('pending_user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${searchTerm}%`)
+    
+    const serialProductIds = [
+      ...(inventoryProducts?.map(inv => inv.product_id).filter(Boolean) || []),
+      ...(pendingProducts?.map(inv => inv.product_id).filter(Boolean) || [])
+    ]
+    
+    // Tüm eşleşmeleri birleştir
+    const nameMatchIds = nameMatches?.map(p => p.id) || []
+    const skuMatchIds = skuMatches?.map(p => p.id) || []
+    const serialMatchIds = serialProductIds.filter(id => siteProductIds.includes(id))
+    
+    console.log('🔎 Search results:', { 
+      nameMatchIds: nameMatchIds.length, 
+      skuMatchIds: skuMatchIds.length,
+      serialMatchIds: serialMatchIds.length,
+      skuMatchIdsActual: skuMatchIds
+    })
+    
+    const matchingIds = [...new Set([...nameMatchIds, ...skuMatchIds, ...serialMatchIds])]
+    console.log('✅ Final matching IDs:', matchingIds.length, matchingIds)
+    
+    if (matchingIds.length === 0) {
+      console.log('❌ No matching IDs found, returning empty')
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+    
+    // Ana sorguyu bu ID'lerle yap
+    let query = supabase
+      .from('products')
+      .select(`
+        *,
+        brand:brands(*),
+        category:product_categories(*),
+        warehouse_stocks:warehouse_stock(*)
+      `, { count: 'exact' })
+      .in('id', matchingIds)
+      .order('created_at', { ascending: false })
+    
+    // Diğer filtreleri uygula - log ekle
+    console.log('🔧 Applying filters:', { 
+      brandId: filters?.brandId, 
+      categoryId: filters?.categoryId, 
+      productType: filters?.productType, 
+      isActive: filters?.isActive 
+    })
+    
+    if (filters?.brandId) query = query.eq('brand_id', filters.brandId)
+    if (filters?.categoryId) query = query.eq('category_id', filters.categoryId)
+    if (filters?.productType) query = query.eq('product_type', filters.productType)
+    if (filters?.isActive !== undefined) query = query.eq('is_active', filters.isActive)
+    if (filters?.minPrice !== undefined) query = query.gte('unit_price', filters.minPrice)
+    if (filters?.maxPrice !== undefined) query = query.lte('unit_price', filters.maxPrice)
+    
+    // Pagination
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
+    query = query.range(from, to)
+    
+    const { data, error, count } = await query
+    
+    console.log('📋 Query result:', { dataLength: data?.length, count, error })
+    
+    if (error) {
+      console.error('Products fetch error:', error)
+      throw error
+    }
+    
+    // Calculate total stock for each product
+    const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
+      const warehouseStock = (product.warehouse_stocks || [])
+        .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
+        .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
+      
+      const { data: inventories } = await supabase
+        .from('user_inventory')
+        .select('quantity')
+        .eq('product_id', product.id)
+        .eq('status', 'active')
+      
+      const userInventoryStock = (inventories || []).reduce(
+        (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
+        0
+      )
+      
+      return {
+        ...product,
+        total_stock: warehouseStock + userInventoryStock,
+      }
+    }))
+    
+    return {
+      products: productsWithStock as ProductWithDetails[],
+      totalCount: count || 0,
+      totalPages: Math.ceil((count || 0) / pageSize),
+      currentPage: page,
+    }
+  }
+  
+  // Site olmadan sadece arama varsa
+  if (searchTerm && !filters?.siteId) {
+    console.log('🔍 Search only mode (no site):', searchTerm)
+    
+    // Name ile eşleşenleri ara
+    const { data: nameMatches } = await supabase
+      .from('products')
+      .select('id')
+      .ilike('name', `%${searchTerm}%`)
+    
+    // SKU ile eşleşenleri ara
+    const { data: skuMatches } = await supabase
+      .from('products')
+      .select('id')
+      .ilike('sku', `%${searchTerm}%`)
+    
+    // Seri numarasına göre ara
+    const { data: inventoryProducts } = await supabase
+      .from('user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${searchTerm}%`)
+    
+    const { data: pendingProducts } = await supabase
+      .from('pending_user_inventory')
+      .select('product_id')
+      .ilike('serial_number', `%${searchTerm}%`)
+    
+    const nameMatchIds = nameMatches?.map(p => p.id) || []
+    const skuMatchIds = skuMatches?.map(p => p.id) || []
+    const serialMatchIds = [
+      ...(inventoryProducts?.map(inv => inv.product_id).filter(Boolean) || []),
+      ...(pendingProducts?.map(inv => inv.product_id).filter(Boolean) || [])
+    ]
+    
+    const allMatchingIds = [...new Set([...nameMatchIds, ...skuMatchIds, ...serialMatchIds])]
+    
+    console.log('🔎 Search only results:', { 
+      nameMatchIds: nameMatchIds.length, 
+      skuMatchIds: skuMatchIds.length, 
+      serialMatchIds: serialMatchIds.length,
+      total: allMatchingIds.length 
+    })
+    
+    if (allMatchingIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+    
+    // Ana sorguyu bu ID'lerle yap
+    let query = supabase
+      .from('products')
+      .select(`
+        *,
+        brand:brands(*),
+        category:product_categories(*),
+        warehouse_stocks:warehouse_stock(*)
+      `, { count: 'exact' })
+      .in('id', allMatchingIds)
+      .order('created_at', { ascending: false })
+    
+    // Diğer filtreleri uygula
+    if (filters?.brandId) query = query.eq('brand_id', filters.brandId)
+    if (filters?.categoryId) query = query.eq('category_id', filters.categoryId)
+    if (filters?.productType) query = query.eq('product_type', filters.productType)
+    if (filters?.isActive !== undefined) query = query.eq('is_active', filters.isActive)
+    if (filters?.minPrice !== undefined) query = query.gte('unit_price', filters.minPrice)
+    if (filters?.maxPrice !== undefined) query = query.lte('unit_price', filters.maxPrice)
+    
+    // Pagination
+    const from = (page - 1) * pageSize
+    const to = from + pageSize - 1
+    query = query.range(from, to)
+    
+    const { data, error, count } = await query
+    
+    console.log('📋 Search only query result:', { dataLength: data?.length, count, error })
+    
+    if (error) {
+      console.error('Products fetch error:', error)
+      throw error
+    }
+    
+    // Calculate total stock for each product
+    const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
+      const warehouseStock = (product.warehouse_stocks || [])
+        .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
+        .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
+      
+      const { data: inventories } = await supabase
+        .from('user_inventory')
+        .select('quantity')
+        .eq('product_id', product.id)
+        .eq('status', 'active')
+      
+      const userInventoryStock = (inventories || []).reduce(
+        (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
+        0
+      )
+      
+      return {
+        ...product,
+        total_stock: warehouseStock + userInventoryStock,
+      }
+    }))
+    
+    return {
+      products: productsWithStock as ProductWithDetails[],
+      totalCount: count || 0,
+      totalPages: Math.ceil((count || 0) / pageSize),
+      currentPage: page,
+    }
+  }
+  
+  // Site filtresi varsa (arama olmadan)
+  let siteProductIds: string[] | null = null
+  if (filters?.siteId) {
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .eq('warehouse_id', filters.siteId)
+    
+    siteProductIds = stockProducts?.map(s => s.product_id) || []
+    if (siteProductIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+  }
+
   let query = supabase
     .from('products')
     .select(`
@@ -51,50 +319,13 @@ export async function fetchProducts(
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
 
-  // Filtreleme
-  if (filters?.search) {
-    // Önce seri numarasına göre user_inventory'de ara
-    const { data: inventoryProducts } = await supabase
-      .from('user_inventory')
-      .select('product_id')
-      .ilike('serial_number', `%${filters.search}%`)
-    
-    // Pending inventory'de de ara
-    const { data: pendingProducts } = await supabase
-      .from('pending_user_inventory')
-      .select('product_id')
-      .ilike('serial_number', `%${filters.search}%`)
-    
-    const inventoryProductIds = inventoryProducts?.map(inv => inv.product_id).filter(Boolean) || []
-    const pendingProductIds = pendingProducts?.map(inv => inv.product_id).filter(Boolean) || []
-    const allSerialProductIds = [...new Set([...inventoryProductIds, ...pendingProductIds])]
-    
-    // Seri numarası eşleşmesi varsa, bu ürünleri de dahil et
-    if (allSerialProductIds.length > 0) {
-      query = query.or(`name.ilike.%${filters.search}%,sku.ilike.%${filters.search}%,id.in.(${allSerialProductIds.join(',')})`)
-    } else {
-      query = query.or(`name.ilike.%${filters.search}%,sku.ilike.%${filters.search}%`)
-    }
+  // Site filtresi uygula (varsa)
+  if (siteProductIds) {
+    query = query.in('id', siteProductIds)
   }
 
   if (filters?.brandId) {
     query = query.eq('brand_id', filters.brandId)
-  }
-  
-  // Site filtresi - warehouse_stock üzerinden
-  if (filters?.siteId) {
-    const { data: stockProducts } = await supabase
-      .from('warehouse_stock')
-      .select('product_id')
-      .eq('warehouse_id', filters.siteId)
-    
-    const productIds = stockProducts?.map(s => s.product_id) || []
-    if (productIds.length > 0) {
-      query = query.in('id', productIds)
-    } else {
-      // Site'da hiç ürün yoksa boş sonuç dön
-      return { products: [], totalCount: 0, totalPages: 0 }
-    }
   }
 
   if (filters?.categoryId) {

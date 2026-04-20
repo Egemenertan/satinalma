@@ -31,16 +31,31 @@ interface UserInventory {
   status: string
 }
 
+interface PendingInventory {
+  id: string
+  quantity: number
+  owner_name: string
+  owner_email: string | null
+  user_name: string | null
+  user_email: string | null
+  item_name: string
+  serial_number: string | null
+  created_at: string
+}
+
 export function ProductStockTab({ product, stockData, totalStock }: ProductStockTabProps) {
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
   const [userInventories, setUserInventories] = useState<UserInventory[]>([])
+  const [pendingInventories, setPendingInventories] = useState<PendingInventory[]>([])
   const [loadingInventories, setLoadingInventories] = useState(false)
   const [showUserInventories, setShowUserInventories] = useState(false)
+  const [showPendingInventories, setShowPendingInventories] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     if (product?.id) {
       fetchUserInventories()
+      fetchPendingInventories()
     }
   }, [product?.id])
 
@@ -67,7 +82,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
 
       if (error) throw error
       
-      // Supabase join sonucu tipini düzelt
       const formattedData = (data || []).map((item: any) => ({
         ...item,
         user: Array.isArray(item.user) ? item.user[0] : item.user
@@ -78,6 +92,31 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
       console.error('Kullanıcı zimmetleri yüklenemedi:', error)
     } finally {
       setLoadingInventories(false)
+    }
+  }
+
+  const fetchPendingInventories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pending_user_inventory')
+        .select(`
+          id,
+          quantity,
+          owner_name,
+          owner_email,
+          user_name,
+          user_email,
+          item_name,
+          serial_number,
+          created_at
+        `)
+        .eq('product_id', product.id)
+        .order('owner_name', { ascending: true })
+
+      if (error) throw error
+      setPendingInventories(data || [])
+    } catch (error) {
+      console.error('Bekleyen zimmetler yüklenemedi:', error)
     }
   }
 
@@ -94,6 +133,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   }
 
   const totalUserInventory = userInventories.reduce((sum, inv) => sum + parseFloat(inv.quantity.toString()), 0)
+  const totalPendingInventory = pendingInventories.reduce((sum, inv) => sum + parseFloat(inv.quantity?.toString() || '0'), 0)
+  const totalAllZimmet = totalUserInventory + totalPendingInventory
 
   // Sadece ana depo stoklarını göster (user_id: null olanlar)
   const warehouseStocks = (stockData || []).filter((s: any) => 
@@ -121,9 +162,10 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   )
   
   console.log('📊 Stok Durumu Tab:', {
-    'Toplam Depo Stoku (user_id: null)': totalWarehouseStock,
-    'Toplam Zimmet': totalUserInventory,
-    'GENEL TOPLAM': totalWarehouseStock + totalUserInventory
+    'Toplam Depo Stoku': totalWarehouseStock,
+    'Aktif Zimmet': totalUserInventory,
+    'Envanter Zimmet': totalPendingInventory,
+    'GENEL TOPLAM': totalWarehouseStock + totalAllZimmet
   })
 
   return (
@@ -317,7 +359,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
         </div>
       )}
 
-      {/* Kullanıcı Zimmetleri */}
+      {/* Kullanıcı Zimmetleri (user_inventory) */}
       {userInventories.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
@@ -413,9 +455,97 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
         </div>
       )}
 
+      {/* Envanter Zimmetleri (pending_user_inventory) */}
+      {pendingInventories.length > 0 && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="h-px flex-1 bg-blue-300"></div>
+            <h3 className="text-sm font-bold text-blue-600 uppercase tracking-wide">Envanter Zimmetleri</h3>
+            <div className="h-px flex-1 bg-blue-300"></div>
+          </div>
+
+          <div className="bg-blue-50 rounded-2xl border border-blue-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowPendingInventories(!showPendingInventories)}
+              className="w-full p-5 flex items-center justify-between hover:bg-blue-100 transition-all"
+            >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                  <Users className="w-5 h-5 text-blue-600" />
+                </div>
+                <div className="text-left">
+                  <p className="font-semibold text-gray-900 text-base">
+                    Zimmetli Personel
+                  </p>
+                  <p className="text-xs text-blue-600 mt-1">
+                    {pendingInventories.length} kişide zimmetli (envanter kaydı)
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-4">
+                <div className="text-right">
+                  <p className="text-2xl font-bold text-blue-700">
+                    {totalPendingInventory.toLocaleString('tr-TR')}
+                  </p>
+                  <p className="text-xs text-blue-500">{product?.unit || ''}</p>
+                </div>
+                <ChevronDown className={`w-5 h-5 text-blue-400 transition-transform ${showPendingInventories ? 'rotate-180' : ''}`} />
+              </div>
+            </button>
+
+            {showPendingInventories && (
+              <div className="border-t border-blue-200 bg-white">
+                <div className="divide-y divide-blue-100">
+                  {pendingInventories.map((inventory) => (
+                    <div
+                      key={inventory.id}
+                      className="p-4 hover:bg-blue-50 transition-colors"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                            <User className="w-4 h-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-semibold text-gray-900">
+                              {inventory.owner_name}
+                            </p>
+                            {inventory.owner_email && (
+                              <p className="text-xs text-gray-500">
+                                {inventory.owner_email}
+                              </p>
+                            )}
+                            {inventory.user_name && (
+                              <p className="text-xs text-blue-600">
+                                Kullanıcı: {inventory.user_name}
+                              </p>
+                            )}
+                            {inventory.serial_number && (
+                              <p className="text-xs text-gray-400">
+                                Seri No: {inventory.serial_number}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-lg font-bold text-blue-700">
+                            {parseFloat(inventory.quantity?.toString() || '0').toLocaleString('tr-TR')}
+                          </p>
+                          <p className="text-xs text-blue-500">{product?.unit || ''}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Stok Dağılımı Özeti */}
       <div className="bg-gray-50 rounded-2xl p-5 border border-gray-200">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4">
           <div className="text-center">
             <p className="text-xs text-gray-600 mb-1">Depolarda</p>
             <p className="text-2xl font-bold text-gray-900">
@@ -424,11 +554,18 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
             <p className="text-xs text-gray-500">{product?.unit || ''}</p>
           </div>
           <div className="text-center">
-            <p className="text-xs text-gray-600 mb-1">Zimmetli</p>
+            <p className="text-xs text-gray-600 mb-1">Aktif Zimmet</p>
             <p className="text-2xl font-bold text-gray-900">
               {totalUserInventory.toLocaleString('tr-TR')}
             </p>
             <p className="text-xs text-gray-500">{product?.unit || ''}</p>
+          </div>
+          <div className="text-center">
+            <p className="text-xs text-blue-600 mb-1">Envanter Zimmet</p>
+            <p className="text-2xl font-bold text-blue-700">
+              {totalPendingInventory.toLocaleString('tr-TR')}
+            </p>
+            <p className="text-xs text-blue-500">{product?.unit || ''}</p>
           </div>
         </div>
       </div>
@@ -440,7 +577,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           <p className="font-semibold text-base mt-1">{product?.name}</p>
         </div>
         <p className="text-3xl font-bold">
-          {(totalWarehouseStock + totalUserInventory).toLocaleString('tr-TR')} <span className="text-base text-gray-400">{product?.unit || ''}</span>
+          {(totalWarehouseStock + totalAllZimmet).toLocaleString('tr-TR')} <span className="text-base text-gray-400">{product?.unit || ''}</span>
         </p>
       </div>
     </>
