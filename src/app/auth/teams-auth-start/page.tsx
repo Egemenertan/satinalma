@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createEmbeddedAuthClient } from '@/lib/supabase/client'
 import { Loading } from '@/components/ui/loading'
 import { initializeTeams, teamsNotifyAuthFailure } from '@/lib/teams'
 import { getErrorMessage } from '@/lib/auth'
@@ -19,7 +19,6 @@ import { getErrorMessage } from '@/lib/auth'
  */
 export default function TeamsAuthStartPage() {
   const [error, setError] = useState<string | null>(null)
-  const supabase = createClient()
 
   useEffect(() => {
     let cancelled = false
@@ -31,6 +30,10 @@ export default function TeamsAuthStartPage() {
 
         if (cancelled) return
 
+        // Embedded ortam için implicit flow kullanan ayrı bir client.
+        // PKCE'nin code_verifier cookie'si Teams popup partition'ında
+        // kaybolabildiği için implicit'e düşüyoruz.
+        const supabase = createEmbeddedAuthClient()
         const redirectUrl = `${window.location.origin}/auth/teams-callback`
 
         const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -64,7 +67,7 @@ export default function TeamsAuthStartPage() {
     return () => {
       cancelled = true
     }
-  }, [supabase])
+  }, [])
 
   if (error) {
     return (

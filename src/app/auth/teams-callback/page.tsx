@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
-import { createClient } from '@/lib/supabase/client'
+import { createEmbeddedAuthClient } from '@/lib/supabase/client'
 import { Loading } from '@/components/ui/loading'
 import { ensureProfile, getErrorMessage } from '@/lib/auth'
 import {
@@ -12,18 +12,55 @@ import {
 
 type Status = 'loading' | 'success' | 'error'
 
+interface ImplicitTokens {
+  access_token: string
+  refresh_token: string
+  expires_at?: number
+  expires_in?: number
+}
+
 /**
- * Teams/Outlook popup OAuth callback sayfası.
+ * Hash fragment'inden Supabase implicit flow token'larını ayıklar.
+ *
+ * Supabase implicit redirect örneği:
+ *   /auth/teams-callback#access_token=...&refresh_token=...&expires_at=...&token_type=bearer&type=signup
+ */
+function parseImplicitTokensFromHash(hash: string): ImplicitTokens | null {
+  const cleaned = hash.startsWith('#') ? hash.slice(1) : hash
+  if (!cleaned) return null
+
+  const params = new URLSearchParams(cleaned)
+  const access_token = params.get('access_token')
+  const refresh_token = params.get('refresh_token')
+
+  if (!access_token || !refresh_token) {
+    return null
+  }
+
+  const expires_at_raw = params.get('expires_at')
+  const expires_in_raw = params.get('expires_in')
+
+  return {
+    access_token,
+    refresh_token,
+    expires_at: expires_at_raw ? Number(expires_at_raw) : undefined,
+    expires_in: expires_in_raw ? Number(expires_in_raw) : undefined,
+  }
+}
+
+/**
+ * Teams/Outlook popup OAuth callback sayfası (implicit flow).
  *
  * Akış:
- *  1. Microsoft, OAuth code'u ile bu sayfaya yönlendirir.
- *  2. Supabase ile code -> session exchange yapılır.
- *  3. Profil yoksa oluşturulur.
- *  4. `notifySuccess` ile parent window'a access/refresh token JSON'u
- *     iletilir. Parent window bu token'larla `setSession` çağıracak.
+ *   1. Microsoft → Supabase → bu sayfaya `#access_token=...` fragment ile yönlenir
+ *   2. Token'lar fragment'ten ayıklanır
+ *   3. Profil yoksa oluşturulur
+ *   4. `notifySuccess` ile parent iframe'e token JSON'u iletilir
  *
- * Bu yaklaşım iframe ile parent arasında cookie partitioning sorunlarını
- * tamamen atlar — token'lar postMessage benzeri bir kanaldan geçer.
+ * PKCE yerine implicit flow kullanmamızın sebebi: Teams popup'ı modern
+ * tarayıcı storage partitioning'i altında çalışır ve PKCE'nin
+ * `code_verifier` cookie'si cross-origin navigation sırasında
+ * kaybolabilir. Implicit flow bu state'e ihtiyaç duymaz.
  */
 export default function TeamsCallbackPage() {
   const [status, setStatus] = useState<Status>('loading')
@@ -35,57 +72,62 @@ export default function TeamsCallbackPage() {
     handled.current = true
 
     const process = async () => {
-      // Popup içinde Teams SDK init — notify* çağrıları için zorunlu
       const sdkReady = await initializeTeams()
 
       try {
-        const params = new URLSearchParams(window.location.search)
-        const code = params.get('code')
-        const oauthError = params.get('error')
-        const errorDescription = params.get('error_description')
+        const search = new URLSearchParams(window.location.search)
+        const oauthError = search.get('error') || (() => {
+          // Bazı sağlayıcılar hata alanlarını fragment'ta da koyabilir
+          const fragment = new URLSearchParams(
+            window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+          )
+          return fragment.get('error')
+        })()
+        const errorDescription =
+          search.get('error_description') ||
+          new URLSearchParams(
+            window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
+          ).get('error_description')
 
         if (oauthError) {
           throw new Error(errorDescription || oauthError)
         }
 
-        if (!code) {
-          throw new Error('Microsoft yetkilendirme kodu alınamadı')
+        const tokens = parseImplicitTokensFromHash(window.location.hash)
+        if (!tokens) {
+          throw new Error('Microsoft yetkilendirmesi tamamlanamadı (token alınamadı)')
         }
 
-        const supabase = createClient()
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        // Yerel session'ı kur (popup tarafı için) — profile insert yetkisi için
+        const supabase = createEmbeddedAuthClient()
+        const { data, error: setSessionError } = await supabase.auth.setSession({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+        })
 
-        if (exchangeError) {
-          throw exchangeError
-        }
-
-        const { data: { session } } = await supabase.auth.getSession()
-
-        if (!session?.user || !session.access_token || !session.refresh_token) {
-          throw new Error('Oturum oluşturulamadı')
+        if (setSessionError || !data.session?.user) {
+          throw new Error(getErrorMessage(setSessionError, 'Oturum başlatılamadı'))
         }
 
         await ensureProfile(
           supabase,
-          session.user.id,
-          session.user.email,
-          session.user.user_metadata?.full_name || session.user.user_metadata?.name
+          data.session.user.id,
+          data.session.user.email,
+          data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name
         )
 
         setStatus('success')
         setMessage('Giriş başarılı! Yönlendiriliyorsunuz...')
 
         if (sdkReady) {
-          // Token'ları parent iframe'e döndür
           teamsNotifyAuthSuccess({
-            access_token: session.access_token,
-            refresh_token: session.refresh_token,
-            expires_at: session.expires_at,
-            user_email: session.user.email ?? undefined,
+            access_token: tokens.access_token,
+            refresh_token: tokens.refresh_token,
+            expires_at: tokens.expires_at,
+            user_email: data.session.user.email ?? undefined,
           })
         } else {
-          // Teams SDK yoksa: bu popup normal tarayıcıdan açılmış demektir,
-          // dashboard'a yönlendirelim
+          // Teams SDK yoksa: bu popup normal tarayıcıdan açılmış demektir
           window.location.href = '/dashboard/requests'
         }
       } catch (err) {
