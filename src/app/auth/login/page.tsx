@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
-import { useTeams, teamsAuthenticate, initializeTeams } from '@/lib/teams'
+import { useTeams, teamsAuthenticate, initializeTeams, isInIframe, popupAuthenticate } from '@/lib/teams'
 import { getPostLoginRedirectPath } from '@/lib/auth'
 
 /**
@@ -34,6 +34,12 @@ function LoginContent() {
   const supabase = createClient()
 
   const { isInTeams, isLoading: teamsLoading } = useTeams()
+  const [isIframe, setIsIframe] = useState(false)
+
+  // Iframe kontrolü
+  useEffect(() => {
+    setIsIframe(isInIframe())
+  }, [])
 
   // Zaten giriş yapmış kullanıcıyı yönlendir
   useEffect(() => {
@@ -108,9 +114,55 @@ function LoginContent() {
     }
   }
 
+  const handleIframeLogin = async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      console.log('🖼️ Iframe içinde popup authentication başlatılıyor...')
+      
+      const authUrl = `${window.location.origin}/auth/popup-auth-start`
+      const completed = await popupAuthenticate(authUrl)
+      
+      if (!completed) {
+        setError('Giriş penceresi kapatıldı veya zaman aşımına uğradı.')
+        setLoading(false)
+        return
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1500))
+
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) {
+        setError('Oturum oluşturulamadı. Lütfen tekrar deneyin.')
+        setLoading(false)
+        return
+      }
+
+      console.log('✅ Session bulundu, yönlendiriliyor...')
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', session.user.id)
+        .maybeSingle()
+
+      const role = profile?.role as any
+      window.location.href = getPostLoginRedirectPath(role)
+    } catch (err) {
+      console.error('🔥 Iframe login hatası:', err)
+      setError('Giriş yapılırken bir hata oluştu.')
+      setLoading(false)
+    }
+  }
+
   const handleMicrosoftLogin = async () => {
     if (isInTeams) {
       return handleTeamsLogin()
+    }
+
+    if (isIframe) {
+      return handleIframeLogin()
     }
 
     setLoading(true)

@@ -62,11 +62,36 @@ export function isInTeamsEnvironment(): boolean {
     return false
   }
   
-  const isInIframe = window.self !== window.top
   const hasTeamsInURL = window.location.href.includes('teams.microsoft.com')
   const hasTeamsReferrer = document.referrer.includes('teams.microsoft.com')
   
-  return isInIframe || hasTeamsInURL || hasTeamsReferrer
+  return hasTeamsInURL || hasTeamsReferrer || teamsInitialized
+}
+
+export function isInIframe(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  
+  try {
+    return window.self !== window.top
+  } catch {
+    return true
+  }
+}
+
+export function isInOfficeEnvironment(): boolean {
+  if (typeof window === 'undefined') {
+    return false
+  }
+  
+  const referrer = document.referrer.toLowerCase()
+  const isOfficeReferrer = referrer.includes('office.com') || 
+                           referrer.includes('office365.com') || 
+                           referrer.includes('outlook.com') ||
+                           referrer.includes('outlook.live.com')
+  
+  return isInIframe() && isOfficeReferrer
 }
 
 export function getTeamsContext(): TeamsAppContext | null {
@@ -122,4 +147,41 @@ export async function getTeamsSSOToken(): Promise<string> {
     console.error('❌ Teams SSO token alınamadı:', error)
     throw error
   }
+}
+
+export function popupAuthenticate(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const width = 500
+    const height = 600
+    const left = window.screenX + (window.outerWidth - width) / 2
+    const top = window.screenY + (window.outerHeight - height) / 2
+    
+    const popup = window.open(
+      url,
+      'auth-popup',
+      `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+    )
+    
+    if (!popup) {
+      console.error('❌ Popup engellenmiş olabilir')
+      resolve(false)
+      return
+    }
+    
+    const checkClosed = setInterval(() => {
+      if (popup.closed) {
+        clearInterval(checkClosed)
+        console.log('✅ Auth popup kapatıldı')
+        resolve(true)
+      }
+    }, 500)
+    
+    setTimeout(() => {
+      clearInterval(checkClosed)
+      if (!popup.closed) {
+        popup.close()
+      }
+      resolve(false)
+    }, 300000)
+  })
 }
