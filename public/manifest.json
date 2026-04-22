@@ -1,8 +1,8 @@
 {
   "$schema": "https://developer.microsoft.com/en-us/json-schemas/teams/v1.17/MicrosoftTeams.schema.json",
   "manifestVersion": "1.17",
-  "version": "1.0.0",
-  "id": "7a4fc406-0f4a-49ac-9d8d-196f466e358f",
+  "version": "1.0.1",
+  "id": "c3ee343a-b5dc-4ffa-9915-cffd6b8ce4b1",
   "developer": {
     "name": "Döveç Lojistik",
     "websiteUrl": "https://www.dovec.app",
@@ -44,10 +44,11 @@
   ],
   "validDomains": [
     "www.dovec.app",
-    "dovec.app"
+    "dovec.app",
+    "login.microsoftonline.com"
   ],
   "webApplicationInfo": {
-    "id": "7a4fc406-0f4a-49ac-9d8d-196f466e358f",
-    "resource": "https://www.dovec.app"
+    "id": "c3ee343a-b5dc-4ffa-9915-cffd6b8ce4b1",
+    "resource": "api://www.dovec.app/c3ee343a-b5dc-4ffa-9915-cffd6b8ce4b1"
   }
 }

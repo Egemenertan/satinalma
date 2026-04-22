@@ -18,7 +18,7 @@ const nextConfig = {
   },
   
   async headers() {
-    // Güvenlik header'ları
+    // Güvenlik header'ları - Teams iframe desteği ile
     const securityHeaders = [
       {
         key: 'X-DNS-Prefetch-Control',
@@ -27,10 +27,6 @@ const nextConfig = {
       {
         key: 'Strict-Transport-Security',
         value: 'max-age=63072000; includeSubDomains; preload'
-      },
-      {
-        key: 'X-Frame-Options',
-        value: 'ALLOW-FROM https://outlook.office.com https://outlook.office365.com'
       },
       {
         key: 'X-Content-Type-Options',
@@ -48,17 +44,18 @@ const nextConfig = {
         key: 'X-Robots-Tag',
         value: 'noindex, nofollow, noarchive, nosnippet, noimageindex, nocache',
       },
-      // Content Security Policy - Restrictive but allowing necessary resources
+      // Content Security Policy - Teams iframe desteği ile
       {
         key: 'Content-Security-Policy',
         value: [
           "default-src 'self'",
-          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://challenges.cloudflare.com https://appsforoffice.microsoft.com",
+          "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://va.vercel-scripts.com https://challenges.cloudflare.com https://appsforoffice.microsoft.com https://res.cdn.office.net https://statics.teams.cdn.office.net",
           "style-src 'self' 'unsafe-inline'",
-          "img-src 'self' data: blob: https://*.supabase.co",
+          "img-src 'self' data: blob: https://*.supabase.co https://*.microsoft.com",
           "font-src 'self' data:",
-          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://graph.microsoft.com https://login.microsoftonline.com https://*.office.com https://*.office365.com",
-          "frame-src 'self' https://challenges.cloudflare.com https://*.office.com https://*.office365.com",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://graph.microsoft.com https://login.microsoftonline.com https://*.office.com https://*.office365.com https://*.teams.microsoft.com",
+          "frame-src 'self' https://challenges.cloudflare.com https://*.office.com https://*.office365.com https://login.microsoftonline.com",
+          "frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://*.skype.com https://*.office.com https://*.office365.com",
           "worker-src 'self' blob:",
         ].join('; ')
       }

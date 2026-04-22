@@ -10,6 +10,7 @@ import { Loader2 } from 'lucide-react'
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
+import { useTeams, teamsAuthenticate, initializeTeams } from '@/lib/teams'
 
 function LoginContent() {
   const [email, setEmail] = useState('')
@@ -20,6 +21,8 @@ function LoginContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
   const supabase = createClient()
+  
+  const { isInTeams, isLoading: teamsLoading } = useTeams()
 
   // Zaten giriş yapmış kullanıcıyı redirect et
   useEffect(() => {
@@ -75,15 +78,66 @@ function LoginContent() {
     }
   }, [searchParams])
 
+  const handleTeamsLogin = async () => {
+    setLoading(true)
+    setError('')
+
+    try {
+      console.log('🔷 Teams popup authentication başlatılıyor...')
+      
+      await initializeTeams()
+      
+      const authUrl = new URL(`${window.location.origin}/auth/teams-auth-start`)
+      
+      console.log('🔗 Teams Auth URL:', authUrl.toString())
+      
+      await teamsAuthenticate(authUrl.toString(), 600, 600)
+      
+      console.log('✅ Teams auth popup tamamlandı, session kontrol ediliyor...')
+      
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (session) {
+        console.log('✅ Session bulundu, dashboard\'a yönlendiriliyor...')
+        
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .single()
+        
+        if (profile?.role === 'site_manager' || profile?.role === 'site_personnel' || 
+            profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_yonetici') {
+          window.location.href = '/dashboard/requests'
+        } else {
+          window.location.href = '/dashboard'
+        }
+      } else {
+        setError('Oturum oluşturulamadı. Lütfen tekrar deneyin.')
+        setLoading(false)
+      }
+    } catch (err) {
+      console.error('🔥 Teams login error:', err)
+      setError('Teams ile giriş yapılırken bir hata oluştu')
+      setLoading(false)
+    }
+  }
+
   const handleMicrosoftLogin = async () => {
+    if (isInTeams) {
+      return handleTeamsLogin()
+    }
+
     setLoading(true)
     setError('')
 
     try {
       console.log('🔐 Microsoft login başlatılıyor...')
       console.log('🌐 Current origin:', window.location.origin)
+      console.log('📍 Teams ortamında mı:', isInTeams)
       
-      // Redirect URL'i açıkça belirt
       const redirectUrl = `${window.location.origin}/auth/callback`
       console.log('🔗 Redirect URL:', redirectUrl)
       
@@ -93,7 +147,7 @@ function LoginContent() {
           scopes: 'email openid profile',
           redirectTo: redirectUrl,
           queryParams: {
-            prompt: 'select_account' // Her seferinde hesap seçimi iste
+            prompt: 'select_account'
           }
         }
       })
@@ -103,7 +157,6 @@ function LoginContent() {
         setError('Microsoft ile giriş yapılırken hata oluştu: ' + error.message)
         setLoading(false)
       }
-      // OAuth redirect olacak, loading state devam eder
     } catch (err) {
       console.error('🔥 Microsoft login error:', err)
       setError('Microsoft ile giriş yapılırken bir hata oluştu')
@@ -233,17 +286,33 @@ function LoginContent() {
               </Alert>
             )}
             
+            {/* Teams Environment Indicator */}
+            {!teamsLoading && isInTeams && (
+              <div className="flex items-center justify-center gap-2 py-3 px-4 bg-purple-50 rounded-xl border border-purple-100">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14C0 17.31 2.69 20 6 20H19C21.76 20 24 17.76 24 15C24 12.36 21.95 10.22 19.35 10.04Z" fill="#5059C9"/>
+                  <path d="M17 13H13V17H11V13H7V11H11V7H13V11H17V13Z" fill="white"/>
+                </svg>
+                <span className="text-sm font-medium text-purple-700">Microsoft Teams Ortamı</span>
+              </div>
+            )}
+            
             {/* Microsoft Login Button */}
             <Button
               type="button"
               onClick={handleMicrosoftLogin}
               className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3 transition-all duration-200"
-              disabled={loading}
+              disabled={loading || teamsLoading}
             >
               {loading ? (
                 <>
                   <InlineLoading className="mr-2" />
-                  Giriş yapılıyor...
+                  {isInTeams ? 'Teams ile giriş yapılıyor...' : 'Giriş yapılıyor...'}
+                </>
+              ) : teamsLoading ? (
+                <>
+                  <InlineLoading className="mr-2" />
+                  Ortam kontrol ediliyor...
                 </>
               ) : (
                 <>
