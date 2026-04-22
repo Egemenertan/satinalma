@@ -13,7 +13,7 @@ export default function PopupAuthStartPage() {
       try {
         console.log('🖼️ Popup auth başlatılıyor...')
         
-        const redirectUrl = `${window.location.origin}/auth/popup-callback`
+        const redirectUrl = `${window.location.origin}/auth/callback`
         console.log('🔗 Redirect URL:', redirectUrl)
         
         const { error } = await supabase.auth.signInWithOAuth({

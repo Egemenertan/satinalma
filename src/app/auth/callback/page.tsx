@@ -65,7 +65,16 @@ export default function AuthCallback() {
 
         console.log('👤 Profil hazır:', { role, isNewProfile, wasMerged })
 
-        // Dashboard'a yönlendir
+        // Popup'ta mıyız kontrol et (Outlook/Teams iframe için)
+        const isPopup = window.opener !== null
+        
+        if (isPopup) {
+          console.log('✅ Popup auth tamamlandı, pencere kapatılıyor...')
+          window.close()
+          return
+        }
+
+        // Normal flow - Dashboard'a yönlendir
         const redirectPath = getPostLoginRedirectPath(role)
         console.log('🚀 Yönlendiriliyor:', redirectPath)
         window.location.href = redirectPath
