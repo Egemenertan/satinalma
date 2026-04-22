@@ -19,10 +19,12 @@ interface ImplicitTokens {
   expires_in?: number
 }
 
+const HANDOFF_QUERY_KEY = 'handoff_id'
+
 /**
  * Hash fragment'inden Supabase implicit flow token'larını ayıklar.
  *
- * Supabase implicit redirect örneği:
+ * Örnek:
  *   /auth/teams-callback#access_token=...&refresh_token=...&expires_at=...&token_type=bearer&type=signup
  */
 function parseImplicitTokensFromHash(hash: string): ImplicitTokens | null {
@@ -48,19 +50,29 @@ function parseImplicitTokensFromHash(hash: string): ImplicitTokens | null {
   }
 }
 
+function getHashOrSearchParam(key: string): string | null {
+  const search = new URLSearchParams(window.location.search).get(key)
+  if (search) return search
+  const hashStr = window.location.hash.startsWith('#')
+    ? window.location.hash.slice(1)
+    : window.location.hash
+  return new URLSearchParams(hashStr).get(key)
+}
+
 /**
- * Teams/Outlook popup OAuth callback sayfası (implicit flow).
+ * Teams/Outlook popup OAuth callback sayfası (implicit flow + handoff).
  *
  * Akış:
- *   1. Microsoft → Supabase → bu sayfaya `#access_token=...` fragment ile yönlenir
- *   2. Token'lar fragment'ten ayıklanır
- *   3. Profil yoksa oluşturulur
- *   4. `notifySuccess` ile parent iframe'e token JSON'u iletilir
+ *   1. Microsoft → Supabase → bu sayfa `#access_token=...&refresh_token=...`
+ *   2. Token'lar fragment'ten ayıklanır.
+ *   3. Yerel session kurulur ve profil garanti altına alınır.
+ *   4. Token'lar `/api/auth/handoff/[id]` endpoint'ine POST edilir
+ *      (parent iframe COOP nedeniyle notifySuccess'i alamayabilir).
+ *   5. Best-effort olarak `notifySuccess` da çağrılır (eski/uyumlu host'lar
+ *      için).
  *
- * PKCE yerine implicit flow kullanmamızın sebebi: Teams popup'ı modern
- * tarayıcı storage partitioning'i altında çalışır ve PKCE'nin
- * `code_verifier` cookie'si cross-origin navigation sırasında
- * kaybolabilir. Implicit flow bu state'e ihtiyaç duymaz.
+ * Parent iframe handoff endpoint'ini polling ile kontrol eder ve token'ları
+ * çeker — bu, browser COOP / storage partitioning kısıtlarını tamamen atlar.
  */
 export default function TeamsCallbackPage() {
   const [status, setStatus] = useState<Status>('loading')
@@ -75,16 +87,14 @@ export default function TeamsCallbackPage() {
       const sdkReady = await initializeTeams()
 
       try {
-        const search = new URLSearchParams(window.location.search)
-        const oauthError = search.get('error') || (() => {
-          // Bazı sağlayıcılar hata alanlarını fragment'ta da koyabilir
-          const fragment = new URLSearchParams(
+        const oauthError =
+          new URLSearchParams(window.location.search).get('error') ||
+          new URLSearchParams(
             window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
-          )
-          return fragment.get('error')
-        })()
+          ).get('error')
+
         const errorDescription =
-          search.get('error_description') ||
+          new URLSearchParams(window.location.search).get('error_description') ||
           new URLSearchParams(
             window.location.hash.startsWith('#') ? window.location.hash.slice(1) : window.location.hash
           ).get('error_description')
@@ -98,7 +108,7 @@ export default function TeamsCallbackPage() {
           throw new Error('Microsoft yetkilendirmesi tamamlanamadı (token alınamadı)')
         }
 
-        // Yerel session'ı kur (popup tarafı için) — profile insert yetkisi için
+        // Yerel session kurulumu (popup tarafı için) — ensureProfile için gerekli
         const supabase = createEmbeddedAuthClient()
         const { data, error: setSessionError } = await supabase.auth.setSession({
           access_token: tokens.access_token,
@@ -116,18 +126,44 @@ export default function TeamsCallbackPage() {
           data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name
         )
 
+        const payload = {
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+          expires_at: tokens.expires_at,
+          user_email: data.session.user.email ?? undefined,
+        }
+
+        // (1) Server-side handoff: COOP / storage partitioning'i atlayan
+        //     birincil kanal. Parent iframe burayı polling yapar.
+        const handoffId = getHashOrSearchParam(HANDOFF_QUERY_KEY)
+        if (handoffId) {
+          try {
+            await fetch(`/api/auth/handoff/${encodeURIComponent(handoffId)}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(payload),
+              credentials: 'omit',
+            })
+          } catch (handoffErr) {
+            // Handoff'a yazılamadıysa hata değil — fallback notifySuccess var
+            console.error('[teams-callback] handoff POST failed', handoffErr)
+          }
+        }
+
         setStatus('success')
         setMessage('Giriş başarılı! Yönlendiriliyorsunuz...')
 
+        // (2) Best-effort: legacy / aynı-origin host'lar için Teams SDK kanalı
         if (sdkReady) {
-          teamsNotifyAuthSuccess({
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
-            expires_at: tokens.expires_at,
-            user_email: data.session.user.email ?? undefined,
-          })
-        } else {
-          // Teams SDK yoksa: bu popup normal tarayıcıdan açılmış demektir
+          try {
+            teamsNotifyAuthSuccess(payload)
+          } catch {
+            /* COOP severe etmişse sessizce geç — handoff zaten devrede */
+          }
+        }
+
+        // (3) Eğer Teams ortamı yoksa popup standalone açılmıştır → dashboard
+        if (!sdkReady && !handoffId) {
           window.location.href = '/dashboard/requests'
         }
       } catch (err) {
@@ -160,6 +196,7 @@ export default function TeamsCallbackPage() {
               </svg>
             </div>
             <p className="text-xl font-semibold text-gray-900">{message}</p>
+            <p className="text-sm text-gray-500">Bu pencere otomatik kapanmazsa kapatabilirsiniz.</p>
           </div>
         )}
         {status === 'error' && (

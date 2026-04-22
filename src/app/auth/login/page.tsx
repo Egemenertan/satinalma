@@ -18,16 +18,77 @@ import {
 const TEAMS_AUTH_START_PATH = '/auth/teams-auth-start'
 const BROWSER_OAUTH_CALLBACK_PATH = '/auth/callback'
 
+const HANDOFF_POLL_INTERVAL_MS = 1000
+const HANDOFF_POLL_TIMEOUT_MS = 4 * 60 * 1000 // popup'a 4 dk
+
+/**
+ * `Promise.any` benzeri — verilen promise'lerden ilk başarılı olanı döner.
+ * Hepsi reject ederse, ilk hatayı throw eder.
+ *
+ * Kendi implementasyonumuz: tsconfig lib ES6 olduğu için `Promise.any` ve
+ * `AggregateError` global'leri yok.
+ */
+async function firstSuccessful<T>(promises: Promise<T>[]): Promise<T> {
+  if (promises.length === 0) {
+    throw new Error('Bekleyen işlem yok')
+  }
+
+  return new Promise<T>((resolve, reject) => {
+    let rejections = 0
+    let firstError: unknown = null
+    let settled = false
+
+    promises.forEach((p) => {
+      p.then(
+        (value) => {
+          if (settled) return
+          settled = true
+          resolve(value)
+        },
+        (err) => {
+          if (settled) return
+          if (firstError === null) firstError = err
+          rejections += 1
+          if (rejections === promises.length) {
+            settled = true
+            reject(firstError)
+          }
+        }
+      )
+    })
+  })
+}
+
+/**
+ * Cryptographically secure UUID v4 üret.
+ * Modern tarayıcılarda crypto.randomUUID() var; fallback: getRandomValues.
+ */
+function generateHandoffId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  // Fallback (RFC 4122 v4)
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  bytes[6] = (bytes[6] & 0x0f) | 0x40
+  bytes[8] = (bytes[8] & 0x3f) | 0x80
+  const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`
+}
+
 /**
  * Login sayfası — Microsoft (Azure AD) tabanlı tek giriş akışı.
  *
  * İki mod desteklenir:
  *
- * 1. **Normal tarayıcı**: Standart Supabase OAuth redirect akışı.
- * 2. **Teams / Outlook iframe**: Teams SDK popup'ı açılır
- *    (`teamsAuthenticate`) — popup OAuth tamamlanınca access/refresh
- *    token'ları parent iframe'e geri döner ve `setSession` ile session
- *    iframe'de aktive edilir. Cookie partitioning sorunu yaşanmaz.
+ * 1. **Normal tarayıcı**: Standart Supabase OAuth redirect akışı (PKCE).
+ * 2. **Teams / Outlook iframe**: Teams SDK popup'ı açılır. Token'lar parent
+ *    iframe'e iki paralel kanaldan iletilir:
+ *      - **Server-side handoff** (birincil): popup token'ları
+ *        `/api/auth/handoff/[id]` endpoint'ine yazar; iframe polling ile çeker.
+ *        Bu kanal browser COOP / storage partitioning kısıtlarından
+ *        etkilenmez ve modern Outlook (outlook.cloud.microsoft) ile çalışır.
+ *      - **Teams SDK notifySuccess** (yedek): eski / aynı-origin host'lar için.
  */
 function LoginContent() {
   const [loading, setLoading] = useState(false)
@@ -52,7 +113,6 @@ function LoginContent() {
 
       if (embedded) {
         if (!cancelled) setStatus('Microsoft entegrasyonu hazırlanıyor...')
-        // Sessiz fail — Teams ortamında değilsek timeout ile false döner
         await initializeTeams()
       }
 
@@ -95,33 +155,97 @@ function LoginContent() {
   }, [searchParams])
 
   /**
+   * Server-side handoff endpoint'ini polling ile dinler.
+   * Token gelene kadar (veya timeout/abort) bekler.
+   */
+  const pollHandoff = useCallback(
+    async (handoffId: string, signal: AbortSignal): Promise<TeamsAuthTokenPayload> => {
+      const deadline = Date.now() + HANDOFF_POLL_TIMEOUT_MS
+
+      while (!signal.aborted && Date.now() < deadline) {
+        try {
+          const res = await fetch(
+            `/api/auth/handoff/${encodeURIComponent(handoffId)}`,
+            { method: 'GET', credentials: 'omit', signal }
+          )
+
+          if (res.ok) {
+            const data = await res.json()
+            if (data?.tokens?.access_token && data?.tokens?.refresh_token) {
+              return data.tokens as TeamsAuthTokenPayload
+            }
+          } else if (res.status === 410) {
+            throw new Error('Giriş süresi doldu, lütfen tekrar deneyin')
+          }
+          // 404 = henüz hazır değil, bekle ve devam et
+        } catch (err) {
+          if ((err as Error)?.name === 'AbortError') throw err
+          // network hatası — polling'e devam
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, HANDOFF_POLL_INTERVAL_MS))
+      }
+
+      if (signal.aborted) {
+        throw new Error('Giriş iptal edildi')
+      }
+      throw new Error('Microsoft girişi zaman aşımına uğradı')
+    },
+    []
+  )
+
+  /**
    * Embedded (Teams/Outlook) modu için popup auth.
-   * Popup'tan dönen token JSON'u ile setSession çağrılır.
+   * İki paralel token kanalı yarıştırılır; ilk başarılı olan kazanır.
    */
   const loginWithTeamsPopup = useCallback(async () => {
     setStatus('Microsoft hesabınızla doğrulanıyor...')
 
-    const popupUrl = `${window.location.origin}${TEAMS_AUTH_START_PATH}`
+    const handoffId = generateHandoffId()
+    const popupUrl = new URL(TEAMS_AUTH_START_PATH, window.location.origin)
+    popupUrl.searchParams.set('handoff_id', handoffId)
 
-    let resultRaw: string
-    try {
-      resultRaw = await teamsAuthenticate(popupUrl, 600, 700)
-    } catch (err) {
-      throw new Error(getErrorMessage(err, 'Microsoft girişi iptal edildi'))
-    }
+    const abortController = new AbortController()
 
-    setStatus('Oturum oluşturuluyor...')
+    // Kanal 1: Teams SDK notifySuccess (best-effort — COOP kesebilir)
+    const sdkPromise: Promise<TeamsAuthTokenPayload> = teamsAuthenticate(
+      popupUrl.toString(),
+      600,
+      700
+    ).then((raw) => {
+      try {
+        const parsed = JSON.parse(raw) as TeamsAuthTokenPayload
+        if (!parsed?.access_token || !parsed?.refresh_token) {
+          throw new Error('SDK channel: invalid payload')
+        }
+        return parsed
+      } catch {
+        throw new Error('Microsoft girişinden geçersiz yanıt alındı')
+      }
+    })
+
+    // Kanal 2: Server-side handoff polling (birincil — daima çalışır)
+    const handoffPromise = pollHandoff(handoffId, abortController.signal)
+
+    // SDK kanalının reddi (popup kapandı vb.) handoff kanalını öldürmemeli;
+    // bu yüzden ikisini ayrı yakalayıp .catch ile boğuyoruz.
+    const sdkSafe = sdkPromise.catch((e) => {
+      throw e instanceof Error ? e : new Error(String(e))
+    })
+    const handoffSafe = handoffPromise.catch((e) => {
+      throw e instanceof Error ? e : new Error(String(e))
+    })
 
     let payload: TeamsAuthTokenPayload
     try {
-      payload = JSON.parse(resultRaw) as TeamsAuthTokenPayload
-    } catch {
-      throw new Error('Microsoft girişinden geçersiz yanıt alındı')
+      payload = await firstSuccessful([sdkSafe, handoffSafe])
+    } catch (err) {
+      throw new Error(getErrorMessage(err, 'Microsoft girişi tamamlanamadı'))
+    } finally {
+      abortController.abort()
     }
 
-    if (!payload?.access_token || !payload?.refresh_token) {
-      throw new Error('Oturum bilgileri alınamadı')
-    }
+    setStatus('Oturum oluşturuluyor...')
 
     const { data, error: setSessionError } = await supabase.auth.setSession({
       access_token: payload.access_token,
@@ -141,10 +265,10 @@ function LoginContent() {
 
     setStatus('Yönlendiriliyorsunuz...')
     window.location.href = getRedirectPath(role)
-  }, [supabase])
+  }, [supabase, pollHandoff])
 
   /**
-   * Standart tarayıcı modu için OAuth redirect.
+   * Standart tarayıcı modu için OAuth redirect (PKCE).
    */
   const loginWithBrowserRedirect = useCallback(async () => {
     const { error: oauthError } = await supabase.auth.signInWithOAuth({
@@ -159,7 +283,6 @@ function LoginContent() {
     if (oauthError) {
       throw oauthError
     }
-    // Başarılı: tarayıcı zaten Microsoft'a yönlendiriliyor
   }, [supabase])
 
   const handleLogin = async () => {
@@ -242,8 +365,8 @@ function LoginContent() {
 
             {isEmbedded && (
               <p className="text-xs text-center text-gray-500 leading-relaxed">
-                Giriş için küçük bir Microsoft penceresi açılacak. Tarayıcınız
-                açılır pencereleri engelliyorsa lütfen bu site için izin verin.
+                Giriş için küçük bir Microsoft penceresi açılacak. Pencerede
+                giriş yaptıktan sonra bu ekran otomatik devam edecek.
               </p>
             )}
           </div>
