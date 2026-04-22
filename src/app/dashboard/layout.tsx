@@ -91,7 +91,24 @@ export default function DashboardLayout({
         }
 
         console.log('✅ Profile found:', profile?.role)
-        const role = (profile?.role as UserRole) || 'user'
+        let role = (profile?.role as UserRole) || 'site_personnel'
+
+        // "user" rolünü otomatik "site_personnel"e yükselt (Microsoft Single Tenant)
+        if (role === 'user') {
+          console.log('🔄 user rolü tespit edildi, site_personnel\'e yükseltiliyor...')
+          const { error: updateError } = await supabase
+            .from('profiles')
+            .update({ role: 'site_personnel' })
+            .eq('id', user.id)
+          
+          if (!updateError) {
+            role = 'site_personnel'
+            console.log('✅ Rol yükseltildi: site_personnel')
+          } else {
+            console.warn('⚠️ Rol yükseltilemedi:', updateError.message)
+          }
+        }
+
         setUserRole(role)
         setIsLoading(false)
       } catch (error) {
@@ -113,16 +130,6 @@ export default function DashboardLayout({
   // Sayfa erişim kontrolü (pathname değiştiğinde)
   useEffect(() => {
     if (!isLoading && userRole) {
-      // User rolü dashboard'a erişemez - login sayfasına yönlendir
-      if (userRole === 'user') {
-        const signOutAndRedirect = async () => {
-          await supabase.auth.signOut()
-          window.location.href = '/auth/login?approval_pending=true'
-        }
-        signOutAndRedirect()
-        return
-      }
-      
       const hasPageAccess = canAccessPage(userRole, pathname)
       setHasAccess(hasPageAccess)
       
@@ -131,15 +138,13 @@ export default function DashboardLayout({
         if (userRole === 'site_manager' || userRole === 'site_personnel' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') {
           router.push('/dashboard/requests')
         } else if (userRole === 'purchasing_officer') {
-          // Purchasing officer için dashboard'a yönlendir
           router.push('/dashboard')
         } else {
-          // Diğer roller için dashboard'a yönlendir
           router.push('/dashboard')
         }
       }
     }
-  }, [pathname, userRole, isLoading, router, supabase])
+  }, [pathname, userRole, isLoading, router])
 
   // Mobil header scroll hide/show kontrolü
   const handleScroll = useCallback(() => {
@@ -205,19 +210,26 @@ export default function DashboardLayout({
     )
   }
 
-  // Access denied state
+  // Access denied state - sadece yetkili roller için (user rolü buraya gelmez)
   if (!hasAccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center">
-          <div className="w-20 h-20 bg-red-500 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-xl">
-            <X className="h-10 w-10 text-white" />
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+        <div className="text-center max-w-md">
+          <div className="w-16 h-16 bg-amber-100 rounded-2xl flex items-center justify-center mx-auto mb-6">
+            <svg className="h-8 w-8 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+            </svg>
           </div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Erişim Reddedildi</h2>
-          <p className="text-gray-600 mb-4">Bu sayfaya erişim yetkiniz bulunmuyor.</p>
-          <Button onClick={() => router.back()} variant="outline">
-            Geri Dön
-          </Button>
+          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Bu sayfaya erişiminiz yok</h2>
+          <p className="text-gray-600 mb-6">Görüntülemek istediğiniz sayfa için gerekli yetkiniz bulunmuyor.</p>
+          <div className="flex items-center justify-center gap-3">
+            <Button onClick={() => router.back()} variant="outline">
+              Geri Dön
+            </Button>
+            <Button onClick={() => router.push('/dashboard/requests')} className="bg-black hover:bg-gray-800">
+              Ana Sayfa
+            </Button>
+          </div>
         </div>
       </div>
     )

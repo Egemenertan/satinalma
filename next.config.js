@@ -44,7 +44,7 @@ const nextConfig = {
         key: 'X-Robots-Tag',
         value: 'noindex, nofollow, noarchive, nosnippet, noimageindex, nocache',
       },
-      // Content Security Policy - Teams iframe desteği ile
+      // Content Security Policy - Teams ve Outlook iframe desteği ile
       {
         key: 'Content-Security-Policy',
         value: [
@@ -53,9 +53,9 @@ const nextConfig = {
           "style-src 'self' 'unsafe-inline'",
           "img-src 'self' data: blob: https://*.supabase.co https://*.microsoft.com",
           "font-src 'self' data:",
-          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://graph.microsoft.com https://login.microsoftonline.com https://*.office.com https://*.office365.com https://*.teams.microsoft.com",
+          "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://api.openai.com https://graph.microsoft.com https://login.microsoftonline.com https://*.office.com https://*.office365.com https://*.teams.microsoft.com https://*.outlook.com",
           "frame-src 'self' https://challenges.cloudflare.com https://*.office.com https://*.office365.com https://login.microsoftonline.com",
-          "frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://*.skype.com https://*.office.com https://*.office365.com",
+          "frame-ancestors 'self' https://teams.microsoft.com https://*.teams.microsoft.com https://*.skype.com https://*.office.com https://*.office365.com https://outlook.office.com https://outlook.office365.com https://outlook.live.com https://*.outlook.com",
           "worker-src 'self' blob:",
         ].join('; ')
       }

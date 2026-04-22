@@ -1,44 +1,48 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { app, authentication } from '@microsoft/teams-js'
 import { createClient } from '@/lib/supabase/client'
 import { Loading } from '@/components/ui/loading'
+import { ensureUserProfile } from '@/lib/auth'
 
+type Status = 'loading' | 'success' | 'error'
+
+/**
+ * Teams Authentication Popup Callback
+ * 
+ * Teams ortamındaki popup'ta auth flow'unu tamamlar.
+ * Tüm kullanıcılar otomatik olarak site_personnel rolü alır.
+ */
 export default function TeamsCallbackPage() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading')
+  const [status, setStatus] = useState<Status>('loading')
   const [message, setMessage] = useState('Teams authentication işleniyor...')
+  const handledRef = useRef(false)
 
   useEffect(() => {
+    if (handledRef.current) return
+    handledRef.current = true
+
     const handleTeamsCallback = async () => {
       try {
-        console.log('🔷 Teams callback başlatılıyor...')
-        console.log('🌐 URL:', window.location.href)
-
         await app.initialize()
-        console.log('✅ Teams SDK initialized in popup')
 
         const params = new URLSearchParams(window.location.search)
         const code = params.get('code')
-        const error = params.get('error')
+        const oauthError = params.get('error')
         const errorDescription = params.get('error_description')
 
-        console.log('🔍 URL params:', { hasCode: !!code, error, errorDescription })
-
-        if (error) {
-          console.error('❌ OAuth error:', error, errorDescription)
+        if (oauthError) {
+          console.error('❌ OAuth hatası:', oauthError, errorDescription)
           setStatus('error')
-          setMessage(`Giriş hatası: ${errorDescription || error}`)
-          
-          authentication.notifyFailure(error)
+          setMessage(`Giriş hatası: ${errorDescription || oauthError}`)
+          authentication.notifyFailure(oauthError)
           return
         }
 
         if (!code) {
-          console.error('❌ Code bulunamadı')
           setStatus('error')
           setMessage('Authentication code bulunamadı')
-          
           authentication.notifyFailure('no_code')
           return
         }
@@ -46,108 +50,39 @@ export default function TeamsCallbackPage() {
         setMessage('Oturum doğrulanıyor...')
 
         const supabase = createClient()
-        const { data, error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
 
         if (exchangeError) {
-          console.error('❌ Code exchange error:', exchangeError)
+          console.error('❌ Code exchange hatası:', exchangeError)
           setStatus('error')
           setMessage(`Oturum oluşturulamadı: ${exchangeError.message}`)
-          
           authentication.notifyFailure(exchangeError.message)
           return
         }
 
-        console.log('✅ Session oluşturuldu:', data.session?.user.id)
-
         const { data: { session } } = await supabase.auth.getSession()
-        
-        if (!session) {
+
+        if (!session?.user) {
           setStatus('error')
           setMessage('Session alınamadı')
           authentication.notifyFailure('no_session')
           return
         }
 
-        const email = session.user.email || ''
-        const allowedDomains = ['dovecgroup.com']
-        const isAllowedDomain = allowedDomains.some(domain => email.endsWith(`@${domain}`))
-        
-        if (!isAllowedDomain) {
-          console.error('❌ Yetkisiz domain:', email)
-          await supabase.auth.signOut()
-          setStatus('error')
-          setMessage('Bu email adresi ile giriş yapılamaz. Sadece @dovecgroup.com email adresleri kullanılabilir.')
-          
-          authentication.notifyFailure('unauthorized_domain')
-          return
-        }
-
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('role, email, full_name')
-          .eq('id', session.user.id)
-          .single()
-
-        if (profileError && profileError.code === 'PGRST116') {
-          console.log('📝 Yeni profil oluşturuluyor...')
-          
-          const DEFAULT_SITES = {
-            MERKEZ_OFIS: '9cf48170-f37f-4fc2-91d8-fe65e5f5b921',
-            COURTYARD: '18e8e316-1291-429d-a591-5cec97d235b7'
-          }
-          
-          const { error: insertError } = await supabase
-            .from('profiles')
-            .insert({
-              id: session.user.id,
-              email: session.user.email,
-              full_name: session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email,
-              role: 'site_personnel',
-              site_id: [DEFAULT_SITES.MERKEZ_OFIS, DEFAULT_SITES.COURTYARD],
-              created_at: new Date().toISOString()
-            })
-
-          if (insertError) {
-            console.error('❌ Profil oluşturulamadı:', insertError)
-            setStatus('error')
-            setMessage('Profil oluşturulamadı')
-            authentication.notifyFailure('profile_creation_failed')
-            return
-          }
-
-          console.log('✅ Profil oluşturuldu')
-        }
-
-        if (profile?.role === 'user') {
-          const DEFAULT_SITES = {
-            MERKEZ_OFIS: '9cf48170-f37f-4fc2-91d8-fe65e5f5b921',
-            COURTYARD: '18e8e316-1291-429d-a591-5cec97d235b7'
-          }
-          
-          await supabase
-            .from('profiles')
-            .update({ 
-              role: 'site_personnel',
-              site_id: [DEFAULT_SITES.MERKEZ_OFIS, DEFAULT_SITES.COURTYARD]
-            })
-            .eq('id', session.user.id)
-        }
+        // Profil hazırla (otomatik site_personnel)
+        await ensureUserProfile(supabase, session.user)
 
         setStatus('success')
         setMessage('Giriş başarılı! Yönlendiriliyorsunuz...')
-        
-        console.log('✅ Teams auth tamamlandı, popup kapatılıyor')
         authentication.notifySuccess('success')
-
-      } catch (error) {
-        console.error('🔥 Teams callback error:', error)
+      } catch (err) {
+        console.error('🔥 Teams callback hatası:', err)
         setStatus('error')
-        setMessage('Beklenmeyen bir hata oluştu')
-        
+        setMessage(err instanceof Error ? err.message : 'Beklenmeyen bir hata oluştu')
         try {
           authentication.notifyFailure('unexpected_error')
         } catch {
-          console.log('Teams SDK not available')
+          console.warn('Teams SDK kullanılamıyor')
         }
       }
     }
@@ -164,7 +99,7 @@ export default function TeamsCallbackPage() {
             <p className="mt-4 text-gray-600">Lütfen bekleyin...</p>
           </>
         )}
-        
+
         {status === 'success' && (
           <div className="space-y-4">
             <div className="w-16 h-16 mx-auto bg-green-100 rounded-full flex items-center justify-center">
@@ -176,7 +111,7 @@ export default function TeamsCallbackPage() {
             <p className="text-gray-600">Bu pencere otomatik olarak kapanacak.</p>
           </div>
         )}
-        
+
         {status === 'error' && (
           <div className="space-y-4">
             <div className="w-16 h-16 mx-auto bg-red-100 rounded-full flex items-center justify-center">
