@@ -87,32 +87,40 @@ function LoginContent() {
     try {
       // Popup'ta auth sayfasını aç
       const authUrl = `${window.location.origin}/auth/popup-start`
-      const success = await popupAuthenticate(authUrl)
+      await popupAuthenticate(authUrl)
       
-      if (success) {
-        // Popup kapandıktan sonra session kontrol et
+      // Popup kapandıktan sonra session kontrol et (birkaç deneme)
+      let session = null
+      for (let i = 0; i < 5; i++) {
         await new Promise(r => setTimeout(r, 1000))
         
-        const { data: { session } } = await supabase.auth.getSession()
+        // Session'ı yenile
+        const { data } = await supabase.auth.getSession()
+        session = data.session
         
         if (session?.user) {
-          const role = await ensureProfile(
-            supabase,
-            session.user.id,
-            session.user.email,
-            session.user.user_metadata?.full_name
-          )
-          window.location.href = getRedirectPath(role)
-        } else {
-          setError('Giriş tamamlanamadı. Lütfen tekrar deneyin.')
+          console.log('✅ Session bulundu, deneme:', i + 1)
+          break
         }
+        console.log('⏳ Session bekleniyor, deneme:', i + 1)
+      }
+      
+      if (session?.user) {
+        const role = await ensureProfile(
+          supabase,
+          session.user.id,
+          session.user.email,
+          session.user.user_metadata?.full_name
+        )
+        window.location.href = getRedirectPath(role)
       } else {
-        setError('Giriş penceresi kapatıldı veya zaman aşımına uğradı.')
+        // Session yoksa sayfayı yenilemeyi dene
+        console.log('⚠️ Session bulunamadı, sayfa yenileniyor...')
+        window.location.reload()
       }
     } catch (err) {
       console.error('Popup login hatası:', err)
       setError('Giriş yapılırken bir hata oluştu.')
-    } finally {
       setLoading(false)
     }
   }

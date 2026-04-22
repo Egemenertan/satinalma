@@ -35,8 +35,16 @@ export default function PopupCallbackPage() {
         }
 
         if (code) {
-          await supabase.auth.exchangeCodeForSession(code)
-          await new Promise(r => setTimeout(r, 500))
+          const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
+          if (exchangeError) {
+            console.error('Code exchange hatası:', exchangeError)
+            setStatus('error')
+            setMessage('Oturum oluşturulamadı')
+            setTimeout(() => window.close(), 2000)
+            return
+          }
+          // Cookie'lerin set edilmesi için daha uzun bekleme
+          await new Promise(r => setTimeout(r, 1500))
         }
 
         const { data: { session } } = await supabase.auth.getSession()
