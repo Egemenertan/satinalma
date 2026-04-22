@@ -4,32 +4,31 @@ import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
-import { AlertCircle, ExternalLink, RefreshCw } from 'lucide-react'
+import { AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
 import { getRedirectPath } from '@/lib/auth'
-import { isInIframe } from '@/lib/teams'
-
-const ERROR_MESSAGES: Record<string, string> = {
-  no_session: 'Giriş tamamlanamadı. Lütfen tekrar deneyin.',
-  callback_failed: 'Giriş işlemi başarısız. Lütfen tekrar deneyin.',
-  auth_failed: 'Kimlik doğrulama başarısız. Lütfen tekrar deneyin.',
-}
+import { initializeTeams, isInIframe, getTeamsSSOToken } from '@/lib/teams'
 
 function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [isEmbedded, setIsEmbedded] = useState(false)
+  const [status, setStatus] = useState<string>('')
   const [checking, setChecking] = useState(true)
+  const [isEmbedded, setIsEmbedded] = useState(false)
   const searchParams = useSearchParams()
   const supabase = createClient()
 
-  // Ortam ve session kontrolü
   useEffect(() => {
-    const check = async () => {
+    const init = async () => {
       // Embedded ortam kontrolü
       const embedded = isInIframe()
       setIsEmbedded(embedded)
+      
+      if (embedded) {
+        setStatus('Teams SDK başlatılıyor...')
+        await initializeTeams()
+      }
       
       // Mevcut session kontrolü
       const { data: { session } } = await supabase.auth.getSession()
@@ -45,51 +44,53 @@ function LoginContent() {
         return
       }
       
+      setStatus('')
       setChecking(false)
     }
-    check()
+    init()
   }, [supabase])
 
-  // URL'deki hata parametresi
   useEffect(() => {
     const err = searchParams.get('error')
     if (err) {
-      setError(ERROR_MESSAGES[err] || `Hata: ${err}`)
+      setError(err === 'no_session' ? 'Giriş tamamlanamadı. Lütfen tekrar deneyin.' : `Hata: ${err}`)
     }
   }, [searchParams])
 
-  // Session'ı kontrol et (sayfa yenilendiğinde)
-  const checkSession = async () => {
-    setLoading(true)
-    const { data: { session } } = await supabase.auth.getSession()
-    
-    if (session?.user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', session.user.id)
-        .maybeSingle()
-
-      window.location.href = getRedirectPath(profile?.role)
-    } else {
-      setError('Henüz giriş yapılmamış. Lütfen yeni sekmede giriş yapın.')
-      setLoading(false)
-    }
-  }
-
-  // Login - normal veya yeni sekmede
   const handleLogin = async () => {
     setLoading(true)
     setError(null)
 
-    if (isEmbedded) {
-      // Outlook/iframe içinde: Yeni sekmede aç
-      const loginUrl = `${window.location.origin}/auth/login-external`
-      window.open(loginUrl, '_blank')
-      setLoading(false)
-    } else {
-      // Normal tarayıcı: Redirect
-      try {
+    try {
+      if (isEmbedded) {
+        // Outlook/Teams içinde: SSO ile giriş
+        setStatus('Microsoft hesabınızla doğrulanıyor...')
+        
+        const teamsToken = await getTeamsSSOToken()
+        
+        setStatus('Oturum oluşturuluyor...')
+        
+        const response = await fetch('/api/auth/teams/sso', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ teamsToken })
+        })
+
+        const data = await response.json()
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Giriş başarısız')
+        }
+
+        if (data.actionLink) {
+          // Magic link ile otomatik giriş
+          setStatus('Yönlendiriliyorsunuz...')
+          window.location.href = data.actionLink
+        } else {
+          throw new Error('Oturum bağlantısı alınamadı')
+        }
+      } else {
+        // Normal tarayıcı: OAuth redirect
         const { error } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
@@ -99,21 +100,20 @@ function LoginContent() {
           },
         })
 
-        if (error) {
-          setError(error.message)
-          setLoading(false)
-        }
-      } catch (err) {
-        setError('Giriş yapılırken bir hata oluştu.')
-        setLoading(false)
+        if (error) throw error
       }
+    } catch (err) {
+      console.error('Login hatası:', err)
+      setError(err instanceof Error ? err.message : 'Giriş yapılırken bir hata oluştu')
+      setLoading(false)
+      setStatus('')
     }
   }
 
   if (checking) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loading size="lg" text="Kontrol ediliyor..." />
+        <Loading size="lg" text={status || 'Kontrol ediliyor...'} />
       </div>
     )
   }
@@ -138,15 +138,10 @@ function LoginContent() {
               </Alert>
             )}
 
-            {isEmbedded && (
-              <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
-                <div className="flex items-center gap-2 text-blue-700 mb-2">
-                  <ExternalLink className="w-4 h-4" />
-                  <span className="font-medium">Outlook Ortamı</span>
-                </div>
-                <p className="text-sm text-blue-600">
-                  Giriş yeni sekmede açılacak. Giriş yaptıktan sonra bu sayfayı yenileyin.
-                </p>
+            {status && !error && (
+              <div className="text-center text-gray-600 py-2">
+                <InlineLoading className="mr-2" />
+                {status}
               </div>
             )}
 
@@ -155,10 +150,10 @@ function LoginContent() {
               disabled={loading}
               className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
             >
-              {loading ? (
+              {loading && !status ? (
                 <>
                   <InlineLoading className="mr-2" />
-                  {isEmbedded ? 'Yeni sekme açılıyor...' : 'Giriş yapılıyor...'}
+                  Giriş yapılıyor...
                 </>
               ) : (
                 <>
@@ -168,22 +163,10 @@ function LoginContent() {
                     <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF" />
                     <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900" />
                   </svg>
-                  {isEmbedded ? 'Yeni Sekmede Giriş Yap' : 'Microsoft ile Giriş Yap'}
+                  Microsoft ile Giriş Yap
                 </>
               )}
             </Button>
-
-            {isEmbedded && (
-              <Button
-                onClick={checkSession}
-                disabled={loading}
-                variant="outline"
-                className="w-full h-12 text-base font-medium rounded-xl flex items-center justify-center gap-2"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Giriş Yaptım, Kontrol Et
-              </Button>
-            )}
           </div>
         </div>
       </div>
