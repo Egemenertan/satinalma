@@ -2,26 +2,23 @@
 
 import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
-import { createEmbeddedAuthClient } from '@/lib/supabase/client'
+import { createClient } from '@/lib/supabase/client'
 import { Loading } from '@/components/ui/loading'
-import { initializeTeams, teamsNotifyAuthFailure } from '@/lib/teams'
 import { getErrorMessage } from '@/lib/auth'
 
 const HANDOFF_QUERY_KEY = 'handoff_id'
 
 /**
- * Teams/Outlook popup auth giriş sayfası.
+ * Teams/Outlook embedded handoff flow için OAuth başlangıç sayfası.
  *
- * Bu sayfa `authentication.authenticate({ url: '/auth/teams-auth-start?handoff_id=...' })`
- * ile açılan popup içinde çalışır. Görevi:
+ * Bu sayfa **yeni bir browser tab'da (top-level)** açılır — popup değil.
+ * Top-level context'te cookie/PKCE state normal çalışır, COOP veya
+ * storage partitioning sorunu yoktur.
  *
  * 1. URL'den `handoff_id`'yi okur (parent iframe tarafından üretilen secret).
- * 2. Teams SDK'yı başlatır.
- * 3. Supabase Azure OAuth akışını başlatır; redirectTo'yu
+ * 2. Standart Supabase Azure OAuth (PKCE) başlatır; redirectTo'yu
  *    `/auth/teams-callback?handoff_id=...` olarak ayarlar — handoff_id
- *    callback'e taşınır ve oradan token transit kanalı için kullanılır.
- *
- * Hata durumunda parent window'a `notifyFailure` ile haber verir.
+ *    callback'e taşınır.
  */
 function TeamsAuthStartContent() {
   const [error, setError] = useState<string | null>(null)
@@ -32,21 +29,17 @@ function TeamsAuthStartContent() {
 
     const startAuth = async () => {
       try {
-        await initializeTeams()
+        const handoffId = searchParams.get(HANDOFF_QUERY_KEY) ?? ''
+        if (!handoffId) {
+          throw new Error('Geçersiz oturum başlatma isteği (handoff_id eksik)')
+        }
 
         if (cancelled) return
 
-        const handoffId = searchParams.get(HANDOFF_QUERY_KEY) ?? ''
-
-        // Embedded ortam için implicit flow kullanan ayrı bir client.
-        // PKCE'nin code_verifier cookie'si Teams popup partition'ında
-        // kaybolabildiği için implicit'e düşüyoruz.
-        const supabase = createEmbeddedAuthClient()
+        const supabase = createClient()
 
         const callbackUrl = new URL('/auth/teams-callback', window.location.origin)
-        if (handoffId) {
-          callbackUrl.searchParams.set(HANDOFF_QUERY_KEY, handoffId)
-        }
+        callbackUrl.searchParams.set(HANDOFF_QUERY_KEY, handoffId)
 
         const { error: oauthError } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
@@ -62,15 +55,9 @@ function TeamsAuthStartContent() {
         if (oauthError) {
           throw oauthError
         }
-        // Başarılıysa Supabase tarayıcıyı zaten Microsoft'a yönlendiriyor
+        // Başarılı: tarayıcı zaten Microsoft'a yönlendiriliyor
       } catch (err) {
-        const message = getErrorMessage(err, 'Microsoft girişi başlatılamadı')
-        setError(message)
-        try {
-          teamsNotifyAuthFailure(message)
-        } catch {
-          /* SDK init olmadıysa sessizce geç */
-        }
+        setError(getErrorMessage(err, 'Microsoft girişi başlatılamadı'))
       }
     }
 

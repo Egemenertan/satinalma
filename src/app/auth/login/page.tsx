@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback } from 'react'
+import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
@@ -8,66 +8,28 @@ import { AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
 import { ensureProfile, getRedirectPath, getErrorMessage, translateAuthError } from '@/lib/auth'
-import {
-  initializeTeams,
-  isInIframe,
-  teamsAuthenticate,
-  type TeamsAuthTokenPayload,
-} from '@/lib/teams'
+import { isInIframe } from '@/lib/teams'
 
 const TEAMS_AUTH_START_PATH = '/auth/teams-auth-start'
 const BROWSER_OAUTH_CALLBACK_PATH = '/auth/callback'
 
 const HANDOFF_POLL_INTERVAL_MS = 1000
-const HANDOFF_POLL_TIMEOUT_MS = 4 * 60 * 1000 // popup'a 4 dk
+const HANDOFF_POLL_TIMEOUT_MS = 4 * 60 * 1000
 
-/**
- * `Promise.any` benzeri — verilen promise'lerden ilk başarılı olanı döner.
- * Hepsi reject ederse, ilk hatayı throw eder.
- *
- * Kendi implementasyonumuz: tsconfig lib ES6 olduğu için `Promise.any` ve
- * `AggregateError` global'leri yok.
- */
-async function firstSuccessful<T>(promises: Promise<T>[]): Promise<T> {
-  if (promises.length === 0) {
-    throw new Error('Bekleyen işlem yok')
-  }
-
-  return new Promise<T>((resolve, reject) => {
-    let rejections = 0
-    let firstError: unknown = null
-    let settled = false
-
-    promises.forEach((p) => {
-      p.then(
-        (value) => {
-          if (settled) return
-          settled = true
-          resolve(value)
-        },
-        (err) => {
-          if (settled) return
-          if (firstError === null) firstError = err
-          rejections += 1
-          if (rejections === promises.length) {
-            settled = true
-            reject(firstError)
-          }
-        }
-      )
-    })
-  })
+interface HandoffTokens {
+  access_token: string
+  refresh_token: string
+  expires_at?: number
+  user_email?: string
 }
 
 /**
- * Cryptographically secure UUID v4 üret.
- * Modern tarayıcılarda crypto.randomUUID() var; fallback: getRandomValues.
+ * Cryptographically secure UUID v4.
  */
 function generateHandoffId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
   }
-  // Fallback (RFC 4122 v4)
   const bytes = new Uint8Array(16)
   crypto.getRandomValues(bytes)
   bytes[6] = (bytes[6] & 0x0f) | 0x40
@@ -77,18 +39,23 @@ function generateHandoffId(): string {
 }
 
 /**
- * Login sayfası — Microsoft (Azure AD) tabanlı tek giriş akışı.
+ * Login sayfası — Microsoft (Azure AD) OAuth.
  *
  * İki mod desteklenir:
  *
- * 1. **Normal tarayıcı**: Standart Supabase OAuth redirect akışı (PKCE).
- * 2. **Teams / Outlook iframe**: Teams SDK popup'ı açılır. Token'lar parent
- *    iframe'e iki paralel kanaldan iletilir:
- *      - **Server-side handoff** (birincil): popup token'ları
- *        `/api/auth/handoff/[id]` endpoint'ine yazar; iframe polling ile çeker.
- *        Bu kanal browser COOP / storage partitioning kısıtlarından
- *        etkilenmez ve modern Outlook (outlook.cloud.microsoft) ile çalışır.
- *      - **Teams SDK notifySuccess** (yedek): eski / aynı-origin host'lar için.
+ * 1. **Normal tarayıcı** (top-level): Standart Supabase PKCE OAuth redirect.
+ *
+ * 2. **Teams / Outlook iframe**: Yeni bir browser sekmesi açılır
+ *    (popup değil — `window.open(..., '_blank')`). Yeni sekme top-level
+ *    bir context olduğu için cookie ve PKCE state sorunsuz çalışır,
+ *    COOP veya storage partitioning sorunu yoktur.
+ *
+ *    Yeni sekme OAuth tamamlanınca token'ları `/api/auth/handoff/[id]`
+ *    endpoint'ine POST eder. Iframe paralel olarak bu endpoint'i polling
+ *    yapar; token'ları aldığında `setSession` ile session kurulur.
+ *
+ *    Bu mimari embedded SaaS app'ler için Microsoft'un tavsiye ettiği
+ *    "auth flows outside of iframe" pattern'idir.
  */
 function LoginContent() {
   const [loading, setLoading] = useState(false)
@@ -98,25 +65,17 @@ function LoginContent() {
   const [isEmbedded, setIsEmbedded] = useState(false)
   const searchParams = useSearchParams()
   const supabase = createClient()
+  const abortRef = useRef<AbortController | null>(null)
 
   /**
    * Mount: Embedded ortam tespiti + var olan session kontrolü.
-   * Session varsa direkt yönlendir.
    */
   useEffect(() => {
     let cancelled = false
 
     const init = async () => {
       const embedded = isInIframe()
-
       if (!cancelled) setIsEmbedded(embedded)
-
-      if (embedded) {
-        if (!cancelled) setStatus('Microsoft entegrasyonu hazırlanıyor...')
-        await initializeTeams()
-      }
-
-      if (cancelled) return
 
       const { data: { session } } = await supabase.auth.getSession()
 
@@ -141,11 +100,12 @@ function LoginContent() {
 
     return () => {
       cancelled = true
+      abortRef.current?.abort()
     }
   }, [supabase])
 
   /**
-   * URL'deki ?error=... parametresini insancıl mesaja çevir.
+   * URL'deki ?error=... parametresini Türkçeleştir.
    */
   useEffect(() => {
     const code = searchParams.get('error')
@@ -156,10 +116,9 @@ function LoginContent() {
 
   /**
    * Server-side handoff endpoint'ini polling ile dinler.
-   * Token gelene kadar (veya timeout/abort) bekler.
    */
   const pollHandoff = useCallback(
-    async (handoffId: string, signal: AbortSignal): Promise<TeamsAuthTokenPayload> => {
+    async (handoffId: string, signal: AbortSignal): Promise<HandoffTokens> => {
       const deadline = Date.now() + HANDOFF_POLL_TIMEOUT_MS
 
       while (!signal.aborted && Date.now() < deadline) {
@@ -172,15 +131,15 @@ function LoginContent() {
           if (res.ok) {
             const data = await res.json()
             if (data?.tokens?.access_token && data?.tokens?.refresh_token) {
-              return data.tokens as TeamsAuthTokenPayload
+              return data.tokens as HandoffTokens
             }
           } else if (res.status === 410) {
             throw new Error('Giriş süresi doldu, lütfen tekrar deneyin')
           }
-          // 404 = henüz hazır değil, bekle ve devam et
+          // 404 = henüz hazır değil, beklemeye devam
         } catch (err) {
           if ((err as Error)?.name === 'AbortError') throw err
-          // network hatası — polling'e devam
+          // network hatası — polling devam etsin
         }
 
         await new Promise((resolve) => setTimeout(resolve, HANDOFF_POLL_INTERVAL_MS))
@@ -189,67 +148,42 @@ function LoginContent() {
       if (signal.aborted) {
         throw new Error('Giriş iptal edildi')
       }
-      throw new Error('Microsoft girişi zaman aşımına uğradı')
+      throw new Error('Microsoft girişi zaman aşımına uğradı. Lütfen yeni sekmede giriş yapıp tekrar deneyin.')
     },
     []
   )
 
   /**
-   * Embedded (Teams/Outlook) modu için popup auth.
-   * İki paralel token kanalı yarıştırılır; ilk başarılı olan kazanır.
+   * Embedded (Teams/Outlook) modu için handoff akışı.
+   * Yeni browser sekmesinde OAuth, iframe handoff endpoint'ini polling.
    */
-  const loginWithTeamsPopup = useCallback(async () => {
-    setStatus('Microsoft hesabınızla doğrulanıyor...')
-
+  const loginWithHandoff = useCallback(async () => {
     const handoffId = generateHandoffId()
-    const popupUrl = new URL(TEAMS_AUTH_START_PATH, window.location.origin)
-    popupUrl.searchParams.set('handoff_id', handoffId)
 
-    const abortController = new AbortController()
+    const authUrl = new URL(TEAMS_AUTH_START_PATH, window.location.origin)
+    authUrl.searchParams.set('handoff_id', handoffId)
 
-    // Kanal 1: Teams SDK notifySuccess (best-effort — COOP kesebilir)
-    const sdkPromise: Promise<TeamsAuthTokenPayload> = teamsAuthenticate(
-      popupUrl.toString(),
-      600,
-      700
-    ).then((raw) => {
-      try {
-        const parsed = JSON.parse(raw) as TeamsAuthTokenPayload
-        if (!parsed?.access_token || !parsed?.refresh_token) {
-          throw new Error('SDK channel: invalid payload')
-        }
-        return parsed
-      } catch {
-        throw new Error('Microsoft girişinden geçersiz yanıt alındı')
-      }
-    })
-
-    // Kanal 2: Server-side handoff polling (birincil — daima çalışır)
-    const handoffPromise = pollHandoff(handoffId, abortController.signal)
-
-    // SDK kanalının reddi (popup kapandı vb.) handoff kanalını öldürmemeli;
-    // bu yüzden ikisini ayrı yakalayıp .catch ile boğuyoruz.
-    const sdkSafe = sdkPromise.catch((e) => {
-      throw e instanceof Error ? e : new Error(String(e))
-    })
-    const handoffSafe = handoffPromise.catch((e) => {
-      throw e instanceof Error ? e : new Error(String(e))
-    })
-
-    let payload: TeamsAuthTokenPayload
-    try {
-      payload = await firstSuccessful([sdkSafe, handoffSafe])
-    } catch (err) {
-      throw new Error(getErrorMessage(err, 'Microsoft girişi tamamlanamadı'))
-    } finally {
-      abortController.abort()
+    // Top-level yeni sekme (popup değil — COOP/partitioning sorunu yok)
+    const newTab = window.open(authUrl.toString(), '_blank', 'noopener,noreferrer')
+    if (!newTab) {
+      throw new Error(
+        'Yeni sekme açılamadı. Tarayıcınızdan bu site için açılır pencere/sekme iznini verin.'
+      )
     }
+
+    setStatus('Yeni sekmede Microsoft girişi bekleniyor...')
+
+    abortRef.current?.abort()
+    const controller = new AbortController()
+    abortRef.current = controller
+
+    const tokens = await pollHandoff(handoffId, controller.signal)
 
     setStatus('Oturum oluşturuluyor...')
 
     const { data, error: setSessionError } = await supabase.auth.setSession({
-      access_token: payload.access_token,
-      refresh_token: payload.refresh_token,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
     })
 
     if (setSessionError || !data.session?.user) {
@@ -292,7 +226,7 @@ function LoginContent() {
 
     try {
       if (isEmbedded) {
-        await loginWithTeamsPopup()
+        await loginWithHandoff()
       } else {
         await loginWithBrowserRedirect()
       }
@@ -308,7 +242,7 @@ function LoginContent() {
   if (checking) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loading size="lg" text={status || 'Kontrol ediliyor...'} />
+        <Loading size="lg" text="Kontrol ediliyor..." />
       </div>
     )
   }
@@ -365,8 +299,8 @@ function LoginContent() {
 
             {isEmbedded && (
               <p className="text-xs text-center text-gray-500 leading-relaxed">
-                Giriş için küçük bir Microsoft penceresi açılacak. Pencerede
-                giriş yaptıktan sonra bu ekran otomatik devam edecek.
+                Giriş için yeni bir tarayıcı sekmesi açılacak. Microsoft girişini
+                tamamladıktan sonra bu ekran otomatik devam edecek.
               </p>
             )}
           </div>
