@@ -1,7 +1,6 @@
 'use client'
 
-import { useState, useEffect, Suspense, useCallback, useRef } from 'react'
-import { useSearchParams } from 'next/navigation'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
@@ -10,8 +9,8 @@ import { Loading, InlineLoading } from '@/components/ui/loading'
 import { ensureProfile, getRedirectPath, getErrorMessage, translateAuthError } from '@/lib/auth'
 import { isInIframe } from '@/lib/teams'
 
-const TEAMS_AUTH_START_PATH = '/auth/teams-auth-start'
-const BROWSER_OAUTH_CALLBACK_PATH = '/auth/callback'
+const CALLBACK_PATH = '/auth/callback'
+const HANDOFF_QUERY_KEY = 'handoff_id'
 
 const HANDOFF_POLL_INTERVAL_MS = 1000
 const HANDOFF_POLL_TIMEOUT_MS = 4 * 60 * 1000
@@ -41,78 +40,34 @@ function generateHandoffId(): string {
 /**
  * Login sayfası — Microsoft (Azure AD) OAuth.
  *
- * İki mod desteklenir:
+ * Üç durum:
  *
- * 1. **Normal tarayıcı** (top-level): Standart Supabase PKCE OAuth redirect.
+ * 1. **Standart tarayıcı** (top-level, handoff_id yok):
+ *    Buton → standart Supabase PKCE OAuth redirect → /auth/callback.
  *
- * 2. **Teams / Outlook iframe**: Yeni bir browser sekmesi açılır
- *    (popup değil — `window.open(..., '_blank')`). Yeni sekme top-level
- *    bir context olduğu için cookie ve PKCE state sorunsuz çalışır,
- *    COOP veya storage partitioning sorunu yoktur.
+ * 2. **Embedded mod** (Teams/Outlook iframe içinde):
+ *    Buton → yeni tarayıcı sekmesi açar (`window.open(_blank)`).
+ *    Yeni sekme top-level olduğu için PKCE/cookie sorunsuz çalışır.
+ *    Iframe paralel olarak `/api/auth/handoff/[id]` polling yapar;
+ *    yeni sekmedeki callback token'ları POST eder, iframe alır,
+ *    setSession ile session kurulur.
  *
- *    Yeni sekme OAuth tamamlanınca token'ları `/api/auth/handoff/[id]`
- *    endpoint'ine POST eder. Iframe paralel olarak bu endpoint'i polling
- *    yapar; token'ları aldığında `setSession` ile session kurulur.
+ * 3. **Yeni sekme + handoff_id** (top-level, ?handoff_id=X):
+ *    Bu sayfa otomatik OAuth başlatır. redirectTo `/auth/callback?handoff_id=X`
+ *    olur — callback token'ları handoff'a POST eder ve sekmeyi kapatır.
  *
- *    Bu mimari embedded SaaS app'ler için Microsoft'un tavsiye ettiği
- *    "auth flows outside of iframe" pattern'idir.
+ * NOT: Hydration güvenliği için tüm window/iframe tespiti useEffect içinde
+ * yapılır. SSR ve ilk client render aynı statik içeriği üretir.
  */
-function LoginContent() {
+export default function LoginPage() {
+  const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
   const [checking, setChecking] = useState(true)
   const [isEmbedded, setIsEmbedded] = useState(false)
-  const searchParams = useSearchParams()
   const supabase = createClient()
   const abortRef = useRef<AbortController | null>(null)
-
-  /**
-   * Mount: Embedded ortam tespiti + var olan session kontrolü.
-   */
-  useEffect(() => {
-    let cancelled = false
-
-    const init = async () => {
-      const embedded = isInIframe()
-      if (!cancelled) setIsEmbedded(embedded)
-
-      const { data: { session } } = await supabase.auth.getSession()
-
-      if (session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role')
-          .eq('id', session.user.id)
-          .maybeSingle()
-
-        window.location.href = getRedirectPath(profile?.role)
-        return
-      }
-
-      if (!cancelled) {
-        setStatus('')
-        setChecking(false)
-      }
-    }
-
-    init()
-
-    return () => {
-      cancelled = true
-      abortRef.current?.abort()
-    }
-  }, [supabase])
-
-  /**
-   * URL'deki ?error=... parametresini Türkçeleştir.
-   */
-  useEffect(() => {
-    const code = searchParams.get('error')
-    if (code) {
-      setError(translateAuthError(code))
-    }
-  }, [searchParams])
 
   /**
    * Server-side handoff endpoint'ini polling ile dinler.
@@ -136,10 +91,8 @@ function LoginContent() {
           } else if (res.status === 410) {
             throw new Error('Giriş süresi doldu, lütfen tekrar deneyin')
           }
-          // 404 = henüz hazır değil, beklemeye devam
         } catch (err) {
           if ((err as Error)?.name === 'AbortError') throw err
-          // network hatası — polling devam etsin
         }
 
         await new Promise((resolve) => setTimeout(resolve, HANDOFF_POLL_INTERVAL_MS))
@@ -154,17 +107,43 @@ function LoginContent() {
   )
 
   /**
-   * Embedded (Teams/Outlook) modu için handoff akışı.
-   * Yeni browser sekmesinde OAuth, iframe handoff endpoint'ini polling.
+   * Supabase Azure OAuth'u başlatır (PKCE).
+   * handoff_id varsa callback URL'sine taşır.
+   */
+  const startBrowserOAuth = useCallback(
+    async (handoffId?: string | null) => {
+      const callbackUrl = new URL(CALLBACK_PATH, window.location.origin)
+      if (handoffId) {
+        callbackUrl.searchParams.set(HANDOFF_QUERY_KEY, handoffId)
+      }
+
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
+        provider: 'azure',
+        options: {
+          scopes: 'email openid profile',
+          redirectTo: callbackUrl.toString(),
+          queryParams: { prompt: 'select_account' },
+        },
+      })
+
+      if (oauthError) {
+        throw oauthError
+      }
+      // Başarılı: tarayıcı zaten Microsoft'a yönleniyor
+    },
+    [supabase]
+  )
+
+  /**
+   * Iframe modu için handoff akışı.
    */
   const loginWithHandoff = useCallback(async () => {
     const handoffId = generateHandoffId()
 
-    const authUrl = new URL(TEAMS_AUTH_START_PATH, window.location.origin)
-    authUrl.searchParams.set('handoff_id', handoffId)
+    const newTabUrl = new URL('/auth/login', window.location.origin)
+    newTabUrl.searchParams.set(HANDOFF_QUERY_KEY, handoffId)
 
-    // Top-level yeni sekme (popup değil — COOP/partitioning sorunu yok)
-    const newTab = window.open(authUrl.toString(), '_blank', 'noopener,noreferrer')
+    const newTab = window.open(newTabUrl.toString(), '_blank')
     if (!newTab) {
       throw new Error(
         'Yeni sekme açılamadı. Tarayıcınızdan bu site için açılır pencere/sekme iznini verin.'
@@ -201,25 +180,7 @@ function LoginContent() {
     window.location.href = getRedirectPath(role)
   }, [supabase, pollHandoff])
 
-  /**
-   * Standart tarayıcı modu için OAuth redirect (PKCE).
-   */
-  const loginWithBrowserRedirect = useCallback(async () => {
-    const { error: oauthError } = await supabase.auth.signInWithOAuth({
-      provider: 'azure',
-      options: {
-        scopes: 'email openid profile',
-        redirectTo: `${window.location.origin}${BROWSER_OAUTH_CALLBACK_PATH}`,
-        queryParams: { prompt: 'select_account' },
-      },
-    })
-
-    if (oauthError) {
-      throw oauthError
-    }
-  }, [supabase])
-
-  const handleLogin = async () => {
+  const handleLogin = useCallback(async () => {
     setLoading(true)
     setError(null)
     setStatus('')
@@ -228,7 +189,7 @@ function LoginContent() {
       if (isEmbedded) {
         await loginWithHandoff()
       } else {
-        await loginWithBrowserRedirect()
+        await startBrowserOAuth()
       }
     } catch (err) {
       const message = getErrorMessage(err, 'Giriş yapılırken bir hata oluştu')
@@ -237,12 +198,77 @@ function LoginContent() {
       setLoading(false)
       setStatus('')
     }
-  }
+  }, [isEmbedded, loginWithHandoff, startBrowserOAuth])
 
-  if (checking) {
+  /**
+   * Mount: ortam tespiti, session kontrolü, error param okuma,
+   * top-level + handoff_id durumunda otomatik OAuth.
+   */
+  useEffect(() => {
+    let cancelled = false
+    setMounted(true)
+
+    const init = async () => {
+      const params = new URLSearchParams(window.location.search)
+
+      const errCode = params.get('error')
+      if (errCode && !cancelled) {
+        setError(translateAuthError(errCode))
+      }
+
+      const embedded = isInIframe()
+      const handoffId = params.get(HANDOFF_QUERY_KEY)
+
+      // Mevcut session varsa direkt yönlendir
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', session.user.id)
+          .maybeSingle()
+        window.location.href = getRedirectPath(profile?.role)
+        return
+      }
+
+      if (cancelled) return
+
+      // Yeni sekme + handoff_id: otomatik OAuth başlat
+      if (!embedded && handoffId) {
+        setChecking(false)
+        setLoading(true)
+        setStatus('Microsoft\'a yönlendiriliyorsunuz...')
+        try {
+          await startBrowserOAuth(handoffId)
+        } catch (err) {
+          if (!cancelled) {
+            setError(getErrorMessage(err, 'Microsoft girişi başlatılamadı'))
+            setLoading(false)
+            setStatus('')
+          }
+        }
+        return
+      }
+
+      if (!cancelled) {
+        setIsEmbedded(embedded)
+        setChecking(false)
+      }
+    }
+
+    init()
+
+    return () => {
+      cancelled = true
+      abortRef.current?.abort()
+    }
+  }, [supabase, startBrowserOAuth])
+
+  // Hydration güvenliği: server ve ilk client render hep aynı içerik
+  if (!mounted || checking) {
     return (
       <div className="min-h-screen bg-white flex items-center justify-center">
-        <Loading size="lg" text="Kontrol ediliyor..." />
+        <Loading size="lg" text="Yükleniyor..." />
       </div>
     )
   }
@@ -313,19 +339,5 @@ function LoginContent() {
         </div>
       </div>
     </div>
-  )
-}
-
-export default function LoginPage() {
-  return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen bg-white flex items-center justify-center">
-          <Loading size="lg" />
-        </div>
-      }
-    >
-      <LoginContent />
-    </Suspense>
   )
 }
