@@ -3,42 +3,67 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Loading } from '@/components/ui/loading'
+import { initializeTeams, teamsNotifyAuthFailure } from '@/lib/teams'
+import { getErrorMessage } from '@/lib/auth'
 
+/**
+ * Teams/Outlook popup auth giriş sayfası.
+ *
+ * Bu sayfa `authentication.authenticate({ url: '/auth/teams-auth-start' })`
+ * ile açılan popup içinde çalışır. Görevi:
+ *
+ * 1. Teams SDK'yı (popup tarafında) initialize etmek
+ * 2. Supabase Azure OAuth akışını başlatmak (-> Microsoft -> /auth/teams-callback)
+ *
+ * Hata durumunda parent window'a `notifyFailure` ile haber verir.
+ */
 export default function TeamsAuthStartPage() {
   const [error, setError] = useState<string | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
+    let cancelled = false
+
     const startAuth = async () => {
       try {
-        console.log('🔷 Teams auth popup - OAuth başlatılıyor...')
-        console.log('🌐 Current URL:', window.location.href)
-        
+        // Popup içinde de SDK init et — notifyFailure çalışsın diye
+        await initializeTeams()
+
+        if (cancelled) return
+
         const redirectUrl = `${window.location.origin}/auth/teams-callback`
-        console.log('🔗 Redirect URL:', redirectUrl)
-        
-        const { data, error } = await supabase.auth.signInWithOAuth({
+
+        const { error: oauthError } = await supabase.auth.signInWithOAuth({
           provider: 'azure',
           options: {
             scopes: 'email openid profile',
             redirectTo: redirectUrl,
             queryParams: {
-              prompt: 'select_account'
-            }
-          }
+              prompt: 'select_account',
+            },
+          },
         })
 
-        if (error) {
-          console.error('❌ OAuth başlatma hatası:', error)
-          setError(error.message)
+        if (oauthError) {
+          throw oauthError
         }
+        // Başarılıysa Supabase tarayıcıyı zaten Microsoft'a yönlendiriyor
       } catch (err) {
-        console.error('🔥 Teams auth start error:', err)
-        setError('Authentication başlatılamadı')
+        const message = getErrorMessage(err, 'Microsoft girişi başlatılamadı')
+        setError(message)
+        try {
+          teamsNotifyAuthFailure(message)
+        } catch {
+          /* SDK init olmadıysa sessizce geç */
+        }
       }
     }
 
     startAuth()
+
+    return () => {
+      cancelled = true
+    }
   }, [supabase])
 
   if (error) {

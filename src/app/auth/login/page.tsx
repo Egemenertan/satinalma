@@ -1,15 +1,34 @@
 'use client'
 
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, Suspense, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
-import { getRedirectPath } from '@/lib/auth'
-import { initializeTeams, isInIframe, getTeamsSSOToken } from '@/lib/teams'
+import { ensureProfile, getRedirectPath, getErrorMessage, translateAuthError } from '@/lib/auth'
+import {
+  initializeTeams,
+  isInIframe,
+  teamsAuthenticate,
+  type TeamsAuthTokenPayload,
+} from '@/lib/teams'
 
+const TEAMS_AUTH_START_PATH = '/auth/teams-auth-start'
+const BROWSER_OAUTH_CALLBACK_PATH = '/auth/callback'
+
+/**
+ * Login sayfası — Microsoft (Azure AD) tabanlı tek giriş akışı.
+ *
+ * İki mod desteklenir:
+ *
+ * 1. **Normal tarayıcı**: Standart Supabase OAuth redirect akışı.
+ * 2. **Teams / Outlook iframe**: Teams SDK popup'ı açılır
+ *    (`teamsAuthenticate`) — popup OAuth tamamlanınca access/refresh
+ *    token'ları parent iframe'e geri döner ve `setSession` ile session
+ *    iframe'de aktive edilir. Cookie partitioning sorunu yaşanmaz.
+ */
 function LoginContent() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -19,20 +38,28 @@ function LoginContent() {
   const searchParams = useSearchParams()
   const supabase = createClient()
 
+  /**
+   * Mount: Embedded ortam tespiti + var olan session kontrolü.
+   * Session varsa direkt yönlendir.
+   */
   useEffect(() => {
+    let cancelled = false
+
     const init = async () => {
-      // Embedded ortam kontrolü
       const embedded = isInIframe()
-      setIsEmbedded(embedded)
-      
+
+      if (!cancelled) setIsEmbedded(embedded)
+
       if (embedded) {
-        setStatus('Teams SDK başlatılıyor...')
+        if (!cancelled) setStatus('Microsoft entegrasyonu hazırlanıyor...')
+        // Sessiz fail — Teams ortamında değilsek timeout ile false döner
         await initializeTeams()
       }
-      
-      // Mevcut session kontrolü
+
+      if (cancelled) return
+
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (session?.user) {
         const { data: profile } = await supabase
           .from('profiles')
@@ -43,68 +70,113 @@ function LoginContent() {
         window.location.href = getRedirectPath(profile?.role)
         return
       }
-      
-      setStatus('')
-      setChecking(false)
+
+      if (!cancelled) {
+        setStatus('')
+        setChecking(false)
+      }
     }
+
     init()
+
+    return () => {
+      cancelled = true
+    }
   }, [supabase])
 
+  /**
+   * URL'deki ?error=... parametresini insancıl mesaja çevir.
+   */
   useEffect(() => {
-    const err = searchParams.get('error')
-    if (err) {
-      setError(err === 'no_session' ? 'Giriş tamamlanamadı. Lütfen tekrar deneyin.' : `Hata: ${err}`)
+    const code = searchParams.get('error')
+    if (code) {
+      setError(translateAuthError(code))
     }
   }, [searchParams])
+
+  /**
+   * Embedded (Teams/Outlook) modu için popup auth.
+   * Popup'tan dönen token JSON'u ile setSession çağrılır.
+   */
+  const loginWithTeamsPopup = useCallback(async () => {
+    setStatus('Microsoft hesabınızla doğrulanıyor...')
+
+    const popupUrl = `${window.location.origin}${TEAMS_AUTH_START_PATH}`
+
+    let resultRaw: string
+    try {
+      resultRaw = await teamsAuthenticate(popupUrl, 600, 700)
+    } catch (err) {
+      throw new Error(getErrorMessage(err, 'Microsoft girişi iptal edildi'))
+    }
+
+    setStatus('Oturum oluşturuluyor...')
+
+    let payload: TeamsAuthTokenPayload
+    try {
+      payload = JSON.parse(resultRaw) as TeamsAuthTokenPayload
+    } catch {
+      throw new Error('Microsoft girişinden geçersiz yanıt alındı')
+    }
+
+    if (!payload?.access_token || !payload?.refresh_token) {
+      throw new Error('Oturum bilgileri alınamadı')
+    }
+
+    const { data, error: setSessionError } = await supabase.auth.setSession({
+      access_token: payload.access_token,
+      refresh_token: payload.refresh_token,
+    })
+
+    if (setSessionError || !data.session?.user) {
+      throw new Error(getErrorMessage(setSessionError, 'Oturum başlatılamadı'))
+    }
+
+    const role = await ensureProfile(
+      supabase,
+      data.session.user.id,
+      data.session.user.email,
+      data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name
+    )
+
+    setStatus('Yönlendiriliyorsunuz...')
+    window.location.href = getRedirectPath(role)
+  }, [supabase])
+
+  /**
+   * Standart tarayıcı modu için OAuth redirect.
+   */
+  const loginWithBrowserRedirect = useCallback(async () => {
+    const { error: oauthError } = await supabase.auth.signInWithOAuth({
+      provider: 'azure',
+      options: {
+        scopes: 'email openid profile',
+        redirectTo: `${window.location.origin}${BROWSER_OAUTH_CALLBACK_PATH}`,
+        queryParams: { prompt: 'select_account' },
+      },
+    })
+
+    if (oauthError) {
+      throw oauthError
+    }
+    // Başarılı: tarayıcı zaten Microsoft'a yönlendiriliyor
+  }, [supabase])
 
   const handleLogin = async () => {
     setLoading(true)
     setError(null)
+    setStatus('')
 
     try {
       if (isEmbedded) {
-        // Outlook/Teams içinde: SSO ile giriş
-        setStatus('Microsoft hesabınızla doğrulanıyor...')
-        
-        const teamsToken = await getTeamsSSOToken()
-        
-        setStatus('Oturum oluşturuluyor...')
-        
-        const response = await fetch('/api/auth/teams/sso', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ teamsToken })
-        })
-
-        const data = await response.json()
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Giriş başarısız')
-        }
-
-        if (data.actionLink) {
-          // Magic link ile otomatik giriş
-          setStatus('Yönlendiriliyorsunuz...')
-          window.location.href = data.actionLink
-        } else {
-          throw new Error('Oturum bağlantısı alınamadı')
-        }
+        await loginWithTeamsPopup()
       } else {
-        // Normal tarayıcı: OAuth redirect
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider: 'azure',
-          options: {
-            scopes: 'email openid profile',
-            redirectTo: `${window.location.origin}/auth/callback`,
-            queryParams: { prompt: 'select_account' },
-          },
-        })
-
-        if (error) throw error
+        await loginWithBrowserRedirect()
       }
     } catch (err) {
+      const message = getErrorMessage(err, 'Giriş yapılırken bir hata oluştu')
       console.error('Login hatası:', err)
-      setError(err instanceof Error ? err.message : 'Giriş yapılırken bir hata oluştu')
+      setError(message)
       setLoading(false)
       setStatus('')
     }
@@ -167,6 +239,13 @@ function LoginContent() {
                 </>
               )}
             </Button>
+
+            {isEmbedded && (
+              <p className="text-xs text-center text-gray-500 leading-relaxed">
+                Giriş için küçük bir Microsoft penceresi açılacak. Tarayıcınız
+                açılır pencereleri engelliyorsa lütfen bu site için izin verin.
+              </p>
+            )}
           </div>
         </div>
       </div>
@@ -182,7 +261,13 @@ function LoginContent() {
 
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-white flex items-center justify-center"><Loading size="lg" /></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-white flex items-center justify-center">
+          <Loading size="lg" />
+        </div>
+      }
+    >
       <LoginContent />
     </Suspense>
   )

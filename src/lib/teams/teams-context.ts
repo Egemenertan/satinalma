@@ -10,6 +10,17 @@ export interface TeamsContext {
   isInitialized: boolean
 }
 
+/**
+ * Teams popup callback'i tarafından geri döndürülen token paketi.
+ * `authentication.notifySuccess(JSON.stringify(payload))` ile iletilir.
+ */
+export interface TeamsAuthTokenPayload {
+  access_token: string
+  refresh_token: string
+  expires_at?: number
+  user_email?: string
+}
+
 let teamsInitialized = false
 let teamsContext: TeamsAppContext | null = null
 let initPromise: Promise<boolean> | null = null
@@ -27,32 +38,33 @@ export async function initializeTeams(): Promise<boolean> {
     return initPromise
   }
 
-  initPromise = new Promise(async (resolve) => {
+  initPromise = (async () => {
     try {
-      console.log('🔷 Teams SDK başlatılıyor...')
-      
-      await app.initialize()
+      // SDK timeout - Teams ortamında değilsek 3 sn'de bırak
+      await Promise.race([
+        app.initialize(),
+        new Promise<void>((_, reject) =>
+          setTimeout(() => reject(new Error('Teams SDK timeout')), 3000)
+        ),
+      ])
+
       teamsInitialized = true
-      
-      const context = await app.getContext()
-      teamsContext = context
-      
-      console.log('✅ Teams SDK başlatıldı')
-      console.log('📍 Teams Context:', {
-        hostName: context.app.host.name,
-        frameContext: context.page.frameContext,
-        userPrincipalName: context.user?.userPrincipalName,
-        tenantId: context.user?.tenant?.id,
-      })
-      
-      resolve(true)
+
+      try {
+        teamsContext = await app.getContext()
+      } catch {
+        // Context alınamasa bile SDK initialize olmuş olabilir
+        teamsContext = null
+      }
+
+      return true
     } catch (error) {
-      console.log('ℹ️ Teams ortamında değil veya SDK başlatılamadı:', error)
       teamsInitialized = false
       teamsContext = null
-      resolve(false)
+      // Sessiz fail: Teams/Outlook dışı normal tarayıcıda her zaman olacak
+      return false
     }
-  })
+  })()
 
   return initPromise
 }
@@ -102,30 +114,46 @@ export function isTeamsInitialized(): boolean {
   return teamsInitialized
 }
 
+/**
+ * Teams/Outlook gömülü ortamında popup açıp OAuth akışı çalıştırır.
+ * Popup, `authentication.notifySuccess(payloadString)` ile sonuç döner.
+ *
+ * @param url - Popup için açılacak URL (origin ile aynı, HTTPS olmalı)
+ * @returns Popup'tan dönen string (genellikle JSON payload)
+ */
 export async function teamsAuthenticate(
   url: string,
   width: number = 600,
-  height: number = 535
+  height: number = 700
 ): Promise<string> {
   if (!teamsInitialized) {
     throw new Error('Teams SDK başlatılmamış')
   }
 
-  return new Promise((resolve, reject) => {
-    authentication.authenticate({
-      url,
-      width,
-      height,
-      successCallback: (result) => {
-        console.log('✅ Teams authentication başarılı')
-        resolve(result || '')
-      },
-      failureCallback: (reason) => {
-        console.error('❌ Teams authentication başarısız:', reason)
-        reject(new Error(reason))
-      }
-    } as authentication.AuthenticateParameters)
+  // Teams SDK v2 promise-tabanlı API
+  const result = await authentication.authenticate({
+    url,
+    width,
+    height,
+    isExternal: false,
   })
+
+  return typeof result === 'string' ? result : ''
+}
+
+/**
+ * Popup tarafından açıldıktan sonra Supabase OAuth callback'inden gelen
+ * tokenleri parent window'a güvenli şekilde döndürür.
+ */
+export function teamsNotifyAuthSuccess(payload: TeamsAuthTokenPayload): void {
+  authentication.notifySuccess(JSON.stringify(payload))
+}
+
+/**
+ * Popup tarafında auth hatasını parent window'a iletir.
+ */
+export function teamsNotifyAuthFailure(reason: string): void {
+  authentication.notifyFailure(reason)
 }
 
 export async function getTeamsSSOToken(): Promise<string> {
