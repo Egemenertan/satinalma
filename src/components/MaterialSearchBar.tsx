@@ -14,6 +14,12 @@ interface SearchResult {
   highlightCount?: number
 }
 
+interface LocalMaterialCandidate {
+  class: string
+  group: string
+  item_name: string
+}
+
 interface MaterialSearchBarProps {
   value: string
   onChange: (value: string) => void
@@ -23,6 +29,8 @@ interface MaterialSearchBarProps {
   placeholder?: string
   className?: string
   restrictToStationery?: boolean  // Genel Merkez Ofisi için ofis malzemeleri filtresi
+  allowedCategoryNames?: string[]
+  localCreatedMaterials?: LocalMaterialCandidate[]
 }
 
 export function MaterialSearchBar({
@@ -33,13 +41,26 @@ export function MaterialSearchBar({
   onEnterSearch,
   placeholder = 'Malzeme, ürün ara',
   className = '',
-  restrictToStationery = false
+  restrictToStationery = false,
+  allowedCategoryNames = [],
+  localCreatedMaterials = []
 }: MaterialSearchBarProps) {
   const [isSearching, setIsSearching] = useState(false)
   const [showResults, setShowResults] = useState(false)
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const supabase = createClient()
+
+  const normalizeCategoryName = (text: string): string =>
+    text
+      .toLocaleLowerCase('tr-TR')
+      .trim()
+      .replace(/ğ/g, 'g')
+      .replace(/ü/g, 'u')
+      .replace(/ş/g, 's')
+      .replace(/ı/g, 'i')
+      .replace(/ö/g, 'o')
+      .replace(/ç/g, 'c')
 
   // Türkçe karakter normalizasyonu
   const normalizeTurkish = (text: string): string => {
@@ -68,55 +89,9 @@ export function MaterialSearchBar({
     setShowResults(true)
 
     try {
-      // YENİ YAPI: material_categories tablosundan kategori isimlerini al
-      const categoryType = restrictToStationery ? 'ofis' : 'insaat'
-      
-      const { data: categories, error: categoriesError } = await supabase
-        .from('material_categories')
-        .select('name')
-        .eq('category_type', categoryType)
-        .eq('is_active', true)
-      
-      if (categoriesError) {
-        console.error('Kategoriler alınamadı:', categoriesError)
-        // Fallback: Eski yöntemi kullan
-        let searchQuery = supabase
-          .from('all_materials')
-          .select('class, group, item_name')
-          .or(`item_name.ilike.%${query}%,group.ilike.%${query}%,class.ilike.%${query}%`)
-        
-        if (restrictToStationery) {
-          searchQuery = searchQuery.in('class', [
-            'Kırtasiye Malzemeleri',
-            'Reklam Ürünleri',
-            'Ofis Ekipmanları',
-            'Promosyon Ürünleri',
-            'Mutfak Malzemeleri',
-            'Hijyen ve Temizlik'
-          ])
-        } else {
-          searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
-        }
-        
-        const { data, error } = await searchQuery.limit(10)
-        
-        if (!error && data) {
-          const results = data.map(item => ({
-            class: item.class || '',
-            group: item.group || '',
-            item_name: item.item_name || '',
-            display_text: `${item.item_name} - ${item.group} - ${item.class}`,
-            score: 100
-          }))
-          setSearchResults(results)
-        }
-        return
-      }
-      
-      // Kategori isimlerini array'e çevir
-      const categoryNames = categories?.map(cat => cat.name) || []
-      
-      console.log(`🔍 ${restrictToStationery ? 'Ofis' : 'İnşaat'} kategorileri ile arama yapılıyor:`, categoryNames)
+      // Requests/create sayfasında görünen kategori seti ile arama filtresi birebir aynı olmalı.
+      // allowedCategoryNames varsa bunu kullan; yoksa mevcut davranışı koru.
+      const categoryNames = allowedCategoryNames
       
       // Malzeme araması - sadece ilgili kategorilerde
       // Tam eşleşmeleri önceliklendirmek için daha fazla sonuç al
@@ -156,20 +131,78 @@ export function MaterialSearchBar({
       
       let searchQuery = supabase
         .from('all_materials')
-        .select('class, group, item_name')
+        .select('class, group, item_name, created_at')
         .or(searchConditions)
-      
-      if (categoryNames.length > 0) {
-        searchQuery = searchQuery.in('class', categoryNames)
+
+      if (categoryNames.length === 0 && restrictToStationery) {
+        // Geriye dönük fallback (ofis kullanıcıları)
+        searchQuery = searchQuery.in('class', [
+          'Kırtasiye Malzemeleri',
+          'Reklam Ürünleri',
+          'Ofis Ekipmanları',
+          'Promosyon Ürünleri',
+          'Mutfak Malzemeleri',
+          'Hijyen ve Temizlik'
+        ])
+      } else if (categoryNames.length === 0 && !restrictToStationery) {
+        // Geriye dönük fallback (şantiye kullanıcıları)
+        searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
       }
       
-      const { data, error } = await searchQuery.limit(100) // Daha fazla sonuç al, sonra sırala
+      const { data, error } = await searchQuery
+        .order('created_at', { ascending: false, nullsFirst: false })
+        .limit(1000) // Yeni eklenen kayıtların düşmemesi için geniş havuz
 
       if (!error && data) {
+        const filteredData = categoryNames.length > 0
+          ? (() => {
+              const allowedCategorySet = new Set(
+                categoryNames.map((name) => normalizeCategoryName(name))
+              )
+              return data.filter((item) =>
+                allowedCategorySet.has(normalizeCategoryName(item.class || ''))
+              )
+            })()
+          : data
+
+        const localMatches = localCreatedMaterials.filter((item) => {
+          const itemName = item.item_name || ''
+          const groupName = item.group || ''
+          const className = item.class || ''
+          const normalizedQuery = normalizeCategoryName(trimmedQuery)
+
+          const categoryMatch =
+            categoryNames.length === 0 ||
+            categoryNames
+              .map((name) => normalizeCategoryName(name))
+              .includes(normalizeCategoryName(className))
+
+          if (!categoryMatch) return false
+
+          return (
+            normalizeCategoryName(itemName).includes(normalizedQuery) ||
+            normalizeCategoryName(groupName).includes(normalizedQuery) ||
+            normalizeCategoryName(className).includes(normalizedQuery)
+          )
+        })
+
+        const mergedDataMap = new Map<string, { class: string | null; group: string | null; item_name: string | null; created_at?: string | null }>()
+        filteredData.forEach((item) => {
+          const key = `${normalizeCategoryName(item.class || '')}|${normalizeCategoryName(item.group || '')}|${normalizeCategoryName(item.item_name || '')}`
+          mergedDataMap.set(key, item)
+        })
+        localMatches.forEach((item) => {
+          const key = `${normalizeCategoryName(item.class || '')}|${normalizeCategoryName(item.group || '')}|${normalizeCategoryName(item.item_name || '')}`
+          if (!mergedDataMap.has(key)) {
+            mergedDataMap.set(key, item)
+          }
+        })
+
+        const mergedData = Array.from(mergedDataMap.values())
         const queryLower = trimmedQuery.toLowerCase()
         
         // Sonuçları öncelik sırasına göre sırala
-        const sortedData = data
+        const sortedData = mergedData
           .map(item => {
             const itemNameLower = (item.item_name || '').toLowerCase()
             const groupLower = (item.group || '').toLowerCase()

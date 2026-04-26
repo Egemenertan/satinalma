@@ -356,6 +356,7 @@ export default function RequestsPage() {
   // Destructure page data
   const userInfo = pageData?.userInfo
   const userRole = pageData?.role || ''
+  const isSitePersonnel = userRole === 'site_personnel'
   const stats = pageData?.stats
   const pendingOrdersCount = pageData?.pendingOrdersCount || 0
   const overdueDeliveriesCount = pageData?.overdueDeliveriesCount || 0
@@ -585,83 +586,84 @@ export default function RequestsPage() {
 
       {/* Desktop: Stats Cards + Weekly Activity Chart then Table */}
       <div className="hidden sm:block space-y-8">
-        {/* Stats Cards */}
-        <div className="px-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Aylık İstatistikler - Bar Chart */}
-            <Card className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-medium text-gray-600 mb-1">Aylık Talep Dağılımı</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-3xl font-bold text-gray-900">{stats?.thisMonth || 0}</p>
-                      <span className={`text-sm font-semibold ${(stats?.monthChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {(stats?.monthChange || 0) >= 0 ? '+' : ''}{stats?.monthChange || 0}%
-                      </span>
-                    </div>
-                    <p className="text-xs text-gray-500 mt-1">Bu ay / Geçen ay karşılaştırması</p>
-                  </div>
-                </div>
-                
-                {/* Bar Chart */}
-                <div className="flex items-end justify-between gap-2 h-24">
-                  {stats?.monthlyData?.map((month: any, i: number) => {
-                    const maxCount = Math.max(...(stats?.monthlyData?.map((m: any) => m.count) || [1]))
-                    const height = (month.count / maxCount) * 100
-                    const isLast = i === stats.monthlyData.length - 1
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-2">
-                        <div className="w-full flex items-end justify-center" style={{ height: '70px' }}>
-                          <div 
-                            className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-lg shadow-[#d6002a]/30' : 'bg-gray-900'}`}
-                            style={{ 
-                              height: `${height}%`,
-                              animationDelay: `${i * 80}ms`
-                            }}
-                          />
-                        </div>
-                        <p className="text-xs font-medium text-gray-600">{month.month}</p>
+        {!isSitePersonnel && (
+          <div className="px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Aylık İstatistikler - Bar Chart */}
+              <Card className="bg-white border border-gray-200 rounded-2xl shadow-sm hover:shadow-md transition-all overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600 mb-1">Aylık Talep Dağılımı</p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-3xl font-bold text-gray-900">{stats?.thisMonth || 0}</p>
+                        <span className={`text-sm font-semibold ${(stats?.monthChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {(stats?.monthChange || 0) >= 0 ? '+' : ''}{stats?.monthChange || 0}%
+                        </span>
                       </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                      <p className="text-xs text-gray-500 mt-1">Bu ay / Geçen ay karşılaştırması</p>
+                    </div>
+                  </div>
+                  
+                  {/* Bar Chart */}
+                  <div className="flex items-end justify-between gap-2 h-24">
+                    {stats?.monthlyData?.map((month: any, i: number) => {
+                      const maxCount = Math.max(...(stats?.monthlyData?.map((m: any) => m.count) || [1]))
+                      const height = (month.count / maxCount) * 100
+                      const isLast = i === stats.monthlyData.length - 1
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-2">
+                          <div className="w-full flex items-end justify-center" style={{ height: '70px' }}>
+                            <div 
+                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-lg shadow-[#d6002a]/30' : 'bg-gray-900'}`}
+                              style={{ 
+                                height: `${height}%`,
+                                animationDelay: `${i * 80}ms`
+                              }}
+                            />
+                          </div>
+                          <p className="text-xs font-medium text-gray-600">{month.month}</p>
+                        </div>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Toplam İstatistikler - Trend */}
-            <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
-              <CardContent className="p-5">
-                <div className="flex items-start justify-between mb-4">
-                  <div>
-                    <p className="text-sm font-medium text-white/80 mb-1">Toplam Performans</p>
-                    <p className="text-3xl font-bold text-white">{stats?.total || 0}</p>
-                    <p className="text-xs text-white/70 mt-1">Toplam talep sayısı</p>
+              {/* Toplam İstatistikler - Trend */}
+              <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
+                <CardContent className="p-5">
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <p className="text-sm font-medium text-white/80 mb-1">Toplam Performans</p>
+                      <p className="text-3xl font-bold text-white">{stats?.total || 0}</p>
+                      <p className="text-xs text-white/70 mt-1">Toplam talep sayısı</p>
+                    </div>
+                    <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                      <TrendingUp className="w-6 h-6 text-white" />
+                    </div>
                   </div>
-                  <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                    <TrendingUp className="w-6 h-6 text-white" />
+                  
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/20">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
+                      <p className="text-xs text-white/70 mb-1">Bekleyen</p>
+                      <p className="text-xl font-bold text-white">{stats?.pending || 0}</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
+                      <p className="text-xs text-white/70 mb-1">Onaylı</p>
+                      <p className="text-xl font-bold text-white">{stats?.approved || 0}</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
+                      <p className="text-xs text-white/70 mb-1">Acil</p>
+                      <p className="text-xl font-bold text-white">{stats?.urgent || 0}</p>
+                    </div>
                   </div>
-                </div>
-                
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/20">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                    <p className="text-xs text-white/70 mb-1">Bekleyen</p>
-                    <p className="text-xl font-bold text-white">{stats?.pending || 0}</p>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                    <p className="text-xs text-white/70 mb-1">Onaylı</p>
-                    <p className="text-xl font-bold text-white">{stats?.approved || 0}</p>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                    <p className="text-xs text-white/70 mb-1">Acil</p>
-                    <p className="text-xl font-bold text-white">{stats?.urgent || 0}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Weekly Activity Chart - Full Width */}
         <div className="px-4">
@@ -815,81 +817,82 @@ export default function RequestsPage() {
 
       {/* Mobile: Stats Cards + Activity Chart first, then Button, then Table */}
       <div className="sm:hidden space-y-6">
-        {/* Stats Cards - Mobile */}
-        <div className="px-4">
-          <div className="space-y-3">
-            {/* Aylık İstatistikler - Bar Chart */}
-            <Card className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-              <CardContent className="p-3.5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-xs font-medium text-gray-600 mb-1">Aylık Dağılım</p>
-                    <div className="flex items-baseline gap-2">
-                      <p className="text-2xl font-bold text-gray-900">{stats?.thisMonth || 0}</p>
-                      <span className={`text-xs font-semibold ${(stats?.monthChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {(stats?.monthChange || 0) >= 0 ? '+' : ''}{stats?.monthChange || 0}%
-                      </span>
+        {!isSitePersonnel && (
+          <div className="px-4">
+            <div className="space-y-3">
+              {/* Aylık İstatistikler - Bar Chart */}
+              <Card className="bg-white border border-gray-200 rounded-2xl shadow-sm">
+                <CardContent className="p-3.5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs font-medium text-gray-600 mb-1">Aylık Dağılım</p>
+                      <div className="flex items-baseline gap-2">
+                        <p className="text-2xl font-bold text-gray-900">{stats?.thisMonth || 0}</p>
+                        <span className={`text-xs font-semibold ${(stats?.monthChange || 0) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {(stats?.monthChange || 0) >= 0 ? '+' : ''}{stats?.monthChange || 0}%
+                        </span>
+                      </div>
                     </div>
                   </div>
-                </div>
-                
-                {/* Bar Chart */}
-                <div className="flex items-end justify-between gap-1.5 h-16">
-                  {stats?.monthlyData?.map((month: any, i: number) => {
-                    const maxCount = Math.max(...(stats?.monthlyData?.map((m: any) => m.count) || [1]))
-                    const height = (month.count / maxCount) * 100
-                    const isLast = i === stats.monthlyData.length - 1
-                    return (
-                      <div key={i} className="flex-1 flex flex-col items-center gap-1">
-                        <div className="w-full flex items-end justify-center" style={{ height: '50px' }}>
-                          <div 
-                            className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-md shadow-[#d6002a]/30' : 'bg-gray-900'}`}
-                            style={{ 
-                              height: `${height}%`,
-                              animationDelay: `${i * 80}ms`
-                            }}
-                          />
+                  
+                  {/* Bar Chart */}
+                  <div className="flex items-end justify-between gap-1.5 h-16">
+                    {stats?.monthlyData?.map((month: any, i: number) => {
+                      const maxCount = Math.max(...(stats?.monthlyData?.map((m: any) => m.count) || [1]))
+                      const height = (month.count / maxCount) * 100
+                      const isLast = i === stats.monthlyData.length - 1
+                      return (
+                        <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                          <div className="w-full flex items-end justify-center" style={{ height: '50px' }}>
+                            <div 
+                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-md shadow-[#d6002a]/30' : 'bg-gray-900'}`}
+                              style={{ 
+                                height: `${height}%`,
+                                animationDelay: `${i * 80}ms`
+                              }}
+                            />
+                          </div>
+                          <p className="text-[9px] font-medium text-gray-600">{month.month}</p>
                         </div>
-                        <p className="text-[9px] font-medium text-gray-600">{month.month}</p>
-                      </div>
-                    )
-                  })}
-                </div>
-              </CardContent>
-            </Card>
+                      )
+                    })}
+                  </div>
+                </CardContent>
+              </Card>
 
-            {/* Toplam İstatistikler */}
-            <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg">
-              <CardContent className="p-3.5">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <p className="text-xs font-medium text-white/80 mb-1">Toplam Performans</p>
-                    <p className="text-2xl font-bold text-white">{stats?.total || 0}</p>
+              {/* Toplam İstatistikler */}
+              <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg">
+                <CardContent className="p-3.5">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <p className="text-xs font-medium text-white/80 mb-1">Toplam Performans</p>
+                      <p className="text-2xl font-bold text-white">{stats?.total || 0}</p>
+                    </div>
+                    <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                      <TrendingUp className="w-5 h-5 text-white" />
+                    </div>
                   </div>
-                  <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
-                    <TrendingUp className="w-5 h-5 text-white" />
+                  
+                  {/* Stats Grid */}
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
+                      <p className="text-[10px] text-white/70 mb-0.5">Bekleyen</p>
+                      <p className="text-base font-bold text-white">{stats?.pending || 0}</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
+                      <p className="text-[10px] text-white/70 mb-0.5">Onaylı</p>
+                      <p className="text-base font-bold text-white">{stats?.approved || 0}</p>
+                    </div>
+                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
+                      <p className="text-[10px] text-white/70 mb-0.5">Acil</p>
+                      <p className="text-base font-bold text-white">{stats?.urgent || 0}</p>
+                    </div>
                   </div>
-                </div>
-                
-                {/* Stats Grid */}
-                <div className="grid grid-cols-3 gap-1.5">
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                    <p className="text-[10px] text-white/70 mb-0.5">Bekleyen</p>
-                    <p className="text-base font-bold text-white">{stats?.pending || 0}</p>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                    <p className="text-[10px] text-white/70 mb-0.5">Onaylı</p>
-                    <p className="text-base font-bold text-white">{stats?.approved || 0}</p>
-                  </div>
-                  <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                    <p className="text-[10px] text-white/70 mb-0.5">Acil</p>
-                    <p className="text-base font-bold text-white">{stats?.urgent || 0}</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Weekly Activity Chart - Mobile */}
         <div className="px-4">

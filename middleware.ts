@@ -7,7 +7,7 @@ import { NextResponse, type NextRequest } from 'next/server'
  * Sorumluluklar:
  * 1. Supabase auth cookie'lerini güncel tutmak (session refresh)
  * 2. Protected route'ları auth ile korumak
- * 3. Rol bazlı erişim kontrolü dashboard layout'a delege edilmiştir
+ * 3. Dashboard route'larında profil/rol tutarlılığını server-side garanti etmek
  * 
  * Public route'lar:
  * - / (anasayfa)
@@ -20,6 +20,8 @@ const PROTECTED_ROUTE_PREFIXES = ['/dashboard', '/admin'] as const
 const PROTECTED_API_PREFIXES = ['/api'] as const
 
 const PUBLIC_API_PREFIXES = ['/api/public/', '/api/auth/'] as const
+const DEFAULT_DASHBOARD_ROLE = 'site_personnel' as const
+const DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 
 function isPublicRoute(pathname: string): boolean {
   if (pathname === '/') return true
@@ -91,8 +93,62 @@ export async function middleware(request: NextRequest) {
     return buildLoginRedirect(request)
   }
 
+  // Dashboard route'larında rolü server-side garanti et.
+  // Hedef: Microsoft ile gelen kullanıcıların user rolünde kalmaması.
+  if (pathname.startsWith('/dashboard')) {
+    const normalizedEmail = user.email?.trim().toLowerCase() ?? ''
+    const fullName = user.user_metadata?.full_name || user.user_metadata?.name || normalizedEmail || 'Kullanıcı'
+
+    const { data: profile, error: profileReadError } = await supabase
+      .from('profiles')
+      .select('role, site_id')
+      .eq('id', user.id)
+      .maybeSingle()
+
+    if (profileReadError) {
+      return NextResponse.redirect(new URL('/auth/login?error=role_read_failed', request.url))
+    }
+
+    if (!profile) {
+      const { error: profileInsertError } = await supabase
+        .from('profiles')
+        .insert({
+          id: user.id,
+          email: normalizedEmail,
+          full_name: fullName,
+          role: DEFAULT_DASHBOARD_ROLE,
+          site_id: [DEFAULT_SITE_ID],
+          created_at: new Date().toISOString(),
+        })
+
+      if (profileInsertError) {
+        return NextResponse.redirect(new URL('/auth/login?error=role_create_failed', request.url))
+      }
+    } else if (profile.role === 'user') {
+      const { error: profileUpdateError } = await supabase
+        .from('profiles')
+        .update({
+          role: DEFAULT_DASHBOARD_ROLE,
+          site_id: [DEFAULT_SITE_ID],
+        })
+        .eq('id', user.id)
+
+      if (profileUpdateError) {
+        return NextResponse.redirect(new URL('/auth/login?error=role_upgrade_failed', request.url))
+      }
+    } else if (!Array.isArray(profile.site_id) || profile.site_id.length === 0) {
+      const { error: profileSiteUpdateError } = await supabase
+        .from('profiles')
+        .update({ site_id: [DEFAULT_SITE_ID] })
+        .eq('id', user.id)
+
+      if (profileSiteUpdateError) {
+        return NextResponse.redirect(new URL('/auth/login?error=site_assign_failed', request.url))
+      }
+    }
+  }
+
   // Auth başarılı → response döndür (cookie'ler güncellendi)
-  // Rol bazlı kontrol dashboard/layout.tsx'te yapılıyor
   return supabaseResponse
 }
 

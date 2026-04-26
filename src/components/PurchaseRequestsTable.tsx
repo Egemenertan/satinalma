@@ -1088,7 +1088,8 @@ export default function PurchaseRequestsTable({
   const filteredRequests = filteredByDeliveryStatus.filter((req: any) => {
     // Site manager için tab bazlı filtreleme
     if (userRole === 'site_manager' && activeTab === 'approval_pending') {
-      if (req.status !== 'kısmen gönderildi' && req.status !== 'depoda mevcut değil') {
+      const approvalPendingStatuses = ['kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok']
+      if (!approvalPendingStatuses.includes(req.status)) {
         return false
       }
     }
@@ -1698,8 +1699,8 @@ export default function PurchaseRequestsTable({
                     onClick={() => setActiveTab('approval_pending')}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                       activeTab === 'approval_pending'
-                        ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        ? 'bg-black text-white shadow-sm'
+                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
                     Onay Bekleyenler
@@ -1708,8 +1709,8 @@ export default function PurchaseRequestsTable({
                     onClick={() => setActiveTab('all')}
                     className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
                       activeTab === 'all'
-                        ? 'bg-white text-gray-900 shadow-sm border border-gray-200'
-                        : 'text-gray-600 hover:text-gray-900 hover:bg-gray-100'
+                        ? 'bg-black text-white shadow-sm'
+                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
                     }`}
                   >
                     Tümü

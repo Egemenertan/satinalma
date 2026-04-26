@@ -33,7 +33,7 @@ export default function SignupPage() {
         options: {
           data: {
             full_name: name,
-            role: 'user'
+            role: 'site_personnel'
           }
         }
       })

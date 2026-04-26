@@ -13,8 +13,7 @@ import {
 } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
-import { ProductSearchBar } from '@/components/ProductSearchBar'
-import { SPECIAL_SITE_ID, SPECIAL_SITE_PRODUCT_CATEGORIES } from '@/lib/constants'
+import { SPECIAL_SITE_ID } from '@/lib/constants'
 
 import {
   CategoryTabs,
@@ -35,6 +34,34 @@ import type {
   ModalState
 } from './types'
 
+const HYGIENE_DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
+const HYGIENE_DEFAULT_CATEGORY = 'Hijyen ve Temizlik' as const
+
+const normalizeCategoryName = (value: string): string =>
+  value
+    .toLocaleLowerCase('tr-TR')
+    .trim()
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ş/g, 's')
+    .replace(/ı/g, 'i')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+
+const OFFICE_CATEGORY_KEYWORDS = [
+  'hijyen',
+  'kirtasiye',
+  'mutfak',
+  'ofis ekipman',
+  'promosyon',
+  'reklam'
+] as const
+
+const isOfficeCategory = (categoryName: string): boolean => {
+  const normalized = normalizeCategoryName(categoryName)
+  return OFFICE_CATEGORY_KEYWORDS.some((keyword) => normalized.includes(keyword))
+}
+
 export default function CreatePurchaseRequestPage() {
   const router = useRouter()
   const { showToast } = useToast()
@@ -53,7 +80,8 @@ export default function CreatePurchaseRequestPage() {
   
   // User type state
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
-  const [isSpecialSiteUser, setIsSpecialSiteUser] = useState(false)
+  const [hasHygieneDefaultSite, setHasHygieneDefaultSite] = useState(false)
+  const hasOfficeCategoryAccess = isGenelMerkezUser || hasHygieneDefaultSite
   
   // Category state
   const [categories, setCategories] = useState<MaterialCategory[]>([])
@@ -75,7 +103,7 @@ export default function CreatePurchaseRequestPage() {
   
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
-  const [productSearchQuery, setProductSearchQuery] = useState('')
+  const [localCreatedMaterials, setLocalCreatedMaterials] = useState<Array<{ class: string; group: string; item_name: string }>>([])
   
   // Create Material Modal
   const [showCreateMaterialModal, setShowCreateMaterialModal] = useState(false)
@@ -131,6 +159,9 @@ export default function CreatePurchaseRequestPage() {
           } else if (profileData.construction_site_id) {
             userSiteIds = [profileData.construction_site_id]
           }
+
+          // Belirli siteye bağlı kullanıcılar için kategori varsayılanı
+          setHasHygieneDefaultSite(userSiteIds.includes(HYGIENE_DEFAULT_SITE_ID))
           
           // Eğer site_id zorunlu olan rollerde site ataması yoksa, geri gönder
           if (requiresSiteId && userSiteIds.length === 0) {
@@ -151,7 +182,7 @@ export default function CreatePurchaseRequestPage() {
               setSelectedSite(siteData)
               
               if (siteData.id === SPECIAL_SITE_ID) {
-                setIsSpecialSiteUser(true)
+                // Merkez ofis için ofis kategorileri aktif
               }
               
               if (siteData.name === 'Genel Merkez Ofisi') {
@@ -196,9 +227,6 @@ export default function CreatePurchaseRequestPage() {
 
       if (!error && data) {
         setCategories(data)
-        if (data.length > 0) {
-          setSelectedCategory(data[0].name)
-        }
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
@@ -284,7 +312,7 @@ export default function CreatePurchaseRequestPage() {
     setSelectedSite(site)
     
     if (site.id === SPECIAL_SITE_ID) {
-      setIsSpecialSiteUser(true)
+      // Merkez ofis için ofis kategorileri aktif
     }
     
     if (site.name === 'Genel Merkez Ofisi') {
@@ -352,40 +380,6 @@ export default function CreatePurchaseRequestPage() {
     setEditingCartItem(null)
     setEditingCartIndex(-1)
     setModalState({ type: 'detail', item: newItem })
-  }
-
-  const handleProductSelect = (product: any) => {
-    const newCartItem: CartItem = {
-      id: `cart-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
-      material_class: product.category?.name || 'Genel',
-      material_group: product.brand?.name || '',
-      material_item_name: product.name,
-      material_name: product.name,
-      material_description: product.name,
-      unit: product.unit || 'adet',
-      quantity: '1',
-      brand: product.brand?.name || '',
-      specifications: '',
-      purpose: '',
-      delivery_date: '',
-      image_urls: [],
-      uploaded_images: [],
-      image_preview_urls: [],
-      product_id: product.id
-    }
-
-    // Open modal to complete details
-    const materialItem: MaterialItem = {
-      id: newCartItem.id,
-      name: product.name,
-      class: product.category?.name || 'Genel',
-      group: product.brand?.name || ''
-    }
-    setSelectedMaterial(materialItem)
-    setEditingCartItem(null)
-    setEditingCartIndex(-1)
-    setModalState({ type: 'detail', item: materialItem })
-    setProductSearchQuery('')
   }
 
   const uploadImagesForMaterial = async (materialId: string, files: File[]): Promise<string[]> => {
@@ -496,19 +490,39 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const filteredCategories = categories.filter((category) => {
-    const officeCategories = [
-      'Kırtasiye Malzemeleri',
-      'Reklam Ürünleri',
-      'Ofis Ekipmanları',
-      'Promosyon Ürünleri',
-      'Mutfak Malzemeleri',
-      'Hijyen ve Temizlik'
-    ]
-    if (officeCategories.includes(category.name)) {
-      return isGenelMerkezUser
+    if (isOfficeCategory(category.name)) {
+      return hasOfficeCategoryAccess
     }
-    return !isGenelMerkezUser
+    return !hasOfficeCategoryAccess
   })
+  const allowedSearchCategories = hasOfficeCategoryAccess
+    ? filteredCategories.filter((category) => isOfficeCategory(category.name)).map((category) => category.name)
+    : filteredCategories.map((category) => category.name)
+
+
+  // İlk yüklemede kategori varsayılanını rol/site kuralına göre belirle.
+  useEffect(() => {
+    if (filteredCategories.length === 0) return
+
+    const selectedCategoryStillVisible = filteredCategories.some(
+      (category) => category.name === selectedCategory
+    )
+
+    if (selectedCategoryStillVisible) return
+
+    if (hasHygieneDefaultSite) {
+      const hygieneCategory = filteredCategories.find(
+        (category) => category.name === HYGIENE_DEFAULT_CATEGORY
+      )
+
+      if (hygieneCategory) {
+        setSelectedCategory(hygieneCategory.name)
+        return
+      }
+    }
+
+    setSelectedCategory(filteredCategories[0].name)
+  }, [filteredCategories, selectedCategory, hasHygieneDefaultSite])
 
   // Loading state
   if (isCheckingSite) {
@@ -586,29 +600,20 @@ export default function CreatePurchaseRequestPage() {
       <div className="px-4 pt-6">
         {/* Search Bar */}
         <div className="mb-3">
-          {isSpecialSiteUser ? (
-            <ProductSearchBar
-              value={productSearchQuery}
-              onChange={setProductSearchQuery}
-              onProductSelect={handleProductSelect}
-              categoryIds={SPECIAL_SITE_PRODUCT_CATEGORIES as any}
-              placeholder="Ürün ara (Bilgisayar, Ofis Malzemeleri, Reklam)..."
-              className="w-full"
-            />
-          ) : (
-            <MaterialSearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onResultClick={handleSearchResultClick}
-              onCreateNewClick={() => {
-                setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: searchQuery })
-                setShowCreateMaterialModal(true)
-              }}
-              onEnterSearch={() => {}}
-              restrictToStationery={isGenelMerkezUser}
-              className="w-full"
-            />
-          )}
+          <MaterialSearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onResultClick={handleSearchResultClick}
+            onCreateNewClick={() => {
+              setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: searchQuery })
+              setShowCreateMaterialModal(true)
+            }}
+            onEnterSearch={() => {}}
+            restrictToStationery={hasOfficeCategoryAccess}
+            allowedCategoryNames={allowedSearchCategories}
+            localCreatedMaterials={localCreatedMaterials}
+            className="w-full"
+          />
         </div>
 
         {/* Category Tabs */}
@@ -719,7 +724,31 @@ export default function CreatePurchaseRequestPage() {
         onOpenChange={setShowCreateMaterialModal}
         initialClass={createMaterialData.class}
         initialGroup={createMaterialData.group}
+        restrictToStationery={hasOfficeCategoryAccess}
         onMaterialCreated={(material) => {
+          setLocalCreatedMaterials((prev) => {
+            const key = `${material.class}|${material.group}|${material.item_name}`.toLocaleLowerCase('tr-TR').trim()
+            const exists = prev.some(
+              (item) =>
+                `${item.class}|${item.group}|${item.item_name}`.toLocaleLowerCase('tr-TR').trim() === key
+            )
+            if (exists) return prev
+            return [material, ...prev].slice(0, 100)
+          })
+
+          const createdMaterial: MaterialItem = {
+            id: `new-${Date.now()}`,
+            name: material.item_name,
+            class: material.class || selectedCategory || 'Genel',
+            group: material.group || selectedSubCategory || ''
+          }
+
+          setSelectedMaterial(createdMaterial)
+          setEditingCartItem(null)
+          setEditingCartIndex(-1)
+          setModalState({ type: 'detail', item: createdMaterial })
+          showToast(`${material.item_name} oluşturuldu. Detayları girip sepete ekleyin.`, 'success')
+
           if (material.class && material.group) {
             fetchMaterials(material.class, material.group)
           }

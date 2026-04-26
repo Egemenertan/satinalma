@@ -31,6 +31,7 @@ interface CreateMaterialModalProps {
   onOpenChange: (open: boolean) => void
   initialClass?: string
   initialGroup?: string
+  restrictToStationery?: boolean
   onMaterialCreated?: (material: { class: string; group: string; item_name: string }) => void
 }
 
@@ -39,6 +40,7 @@ export function CreateMaterialModal({
   onOpenChange,
   initialClass = '',
   initialGroup = '',
+  restrictToStationery = false,
   onMaterialCreated
 }: CreateMaterialModalProps) {
   const { showToast } = useToast()
@@ -58,46 +60,8 @@ export function CreateMaterialModal({
   useEffect(() => {
     const fetchClasses = async () => {
       try {
-        // Genel Merkez Ofisi kullanıcısı kontrolü
-        const { data: genelMerkezSite } = await supabase
-          .from('sites')
-          .select('id')
-          .eq('name', 'Genel Merkez Ofisi')
-          .single()
-
-        const { data: { user } } = await supabase.auth.getUser()
-        let isGenelMerkezUser = false
-        let userSiteIds: string[] = []
-
-        if (user && genelMerkezSite) {
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('site_id')
-            .eq('id', user.id)
-            .single()
-
-          if (profileData?.site_id && Array.isArray(profileData.site_id)) {
-            userSiteIds = profileData.site_id
-            isGenelMerkezUser = userSiteIds.includes(genelMerkezSite.id)
-          }
-        }
-
-        // YENİ YAPI: material_categories tablosundan kategorileri çek
-        let categoryTypes: string[] = []
-        
-        if (isGenelMerkezUser && userSiteIds.length > 1) {
-          // Kullanıcı hem Genel Merkez hem de başka şantiyelere sahip - her ikisini de göster
-          categoryTypes = ['insaat', 'ofis']
-          console.log('🏗️ Kullanıcı hem Genel Merkez hem de şantiye erişimine sahip - TÜM kategoriler gösteriliyor')
-        } else if (isGenelMerkezUser) {
-          // Sadece Genel Merkez
-          categoryTypes = ['ofis']
-          console.log('🏢 Genel Merkez Ofisi kullanıcısı - Ofis kategorileri gösteriliyor')
-        } else {
-          // Sadece şantiye
-          categoryTypes = ['insaat']
-          console.log('🏗️ Şantiye kullanıcısı - İnşaat kategorileri gösteriliyor')
-        }
+        // Kategori seti create sayfasındaki seçili site bağlamıyla birebir aynı olmalı.
+        const categoryTypes = restrictToStationery ? ['ofis'] : ['insaat']
 
         const { data: categoriesData, error: categoriesError } = await supabase
           .from('material_categories')
@@ -128,7 +92,7 @@ export function CreateMaterialModal({
     if (open) {
       fetchClasses()
     }
-  }, [open, supabase])
+  }, [open, supabase, restrictToStationery])
 
   // Sınıf değiştiğinde grupları yükle
   useEffect(() => {
