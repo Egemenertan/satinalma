@@ -3,12 +3,15 @@ import { NextResponse, type NextRequest } from 'next/server'
 
 /**
  * Auth Middleware
- * 
+ *
  * Sorumluluklar:
- * 1. Supabase auth cookie'lerini güncel tutmak (session refresh)
- * 2. Protected route'ları auth ile korumak
- * 3. Dashboard route'larında profil/rol tutarlılığını server-side garanti etmek
- * 
+ * 1. Supabase auth cookie'lerini güncel tutmak (token refresh sırasında set edilen
+ *    cookies'i ASLA kaybetmemek — tüm response dönüşlerinde preserve).
+ * 2. Protected route'ları auth ile korumak.
+ * 3. Dashboard route'larında profil/rol "best-effort" tutarlılığı: hata olursa
+ *    kullanıcıyı atma, sadece logla geç. (Kullanıcının session'ı geçerliyken
+ *    geçici bir DB hatası onu sistemden atmamalı.)
+ *
  * Public route'lar:
  * - / (anasayfa)
  * - /auth/* (login, signup, callback)
@@ -39,13 +42,28 @@ function isProtectedRoute(pathname: string): boolean {
   return false
 }
 
-function buildLoginRedirect(request: NextRequest): NextResponse {
+/**
+ * Supabase'in token refresh sırasında set ettiği güncel cookies'i,
+ * yeni bir response'a (redirect vb.) taşır. Cookies kaybını önler.
+ */
+function copyCookies(from: NextResponse, to: NextResponse): NextResponse {
+  from.cookies.getAll().forEach((cookie) => {
+    to.cookies.set(cookie)
+  })
+  return to
+}
+
+function buildLoginRedirect(request: NextRequest, base: NextResponse): NextResponse {
   const redirectUrl = new URL('/auth/login', request.url)
   // Sadece dashboard route'larında redirectTo ekle (API'ler için anlamsız)
   if (request.nextUrl.pathname.startsWith('/dashboard')) {
     redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
   }
-  return NextResponse.redirect(redirectUrl)
+  return copyCookies(base, NextResponse.redirect(redirectUrl))
+}
+
+function buildUnauthorized(base: NextResponse): NextResponse {
+  return copyCookies(base, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 }
 
 export async function middleware(request: NextRequest) {
@@ -61,8 +79,15 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
 
-  // Supabase client + session refresh için response
-  const supabaseResponse = NextResponse.next({ request })
+  // @supabase/ssr middleware pattern (v0.1 API):
+  //  - Cookies hem `request`'e (sıradaki Supabase çağrıları için) hem
+  //    `supabaseResponse`'a (tarayıcıya gidecek response için) yazılır.
+  //  - `supabaseResponse` set/remove içinde yeniden oluşturulur ki
+  //    `NextResponse.next({ request })` güncel request cookie'lerini görsün.
+  //  - Tüm dönüşlerde cookies'i preserve etmek için `copyCookies` helper'ı
+  //    kullanılır (özellikle redirect/401 dönüşlerinde kritik — aksi halde
+  //    refresh edilmiş token'lar kaybolur → kullanıcı atılır).
+  let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,82 +98,94 @@ export async function middleware(request: NextRequest) {
           return request.cookies.get(name)?.value
         },
         set(name: string, value: string, options: any) {
+          request.cookies.set(name, value)
+          supabaseResponse = NextResponse.next({ request })
           supabaseResponse.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: any) {
+          request.cookies.set(name, '')
+          supabaseResponse = NextResponse.next({ request })
           supabaseResponse.cookies.set({ name, value: '', ...options })
         },
       },
     }
   )
 
-  // Session kontrolü
-  const { data: { user }, error } = await supabase.auth.getUser()
+  // Token doğrulama (gerekirse refresh tetiklenir)
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
 
-  if (!user || error) {
-    // API route ise 401 dön, sayfa ise login'e yönlendir
+  if (!user || authError) {
     if (pathname.startsWith('/api/')) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return buildUnauthorized(supabaseResponse)
     }
-    return buildLoginRedirect(request)
+    return buildLoginRedirect(request, supabaseResponse)
   }
 
-  // Dashboard route'larında rolü server-side garanti et.
-  // Hedef: Microsoft ile gelen kullanıcıların user rolünde kalmaması.
+  // Dashboard route'larında profil/rol tutarlılığı — BEST-EFFORT.
+  // Hata olursa kullanıcıyı sistemden ATMA. Sadece logla, devam et.
+  // (Önceki implementasyon her DB hatasında login'e atıyordu — bu defansif değil.)
   if (pathname.startsWith('/dashboard')) {
-    const normalizedEmail = user.email?.trim().toLowerCase() ?? ''
-    const fullName = user.user_metadata?.full_name || user.user_metadata?.name || normalizedEmail || 'Kullanıcı'
+    try {
+      const normalizedEmail = user.email?.trim().toLowerCase() ?? ''
+      const fullName =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        normalizedEmail ||
+        'Kullanıcı'
 
-    const { data: profile, error: profileReadError } = await supabase
-      .from('profiles')
-      .select('role, site_id')
-      .eq('id', user.id)
-      .maybeSingle()
-
-    if (profileReadError) {
-      return NextResponse.redirect(new URL('/auth/login?error=role_read_failed', request.url))
-    }
-
-    if (!profile) {
-      const { error: profileInsertError } = await supabase
+      const { data: profile, error: profileReadError } = await supabase
         .from('profiles')
-        .insert({
-          id: user.id,
-          email: normalizedEmail,
-          full_name: fullName,
-          role: DEFAULT_DASHBOARD_ROLE,
-          site_id: [DEFAULT_SITE_ID],
-          created_at: new Date().toISOString(),
-        })
-
-      if (profileInsertError) {
-        return NextResponse.redirect(new URL('/auth/login?error=role_create_failed', request.url))
-      }
-    } else if (profile.role === 'user') {
-      const { error: profileUpdateError } = await supabase
-        .from('profiles')
-        .update({
-          role: DEFAULT_DASHBOARD_ROLE,
-          site_id: [DEFAULT_SITE_ID],
-        })
+        .select('role, site_id')
         .eq('id', user.id)
+        .maybeSingle()
 
-      if (profileUpdateError) {
-        return NextResponse.redirect(new URL('/auth/login?error=role_upgrade_failed', request.url))
-      }
-    } else if (!Array.isArray(profile.site_id) || profile.site_id.length === 0) {
-      const { error: profileSiteUpdateError } = await supabase
-        .from('profiles')
-        .update({ site_id: [DEFAULT_SITE_ID] })
-        .eq('id', user.id)
+      if (profileReadError) {
+        console.warn('[middleware] profile read failed (devam ediliyor):', profileReadError.message)
+      } else if (!profile) {
+        const { error: profileInsertError } = await supabase
+          .from('profiles')
+          .insert({
+            id: user.id,
+            email: normalizedEmail,
+            full_name: fullName,
+            role: DEFAULT_DASHBOARD_ROLE,
+            site_id: [DEFAULT_SITE_ID],
+            created_at: new Date().toISOString(),
+          })
 
-      if (profileSiteUpdateError) {
-        return NextResponse.redirect(new URL('/auth/login?error=site_assign_failed', request.url))
+        if (profileInsertError) {
+          console.warn('[middleware] profile insert failed (devam ediliyor):', profileInsertError.message)
+        }
+      } else if (profile.role === 'user') {
+        // Microsoft ile yeni gelen "user" rolünü default dashboard rolüne yükselt
+        const { error: profileUpdateError } = await supabase
+          .from('profiles')
+          .update({
+            role: DEFAULT_DASHBOARD_ROLE,
+            site_id: [DEFAULT_SITE_ID],
+          })
+          .eq('id', user.id)
+
+        if (profileUpdateError) {
+          console.warn('[middleware] role upgrade failed (devam ediliyor):', profileUpdateError.message)
+        }
+      } else if (!Array.isArray(profile.site_id) || profile.site_id.length === 0) {
+        const { error: profileSiteUpdateError } = await supabase
+          .from('profiles')
+          .update({ site_id: [DEFAULT_SITE_ID] })
+          .eq('id', user.id)
+
+        if (profileSiteUpdateError) {
+          console.warn('[middleware] site assign failed (devam ediliyor):', profileSiteUpdateError.message)
+        }
       }
+    } catch (err) {
+      // Beklenmeyen hata: yine de kullanıcıyı atma
+      console.warn('[middleware] role check unexpected error (devam ediliyor):', err)
     }
   }
 
-  // Auth başarılı → response döndür (cookie'ler güncellendi)
+  // ÖNEMLİ: cookies refresh edilmişse mutlaka tarayıcıya yansısın
   return supabaseResponse
 }
 
