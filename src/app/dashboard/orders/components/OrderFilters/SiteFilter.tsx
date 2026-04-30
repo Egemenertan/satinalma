@@ -17,15 +17,16 @@ export function SiteFilter({ selectedSites, onSitesChange }: SiteFilterProps) {
   const [isLoading, setIsLoading] = React.useState(true)
   const dropdownRef = React.useRef<HTMLDivElement>(null)
 
-  // Şantiyeleri yükle
+  // Şantiyeleri yükle - doğrudan sites tablosundan
   React.useEffect(() => {
     const fetchSites = async () => {
       const supabase = createClient()
       
       try {
         const { data, error } = await supabase
-          .from('orders')
-          .select('purchase_requests!orders_purchase_request_id_fkey(site_name)')
+          .from('sites')
+          .select('name')
+          .order('name')
         
         if (error) {
           console.error('Şantiye yükleme hatası:', error)
@@ -33,16 +34,12 @@ export function SiteFilter({ selectedSites, onSitesChange }: SiteFilterProps) {
         }
         
         if (data) {
-          const uniqueSites = Array.from(
-            new Set(
-              data
-                .map((order: any) => order.purchase_requests?.site_name)
-                .filter(Boolean)
-            )
-          ).sort()
+          const siteNames = data
+            .map((site: { name: string }) => site.name)
+            .filter(Boolean)
           
-          console.log('📍 Şantiyeler yüklendi:', uniqueSites)
-          setSites(uniqueSites as string[])
+          console.log('📍 Şantiyeler yüklendi:', siteNames)
+          setSites(siteNames)
         }
       } catch (error) {
         console.error('Şantiye yükleme hatası:', error)
