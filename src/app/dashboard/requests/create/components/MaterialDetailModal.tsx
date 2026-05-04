@@ -13,6 +13,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { Calendar as CalendarComponent } from '@/components/ui/calendar'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { 
   ChevronRight,
   Camera,
@@ -26,6 +33,32 @@ import { tr } from 'date-fns/locale'
 import type { MaterialDetailModalProps, CartItem } from '../types'
 import { createEmptyCartItem } from '../types'
 
+const COMMON_UNITS = [
+  'Adet',
+  'Kg',
+  'Gram',
+  'Ton',
+  'Litre',
+  'M',
+  'M²',
+  'M³',
+  'Cm',
+  'Mm',
+  'Paket',
+  'Kutu',
+  'Koli',
+  'Çuval',
+  'Top',
+  'Rulo',
+  'Palet',
+  'Bağ',
+  'Torba',
+  'Bidon',
+  'Varil',
+  'Takım',
+  'Set',
+] as const
+
 export function MaterialDetailModal({
   open,
   onOpenChange,
@@ -38,6 +71,8 @@ export function MaterialDetailModal({
 }: MaterialDetailModalProps) {
   const isEditing = !!editItem
   const [showCalendar, setShowCalendar] = useState(false)
+  const [showCustomUnit, setShowCustomUnit] = useState(false)
+  const [customUnitValue, setCustomUnitValue] = useState('')
   
   const [formData, setFormData] = useState<Partial<CartItem>>({
     quantity: '',
@@ -52,6 +87,9 @@ export function MaterialDetailModal({
 
   useEffect(() => {
     if (editItem) {
+      const isCustomUnit = editItem.unit && !COMMON_UNITS.includes(editItem.unit as typeof COMMON_UNITS[number])
+      setShowCustomUnit(isCustomUnit)
+      setCustomUnitValue(isCustomUnit ? editItem.unit : '')
       setFormData({
         quantity: editItem.quantity,
         unit: editItem.unit,
@@ -63,6 +101,8 @@ export function MaterialDetailModal({
         image_preview_urls: editItem.image_preview_urls || []
       })
     } else {
+      setShowCustomUnit(false)
+      setCustomUnitValue('')
       setFormData({
         quantity: '1',
         unit: '',
@@ -75,6 +115,23 @@ export function MaterialDetailModal({
       })
     }
   }, [editItem, open])
+
+  const handleUnitSelect = (value: string) => {
+    if (value === 'other') {
+      setShowCustomUnit(true)
+      setFormData(prev => ({ ...prev, unit: '' }))
+    } else {
+      setShowCustomUnit(false)
+      setCustomUnitValue('')
+      setFormData(prev => ({ ...prev, unit: value }))
+    }
+  }
+
+  const handleCustomUnitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[0-9]/g, '')
+    setCustomUnitValue(value)
+    setFormData(prev => ({ ...prev, unit: value }))
+  }
 
   const handleImageUpload = (files: FileList | null) => {
     if (!files) return
@@ -318,12 +375,39 @@ export function MaterialDetailModal({
               <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
                 Birim <span className="text-red-500">*</span>
               </Label>
-              <Input
-                value={formData.unit}
-                onChange={(e) => setFormData(prev => ({ ...prev, unit: e.target.value }))}
-                placeholder="adet, kg, m, litre..."
-                className="border-0 bg-transparent p-0 h-auto text-base font-medium text-gray-900 placeholder:text-gray-400 focus:ring-0"
-              />
+              <Select
+                value={showCustomUnit ? 'other' : (formData.unit || '')}
+                onValueChange={handleUnitSelect}
+              >
+                <SelectTrigger className="border-0 bg-transparent p-0 h-auto text-base font-medium text-gray-900 focus:ring-0 shadow-none">
+                  <SelectValue placeholder="Birim seçin..." />
+                </SelectTrigger>
+                <SelectContent className="max-h-60">
+                  {COMMON_UNITS.map((unit) => (
+                    <SelectItem key={unit} value={unit}>
+                      {unit}
+                    </SelectItem>
+                  ))}
+                  <SelectItem value="other" className="text-blue-600 font-medium">
+                    Diğer (Özel birim girin)
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              
+              {showCustomUnit && (
+                <div className="mt-3">
+                  <Input
+                    value={customUnitValue}
+                    onChange={handleCustomUnitChange}
+                    placeholder="Özel birim yazın (rakam girilemez)..."
+                    className="border border-gray-200 rounded-xl px-3 py-2 text-base font-medium text-gray-900 placeholder:text-gray-400 focus:ring-2 focus:ring-blue-500"
+                    autoFocus
+                  />
+                  {customUnitValue && /[0-9]/.test(customUnitValue) && (
+                    <p className="text-xs text-red-500 mt-1">Birim alanına rakam girilemez</p>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Teslimat Tarihi */}

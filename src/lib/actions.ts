@@ -204,7 +204,7 @@ export async function createPurchaseRequest(data: {
     const requestData = {
       request_number: requestNumber,
       title: data.material,
-      description: data.description,
+      description: null, // Açıklama alanı kaldırıldı - itemler purchase_request_items tablosunda
       department: user.department || 'Genel',
       total_amount: 0,
       currency: 'TRY',
@@ -213,7 +213,7 @@ export async function createPurchaseRequest(data: {
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
-      delivery_date: data.required_date || null, // Ne zaman gerekli tarihi eklendi
+      delivery_date: data.required_date || null,
       material_class: data.material_class || null,
       material_group: data.material_group || null,
       material_item_name: data.material_item_name || null,
@@ -556,11 +556,6 @@ export async function createMultiMaterialPurchaseRequest(data: {
       ? `Çoklu Malzeme Talebi (${data.materials.length} adet)`
       : data.materials[0]?.material_name || 'Malzeme Talebi'
     
-    // Açıklamayı oluştur
-    const description = data.materials.length > 1
-      ? `Çoklu malzeme talebi: ${data.materials.map(m => `${m.material_name} (${m.quantity} ${m.unit})`).join(', ')}`
-      : `${data.materials[0]?.material_name} - ${data.materials[0]?.quantity} ${data.materials[0]?.unit}`
-    
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
     // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
@@ -600,7 +595,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     const requestData = {
       request_number: requestNumber,
       title,
-      description,
+      description: null, // Açıklama alanı kaldırıldı - itemler purchase_request_items tablosunda
       department: user.department || 'Genel',
       total_amount: 0,
       currency: 'TRY',
@@ -609,8 +604,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       requested_by: user.id,
       site_id: data.site_id || null,
       site_name: data.site_name || null,
-      delivery_date: data.required_date || null, // Ne zaman gerekli tarihi eklendi
-      image_urls: data.materials[0]?.image_urls || null // İlk malzemenin resimlerini kullan
+      delivery_date: data.required_date || null,
+      image_urls: data.materials[0]?.image_urls || null
     }
     
     // Purchase request oluştur
