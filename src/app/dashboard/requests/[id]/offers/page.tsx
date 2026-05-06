@@ -175,7 +175,7 @@ export default function OffersPage() {
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     
     if (userRole === 'department_head') {
-      // Sadece GMO + departman_onayı_bekliyor statusu için DepartmentHeadView
+      // GMO + departman_onayı_bekliyor statusu için DepartmentHeadView
       if (request.site_id === GMO_SITE_ID && request.status === 'departman_onayı_bekliyor') {
         return (
           <DepartmentHeadView 
@@ -184,16 +184,27 @@ export default function OffersPage() {
             showToast={showToast}
           />
         )
-      } else {
-        // Diğer durumlarda sadece görüntüleme (SitePersonnelView readonly)
+      }
+      
+      // Sipariş verildi ve teslimat durumlarında SantiyeDepoView kullan (teslimat modalı için)
+      const deliveryStatuses = ['sipariş verildi', 'kısmen teslim alındı', 'teslim alındı', 'gönderildi', 'iade var']
+      if (deliveryStatuses.includes(request.status)) {
         return (
-          <SitePersonnelView 
+          <SantiyeDepoView 
             {...commonProps}
             currentOrder={currentOrder}
-            readOnly={true}
           />
         )
       }
+      
+      // Diğer durumlarda sadece görüntüleme (SitePersonnelView readonly)
+      return (
+        <SitePersonnelView 
+          {...commonProps}
+          currentOrder={currentOrder}
+          readOnly={true}
+        />
+      )
     }
 
     switch (userRole) {
