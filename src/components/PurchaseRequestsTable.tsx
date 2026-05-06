@@ -107,10 +107,10 @@ const fetcherWithAuth = async (url: string) => {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
 
-  // Profile bilgisini çek (site_id için gerekli)
+  // Profile bilgisini çek (site_id ve department için gerekli)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('site_id')
+    .select('site_id, department')
     .eq('id', user.id)
     .single()
 
@@ -274,6 +274,13 @@ const fetchPurchaseRequests = async (
     }
   }
   
+  // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
+  // Diğer tüm roller için, profilde department doluysa sadece o departmana ait talepler getirilir.
+  const userDepartment: string | null =
+    effectiveRole !== 'department_head' && profile?.department
+      ? profile.department
+      : null
+
   // Siparişi olmayan talepler filtresi - önce bunları bulalım
   let unorderedRequestIds: string[] | null = null
   if (unorderedOnly && effectiveRole === 'purchasing_officer') {
@@ -297,6 +304,11 @@ const fetchPurchaseRequests = async (
       } else {
         // Site ID'si yoksa sadece kendi oluşturduğu talepleri göster
         tempQuery = tempQuery.eq('requested_by', user.id)
+      }
+
+      // Departman filtresi
+      if (userDepartment) {
+        tempQuery = tempQuery.eq('department', userDepartment)
       }
       
       const { data: allRequests } = await tempQuery
@@ -380,6 +392,12 @@ const fetchPurchaseRequests = async (
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+  }
+
+  // Departman filtresi: profilde department doluysa, sadece o departmana ait talepler.
+  // department_head rolü kendi mantığında zaten uyguluyor, dışarıda bırakılır.
+  if (userDepartment) {
+    countQuery = countQuery.eq('department', userDepartment)
   }
   
   // Siparişi olmayan talepler filtresi
@@ -487,6 +505,12 @@ const fetchPurchaseRequests = async (
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+  }
+
+  // Departman filtresi: profilde department doluysa, sadece o departmana ait talepler.
+  // department_head rolü kendi mantığında zaten uyguluyor, dışarıda bırakılır.
+  if (userDepartment) {
+    requestsQuery = requestsQuery.eq('department', userDepartment)
   }
   
   // Siparişi olmayan talepler filtresi

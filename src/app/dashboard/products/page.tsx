@@ -9,7 +9,7 @@ import { useState, useEffect } from 'react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus } from 'lucide-react'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, Download, Loader2 } from 'lucide-react'
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
@@ -19,7 +19,7 @@ import {
   ProductsTable,
   ProductModal,
 } from './components'
-import CreateZimmetModal from '@/components/CreateZimmetModal'
+import BulkZimmetModal from '@/components/BulkZimmetModal'
 
 interface Site {
   id: string
@@ -43,6 +43,7 @@ export default function ProductsPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [showBulkActions, setShowBulkActions] = useState(false)
   const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
+  const [exporting, setExporting] = useState(false)
   const supabase = createClient()
   
   // Hooks
@@ -250,6 +251,152 @@ export default function ProductsPage() {
   }
 
   const isSaving = createMutation.isPending || updateMutation.isPending
+
+  const handleExportWarehouseStock = async () => {
+    if (!siteId) {
+      showToast('Lütfen önce bir depo seçin', 'error')
+      return
+    }
+
+    try {
+      setExporting(true)
+      const selectedSite = sites.find(s => s.site.id === siteId)
+      const siteName = selectedSite?.site.name || 'Depo'
+
+      const { data: stockData, error: stockError } = await supabase
+        .from('warehouse_stock')
+        .select(`
+          product_id,
+          quantity,
+          condition_breakdown,
+          products!inner(
+            id,
+            name,
+            sku,
+            unit,
+            product_type,
+            brand:brands(name)
+          )
+        `)
+        .eq('warehouse_id', siteId)
+        .gt('quantity', 0)
+
+      if (stockError) throw stockError
+
+      const productIds = (stockData || []).map((s: any) => s.product_id)
+
+      // User inventory (normal zimmetler - stoktan düşülmüş)
+      const { data: userInventoryData } = await supabase
+        .from('user_inventory')
+        .select('product_id, quantity, owner_name, owner_email, user:profiles!user_inventory_user_id_fkey(full_name)')
+        .in('product_id', productIds)
+        .eq('status', 'active')
+
+      // Pending inventory (eski zimmetler - stoktan düşülmemiş)
+      const { data: pendingInventoryData } = await supabase
+        .from('pending_user_inventory')
+        .select('product_id, quantity, owner_name')
+        .in('product_id', productIds)
+
+      const zimmetMap: Record<string, { total: number; pendingTotal: number; users: string[] }> = {}
+      
+      // Normal zimmetler
+      ;(userInventoryData || []).forEach((inv: any) => {
+        if (!zimmetMap[inv.product_id]) {
+          zimmetMap[inv.product_id] = { total: 0, pendingTotal: 0, users: [] }
+        }
+        zimmetMap[inv.product_id].total += parseFloat(inv.quantity)
+        const userName = inv.owner_name || (Array.isArray(inv.user) ? inv.user[0]?.full_name : inv.user?.full_name) || ''
+        if (userName && !zimmetMap[inv.product_id].users.includes(userName)) {
+          zimmetMap[inv.product_id].users.push(userName)
+        }
+      })
+
+      // Pending zimmetler (eski kayıtlar)
+      ;(pendingInventoryData || []).forEach((inv: any) => {
+        if (!zimmetMap[inv.product_id]) {
+          zimmetMap[inv.product_id] = { total: 0, pendingTotal: 0, users: [] }
+        }
+        zimmetMap[inv.product_id].pendingTotal += parseFloat(inv.quantity || 0)
+        zimmetMap[inv.product_id].total += parseFloat(inv.quantity || 0)
+        if (inv.owner_name && !zimmetMap[inv.product_id].users.includes(inv.owner_name)) {
+          zimmetMap[inv.product_id].users.push(inv.owner_name)
+        }
+      })
+
+      const csvRows: string[][] = []
+      
+      csvRows.push([
+        'Ürün Adı',
+        'SKU',
+        'Marka',
+        'Birim',
+        'Ürün Tipi',
+        'Depo Stok (Ham)',
+        'Mevcut (Boş)',
+        'Zimmetli Miktar',
+        'Yeni',
+        'Kullanılmış',
+        'HEK',
+        'Arızalı',
+        'Zimmetli Kişiler'
+      ])
+
+      ;(stockData || []).forEach((stock: any) => {
+        const product = stock.products
+        const breakdown = (stock.condition_breakdown as Record<string, number>) || {}
+        const zimmetInfo = zimmetMap[product.id] || { total: 0, pendingTotal: 0, users: [] }
+        
+        const depoStok = parseFloat(stock.quantity.toString())
+        // Pending zimmetler depo stoğundan düşülmemiş, gerçek mevcut hesapla
+        const mevcutBos = Math.max(0, depoStok - zimmetInfo.pendingTotal)
+        
+        const productTypeTr: Record<string, string> = {
+          'demirbas': 'Demirbaş',
+          'sarf_malzeme': 'Sarf Malzeme',
+          'kontrol_sarf': 'Kontrol Sarf'
+        }
+
+        csvRows.push([
+          product.name || '',
+          product.sku || '',
+          product.brand?.name || '',
+          product.unit || 'adet',
+          productTypeTr[product.product_type] || product.product_type || '',
+          depoStok.toString(),
+          mevcutBos.toString(),
+          zimmetInfo.total.toString(),
+          (breakdown['yeni'] || 0).toString(),
+          (breakdown['kullanılmış'] || 0).toString(),
+          (breakdown['hek'] || 0).toString(),
+          (breakdown['arızalı'] || 0).toString(),
+          zimmetInfo.users.join(', ')
+        ])
+      })
+
+      const csvContent = csvRows
+        .map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(';'))
+        .join('\n')
+
+      const BOM = '\uFEFF'
+      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `${siteName}_Stok_Raporu_${new Date().toISOString().split('T')[0]}.csv`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      showToast(`${siteName} deposunun stok raporu indirildi`, 'success')
+    } catch (error) {
+      console.error('Export hatası:', error)
+      showToast('Rapor oluşturulurken hata oluştu', 'error')
+    } finally {
+      setExporting(false)
+    }
+  }
 
   return (
     <div className="space-y-8">
@@ -483,6 +630,28 @@ export default function ProductsPage() {
                   )}
                 </p>
               </div>
+              
+              {/* Export Button - Sadece depo seçiliyse görünür */}
+              {siteId && (
+                <Button
+                  onClick={handleExportWarehouseStock}
+                  disabled={exporting}
+                  variant="outline"
+                  className="rounded-xl border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300"
+                >
+                  {exporting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Hazırlanıyor...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4 mr-2" />
+                      Depo Stok Raporu
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
 
             {/* Filters */}
@@ -506,8 +675,8 @@ export default function ProductsPage() {
             isLoading={isLoading}
             onProductClick={handleOpenViewModal}
             selectedSiteId={siteId}
-            // selectedProducts={selectedProducts}
-            // onSelectionChange={handleSelectionChange}
+            selectedProducts={selectedProducts}
+            onSelectionChange={handleSelectionChange}
           />
 
           {/* Pagination */}
@@ -600,12 +769,12 @@ export default function ProductsPage() {
       )}
 
       {/* Bulk Zimmet Modal */}
-      <CreateZimmetModal
+      <BulkZimmetModal
         open={showBulkZimmetModal}
         onOpenChange={setShowBulkZimmetModal}
         onSuccess={handleBulkZimmetSuccess}
         showToast={showToast}
-        initialSelectedProducts={selectedProducts}
+        selectedProductIds={selectedProducts}
       />
     </div>
   )

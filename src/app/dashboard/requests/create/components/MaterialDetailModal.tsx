@@ -30,8 +30,12 @@ import {
 } from 'lucide-react'
 import { format } from 'date-fns'
 import { tr } from 'date-fns/locale'
+import { useToast } from '@/components/ui/toast'
 import type { MaterialDetailModalProps, CartItem } from '../types'
 import { createEmptyCartItem } from '../types'
+
+const MAX_FILE_SIZE_MB = 10
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 
 const COMMON_UNITS = [
   'Adet',
@@ -69,6 +73,7 @@ export function MaterialDetailModal({
   editItem,
   onUpdateItem
 }: MaterialDetailModalProps) {
+  const { showToast } = useToast()
   const isEditing = !!editItem
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCustomUnit, setShowCustomUnit] = useState(false)
@@ -137,19 +142,37 @@ export function MaterialDetailModal({
     if (!files) return
 
     const currentImages = formData.uploaded_images || []
-    const newFiles = Array.from(files).slice(0, 3 - currentImages.length)
+    const availableSlots = 3 - currentImages.length
+    
+    if (availableSlots <= 0) {
+      showToast('En fazla 3 fotoğraf ekleyebilirsiniz', 'error')
+      return
+    }
+
+    const validFiles: File[] = []
     const newPreviewUrls: string[] = []
 
-    newFiles.forEach(file => {
-      if (file.type.startsWith('image/')) {
-        const previewUrl = URL.createObjectURL(file)
-        newPreviewUrls.push(previewUrl)
+    Array.from(files).slice(0, availableSlots).forEach(file => {
+      if (!file.type.startsWith('image/')) {
+        showToast(`${file.name} geçerli bir resim dosyası değil`, 'error')
+        return
       }
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        showToast(`${file.name} çok büyük (maksimum ${MAX_FILE_SIZE_MB}MB)`, 'error')
+        return
+      }
+
+      validFiles.push(file)
+      const previewUrl = URL.createObjectURL(file)
+      newPreviewUrls.push(previewUrl)
     })
+
+    if (validFiles.length === 0) return
 
     setFormData(prev => ({
       ...prev,
-      uploaded_images: [...currentImages, ...newFiles],
+      uploaded_images: [...currentImages, ...validFiles],
       image_preview_urls: [...(prev.image_preview_urls || []), ...newPreviewUrls]
     }))
   }

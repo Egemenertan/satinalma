@@ -385,20 +385,36 @@ export default function CreatePurchaseRequestPage() {
   const uploadImagesForMaterial = async (materialId: string, files: File[]): Promise<string[]> => {
     if (files.length === 0) return []
     
+    const MAX_FILE_SIZE_MB = 10
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
     const uploadedUrls: string[] = []
     
     for (let i = 0; i < files.length; i++) {
       const file = files[i]
-      const fileExt = file.name.split('.').pop()
+      
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        throw new Error(`${file.name} dosyası çok büyük (maksimum ${MAX_FILE_SIZE_MB}MB). Lütfen daha küçük boyutlu bir fotoğraf seçin.`)
+      }
+      
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
       const uniqueId = Math.random().toString(36).substring(2, 15)
       const fileName = `purchase_requests/materials/${materialId}/${Date.now()}_${uniqueId}.${fileExt}`
       
       try {
-        const { data, error } = await supabase.storage
+        const { error } = await supabase.storage
           .from('satinalma')
-          .upload(fileName, file)
+          .upload(fileName, file, {
+            cacheControl: '3600',
+            upsert: false
+          })
 
-        if (error) throw error
+        if (error) {
+          console.error('Supabase storage error:', error)
+          if (error.message?.includes('Payload too large') || error.message?.includes('413')) {
+            throw new Error(`${file.name} dosyası çok büyük. Lütfen daha küçük boyutlu bir fotoğraf seçin.`)
+          }
+          throw new Error(`${file.name} yüklenirken hata: ${error.message}`)
+        }
 
         const { data: urlData } = supabase.storage
           .from('satinalma')
@@ -407,7 +423,10 @@ export default function CreatePurchaseRequestPage() {
         uploadedUrls.push(urlData.publicUrl)
       } catch (error) {
         console.error('Image upload error:', error)
-        throw new Error(`${materialId} malzemesi için resim yüklenirken hata oluştu`)
+        if (error instanceof Error) {
+          throw error
+        }
+        throw new Error(`${file.name} yüklenirken beklenmeyen bir hata oluştu`)
       }
     }
     
@@ -420,9 +439,23 @@ export default function CreatePurchaseRequestPage() {
       return
     }
 
-    const invalidItems = cart.filter(item => !item.unit || !item.quantity || !item.delivery_date || !item.purpose)
-    if (invalidItems.length > 0) {
-      showToast('Lütfen tüm ürünlerin detaylarını doldurun', 'error')
+    // Detaylı validasyon
+    const validationErrors: string[] = []
+    cart.forEach((item, index) => {
+      const itemName = item.material_name || `Ürün ${index + 1}`
+      if (!item.unit) validationErrors.push(`${itemName}: Birim seçilmeli`)
+      if (!item.quantity) validationErrors.push(`${itemName}: Miktar girilmeli`)
+      if (!item.delivery_date) validationErrors.push(`${itemName}: Teslimat tarihi seçilmeli`)
+      if (!item.purpose) validationErrors.push(`${itemName}: Kullanım amacı girilmeli`)
+      
+      const qty = parseFloat(item.quantity)
+      if (isNaN(qty) || qty <= 0) {
+        validationErrors.push(`${itemName}: Geçerli bir miktar girilmeli (0'dan büyük)`)
+      }
+    })
+
+    if (validationErrors.length > 0) {
+      showToast(validationErrors[0], 'error')
       return
     }
 
@@ -435,12 +468,22 @@ export default function CreatePurchaseRequestPage() {
           
           if (material.uploaded_images && material.uploaded_images.length > 0) {
             showToast(`${material.material_name} için resimler yükleniyor...`, 'info')
-            imageUrls = await uploadImagesForMaterial(material.id, material.uploaded_images)
+            try {
+              imageUrls = await uploadImagesForMaterial(material.id, material.uploaded_images)
+            } catch (uploadError) {
+              console.error(`Image upload failed for ${material.material_name}:`, uploadError)
+              throw uploadError
+            }
+          }
+          
+          const quantity = parseFloat(material.quantity)
+          if (isNaN(quantity) || quantity <= 0) {
+            throw new Error(`${material.material_name} için geçersiz miktar: ${material.quantity}`)
           }
           
           return {
             material_name: material.material_name,
-            quantity: Math.round(parseFloat(material.quantity)),
+            quantity: Math.round(quantity),
             unit: material.unit,
             brand: material.brand,
             material_class: material.material_class,
@@ -479,7 +522,8 @@ export default function CreatePurchaseRequestPage() {
       
     } catch (error) {
       console.error('Submit error:', error)
-      showToast('Talep oluşturulurken bir hata oluştu.', 'error')
+      const errorMessage = error instanceof Error ? error.message : 'Talep oluşturulurken bir hata oluştu.'
+      showToast(errorMessage, 'error')
     } finally {
       setLoading(false)
     }

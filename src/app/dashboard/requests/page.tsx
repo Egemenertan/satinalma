@@ -60,6 +60,12 @@ const fetchWeeklyActivity = async (
     const userDepartment = department || 'Genel'
     query = query.eq('site_id', GMO_SITE_ID).eq('department', userDepartment)
   }
+
+  // Departman filtresi: profilde department doluysa, sadece o departmana ait aktivite.
+  // department_head zaten kendi mantığında uyguluyor, tekrar uygulanmaz.
+  if (role !== 'department_head' && department) {
+    query = query.eq('department', department)
+  }
   
   const { data: requests, error } = await query
   
@@ -177,6 +183,12 @@ const fetchPageData = async () => {
       statsQuery = statsQuery.in('site_id', userSiteIds)
     }
   }
+
+  // Departman filtresi: profilde department doluysa, istatistikler de o departmana göre.
+  // department_head zaten kendi blok mantığında uyguluyor.
+  if (profile?.role !== 'department_head' && profile?.department) {
+    statsQuery = statsQuery.eq('department', profile.department)
+  }
   
   const { data: requests, error, count } = await statsQuery
   
@@ -232,6 +244,11 @@ const fetchPageData = async () => {
       if (userSiteIds.length > 0) {
         monthQuery = monthQuery.in('site_id', userSiteIds)
       }
+    }
+
+    // Departman filtresi: profilde department doluysa, aylık dağılım da o departmana göre.
+    if (profile?.role !== 'department_head' && profile?.department) {
+      monthQuery = monthQuery.eq('department', profile.department)
     }
     
     const { count } = await monthQuery
