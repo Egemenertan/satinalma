@@ -281,12 +281,14 @@ export default function SantiyeDepoView({
     return request?.status === 'iade nedeniyle sipariş'
   }
 
-  // Santiye depo yöneticisi kontrolü - rol bazlı
+  // Santiye depo yöneticisi ve site manager kontrolü - rol bazlı
   const isSantiyeDepoYonetici = userRole === 'santiye_depo_yonetici'
+  const isSiteManager = userRole === 'site_manager'
+  const canApproveOrSend = isSantiyeDepoYonetici || isSiteManager
   
-  // Site Manager düzenleme yetkisi kontrolü (santiye_depo_yonetici rolü için)
+  // Site Manager düzenleme yetkisi kontrolü (santiye_depo_yonetici ve site_manager rolleri için)
   const canEditRequest = () => {
-    if (!isSantiyeDepoYonetici) return false
+    if (!canApproveOrSend) return false
     return request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil'
   }
 
@@ -516,13 +518,13 @@ export default function SantiyeDepoView({
     }
   }
 
-  // Site Manager için onay butonu gösterilecek durumlar (santiye_depo_yonetici rolü için)
+  // Site Manager için onay butonu gösterilecek durumlar (santiye_depo_yonetici ve site_manager rolleri için)
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
   const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
   
-  const showApprovalButton = isSantiyeDepoYonetici && (
+  const showApprovalButton = canApproveOrSend && (
     isSpecialSite 
-      ? request?.status === 'onay_bekliyor'  // Özel site: sadece onay_bekliyor
+      ? (request?.status === 'onay_bekliyor' || request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil')  // GMO: onay_bekliyor, kısmen gönderildi ve depoda mevcut değil
       : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil')  // Normal siteler
   )
 

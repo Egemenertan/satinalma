@@ -282,13 +282,16 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
   }
 
   // Site Manager için satın almaya gönder butonu gösterilecek durumlar
-  // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için sadece onay_bekliyor statusunda göster
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
   const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
   
-  const showApprovalButton = isSpecialSite 
-    ? (request?.status === 'onay_bekliyor' || request?.status === 'ana depoda yok')  // Özel site: onay_bekliyor ve ana depoda yok
-    : (request?.status === 'kısmen gönderildi' || request?.status === 'depoda mevcut değil' || request?.status === 'ana depoda yok')  // Normal siteler
+  // Tüm siteler için aynı statuslarda buton göster: onay_bekliyor, kısmen gönderildi, depoda mevcut değil, ana depoda yok
+  const showApprovalButton = (
+    request?.status === 'onay_bekliyor' || 
+    request?.status === 'kısmen gönderildi' || 
+    request?.status === 'depoda mevcut değil' || 
+    request?.status === 'ana depoda yok'
+  )
 
   // materialOrders'ı array formatına çevir (backward compatibility)
   const materialOrdersArray = Array.isArray(props.materialOrders) 

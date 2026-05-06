@@ -376,6 +376,13 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     countQuery = countQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'department_head') {
+    // Department head: Sadece GMO sitesi + kendi departmanı
+    const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    const headDepartment = profile?.department || 'Genel'
+    countQuery = countQuery
+      .eq('site_id', GMO_SITE_ID)
+      .eq('department', headDepartment)
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     countQuery = countQuery.neq('status', 'departman_onayı_bekliyor')
@@ -387,7 +394,7 @@ const fetchPurchaseRequests = async (
         .neq('status', 'onay_bekliyor')
     }
   } else {
-    // Diğer roller (site_manager) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager, santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
@@ -489,6 +496,13 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'site_personnel') {
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     requestsQuery = requestsQuery.eq('requested_by', user.id)
+  } else if (effectiveRole === 'department_head') {
+    // Department head: Sadece GMO sitesi + kendi departmanı
+    const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
+    const headDepartment = profile?.department || 'Genel'
+    requestsQuery = requestsQuery
+      .eq('site_id', GMO_SITE_ID)
+      .eq('department', headDepartment)
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     requestsQuery = requestsQuery.neq('status', 'departman_onayı_bekliyor')
@@ -500,7 +514,7 @@ const fetchPurchaseRequests = async (
         .neq('status', 'onay_bekliyor')
     }
   } else {
-    // Diğer roller (site_manager) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (site_manager, santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
@@ -2368,16 +2382,13 @@ export default function PurchaseRequestsTable({
                     <div className="relative flex justify-center items-center gap-2">
                       {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu */}
                       {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
-                        const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
-                        const isSpecialSite = request.site_id === SPECIAL_SITE_ID
-                        
-                        // Özel site: onay_bekliyor veya ana depoda yok statusunda göster
-                        if (isSpecialSite) {
-                          return request.status === 'onay_bekliyor' || request.status === 'ana depoda yok'
-                        }
-                        
-                        // Normal siteler: kısmen gönderildi, depoda mevcut değil veya ana depoda yok
-                        return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil' || request.status === 'ana depoda yok'
+                        // Tüm siteler için aynı statuslarda buton göster
+                        return (
+                          request.status === 'onay_bekliyor' || 
+                          request.status === 'kısmen gönderildi' || 
+                          request.status === 'depoda mevcut değil' || 
+                          request.status === 'ana depoda yok'
+                        )
                       })() && (
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
@@ -2512,16 +2523,13 @@ export default function PurchaseRequestsTable({
                     
                     {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu - Mobile */}
                     {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
-                      const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
-                      const isSpecialSite = request.site_id === SPECIAL_SITE_ID
-                      
-                      // Özel site: onay_bekliyor veya ana depoda yok statusunda göster
-                      if (isSpecialSite) {
-                        return request.status === 'onay_bekliyor' || request.status === 'ana depoda yok'
-                      }
-                      
-                      // Normal siteler: kısmen gönderildi, depoda mevcut değil veya ana depoda yok
-                      return request.status === 'kısmen gönderildi' || request.status === 'depoda mevcut değil' || request.status === 'ana depoda yok'
+                      // Tüm siteler için aynı statuslarda buton göster
+                      return (
+                        request.status === 'onay_bekliyor' || 
+                        request.status === 'kısmen gönderildi' || 
+                        request.status === 'depoda mevcut değil' || 
+                        request.status === 'ana depoda yok'
+                      )
                     })() && (
                       <div className="pt-2">
                         <Button
