@@ -8,7 +8,7 @@ import { STORAGE_URLS } from "@/lib/constants";
 export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
   description: "Şantiye satın alma talepleri için modern yönetim sistemi",
-  manifest: '/manifest.json',
+  manifest: '/site.webmanifest',
   robots: {
     index: false,
     follow: false,

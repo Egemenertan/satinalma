@@ -31,22 +31,10 @@ interface UserInventory {
   status: string
 }
 
-interface PendingInventory {
-  id: string
-  quantity: number
-  owner_name: string
-  owner_email: string | null
-  user_name: string | null
-  user_email: string | null
-  item_name: string
-  serial_number: string | null
-  created_at: string
-}
 
 export function ProductStockTab({ product, stockData, totalStock }: ProductStockTabProps) {
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
   const [userInventories, setUserInventories] = useState<UserInventory[]>([])
-  const [pendingInventories, setPendingInventories] = useState<PendingInventory[]>([])
   const [loadingInventories, setLoadingInventories] = useState(false)
   const [showUserInventories, setShowUserInventories] = useState(false)
   const supabase = createClient()
@@ -54,7 +42,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   useEffect(() => {
     if (product?.id) {
       fetchUserInventories()
-      fetchPendingInventories()
     }
   }, [product?.id])
 
@@ -94,31 +81,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
     }
   }
 
-  const fetchPendingInventories = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('pending_user_inventory')
-        .select(`
-          id,
-          quantity,
-          owner_name,
-          owner_email,
-          user_name,
-          user_email,
-          item_name,
-          serial_number,
-          created_at
-        `)
-        .eq('product_id', product.id)
-        .order('owner_name', { ascending: true })
-
-      if (error) throw error
-      setPendingInventories(data || [])
-    } catch (error) {
-      console.error('Bekleyen zimmetler yüklenemedi:', error)
-    }
-  }
-
   const toggleStockExpand = (stockId: string) => {
     setExpandedStockIds((prev) => {
       const newSet = new Set(prev)
@@ -132,42 +94,11 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   }
 
   const totalUserInventory = userInventories.reduce((sum, inv) => sum + parseFloat(inv.quantity.toString()), 0)
-  const totalPendingInventory = pendingInventories.reduce((sum, inv) => sum + parseFloat(inv.quantity?.toString() || '0'), 0)
-  const totalAllZimmet = totalUserInventory + totalPendingInventory
 
   // Sadece ana depo stoklarını göster (user_id: null olanlar)
   const warehouseStocks = (stockData || []).filter((s: any) => 
     s.user_id === null || s.user_id === undefined
   )
-
-  // Pending inventory'leri user inventory formatına dönüştür
-  // source_warehouse_id yoksa, en çok stok bulunan depoya ata
-  const getWarehouseIdForPending = () => {
-    if (warehouseStocks.length === 0) return null
-    // En çok stok bulunan depoyu bul
-    const sortedStocks = [...warehouseStocks].sort(
-      (a, b) => parseFloat(b.quantity?.toString() || '0') - parseFloat(a.quantity?.toString() || '0')
-    )
-    return sortedStocks[0]?.warehouse_id || null
-  }
-
-  const defaultWarehouseId = getWarehouseIdForPending()
-
-  const pendingAsUserInventory: UserInventory[] = pendingInventories.map(p => ({
-    id: `pending_${p.id}`,
-    quantity: p.quantity || 0,
-    owner_name: p.owner_name,
-    owner_email: p.owner_email,
-    pending_user_name: p.user_name,
-    pending_user_email: p.user_email,
-    source_warehouse_id: defaultWarehouseId, // En çok stok bulunan depoya ata
-    user: null,
-    assigned_date: p.created_at || new Date().toISOString(),
-    status: 'active'
-  }))
-
-  // Tüm zimmetleri birleştir
-  const allUserInventories = [...userInventories, ...pendingAsUserInventory]
 
   if (!warehouseStocks || warehouseStocks.length === 0) {
     return (
@@ -189,16 +120,14 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
     0
   )
   
-  // Gerçek mevcut stok = depo stoğu - pending zimmetler (çünkü pending'ler düşülmemiş)
-  const totalRealAvailable = Math.max(0, totalWarehouseStock - totalPendingInventory)
+  // Artık tüm zimmetler user_inventory'de ve stoktan düşülmüş durumda
+  const totalAvailable = totalWarehouseStock
+  const totalZimmetli = totalUserInventory
   
   console.log('📊 Stok Durumu Tab:', {
-    'Depo Stoğu (Ham)': totalWarehouseStock,
-    'Pending Zimmet (Düşülmemiş)': totalPendingInventory,
-    'Normal Zimmet (Düşülmüş)': totalUserInventory,
-    'Gerçek Mevcut': totalRealAvailable,
-    'Toplam Zimmetli': totalAllZimmet,
-    'GENEL TOPLAM': totalRealAvailable + totalAllZimmet
+    'Depo Stoğu (Mevcut)': totalAvailable,
+    'Zimmetli': totalZimmetli,
+    'GENEL TOPLAM': totalAvailable + totalZimmetli
   })
 
   return (
@@ -278,32 +207,20 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
               ([_, qty]) => Number(qty) > 0
             )
             
-            // Bu depodan yapılan zimmetler (user_inventory + pending_user_inventory)
-            const warehouseZimmetler = allUserInventories.filter(
+            // Bu depodan yapılan zimmetler
+            const warehouseZimmetler = userInventories.filter(
               inv => inv.source_warehouse_id === stock.warehouse_id
             )
             
-            // Pending zimmetler (eski kayıtlar) - bunlar depo stoğundan düşülmemiş
-            const pendingZimmetMiktar = warehouseZimmetler
-              .filter(inv => inv.id.startsWith('pending_'))
-              .reduce((sum, inv) => sum + parseFloat(inv.quantity.toString()), 0)
-            
-            // Normal zimmetler (user_inventory) - bunlar zaten depo stoğundan düşülmüş
-            const normalZimmetMiktar = warehouseZimmetler
-              .filter(inv => !inv.id.startsWith('pending_'))
-              .reduce((sum, inv) => sum + parseFloat(inv.quantity.toString()), 0)
+            const zimmetliMiktar = warehouseZimmetler.reduce(
+              (sum, inv) => sum + parseFloat(inv.quantity.toString()), 0
+            )
             
             const depoStok = parseFloat(stock.quantity.toString())
+            const mevcutMiktar = depoStok
             
-            // Pending zimmetler depo stoğunun içinde (düşülmemiş), 
-            // bu yüzden gerçek mevcut = depo stok - pending zimmet
-            const mevcutMiktar = Math.max(0, depoStok - pendingZimmetMiktar)
-            const zimmetliMiktar = pendingZimmetMiktar + normalZimmetMiktar
-            
-            // Toplam = mevcut + tüm zimmetler
-            // Ama pending zimmetler zaten depo stoğunda olduğu için:
-            // Toplam = depo stok + normal zimmetler
-            const totalMiktar = depoStok + normalZimmetMiktar
+            // Toplam = mevcut depo stoku + bu depodan yapılan zimmetler
+            const totalMiktar = depoStok + zimmetliMiktar
 
             return (
               <div
@@ -324,7 +241,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                       </span>
                       {zimmetliMiktar > 0 && (
                         <span className="text-xs text-gray-500">
-                          Zimmetli: <span className="font-semibold text-blue-600">{zimmetliMiktar.toLocaleString('tr-TR')}</span>
+                          Zimmetli: <span className="font-semibold text-primary-600">{zimmetliMiktar.toLocaleString('tr-TR')}</span>
                         </span>
                       )}
                     </div>
@@ -382,10 +299,10 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                           return (
                             <div
                               key={inv.id}
-                              className="flex items-center justify-between p-2 bg-blue-50 border border-blue-200 rounded"
+                              className="flex items-center justify-between p-2 bg-primary-50 border border-primary-200 rounded"
                             >
                               <div className="flex items-center gap-2">
-                                <User className="w-4 h-4 text-blue-600" />
+                                <User className="w-4 h-4 text-primary-600" />
                                 <div>
                                   <span className="text-xs font-medium text-gray-900">{displayName}</span>
                                   {displayEmail && (
@@ -393,7 +310,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   )}
                                 </div>
                               </div>
-                              <span className="text-sm font-semibold text-blue-600">
+                              <span className="text-sm font-semibold text-primary-600">
                                 {parseFloat(inv.quantity.toString()).toLocaleString('tr-TR')} {product?.unit || ''}
                               </span>
                             </div>
@@ -409,8 +326,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
         </div>
       )}
 
-      {/* Kullanıcı Zimmetleri (user_inventory + pending_user_inventory birleşik) */}
-      {allUserInventories.length > 0 && (
+      {/* Kullanıcı Zimmetleri */}
+      {userInventories.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-300"></div>
@@ -432,14 +349,14 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                     Zimmetli Kullanıcılar
                   </p>
                   <p className="text-xs text-gray-500 mt-1">
-                    {allUserInventories.length} kullanıcıda zimmetli
+                    {userInventories.length} kullanıcıda zimmetli
                   </p>
                 </div>
               </div>
               <div className="flex items-center gap-4">
                 <div className="text-right">
                   <p className="text-2xl font-bold text-gray-900">
-                    {totalAllZimmet.toLocaleString('tr-TR')}
+                    {totalZimmetli.toLocaleString('tr-TR')}
                   </p>
                   <p className="text-xs text-gray-500">{product?.unit || ''}</p>
                 </div>
@@ -450,7 +367,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
             {showUserInventories && (
               <div className="border-t border-gray-200">
                 <div className="divide-y divide-gray-100">
-                    {allUserInventories.map((inventory) => {
+                    {userInventories.map((inventory) => {
                     const displayName = inventory.owner_name || inventory.user?.full_name || 'İsimsiz'
                     const displayEmail = inventory.owner_email || inventory.user?.email || ''
                     const secondaryUser = inventory.pending_user_name
@@ -475,7 +392,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                 </p>
                               )}
                               {secondaryUser && (
-                                <p className="text-xs text-blue-600">
+                                <p className="text-xs text-primary-600">
                                   2. Zimmetli: {secondaryUser}
                                 </p>
                               )}
@@ -512,14 +429,14 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           <div className="text-center">
             <p className="text-xs text-gray-600 mb-1">Mevcut (Boş)</p>
             <p className="text-2xl font-bold text-green-600">
-              {totalRealAvailable.toLocaleString('tr-TR')}
+              {totalAvailable.toLocaleString('tr-TR')}
             </p>
             <p className="text-xs text-gray-500">{product?.unit || ''}</p>
           </div>
           <div className="text-center">
             <p className="text-xs text-gray-600 mb-1">Zimmetli</p>
-            <p className="text-2xl font-bold text-blue-600">
-              {totalAllZimmet.toLocaleString('tr-TR')}
+            <p className="text-2xl font-bold text-primary-600">
+              {totalZimmetli.toLocaleString('tr-TR')}
             </p>
             <p className="text-xs text-gray-500">{product?.unit || ''}</p>
           </div>
@@ -533,7 +450,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           <p className="font-semibold text-base mt-1">{product?.name}</p>
         </div>
         <p className="text-3xl font-bold">
-          {(totalRealAvailable + totalAllZimmet).toLocaleString('tr-TR')} <span className="text-base text-gray-400">{product?.unit || ''}</span>
+          {(totalAvailable + totalZimmetli).toLocaleString('tr-TR')} <span className="text-base text-gray-400">{product?.unit || ''}</span>
         </p>
       </div>
     </>

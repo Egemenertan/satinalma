@@ -92,15 +92,15 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md mx-auto">
-          <div className="w-20 h-20 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="h-10 w-10 text-[#d6002a]" />
+          <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-[#00E676]" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Bir Hata Oluştu</h3>
           <p className="text-gray-600 mb-6">{error}</p>
           <div className="flex gap-3 justify-center">
             <Button 
               onClick={handleRetry}
-              className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
+              className="bg-[#00E676] hover:bg-[#00c46a] rounded-xl px-6 py-3 font-medium"
             >
               Tekrar Dene
             </Button>
@@ -131,7 +131,7 @@ export default function OffersPage() {
           </p>
           <Button 
             onClick={() => router.push('/dashboard/requests')}
-            className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
+            className="bg-[#00E676] hover:bg-[#00c46a] rounded-xl px-6 py-3 font-medium"
           >
             Taleplere Dön
           </Button>
@@ -144,14 +144,14 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-20 h-20 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-6">
-            <AlertCircle className="h-10 w-10 text-[#d6002a]" />
+          <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+            <AlertCircle className="h-10 w-10 text-[#00E676]" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Talep Bulunamadı</h3>
           <p className="text-gray-600 mb-6">Aradığınız talep mevcut değil veya erişim izniniz yok.</p>
           <Button 
             onClick={() => router.push('/dashboard/requests')}
-            className="bg-[#d6002a] hover:bg-[#b80024] rounded-xl px-6 py-3 font-medium"
+            className="bg-[#00E676] hover:bg-[#00c46a] rounded-xl px-6 py-3 font-medium"
           >
             Taleplere Dön
           </Button>

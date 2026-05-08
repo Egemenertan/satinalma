@@ -38,33 +38,42 @@ export function ProductStatsCards({ siteId }: ProductStatsCardsProps) {
               <p className="text-3xl font-bold text-gray-900">{stats?.totalProducts || 0}</p>
               <span className="text-sm text-gray-500">toplam ürün</span>
             </div>
-            <p className="text-xs text-gray-500 mt-1">İlk 10 ürün stok dağılımı</p>
+            <p className="text-xs text-gray-500 mt-1">İlk 100 ürün stok dağılımı</p>
           </div>
         </div>
         
         {/* Bar Chart */}
-        <div className="flex items-end justify-between gap-1.5 h-32 relative">
+        <div className="flex items-end justify-center gap-0.5 h-32 relative overflow-x-auto scrollbar-hide px-2">
           {stats?.topProducts && stats.topProducts.length > 0 ? (
             stats.topProducts.map((item, i) => {
               const maxCount = Math.max(...stats.topProducts.map((t: any) => t.count))
-              const height = (item.count / maxCount) * 100
+              const minCount = Math.min(...stats.topProducts.map((t: any) => t.count))
+              
+              const logMax = Math.log10(maxCount + 1)
+              const logMin = Math.log10(minCount + 1)
+              const logValue = Math.log10(item.count + 1)
+              
+              const normalizedHeight = logMin === logMax 
+                ? 100 
+                : ((logValue - logMin) / (logMax - logMin)) * 70 + 30
+              
               const isHovered = hoveredBar?.name === item.name
               
               return (
                 <div 
                   key={i} 
-                  className="flex-1 flex flex-col items-center gap-2 relative"
+                  className="flex flex-col items-center relative flex-shrink-0"
                   onMouseEnter={() => setHoveredBar(item)}
                   onMouseLeave={() => setHoveredBar(null)}
                 >
-                  <div className="w-full flex items-end justify-center" style={{ height: '100px' }}>
+                  <div className="w-full flex items-end justify-center" style={{ height: '120px' }}>
                     <div 
-                      className={`w-full rounded-t-md transition-all duration-300 cursor-pointer ${
-                        isHovered ? 'bg-[#d6002a] shadow-lg scale-110' : 'bg-gray-900'
+                      className={`w-2 rounded-full transition-all duration-300 cursor-pointer ${
+                        isHovered ? 'bg-gray-900 shadow-lg' : 'bg-gray-900'
                       }`}
                       style={{ 
-                        height: `${height}%`,
-                        minHeight: '8px'
+                        height: `${normalizedHeight}%`,
+                        minHeight: '12px'
                       }}
                     />
                   </div>
@@ -79,10 +88,6 @@ export function ProductStatsCards({ siteId }: ProductStatsCardsProps) {
                       </div>
                     </div>
                   )}
-                  
-                  <p className="text-[9px] font-medium text-gray-600 text-center line-clamp-1 w-full">
-                    {item.name.length > 6 ? item.name.slice(0, 6) + '...' : item.name}
-                  </p>
                 </div>
               )
             })

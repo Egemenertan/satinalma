@@ -11,6 +11,7 @@ import {
   updateProduct,
   deleteProduct,
   fetchProductStats,
+  fetchProductsInsightsBundle,
   type ProductFilters,
 } from '@/services/products.service'
 import type { Database } from '@/types/database.types'
@@ -52,6 +53,16 @@ export function useProductStats(siteId?: string) {
   })
 }
 
+/** Ürünler sayfası KPI + grafik özeti (depo filtresine göre) */
+export function useProductsInsights(siteId?: string) {
+  const sid = siteId && siteId.trim() !== '' ? siteId : undefined
+  return useQuery({
+    queryKey: ['products-insights-bundle', sid ?? 'all'],
+    queryFn: () => fetchProductsInsightsBundle(sid),
+    staleTime: 60000,
+  })
+}
+
 /**
  * Ürün oluşturma mutation
  */
@@ -63,6 +74,7 @@ export function useCreateProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['product-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
     },
   })
 }
@@ -80,6 +92,7 @@ export function useUpdateProduct() {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['product', variables.id] })
       queryClient.invalidateQueries({ queryKey: ['product-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
     },
   })
 }
@@ -96,6 +109,7 @@ export function useDeleteProduct() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['product-stats'] })
+      queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
     },
   })
 }

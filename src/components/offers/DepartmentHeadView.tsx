@@ -334,7 +334,7 @@ export default function DepartmentHeadView({ request, onRefresh, showToast }: De
             <Button
               onClick={() => setShowRejectModal(true)}
               disabled={approving || rejecting}
-              className="h-12 bg-[#d6002a] hover:bg-[#b80024] text-white font-medium rounded-xl transition-all"
+              className="h-12 bg-[#00E676] hover:bg-[#00c46a] text-white font-medium rounded-xl transition-all"
               size="lg"
             >
               {rejecting ? (
@@ -386,7 +386,7 @@ export default function DepartmentHeadView({ request, onRefresh, showToast }: De
             <Button
               onClick={handleRejection}
               disabled={!rejectionReason.trim()}
-              className="bg-[#d6002a] hover:bg-[#b80024] rounded-lg"
+              className="bg-[#00E676] hover:bg-[#00c46a] rounded-lg"
             >
               Talebi Reddet
             </Button>

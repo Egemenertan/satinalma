@@ -4,7 +4,13 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
-import type { OrderData, OrdersResponse, OrderFilters } from '@/app/dashboard/orders/types'
+import type {
+  OrderData,
+  OrdersResponse,
+  OrderFilters,
+  OrderMinimalAnalyticsRow,
+} from '@/app/dashboard/orders/types'
+import { buildOrderAnalyticsSnapshot } from '@/app/dashboard/orders/utils/orderAnalytics'
 
 /**
  * Siparişleri getir (pagination ve filtreleme ile)
@@ -43,7 +49,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
   // purchasing_officer hiç siteye atanmamışsa hiç sipariş gösterme
   if (!isManager && userSiteIds.length === 0) {
     console.warn('⚠️ Kullanıcıya hiç site atanmamış, boş liste döndürülüyor')
-    return { orders: [], totalCount: 0, totalPages: 0 }
+    return { orders: [], totalCount: 0, totalPages: 0, analytics: null }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -105,7 +111,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
   // PO ise ama hiç order bulunamadıysa
   if (!isManager && allowedOrderSet !== null && allowedOrderSet.size === 0) {
-    return { orders: [], totalCount: 0, totalPages: 0 }
+    return { orders: [], totalCount: 0, totalPages: 0, analytics: null }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -283,7 +289,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
   // Hiç sonuç kalmadıysa erken dön
   if (combinedIds !== null && combinedIds.length === 0) {
-    return { orders: [], totalCount: 0, totalPages: 0 }
+    return { orders: [], totalCount: 0, totalPages: 0, analytics: null }
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -366,7 +372,14 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     console.log(`📄 Sayfa ${page}: ${pageIds.length} sipariş (toplam ${totalCount})`)
 
     if (pageIds.length === 0) {
-      return { orders: [], totalCount, totalPages }
+      const analytics = await safeBuildAnalytics(
+        supabase,
+        sortedIds,
+        totalCount,
+        statusFilter,
+        dateRange
+      )
+      return { orders: [], totalCount, totalPages, analytics }
     }
 
     query = query.in('id', pageIds)
@@ -390,10 +403,19 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
     console.log(`✅ Query başarılı: ${data?.length || 0} sipariş döndü`)
 
+    const analytics = await safeBuildAnalytics(
+      supabase,
+      sortedIds,
+      totalCount,
+      statusFilter,
+      dateRange
+    )
+
     return {
       orders: (data || []).map(formatOrder),
       totalCount,
-      totalPages
+      totalPages,
+      analytics,
     }
   }
 
@@ -436,10 +458,19 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
 
   console.log(`📊 Toplam: ${totalCount} sipariş, ${totalPages} sayfa`)
 
+  const analytics = await safeBuildAnalytics(
+    supabase,
+    null,
+    totalCount,
+    statusFilter,
+    dateRange
+  )
+
   return {
     orders: (data || []).map(formatOrder),
     totalCount,
-    totalPages
+    totalPages,
+    analytics,
   }
 }
 
@@ -489,4 +520,67 @@ function formatOrder(order: any): OrderData {
     delivered_at: lastDeliveredAt,
     order_deliveries: undefined
   } as OrderData
+}
+
+const ANALYTICS_ROW_SOFT_LIMIT = 8000
+const ANALYTICS_ID_CHUNK = 200
+
+async function fetchMinimalAnalyticsRows(
+  supabase: ReturnType<typeof createClient>,
+  sortedIds: string[] | null,
+  statusFilter: string,
+  dateRange: OrderFilters['dateRange']
+): Promise<OrderMinimalAnalyticsRow[]> {
+  const rows: OrderMinimalAnalyticsRow[] = []
+
+  if (sortedIds !== null) {
+    const cappedIds =
+      sortedIds.length > ANALYTICS_ROW_SOFT_LIMIT
+        ? sortedIds.slice(0, ANALYTICS_ROW_SOFT_LIMIT)
+        : sortedIds
+
+    for (let i = 0; i < cappedIds.length; i += ANALYTICS_ID_CHUNK) {
+      const chunk = cappedIds.slice(i, i + ANALYTICS_ID_CHUNK)
+      let q = supabase
+        .from('orders')
+        .select('created_at,status,amount,currency,is_delivered')
+        .in('id', chunk)
+      if (statusFilter !== 'all') q = q.eq('status', statusFilter)
+      q = buildDateQuery(q, dateRange)
+      const { data, error } = await q
+      if (error) throw error
+      for (const r of data || []) rows.push(r as OrderMinimalAnalyticsRow)
+    }
+    return rows
+  }
+
+  let q = supabase
+    .from('orders')
+    .select('created_at,status,amount,currency,is_delivered')
+    .order('created_at', { ascending: false })
+    .limit(ANALYTICS_ROW_SOFT_LIMIT)
+  if (statusFilter !== 'all') q = q.eq('status', statusFilter)
+  q = buildDateQuery(q, dateRange)
+  const { data, error } = await q
+  if (error) throw error
+  return (data || []) as OrderMinimalAnalyticsRow[]
+}
+
+async function safeBuildAnalytics(
+  supabase: ReturnType<typeof createClient>,
+  sortedIds: string[] | null,
+  totalCount: number,
+  statusFilter: string,
+  dateRange: OrderFilters['dateRange']
+) {
+  try {
+    if (totalCount === 0) {
+      return buildOrderAnalyticsSnapshot([], 0)
+    }
+    const rows = await fetchMinimalAnalyticsRows(supabase, sortedIds, statusFilter, dateRange)
+    return buildOrderAnalyticsSnapshot(rows, totalCount)
+  } catch (e) {
+    console.warn('📊 Sipariş analytics atlandı:', e)
+    return null
+  }
 }

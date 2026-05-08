@@ -4,38 +4,28 @@
  */
 
 import { getPDFStyles } from './styles'
+import { buildDovecGroupWorkEmailFromDisplayName, DOVECGROUP_EMAIL_DOMAIN } from '@/lib/dovec-work-email'
 
-/**
- * Email adresini dovecgroup.com domain'i ile düzeltir
- */
+/** PDF’te gösterilecek e-posta — önce kayıttaki canonical, yoksa isimden üret */
 const normalizeEmail = (email: string | undefined, name?: string): string => {
+  if (name && name !== 'Belirtilmemiş') {
+    const fromName = buildDovecGroupWorkEmailFromDisplayName(name)
+    if (fromName) return fromName
+  }
+
   if (!email || email === 'Belirtilmemiş') {
-    if (name && name !== 'Belirtilmemiş') {
-      // İsimden email oluştur
-      const normalized = name.toLowerCase()
-        .replace(/ş/g, 's')
-        .replace(/ğ/g, 'g')
-        .replace(/ü/g, 'u')
-        .replace(/ö/g, 'o')
-        .replace(/ç/g, 'c')
-        .replace(/ı/g, 'i')
-        .replace(/\s+/g, '.')
-      return `${normalized}@dovecgroup.com`
-    }
     return ''
   }
-  
-  // Eğer email'de @ yoksa, dovecgroup.com ekle
+
   if (!email.includes('@')) {
-    return `${email}@dovecgroup.com`
+    return `${email}@${DOVECGROUP_EMAIL_DOMAIN}`
   }
-  
-  // Eğer domain dovecgroup.com değilse, değiştir
-  if (!email.endsWith('@dovecgroup.com')) {
+
+  if (!email.toLowerCase().endsWith(`@${DOVECGROUP_EMAIL_DOMAIN}`)) {
     const username = email.split('@')[0]
-    return `${username}@dovecgroup.com`
+    return `${username}@${DOVECGROUP_EMAIL_DOMAIN}`
   }
-  
+
   return email
 }
 

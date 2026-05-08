@@ -312,9 +312,9 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               active 
-                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
                 : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
-              "rounded-xl"
+              "rounded-full"
             )}
             onClick={() => toggleExpanded(item.title)}
             onMouseEnter={() => setHoveredItem(item.title)}
@@ -350,12 +350,12 @@ export default function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full h-24 transition-all duration-200 flex flex-col items-center justify-center gap-2 relative",
+              "aspect-square w-full transition-all duration-200 flex flex-col items-center justify-center gap-2 relative p-2",
               active 
-                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
                 : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
-              "rounded-2xl border",
-              active ? "border-[#d6002a]" : "border-gray-200"
+              "rounded-full border",
+              active ? "border-neutral-950" : "border-gray-200"
             )}
             onClick={() => {
               setIsMobileOpen(false)
@@ -366,7 +366,7 @@ export default function Sidebar({
             {item.badge && (
               <Badge 
                 variant="secondary" 
-                className="absolute top-2 right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-[#d6002a] text-white hover:bg-[#b80024] border-0 rounded-full"
+                className="absolute top-2 right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-neutral-950 text-white hover:bg-neutral-900 border-0 rounded-full"
               >
                 {item.badge}
               </Badge>
@@ -386,9 +386,9 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               active 
-                ? "bg-[#d6002a] text-white hover:bg-[#b80024]" 
+                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
                 : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
-              "rounded-xl"
+              "rounded-full"
             )}
             onMouseEnter={() => setHoveredItem(item.title)}
             onMouseLeave={() => setHoveredItem(null)}
@@ -400,7 +400,7 @@ export default function Sidebar({
                 {item.badge && (
                   <Badge 
                     variant="secondary" 
-                    className="ml-auto h-5 px-2 text-xs bg-[#d6002a] text-white hover:bg-[#b80024] border-0"
+                    className="ml-auto h-5 min-w-5 shrink-0 px-2 text-xs bg-neutral-950 text-white hover:bg-neutral-900 border-0 rounded-full"
                   >
                     {item.badge}
                   </Badge>
@@ -413,12 +413,12 @@ export default function Sidebar({
         {/* Modern Tooltip */}
         {showTooltip && (
           <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-            <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+            <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
               {item.title}
               {item.badge && (
                 <Badge 
                   variant="secondary" 
-                  className="ml-2 h-4 px-1.5 text-xs bg-[#d6002a] text-white border-0"
+                  className="ml-2 h-4 px-1.5 text-xs bg-neutral-950 text-white border-0 rounded-full"
                 >
                   {item.badge}
                 </Badge>
@@ -451,7 +451,7 @@ export default function Sidebar({
           "bg-white shadow-lg",
           // Desktop - Ada tasarımı (sol tarafta)
           "hidden lg:flex",
-          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-3xl lg:border lg:border-gray-200/60",
+          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-full lg:border lg:border-gray-200/60",
           isCollapsed ? "lg:w-16" : "lg:w-64",
           // Mobile - Tam sayfa
           isMobileOpen ? "flex inset-0 w-full h-full" : "hidden lg:flex",
@@ -484,7 +484,7 @@ export default function Sidebar({
               variant="ghost"
               size="sm"
               onClick={() => setIsMobileOpen(false)}
-              className="h-10 w-10 p-0 rounded-xl hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
+              className="h-10 w-10 p-0 rounded-full hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -512,7 +512,7 @@ export default function Sidebar({
                   onClick={() => router.push('/dashboard/requests/create')}
                   onMouseEnter={() => setHoveredItem('quick-create')}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className="w-10 h-10 bg-white hover:bg-gray-50 text-[#d6002a] border-2 border-[#d6002a] rounded-full flex items-center justify-center transition-all duration-200 hover:bg-[#d6002a] hover:text-white"
+                  className="w-10 h-10 bg-white text-neutral-950 border-2 border-neutral-950 rounded-full flex items-center justify-center transition-all duration-200 hover:bg-neutral-950 hover:text-white"
                 >
                   <Plus className="h-5 w-5" />
                 </Button>
@@ -520,7 +520,7 @@ export default function Sidebar({
                 {/* Tooltip for Quick Create */}
                 {hoveredItem === 'quick-create' && (
                   <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                    <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                    <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                       Hızlı Talep
                       <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                     </div>
@@ -536,7 +536,7 @@ export default function Sidebar({
                     onMouseEnter={() => setHoveredItem('role-management')}
                     onMouseLeave={() => setHoveredItem(null)}
                     variant="outline"
-                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-[#d6002a] hover:text-white hover:border-[#d6002a] rounded-xl flex items-center justify-center transition-all duration-200"
+                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 rounded-full flex items-center justify-center transition-all duration-200"
                   >
                     <UserCog className="h-4 w-4" />
                   </Button>
@@ -544,7 +544,7 @@ export default function Sidebar({
                   {/* Tooltip for Role Management */}
                   {hoveredItem === 'role-management' && (
                     <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                      <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                      <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                         Rol Yönetimi
                         <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                       </div>
@@ -563,8 +563,8 @@ export default function Sidebar({
                   }
                 }}
                 className={cn(
-                  "bg-white hover:bg-[#d6002a] text-[#d6002a] hover:text-white border-2 border-[#d6002a] font-medium rounded-2xl transition-all duration-200",
-                  isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm"
+                  "bg-white hover:bg-neutral-950 text-neutral-950 hover:text-white border-2 border-neutral-950 font-medium rounded-full transition-all duration-200",
+                  isMobileOpen ? "aspect-square w-full h-auto flex-col gap-2 p-3" : "w-full h-9 text-sm"
                 )}
               >
                 <Plus className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4 mr-2")} />
@@ -582,8 +582,8 @@ export default function Sidebar({
                   }}
                   variant="outline"
                   className={cn(
-                    "border-gray-300 text-gray-700 hover:bg-[#d6002a] hover:text-white hover:border-[#d6002a] font-medium rounded-2xl transition-all duration-200",
-                    isMobileOpen ? "h-20 flex-col gap-2" : "w-full h-9 text-sm flex items-center justify-center gap-2"
+                    "border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 font-medium rounded-full transition-all duration-200",
+                    isMobileOpen ? "aspect-square w-full h-auto flex-col gap-2 p-3" : "w-full h-9 text-sm flex items-center justify-center gap-2"
                   )}
                 >
                   <UserCog className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4")} />
@@ -615,7 +615,7 @@ export default function Sidebar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200"
+                className="h-10 w-10 p-0 text-gray-400 hover:text-neutral-950 hover:bg-gray-100 rounded-full transition-all duration-200"
                 onClick={handleLogout}
                 onMouseEnter={() => setHoveredItem('logout')}
                 onMouseLeave={() => setHoveredItem(null)}
@@ -626,7 +626,7 @@ export default function Sidebar({
               {/* Logout Tooltip */}
               {hoveredItem === 'logout' && (
                 <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                  <div className="bg-gray-900 text-white px-3 py-1.5 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                  <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                     Çıkış Yap
                     <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
                   </div>
@@ -636,8 +636,8 @@ export default function Sidebar({
           ) : isMobileOpen ? (
             // Mobile için özel tasarım
             <div className="space-y-3">
-              <div className="flex items-center space-x-3 bg-gray-50/50 rounded-2xl p-4 border border-gray-100">
-                <div className="w-12 h-12 bg-[#d6002a] rounded-full flex items-center justify-center flex-shrink-0">
+              <div className="flex items-center space-x-3 bg-gray-50/50 rounded-full p-4 border border-gray-100">
+                <div className="w-12 h-12 bg-neutral-950 rounded-full flex items-center justify-center flex-shrink-0">
                   <span className="text-base font-medium text-white">
                     {userName ? userName.charAt(0).toUpperCase() : 'U'}
                   </span>
@@ -653,7 +653,7 @@ export default function Sidebar({
               </div>
               <Button
                 variant="ghost"
-                className="w-full h-12 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-2xl font-medium transition-all duration-200"
+                className="w-full h-12 text-neutral-950 hover:text-neutral-950 hover:bg-gray-100 rounded-full font-medium transition-all duration-200"
                 onClick={handleLogout}
               >
                 <LogOut className="h-5 w-5 mr-2" />
@@ -664,7 +664,7 @@ export default function Sidebar({
             // Desktop expanded - Sadece logout butonu
             <Button
               variant="ghost"
-              className="w-full h-10 text-red-600 hover:text-red-700 hover:bg-red-50 rounded-xl font-medium transition-all duration-200"
+              className="w-full h-10 text-neutral-950 hover:text-neutral-950 hover:bg-gray-100 rounded-full font-medium transition-all duration-200"
               onClick={handleLogout}
             >
               <LogOut className="h-4 w-4 mr-2" />

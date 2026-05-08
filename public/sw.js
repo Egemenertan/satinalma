@@ -1,6 +1,9 @@
 // Service Worker for PWA and Push Notifications
 
-const CACHE_NAME = 'satinalma-v1';
+const CACHE_NAME = 'satinalma-v2';
+const BADGE_CACHE = 'satinalma-badge-v1';
+const BADGE_KEY = 'badge-count';
+
 const urlsToCache = [
   '/',
   '/dashboard',
@@ -9,6 +12,38 @@ const urlsToCache = [
   '/dashboard/offers',
   '/offline.html'
 ];
+
+function getNav() {
+  try {
+    return self.navigator || globalThis.navigator;
+  } catch {
+    return undefined;
+  }
+}
+
+async function readStoredBadgeCount() {
+  try {
+    const cache = await caches.open(BADGE_CACHE);
+    const res = await cache.match(BADGE_KEY);
+    if (!res) return 0;
+    const text = await res.text();
+    const n = parseInt(text, 10);
+    return Number.isFinite(n) && n >= 0 ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+async function writeStoredBadgeCount(count) {
+  const safe = Math.max(0, Math.min(Number(count) || 0, 9999));
+  try {
+    const cache = await caches.open(BADGE_CACHE);
+    await cache.put(BADGE_KEY, new Response(String(safe)));
+    return safe;
+  } catch {
+    return safe;
+  }
+}
 
 // Install event - cache resources
 self.addEventListener('install', (event) => {
@@ -26,126 +61,131 @@ self.addEventListener('fetch', (event) => {
   event.respondWith(
     caches.match(event.request)
       .then((response) => {
-        // Return cached version or fetch from network
         return response || fetch(event.request);
-      }
-    )
+      })
   );
 });
-
-// Global notification counter
-let notificationCount = 0;
 
 // Push event - handle incoming push notifications
 self.addEventListener('push', (event) => {
   console.log('Push event received:', event);
-  
-  // Increment notification counter
-  notificationCount++;
-  
-  const options = {
-    body: 'Yeni bir talep oluşturuldu!',
-    icon: '/favicon-32x32.ico',
-    badge: '/favicon-16x16.ico',
-    vibrate: [200, 100, 200, 100, 200], // More noticeable vibration
-    silent: false, // Ensure sound plays
-    requireInteraction: true, // Keep notification visible until user interacts
-    data: {
-      dateOfArrival: Date.now(),
-      primaryKey: '1',
-      count: notificationCount
-    },
-    actions: [
-      {
-        action: 'explore',
-        title: 'Talebi Görüntüle',
-        icon: '/favicon-16x16.ico'
-      },
-      {
-        action: 'close',
-        title: 'Kapat',
-        icon: '/favicon-16x16.ico'
-      }
-    ],
-    tag: 'purchase-request', // Group similar notifications
-    renotify: true // Play sound even if similar notification exists
-  };
 
-  if (event.data) {
-    const notificationData = event.data.json();
-    options.title = notificationData.title || 'Satın Alma Sistemi';
-    options.body = notificationData.body || 'Yeni bir bildirim var!';
-    options.data = { ...options.data, ...notificationData.data };
-    
-    // Set notification type for different sounds/styles
-    if (notificationData.data?.type === 'urgent') {
-      options.vibrate = [300, 100, 300, 100, 300, 100, 300];
-      options.requireInteraction = true;
-    }
-  } else {
-    options.title = 'Satın Alma Sistemi';
-  }
-
-  // Update browser badge with notification count
   event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(options.title, options),
-      updateBadge(notificationCount),
-      playNotificationSound(options.data?.type)
-    ])
+    (async () => {
+      let count = await readStoredBadgeCount();
+      let notificationData = {};
+
+      if (event.data) {
+        try {
+          notificationData = event.data.json();
+        } catch {
+          notificationData = {};
+        }
+      }
+
+      if (typeof notificationData.badgeCount === 'number') {
+        count = await writeStoredBadgeCount(notificationData.badgeCount);
+      } else {
+        count = await writeStoredBadgeCount(count + 1);
+      }
+
+      const options = {
+        body: 'Yeni bir talep oluşturuldu!',
+        icon: '/favicon-32x32.ico',
+        badge: '/favicon-16x16.ico',
+        vibrate: [200, 100, 200, 100, 200],
+        silent: false,
+        requireInteraction: true,
+        data: {
+          dateOfArrival: Date.now(),
+          primaryKey: '1',
+          count,
+          ...(notificationData.data && typeof notificationData.data === 'object' ? notificationData.data : {})
+        },
+        actions: [
+          {
+            action: 'explore',
+            title: 'Talebi Görüntüle',
+            icon: '/favicon-16x16.ico'
+          },
+          {
+            action: 'close',
+            title: 'Kapat',
+            icon: '/favicon-16x16.ico'
+          }
+        ],
+        tag: 'purchase-request',
+        renotify: true
+      };
+
+      if (notificationData.title || notificationData.body) {
+        options.title = notificationData.title || 'Satın Alma Sistemi';
+        options.body = notificationData.body || 'Yeni bir bildirim var!';
+      } else {
+        options.title = 'Satın Alma Sistemi';
+      }
+
+      if (notificationData.data?.type === 'urgent') {
+        options.vibrate = [300, 100, 300, 100, 300, 100, 300];
+        options.requireInteraction = true;
+      }
+
+      await Promise.all([
+        self.registration.showNotification(options.title || 'Satın Alma Sistemi', options),
+        updateBadge(count),
+        playNotificationSound(notificationData.data?.type)
+      ]);
+    })()
   );
 });
 
-// Function to update browser tab badge
 async function updateBadge(count) {
+  const nav = getNav();
   try {
-    if ('setAppBadge' in navigator) {
-      await navigator.setAppBadge(count);
-    } else if ('setExperimentalAppBadge' in navigator) {
-      await navigator.setExperimentalAppBadge(count);
+    if (nav && 'setAppBadge' in nav) {
+      if (count > 0) {
+        const display = count > 99 ? 99 : count;
+        await nav.setAppBadge(display);
+      } else if ('clearAppBadge' in nav) {
+        await nav.clearAppBadge();
+      } else {
+        await nav.setAppBadge(0);
+      }
     }
-    
-    // Update document title for desktop browsers
-    await updateDocumentTitle(count);
-  } catch (error) {
-    console.log('Badge API not supported, using title fallback');
-    await updateDocumentTitle(count);
+    await updateDocumentTitleViaClients(count);
+  } catch (e) {
+    console.log('Badge update failed, using client fallback:', e);
+    await updateDocumentTitleViaClients(count);
   }
 }
 
-// Function to update document title with notification count
-async function updateDocumentTitle(count) {
+async function updateDocumentTitleViaClients(count) {
   try {
-    const clients = await self.clients.matchAll({
+    const clientList = await self.clients.matchAll({
       type: 'window',
       includeUncontrolled: true
     });
-    
-    clients.forEach(client => {
+
+    clientList.forEach((client) => {
       client.postMessage({
         type: 'UPDATE_BADGE',
-        count: count
+        count
       });
     });
   } catch (error) {
-    console.error('Error updating document title:', error);
+    console.error('Error posting badge to clients:', error);
   }
 }
 
-// Function to play notification sound
 async function playNotificationSound(type = 'default') {
   try {
-    // Browser will play default notification sound
-    // For custom sounds, we'd need audio API in main thread
     console.log('Playing notification sound for type:', type);
-    
-    // Send message to main thread to play custom sound
-    const clients = await self.clients.matchAll({
+    const clientList = await self.clients.matchAll({
       type: 'window',
       includeUncontrolled: true
     });
-    
-    clients.forEach(client => {
+
+    clientList.forEach((client) => {
       client.postMessage({
         type: 'PLAY_NOTIFICATION_SOUND',
         soundType: type
@@ -156,40 +196,31 @@ async function playNotificationSound(type = 'default') {
   }
 }
 
-// Notification click event
 self.addEventListener('notificationclick', (event) => {
   console.log('Notification click received:', event);
-  
   event.notification.close();
-  
-  // Decrease notification count when clicked
-  if (notificationCount > 0) {
-    notificationCount--;
-    updateBadge(notificationCount);
-  }
 
-  if (event.action === 'explore') {
-    event.waitUntil(
-      clients.openWindow('/dashboard/requests')
-    );
-  } else if (event.action === 'close') {
-    // Just close the notification - badge already updated above
-  } else {
-    // Default action - open the app
-    event.waitUntil(
-      clients.openWindow('/')
-    );
-  }
+  event.waitUntil(
+    (async () => {
+      let count = await readStoredBadgeCount();
+      if (count > 0) {
+        count = await writeStoredBadgeCount(count - 1);
+      }
+      await updateBadge(count);
+
+      if (event.action === 'explore') {
+        await self.clients.openWindow('/dashboard/requests');
+      } else if (event.action === 'close') {
+        return;
+      } else {
+        await self.clients.openWindow('/');
+      }
+    })()
+  );
 });
 
-// Background sync for offline requests
 self.addEventListener('sync', (event) => {
   if (event.tag === 'background-sync') {
-    event.waitUntil(doBackgroundSync());
+    event.waitUntil(Promise.resolve());
   }
 });
-
-function doBackgroundSync() {
-  // Handle offline requests when connection is restored
-  return Promise.resolve();
-}

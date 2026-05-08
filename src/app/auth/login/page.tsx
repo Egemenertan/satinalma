@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { AlertCircle } from 'lucide-react'
+import Link from 'next/link'
 import { createClient } from '@/lib/supabase/client'
 import { Loading, InlineLoading } from '@/components/ui/loading'
 import { ensureProfile, getRedirectPath, getErrorMessage, translateAuthError } from '@/lib/auth'
@@ -38,7 +41,7 @@ function generateHandoffId(): string {
 }
 
 /**
- * Login sayfası — Microsoft (Azure AD) OAuth.
+ * Login sayfası — e-posta/şifre ve Microsoft (Azure AD) OAuth.
  *
  * Üç durum:
  *
@@ -62,7 +65,11 @@ function generateHandoffId(): string {
 export default function LoginPage() {
   const [mounted, setMounted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [emailLoading, setEmailLoading] = useState(false)
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [infoMessage, setInfoMessage] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
   const [checking, setChecking] = useState(true)
   const [isEmbedded, setIsEmbedded] = useState(false)
@@ -183,6 +190,7 @@ export default function LoginPage() {
   const handleLogin = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setInfoMessage(null)
     setStatus('')
 
     try {
@@ -200,6 +208,49 @@ export default function LoginPage() {
     }
   }, [isEmbedded, loginWithHandoff, startBrowserOAuth])
 
+  const handleEmailLogin = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault()
+      setEmailLoading(true)
+      setError(null)
+      setInfoMessage(null)
+      setStatus('')
+
+      try {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+
+        if (signInError) {
+          setError(getErrorMessage(signInError, 'Giriş yapılamadı'))
+          return
+        }
+
+        const user = data.session?.user
+        if (!user) {
+          setError('Oturum oluşturulamadı. E-posta doğrulaması gerekebilir.')
+          return
+        }
+
+        const role = await ensureProfile(
+          supabase,
+          user.id,
+          user.email,
+          user.user_metadata?.full_name || user.user_metadata?.name
+        )
+
+        window.location.href = getRedirectPath(role)
+      } catch (err) {
+        console.error('E-posta giriş hatası:', err)
+        setError(getErrorMessage(err, 'Giriş yapılırken bir hata oluştu'))
+      } finally {
+        setEmailLoading(false)
+      }
+    },
+    [email, password, supabase]
+  )
+
   /**
    * Mount: ortam tespiti, session kontrolü, error param okuma,
    * top-level + handoff_id durumunda otomatik OAuth.
@@ -214,6 +265,11 @@ export default function LoginPage() {
       const errCode = params.get('error')
       if (errCode && !cancelled) {
         setError(translateAuthError(errCode))
+      }
+
+      const msg = params.get('message')
+      if (msg && !cancelled) {
+        setInfoMessage(msg)
       }
 
       const embedded = isInIframe()
@@ -282,10 +338,18 @@ export default function LoginPage() {
               <img src="/d.png" alt="Logo" className="h-12 w-auto invert" />
             </div>
             <h1 className="text-3xl font-bold text-gray-900">Hoş Geldiniz</h1>
-            <p className="text-gray-600 mt-3 text-lg">Microsoft hesabınız ile devam edin</p>
+            <p className="text-gray-600 mt-3 text-lg">
+              E-posta ve şifreniz veya Microsoft hesabınız ile devam edin
+            </p>
           </div>
 
           <div className="space-y-4">
+            {infoMessage && !error && (
+              <Alert className="border-0 bg-emerald-50 text-emerald-900">
+                <AlertDescription>{infoMessage}</AlertDescription>
+              </Alert>
+            )}
+
             {error && (
               <Alert variant="destructive" className="border-0 bg-red-50">
                 <AlertCircle className="h-4 w-4" />
@@ -300,9 +364,68 @@ export default function LoginPage() {
               </div>
             )}
 
+            <form onSubmit={handleEmailLogin} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="login-email" className="text-gray-800">
+                  E-posta
+                </Label>
+                <Input
+                  id="login-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(ev) => setEmail(ev.target.value)}
+                  placeholder="ornek@sirket.com"
+                  disabled={emailLoading || loading}
+                  required
+                  className="h-12 rounded-xl border-gray-200"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="login-password" className="text-gray-800">
+                  Şifre
+                </Label>
+                <Input
+                  id="login-password"
+                  type="password"
+                  autoComplete="current-password"
+                  value={password}
+                  onChange={(ev) => setPassword(ev.target.value)}
+                  placeholder="••••••••"
+                  disabled={emailLoading || loading}
+                  required
+                  className="h-12 rounded-xl border-gray-200"
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={emailLoading || loading}
+                className="w-full h-12 text-base font-semibold rounded-xl bg-gray-900 text-white hover:bg-gray-800"
+              >
+                {emailLoading ? (
+                  <>
+                    <InlineLoading className="mr-2" />
+                    Giriş yapılıyor...
+                  </>
+                ) : (
+                  'E-posta ile Giriş Yap'
+                )}
+              </Button>
+            </form>
+
+            <div className="relative py-1">
+              <div className="absolute inset-0 flex items-center">
+                <span className="w-full border-t border-gray-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase tracking-wide">
+                <span className="bg-white px-3 text-gray-500">veya</span>
+              </div>
+            </div>
+
             <Button
+              type="button"
               onClick={handleLogin}
-              disabled={loading}
+              disabled={loading || emailLoading}
               className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
             >
               {loading && !status ? (
@@ -322,6 +445,13 @@ export default function LoginPage() {
                 </>
               )}
             </Button>
+
+            <p className="text-center text-sm text-gray-600">
+              Hesabınız yok mu?{' '}
+              <Link href="/auth/signup" className="font-semibold text-gray-900 hover:text-gray-700">
+                Kayıt olun
+              </Link>
+            </p>
 
             {isEmbedded && (
               <p className="text-xs text-center text-gray-500 leading-relaxed">

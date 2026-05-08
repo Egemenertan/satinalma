@@ -1,14 +1,29 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+
+function syncAppIconBadge(count: number) {
+  if (typeof navigator === 'undefined') return;
+  try {
+    if (count > 0 && 'setAppBadge' in navigator) {
+      const n = count > 99 ? 99 : count;
+      void (navigator as Navigator & { setAppBadge(n?: number): Promise<void> }).setAppBadge(n);
+    } else if ('clearAppBadge' in navigator) {
+      void (navigator as Navigator & { clearAppBadge(): Promise<void> }).clearAppBadge();
+    }
+  } catch {
+    /* Bazı tarayıcılarda Rozet API yok veya PWA değil */
+  }
+}
 
 export function NotificationManager() {
-  const [originalTitle, setOriginalTitle] = useState('');
+  const originalTitleRef = useRef<string | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
 
   useEffect(() => {
-    // Store original title
-    setOriginalTitle(document.title);
+    if (originalTitleRef.current === null) {
+      originalTitleRef.current = document.title;
+    }
 
     // Register service worker message listener
     if ('serviceWorker' in navigator) {
@@ -30,6 +45,7 @@ export function NotificationManager() {
       case 'UPDATE_BADGE':
         updateDocumentTitle(count);
         setNotificationCount(count);
+        syncAppIconBadge(typeof count === 'number' ? count : 0);
         break;
       
       case 'PLAY_NOTIFICATION_SOUND':
@@ -39,10 +55,11 @@ export function NotificationManager() {
   };
 
   const updateDocumentTitle = (count: number) => {
+    const base = originalTitleRef.current ?? document.title;
     if (count > 0) {
-      document.title = `(${count}) ${originalTitle}`;
+      document.title = `(${count}) ${base}`;
     } else {
-      document.title = originalTitle;
+      document.title = base;
     }
   };
 
@@ -109,13 +126,7 @@ export function NotificationManager() {
   const clearAllNotifications = () => {
     setNotificationCount(0);
     updateDocumentTitle(0);
-    
-    // Clear browser badge
-    if ('setAppBadge' in navigator) {
-      (navigator as any).setAppBadge(0);
-    } else if ('clearAppBadge' in navigator) {
-      (navigator as any).clearAppBadge();
-    }
+    syncAppIconBadge(0);
   };
 
   // Expose clear function globally for other components to use

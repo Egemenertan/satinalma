@@ -85,7 +85,7 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
                       inventory.status === 'active' 
                         ? 'bg-green-100 text-green-700'
                         : inventory.status === 'returned'
-                        ? 'bg-blue-100 text-blue-700'
+                        ? 'bg-slate-100 text-slate-700'
                         : inventory.status === 'lost'
                         ? 'bg-red-100 text-red-700'
                         : 'bg-orange-100 text-orange-700'
@@ -192,7 +192,7 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
                       : movement.product_condition === 'kullanılmış'
                       ? 'bg-orange-100 text-orange-700'
                       : movement.product_condition === 'hek'
-                      ? 'bg-blue-100 text-blue-700'
+                      ? 'bg-primary-100 text-primary-800'
                       : 'bg-red-100 text-red-700'
                   }`}
                 >
@@ -265,11 +265,11 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
                       window.open(url, '_blank')
                     })
                   }}
-                  className="rounded-xl border-blue-300 hover:bg-blue-50 hover:border-blue-400 transition-all flex-shrink-0"
+                  className="rounded-xl border-primary-300 hover:bg-primary-50 hover:border-primary-400 transition-all flex-shrink-0"
                   title={`${movement.invoice_images.length} Fatura Görüntüle`}
                 >
-                  <Receipt className="w-4 h-4 text-blue-600" />
-                  <span className="text-xs ml-1 text-blue-600 font-medium">
+                  <Receipt className="w-4 h-4 text-primary-600" />
+                  <span className="text-xs ml-1 text-primary-600 font-medium">
                     {movement.invoice_images.length}
                   </span>
                 </Button>

@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Package, FileText, CheckCircle, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 
 interface WarehouseManagerMaterialCardProps {
@@ -295,6 +296,15 @@ export default function WarehouseManagerMaterialCard({
       // Zimmet kaydı oluştur - Talep eden kullanıcıya zimmet
       if (request.requested_by) {
         console.log(`📝 Zimmet kaydı oluşturuluyor... (user: ${request.requested_by}, miktar: ${quantity})`)
+
+        const { data: requesterProfile } = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', request.requested_by)
+          .maybeSingle()
+
+        const ownerDisplayName = requesterProfile?.full_name?.trim() ?? ''
+        const ownerEmailCanonical = buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName)
         
         const { error: inventoryError } = await supabase
           .from('user_inventory')
@@ -308,7 +318,9 @@ export default function WarehouseManagerMaterialCard({
             purchase_request_id: request.id,
             shipment_id: shipmentData?.id || null,
             notes: `${request.request_number} - ${item.item_name}`,
-            status: 'active'
+            status: 'active',
+            owner_name: ownerDisplayName || null,
+            owner_email: ownerEmailCanonical || null,
           })
         
         if (inventoryError) {

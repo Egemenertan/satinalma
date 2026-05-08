@@ -30,5 +30,7 @@ export {
   createMultiWordPattern,
 } from './searchUtils'
 
+export { buildOrderAnalyticsSnapshot, sparkHeightsFromCounts } from './orderAnalytics'
+
 
 

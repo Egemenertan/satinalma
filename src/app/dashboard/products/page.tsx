@@ -6,20 +6,22 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, Download, Loader2 } from 'lucide-react'
-import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct } from './hooks'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, FileSpreadsheet } from 'lucide-react'
+import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct, useProductsInsights } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import {
-  ProductStatsCards,
   ProductFilters,
   ProductsTable,
   ProductModal,
+  ProductsInsights,
 } from './components'
 import BulkZimmetModal from '@/components/BulkZimmetModal'
+import { ZimmetReportModal } from './components/ZimmetReportModal'
 
 interface Site {
   id: string
@@ -35,6 +37,7 @@ interface SiteStock {
 
 export default function ProductsPage() {
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [sites, setSites] = useState<SiteStock[]>([])
   const [loadingSites, setLoadingSites] = useState(true)
@@ -43,7 +46,7 @@ export default function ProductsPage() {
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [showBulkActions, setShowBulkActions] = useState(false)
   const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const [showZimmetReportModal, setShowZimmetReportModal] = useState(false)
   const supabase = createClient()
   
   // Hooks
@@ -52,7 +55,7 @@ export default function ProductsPage() {
     brandId,
     siteId,
     productType,
-    isActive,
+    statusFilter,
     currentPage,
     pageSize,
     filters,
@@ -61,7 +64,7 @@ export default function ProductsPage() {
     setBrandId,
     setSiteId,
     setProductType,
-    setIsActive,
+    setStatusFilter,
     setCurrentPage,
     clearFilters,
   } = useProductFilters()
@@ -147,6 +150,13 @@ export default function ProductsPage() {
   }, [userRole, userSiteId])
 
   const { data: productsData, isLoading } = useProducts(filters, currentPage, pageSize)
+
+  const insightsSiteKey = siteId?.trim() ? siteId : undefined
+  const {
+    data: productsInsights,
+    isLoading: insightsLoading,
+    error: insightsError,
+  } = useProductsInsights(insightsSiteKey)
   
   const {
     isOpen: isModalOpen,
@@ -199,6 +209,7 @@ export default function ProductsPage() {
     setSelectedProducts([])
     setShowBulkActions(false)
     showToast('Toplu zimmet işlemi başarıyla tamamlandı!', 'success')
+    queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
   }
 
   const handleClearFilters = () => {
@@ -252,158 +263,12 @@ export default function ProductsPage() {
 
   const isSaving = createMutation.isPending || updateMutation.isPending
 
-  const handleExportWarehouseStock = async () => {
-    if (!siteId) {
-      showToast('Lütfen önce bir depo seçin', 'error')
-      return
-    }
-
-    try {
-      setExporting(true)
-      const selectedSite = sites.find(s => s.site.id === siteId)
-      const siteName = selectedSite?.site.name || 'Depo'
-
-      const { data: stockData, error: stockError } = await supabase
-        .from('warehouse_stock')
-        .select(`
-          product_id,
-          quantity,
-          condition_breakdown,
-          products!inner(
-            id,
-            name,
-            sku,
-            unit,
-            product_type,
-            brand:brands(name)
-          )
-        `)
-        .eq('warehouse_id', siteId)
-        .gt('quantity', 0)
-
-      if (stockError) throw stockError
-
-      const productIds = (stockData || []).map((s: any) => s.product_id)
-
-      // User inventory (normal zimmetler - stoktan düşülmüş)
-      const { data: userInventoryData } = await supabase
-        .from('user_inventory')
-        .select('product_id, quantity, owner_name, owner_email, user:profiles!user_inventory_user_id_fkey(full_name)')
-        .in('product_id', productIds)
-        .eq('status', 'active')
-
-      // Pending inventory (eski zimmetler - stoktan düşülmemiş)
-      const { data: pendingInventoryData } = await supabase
-        .from('pending_user_inventory')
-        .select('product_id, quantity, owner_name')
-        .in('product_id', productIds)
-
-      const zimmetMap: Record<string, { total: number; pendingTotal: number; users: string[] }> = {}
-      
-      // Normal zimmetler
-      ;(userInventoryData || []).forEach((inv: any) => {
-        if (!zimmetMap[inv.product_id]) {
-          zimmetMap[inv.product_id] = { total: 0, pendingTotal: 0, users: [] }
-        }
-        zimmetMap[inv.product_id].total += parseFloat(inv.quantity)
-        const userName = inv.owner_name || (Array.isArray(inv.user) ? inv.user[0]?.full_name : inv.user?.full_name) || ''
-        if (userName && !zimmetMap[inv.product_id].users.includes(userName)) {
-          zimmetMap[inv.product_id].users.push(userName)
-        }
-      })
-
-      // Pending zimmetler (eski kayıtlar)
-      ;(pendingInventoryData || []).forEach((inv: any) => {
-        if (!zimmetMap[inv.product_id]) {
-          zimmetMap[inv.product_id] = { total: 0, pendingTotal: 0, users: [] }
-        }
-        zimmetMap[inv.product_id].pendingTotal += parseFloat(inv.quantity || 0)
-        zimmetMap[inv.product_id].total += parseFloat(inv.quantity || 0)
-        if (inv.owner_name && !zimmetMap[inv.product_id].users.includes(inv.owner_name)) {
-          zimmetMap[inv.product_id].users.push(inv.owner_name)
-        }
-      })
-
-      const csvRows: string[][] = []
-      
-      csvRows.push([
-        'Ürün Adı',
-        'SKU',
-        'Marka',
-        'Birim',
-        'Ürün Tipi',
-        'Depo Stok (Ham)',
-        'Mevcut (Boş)',
-        'Zimmetli Miktar',
-        'Yeni',
-        'Kullanılmış',
-        'HEK',
-        'Arızalı',
-        'Zimmetli Kişiler'
-      ])
-
-      ;(stockData || []).forEach((stock: any) => {
-        const product = stock.products
-        const breakdown = (stock.condition_breakdown as Record<string, number>) || {}
-        const zimmetInfo = zimmetMap[product.id] || { total: 0, pendingTotal: 0, users: [] }
-        
-        const depoStok = parseFloat(stock.quantity.toString())
-        // Pending zimmetler depo stoğundan düşülmemiş, gerçek mevcut hesapla
-        const mevcutBos = Math.max(0, depoStok - zimmetInfo.pendingTotal)
-        
-        const productTypeTr: Record<string, string> = {
-          'demirbas': 'Demirbaş',
-          'sarf_malzeme': 'Sarf Malzeme',
-          'kontrol_sarf': 'Kontrol Sarf'
-        }
-
-        csvRows.push([
-          product.name || '',
-          product.sku || '',
-          product.brand?.name || '',
-          product.unit || 'adet',
-          productTypeTr[product.product_type] || product.product_type || '',
-          depoStok.toString(),
-          mevcutBos.toString(),
-          zimmetInfo.total.toString(),
-          (breakdown['yeni'] || 0).toString(),
-          (breakdown['kullanılmış'] || 0).toString(),
-          (breakdown['hek'] || 0).toString(),
-          (breakdown['arızalı'] || 0).toString(),
-          zimmetInfo.users.join(', ')
-        ])
-      })
-
-      const csvContent = csvRows
-        .map(row => row.map(cell => `"${cell.replace(/"/g, '""')}"`).join(';'))
-        .join('\n')
-
-      const BOM = '\uFEFF'
-      const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' })
-      const url = URL.createObjectURL(blob)
-      const link = document.createElement('a')
-      link.href = url
-      link.download = `${siteName}_Stok_Raporu_${new Date().toISOString().split('T')[0]}.csv`
-      document.body.appendChild(link)
-      link.click()
-      document.body.removeChild(link)
-      URL.revokeObjectURL(url)
-
-      showToast(`${siteName} deposunun stok raporu indirildi`, 'success')
-    } catch (error) {
-      console.error('Export hatası:', error)
-      showToast('Rapor oluşturulurken hata oluştu', 'error')
-    } finally {
-      setExporting(false)
-    }
-  }
-
   return (
     <div className="space-y-8">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#d6002a] inline-block">Stok Yönetimi</h1>
+          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Stok Yönetimi</h1>
           <p className="text-gray-600 text-base mt-4">
             {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
           </p>
@@ -425,178 +290,218 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <ProductStatsCards siteId={siteId} />
+      <ProductsInsights
+        bundle={productsInsights}
+        loading={insightsLoading}
+        error={insightsError instanceof Error ? insightsError : undefined}
+        warehouseName={
+          insightsSiteKey ? sites.find(s => s.site.id === insightsSiteKey)?.site.name : undefined
+        }
+      />
 
       {/* Site Filters - Elegant Image-based */}
       {/* Warehouse manager, santiye depo ve purchasing officer kullanıcıları için site seçim butonlarını gizle - SADECE site_id varsa */}
       {userRole && !((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-3">
-            <Building2 className="w-5 h-5 text-gray-400" />
-            <h2 className="text-sm font-medium text-gray-600">Depolar</h2>
+        <div className="space-y-2.5">
+          <div className="flex items-center gap-2">
+            <Building2 className="h-5 w-5 shrink-0 text-gray-400" />
+            <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Depolar</h2>
           </div>
-          
-          <div className="flex gap-6 overflow-x-auto pb-8 scrollbar-hide px-1">
-            {/* Tümü Butonu */}
-            <button
-              onClick={() => {
-                setSiteId('')
-                setCurrentPage(1)
-              }}
-              className="group relative flex-shrink-0"
-            >
-              <div className="w-56 h-56 rounded-3xl overflow-hidden transition-all duration-200">
-                <div className="absolute inset-0 bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl" />
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <Package className={`w-14 h-14 mb-3 ${!siteId ? 'text-gray-900' : 'text-gray-400 group-hover:text-gray-600'}`} />
-                  <p className={`text-lg font-semibold ${!siteId ? 'text-gray-900' : 'text-gray-600 group-hover:text-gray-900'}`}>
-                    Envanter
-                  </p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    {totalCount} ürün
-                  </p>
+
+          {loadingSites ? (
+            <div className="-mx-1 overflow-x-auto overscroll-x-contain scroll-smooth px-1 pb-2 scrollbar-hide">
+              <div className="flex w-max flex-col gap-2.5">
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSiteId('')
+                      setCurrentPage(1)
+                    }}
+                    className={`inline-flex shrink-0 items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors ${
+                      !siteId
+                        ? 'border-gray-900 bg-gray-50 text-gray-900'
+                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
+                    }`}
+                  >
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
+                      <Package className={`h-5 w-5 ${!siteId ? 'text-gray-900' : 'text-gray-500'}`} />
+                    </span>
+                    <span className="min-w-[5.5rem]">
+                      <span className="block text-base font-medium leading-snug">Envanter</span>
+                      <span className="text-sm leading-snug text-gray-500">{totalCount} ürün</span>
+                    </span>
+                  </button>
+                  <span className="inline-flex shrink-0 items-center rounded-md border border-dashed border-gray-200 px-4 text-sm text-gray-400">
+                    Yükleniyor…
+                  </span>
                 </div>
               </div>
-              {!siteId && (
-                <div className="absolute -bottom-3 left-0 right-0 h-1 bg-gray-900 rounded-full" />
-              )}
-            </button>
+            </div>
+          ) : (
+            (() => {
+              type DepotChip =
+                | { kind: 'all' }
+                | { kind: 'site'; site: SiteStock['site']; productCount: number; totalQuantity: number }
+              const chips: DepotChip[] = [
+                { kind: 'all' },
+                ...sites.map((s) => ({
+                  kind: 'site' as const,
+                  site: s.site,
+                  productCount: s.productCount,
+                  totalQuantity: s.totalQuantity,
+                })),
+              ]
+              const firstRowLen = Math.ceil(chips.length / 2)
+              const row1 = chips.slice(0, firstRowLen)
+              const row2 = chips.slice(firstRowLen)
 
-            {/* Site Butonları */}
-            {loadingSites ? (
-              <div className="flex items-center justify-center w-full py-20">
-                <div className="text-sm text-gray-400">Yükleniyor...</div>
-              </div>
-            ) : (
-              sites.map(({ site, productCount, totalQuantity }) => (
-                <button
-                  key={site.id}
-                  onClick={() => {
-                    setSiteId(site.id)
-                    setCurrentPage(1)
-                  }}
-                  className="group relative flex-shrink-0"
-                >
-                  <div className="w-56 h-56 rounded-3xl overflow-hidden transition-all duration-200">
-                    {/* Görsel veya Placeholder */}
-                    {site.image_url ? (
-                      <>
-                        <img 
-                          src={site.image_url} 
-                          alt={site.name}
-                          className="absolute inset-0 w-full h-full object-cover rounded-3xl"
-                        />
-                        <div className={`absolute inset-0 transition-all duration-200 rounded-3xl ${
-                          siteId === site.id 
-                            ? 'bg-gradient-to-t from-black/80 via-black/30 to-transparent' 
-                            : 'bg-gradient-to-t from-black/60 via-black/20 to-transparent group-hover:from-black/70'
-                        }`} />
-                      </>
+              const chipClass = (selected: boolean, isSite: boolean) =>
+                `inline-flex shrink-0 max-w-[min(100vw-2rem,22rem)] items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors ${
+                  selected
+                    ? isSite
+                      ? 'border-primary-600 bg-primary-50/60 text-gray-900'
+                      : 'border-gray-900 bg-gray-50 text-gray-900'
+                    : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
+                }`
+
+              const renderChip = (chip: DepotChip) => {
+                if (chip.kind === 'all') {
+                  return (
+                    <button
+                      key="all"
+                      type="button"
+                      onClick={() => {
+                        setSiteId('')
+                        setCurrentPage(1)
+                      }}
+                      className={chipClass(!siteId, false)}
+                    >
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
+                        <Package className={`h-5 w-5 ${!siteId ? 'text-gray-900' : 'text-gray-500'}`} />
+                      </span>
+                      <span className="min-w-0">
+                        <span className="block text-base font-medium leading-snug">Envanter</span>
+                        <span className="text-sm leading-snug text-gray-500">{totalCount} ürün</span>
+                      </span>
+                    </button>
+                  )
+                }
+                const selected = siteId === chip.site.id
+                return (
+                  <button
+                    key={chip.site.id}
+                    type="button"
+                    onClick={() => {
+                      setSiteId(chip.site.id)
+                      setCurrentPage(1)
+                    }}
+                    className={chipClass(selected, true)}
+                  >
+                    {chip.site.image_url ? (
+                      <img
+                        src={chip.site.image_url}
+                        alt=""
+                        className="h-11 w-11 shrink-0 rounded-md object-cover"
+                      />
                     ) : (
-                      <>
-                        <div className="absolute inset-0 bg-gradient-to-br from-gray-50 to-gray-100 rounded-3xl" />
-                        <Building2 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-14 h-14 text-gray-300 opacity-40" />
-                      </>
+                      <span
+                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border ${
+                          selected ? 'border-primary-200 bg-white' : 'border-gray-200 bg-gray-50'
+                        }`}
+                      >
+                        <Building2 className="h-5 w-5 text-gray-400" />
+                      </span>
                     )}
-                    
-                    {/* Site Bilgileri */}
-                    <div className="absolute inset-x-0 bottom-0 p-4">
-                      <p className={`text-base font-semibold leading-tight line-clamp-2 mb-2 ${
-                        site.image_url ? 'text-white' : 'text-gray-900'
-                      }`}>
-                        {site.name}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <p className={`text-sm ${site.image_url ? 'text-white/80' : 'text-gray-600'}`}>
-                          {productCount} ürün
-                        </p>
-                        <span className={`text-sm ${site.image_url ? 'text-white/40' : 'text-gray-300'}`}>•</span>
-                        <p className={`text-sm ${site.image_url ? 'text-white/60' : 'text-gray-400'}`}>
-                          {totalQuantity} adet
-                        </p>
-                      </div>
-                    </div>
+                    <span className="min-w-0">
+                      <span className="block text-base font-medium leading-snug">{chip.site.name}</span>
+                      <span className="text-sm leading-snug text-gray-500">
+                        {chip.productCount} ürün · {chip.totalQuantity} adet
+                      </span>
+                    </span>
+                  </button>
+                )
+              }
+
+              return (
+                <div className="-mx-1 overflow-x-auto overscroll-x-contain scroll-smooth px-1 pb-2 scrollbar-hide">
+                  <div className="flex w-max flex-col gap-2.5">
+                    <div className="flex gap-3">{row1.map((c) => renderChip(c))}</div>
+                    {row2.length > 0 ? <div className="flex gap-3">{row2.map((c) => renderChip(c))}</div> : null}
                   </div>
-                  {siteId === site.id && (
-                    <div className="absolute -bottom-3 left-0 right-0 h-1 bg-blue-600 rounded-full" />
-                  )}
-                </button>
-              ))
-            )}
-          </div>
+                </div>
+              )
+            })()
+          )}
         </div>
       )}
 
-      {/* Product Type Filters - Tab Buttons */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-3">
-          <Boxes className="w-5 h-5 text-gray-400" />
-          <h2 className="text-sm font-medium text-gray-600">Ürün Tipleri</h2>
+      {/* Product Type Filters */}
+      <div className="space-y-2.5">
+        <div className="flex items-center gap-2">
+          <Boxes className="h-5 w-5 shrink-0 text-gray-400" />
+          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Ürün tipleri</h2>
         </div>
-        
-        <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-hide">
-          {/* Tümü */}
+
+        <div className="inline-flex flex-wrap gap-1.5 rounded-md border border-gray-200 bg-gray-50/80 p-1">
           <button
+            type="button"
             onClick={() => {
               setProductType('')
               setCurrentPage(1)
             }}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               !productType
-                ? 'bg-gray-900 text-white shadow-lg'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+                ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Package className="w-4 h-4" />
+            <Package className="h-4 w-4 shrink-0 opacity-70" />
             Tümü
           </button>
-
-          {/* Demirbaş */}
           <button
+            type="button"
             onClick={() => {
               setProductType('demirbas')
               setCurrentPage(1)
             }}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               productType === 'demirbas'
-                ? 'bg-blue-600 text-white shadow-lg'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+                ? 'bg-white text-primary-700 shadow-sm ring-1 ring-primary-200'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Wrench className="w-4 h-4" />
+            <Wrench className="h-4 w-4 shrink-0 opacity-70" />
             Demirbaş
           </button>
-
-          {/* Sarf Malzeme */}
           <button
+            type="button"
             onClick={() => {
               setProductType('sarf_malzeme')
               setCurrentPage(1)
             }}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               productType === 'sarf_malzeme'
-                ? 'bg-green-600 text-white shadow-lg'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+                ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-200'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Boxes className="w-4 h-4" />
-            Sarf Malzeme
+            <Boxes className="h-4 w-4 shrink-0 opacity-70" />
+            Sarf malzeme
           </button>
-
-          {/* Kontrol Sarf */}
           <button
+            type="button"
             onClick={() => {
               setProductType('kontrol_sarf')
               setCurrentPage(1)
             }}
-            className={`flex items-center gap-2 px-6 py-3 rounded-full font-medium text-sm transition-all duration-200 whitespace-nowrap ${
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               productType === 'kontrol_sarf'
-                ? 'bg-purple-600 text-white shadow-lg'
-                : 'bg-white text-gray-600 border border-gray-200 hover:border-gray-300 hover:shadow-md'
+                ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200'
+                : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <ClipboardCheck className="w-4 h-4" />
+            <ClipboardCheck className="h-4 w-4 shrink-0 opacity-70" />
             Kontrol Sarf
           </button>
         </div>
@@ -611,7 +516,7 @@ export default function ProductsPage() {
                 <CardTitle className="text-lg font-semibold text-gray-900 mb-2">
                   {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Depo Ürün Kataloğu' : 'Ürün Kataloğu'}
                   {siteId && !((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
-                    <span className="ml-2 text-blue-600">
+                    <span className="ml-2 text-primary-600">
                       - {sites.find(s => s.site.id === siteId)?.site.name}
                     </span>
                   )}
@@ -631,37 +536,26 @@ export default function ProductsPage() {
                 </p>
               </div>
               
-              {/* Export Button - Sadece depo seçiliyse görünür */}
-              {siteId && (
+              <div className="flex flex-wrap items-center gap-2 justify-end">
                 <Button
-                  onClick={handleExportWarehouseStock}
-                  disabled={exporting}
+                  onClick={() => setShowZimmetReportModal(true)}
                   variant="outline"
-                  className="rounded-xl border-green-200 text-green-700 hover:bg-green-50 hover:border-green-300"
+                  className="rounded-xl border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-300"
                 >
-                  {exporting ? (
-                    <>
-                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                      Hazırlanıyor...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4 mr-2" />
-                      Depo Stok Raporu
-                    </>
-                  )}
+                  <FileSpreadsheet className="w-4 h-4 mr-2" />
+                  Zimmet Raporu
                 </Button>
-              )}
+              </div>
             </div>
 
             {/* Filters */}
             <ProductFilters
               searchTerm={searchTerm}
               brandId={brandId}
-              isActive={isActive}
+              statusFilter={statusFilter}
               onSearchChange={setSearchTerm}
               onBrandChange={setBrandId}
-              onIsActiveChange={setIsActive}
+              onStatusFilterChange={setStatusFilter}
               onClearFilters={handleClearFilters}
               hasActiveFilters={hasActiveFilters}
             />
@@ -775,6 +669,16 @@ export default function ProductsPage() {
         onSuccess={handleBulkZimmetSuccess}
         showToast={showToast}
         selectedProductIds={selectedProducts}
+      />
+
+      <ZimmetReportModal
+        open={showZimmetReportModal}
+        onOpenChange={setShowZimmetReportModal}
+        showToast={showToast}
+        sourceWarehouseId={siteId || undefined}
+        warehouseLabel={
+          siteId ? sites.find((s) => s.site.id === siteId)?.site.name : undefined
+        }
       />
     </div>
   )

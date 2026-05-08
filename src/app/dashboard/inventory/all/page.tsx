@@ -65,7 +65,7 @@ interface InventoryItem {
 const getStatusBadge = (status: string) => {
   switch (status) {
     case 'active':
-      return <Badge className="bg-[#d6002a] text-white"><CheckCircle className="w-3 h-3 mr-1" />Aktif</Badge>
+      return <Badge className="bg-[#00E676] text-white"><CheckCircle className="w-3 h-3 mr-1" />Aktif</Badge>
     case 'returned':
       return <Badge className="bg-green-600 text-white"><CheckCircle className="w-3 h-3 mr-1" />İade Edildi</Badge>
     case 'lost':
@@ -111,12 +111,12 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
     <button
       type="button"
       onClick={handleRowClick}
-      className="group relative w-full bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-200 text-left hover:border-[#d6002a]/30 hover:shadow-lg hover:-translate-y-1"
+      className="group relative w-full bg-white rounded-2xl border border-gray-200 overflow-hidden transition-all duration-200 text-left hover:border-[#00E676]/30 hover:shadow-lg hover:-translate-y-1"
     >
       {/* Image/Icon Area */}
       <div className="relative w-full aspect-[16/9] sm:aspect-square flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 transition-all duration-200">
         <div className="w-16 h-16 rounded-2xl flex items-center justify-center bg-white shadow-md group-hover:shadow-lg transition-all duration-200 group-hover:scale-110">
-          <Package className="w-8 h-8 text-gray-400 group-hover:text-[#d6002a] transition-colors duration-200" />
+          <Package className="w-8 h-8 text-gray-400 group-hover:text-[#00E676] transition-colors duration-200" />
         </div>
 
         {/* Status Badge - Top Right */}
@@ -127,7 +127,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
         {/* Consumable Badge - Top Left */}
         {isConsumable(item) && (
           <div className="absolute top-3 left-3">
-            <Badge className="bg-[#d6002a] text-white text-xs">
+            <Badge className="bg-[#00E676] text-white text-xs">
               <Flame className="w-3 h-3 mr-1" />
               Sarf
             </Badge>
@@ -142,7 +142,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
               className="w-10 h-10 bg-white rounded-xl flex items-center justify-center shadow-md hover:shadow-lg transition-all hover:scale-110"
               title="Teslim PDF"
             >
-              <FileText className="w-5 h-5 text-[#d6002a]" />
+              <FileText className="w-5 h-5 text-[#00E676]" />
             </button>
             <button
               onClick={handleSayimPDF}
@@ -158,7 +158,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
       {/* Content Area */}
       <div className="p-4">
         {/* Product Name */}
-        <h3 className="font-semibold text-sm leading-tight line-clamp-2 mb-2 text-gray-900 group-hover:text-[#d6002a] transition-colors duration-200">
+        <h3 className="font-semibold text-sm leading-tight line-clamp-2 mb-2 text-gray-900 group-hover:text-[#00E676] transition-colors duration-200">
           {item.item_name}
         </h3>
 
@@ -173,8 +173,8 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
         <div className="space-y-2.5 mb-3">
           {/* User */}
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded-lg flex-shrink-0 ${item.owner_name ? 'bg-[#d6002a]/10' : 'bg-gray-100'}`}>
-              <User className={`w-3.5 h-3.5 ${item.owner_name ? 'text-[#d6002a]' : 'text-gray-600'}`} />
+            <div className={`p-1.5 rounded-lg flex-shrink-0 ${item.owner_name ? 'bg-[#00E676]/10' : 'bg-gray-100'}`}>
+              <User className={`w-3.5 h-3.5 ${item.owner_name ? 'text-[#00E676]' : 'text-gray-600'}`} />
             </div>
             <div className="flex-1 min-w-0">
               <div className="text-xs font-medium text-gray-800 truncate">
@@ -191,16 +191,16 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
           {/* Quantity & Date */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 flex-1">
-              <div className="p-1.5 bg-[#d6002a]/10 rounded-lg">
-                <Package className="w-3.5 h-3.5 text-[#d6002a]" />
+              <div className="p-1.5 bg-[#00E676]/10 rounded-lg">
+                <Package className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs font-semibold text-gray-900">
                 {item.quantity} {item.unit}
               </span>
             </div>
             <div className="flex items-center gap-1.5 flex-1">
-              <div className="p-1.5 bg-[#d6002a]/10 rounded-lg">
-                <Calendar className="w-3.5 h-3.5 text-[#d6002a]" />
+              <div className="p-1.5 bg-[#00E676]/10 rounded-lg">
+                <Calendar className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs text-gray-600">
                 {new Date(item.assigned_date).toLocaleDateString('tr-TR', {
@@ -214,8 +214,8 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
           {/* Request Number */}
           {item.purchase_request && (
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#d6002a]/10 rounded-lg flex-shrink-0">
-                <FileText className="w-3.5 h-3.5 text-[#d6002a]" />
+              <div className="p-1.5 bg-[#00E676]/10 rounded-lg flex-shrink-0">
+                <FileText className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs font-medium text-gray-800">
                 {item.purchase_request.request_number}
@@ -227,7 +227,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
           {isConsumable(item) && (
             <div className="flex items-center justify-between pt-2 border-t border-gray-100">
               <span className="text-xs text-gray-600">Kalan:</span>
-              <span className="text-xs font-semibold text-[#d6002a]">
+              <span className="text-xs font-semibold text-[#00E676]">
                 {getRemainingQuantity(item)} {item.unit}
               </span>
             </div>
@@ -473,7 +473,7 @@ export default function AllInventoryPage() {
       {/* Header - Desktop */}
       <div className="hidden sm:block px-4 pt-2 space-y-2">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#d6002a] inline-block">
+          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
             {userRole === 'site_manager' ? 'Oluşturduğum Zimmetler' : 'Tüm Zimmetler'}
           </h1>
           <p className="text-gray-600 mt-4 text-base">
@@ -488,7 +488,7 @@ export default function AllInventoryPage() {
       {/* Header - Mobile */}
       <div className="sm:hidden px-4 pt-2 space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#d6002a] inline-block">
+          <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">
             {userRole === 'site_manager' ? 'Oluşturduğum Zimmetler' : 'Tüm Zimmetler'}
           </h1>
           <p className="text-gray-600 mt-4 text-sm">
@@ -535,7 +535,7 @@ export default function AllInventoryPage() {
                         <div className="w-full flex items-end justify-center" style={{ height: '90px' }}>
                           <div 
                             className={`w-full rounded-t-lg transition-all duration-300 cursor-pointer ${
-                              isHovered ? 'bg-[#d6002a] shadow-lg scale-105' : 'bg-gray-900'
+                              isHovered ? 'bg-[#00E676] shadow-lg scale-105' : 'bg-gray-900'
                             }`}
                             style={{ 
                               height: `${height}%`,
@@ -571,7 +571,7 @@ export default function AllInventoryPage() {
           </Card>
 
           {/* Toplam Performans - Gradient */}
-          <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
+          <Card className="bg-gradient-to-br from-[#00E676] to-[#00c46a] border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
             <CardContent className="p-6">
               <div className="flex items-start justify-between mb-6">
                 <div>
@@ -653,7 +653,7 @@ export default function AllInventoryPage() {
           </Card>
 
           {/* Toplam Performans - Gradient */}
-          <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg">
+          <Card className="bg-gradient-to-br from-[#00E676] to-[#00c46a] border-0 rounded-2xl shadow-lg">
             <CardContent className="p-4">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -698,13 +698,13 @@ export default function AllInventoryPage() {
                   placeholder="Ürün, seri no, kullanıcı ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-10 pr-10 h-10 rounded-xl text-sm border-gray-200 focus:border-[#d6002a] focus:ring-[#d6002a]"
+                  className="pl-10 pr-10 h-10 rounded-xl text-sm border-gray-200 focus:border-[#00E676] focus:ring-[#00E676]"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={clearSearch}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#d6002a] transition-colors"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#00E676] transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -716,8 +716,8 @@ export default function AllInventoryPage() {
           <CardContent className="p-0">
             {paginatedItems.length === 0 ? (
               <div className="text-center py-16 px-4">
-                <div className="w-20 h-20 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-4">
-                  <Package className="w-10 h-10 text-[#d6002a]" />
+                <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <Package className="w-10 h-10 text-[#00E676]" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
                   Zimmet Kaydı Bulunamadı
@@ -784,7 +784,7 @@ export default function AllInventoryPage() {
                           onClick={() => setCurrentPage(page)}
                           className={`rounded-xl w-9 h-9 p-0 ${
                             currentPage === page 
-                              ? 'bg-[#d6002a] text-white hover:bg-[#b80024]' 
+                              ? 'bg-[#00E676] text-white hover:bg-[#00c46a]' 
                               : 'border-gray-200 hover:bg-gray-50'
                           }`}
                         >
@@ -826,13 +826,13 @@ export default function AllInventoryPage() {
                   placeholder="Ürün, seri no, kullanıcı ara..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9 pr-9 h-10 rounded-xl text-sm border-gray-200 focus:border-[#d6002a] focus:ring-[#d6002a]"
+                  className="pl-9 pr-9 h-10 rounded-xl text-sm border-gray-200 focus:border-[#00E676] focus:ring-[#00E676]"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={clearSearch}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#d6002a] transition-colors"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-[#00E676] transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -844,8 +844,8 @@ export default function AllInventoryPage() {
           <CardContent className="p-0">
             {paginatedItems.length === 0 ? (
               <div className="text-center py-12 px-4">
-                <div className="w-16 h-16 bg-[#d6002a]/10 rounded-full flex items-center justify-center mx-auto mb-3">
-                  <Package className="w-8 h-8 text-[#d6002a]" />
+                <div className="w-16 h-16 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                  <Package className="w-8 h-8 text-[#00E676]" />
                 </div>
                 <h3 className="text-base font-semibold text-gray-900 mb-2">
                   Zimmet Kaydı Bulunamadı

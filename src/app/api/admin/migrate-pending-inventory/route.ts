@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
+import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 
 export async function POST(request: Request) {
   try {
@@ -116,7 +117,10 @@ export async function POST(request: Request) {
             category: null,
             consumed_quantity: 0,
             owner_name: pending.owner_name,
-            owner_email: pending.owner_email,
+            owner_email:
+              buildDovecGroupWorkEmailFromDisplayName(pending.owner_name || '') ||
+              pending.owner_email ||
+              null,
             serial_number: pending.serial_number,
             source_warehouse_id: targetStock.warehouse_id
           })

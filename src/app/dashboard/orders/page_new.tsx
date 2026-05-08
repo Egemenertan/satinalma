@@ -21,7 +21,7 @@ import FullScreenImageViewer from '@/components/FullScreenImageViewer'
 
 // Components
 import { OrderFilters } from './components/OrderFilters'
-import { OrderStatsCards } from './components/OrderStats'
+import { OrdersInsightsSection } from './components/OrderStats'
 import { OrdersTable } from './components/OrdersTable'
 import { InvoiceGroupView } from './components/OrdersTable/InvoiceGroupView'
 import { MultiSelectActions } from './components/MultiSelect'
@@ -92,6 +92,7 @@ export default function OrdersPage() {
   const orders = ordersData?.orders || []
   const totalCount = ordersData?.totalCount || 0
   const totalPages = ordersData?.totalPages || 1
+  const ordersAnalytics = ordersData?.analytics ?? null
 
   // Fatura bazlı gruplama - aynı invoice_photos'a sahip siparişleri birleştir
   const groupOrdersByInvoice = (orders: any[]) => {
@@ -241,8 +242,13 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      {/* Stats Cards */}
-      {orders.length > 0 && <OrderStatsCards orders={orders} />}
+      {/* Özet kartları ve grafikler */}
+      <OrdersInsightsSection
+        analytics={ordersAnalytics}
+        orders={orders}
+        totalCount={totalCount}
+        isLoading={isLoading}
+      />
 
       {/* Orders Table */}
       <Card className="bg-white border-0 shadow-sm">

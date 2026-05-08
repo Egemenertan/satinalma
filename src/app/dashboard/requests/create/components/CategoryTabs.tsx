@@ -1,10 +1,10 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Loader2, LayoutGrid } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { CategoryTabsProps } from '../types'
-import { CATEGORY_IMAGES, getIconForClass } from '../types'
+import { getCategoryImage, getGroupImage, getIconForClass } from '../types'
 import * as Icons from 'lucide-react'
 
 export function CategoryTabs({
@@ -115,7 +115,7 @@ export function CategoryTabs({
         >
           {categories.map((category) => {
             const isSelected = selectedCategory === category.name
-            const categoryImage = CATEGORY_IMAGES[category.name]
+            const categoryImage = getCategoryImage(category.name)
             const iconName = getIconForClass(category.name)
             const IconComponent = getIcon(iconName)
 
@@ -127,7 +127,7 @@ export function CategoryTabs({
                   relative flex-shrink-0 min-w-[120px] h-24 rounded-2xl overflow-hidden
                   transition-all duration-300 group
                   ${isSelected 
-                    ? 'ring-2 ring-[#d6002a] shadow-md' 
+                    ? 'ring-2 ring-[#00E676] shadow-md' 
                     : 'hover:shadow-md hover:scale-[1.02]'
                   }
                 `}
@@ -138,19 +138,19 @@ export function CategoryTabs({
                       className="absolute inset-0 bg-cover bg-center"
                       style={{ backgroundImage: `url(${categoryImage})` }}
                     />
-                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#d6002a]/80' : 'bg-black/30 group-hover:bg-[#d6002a]/50'}`} />
+                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#00E676]/80' : 'bg-black/30 group-hover:bg-[#00E676]/50'}`} />
                   </>
                 ) : (
-                  <div className={`absolute inset-0 ${isSelected ? 'bg-gradient-to-br from-[#d6002a] to-[#b80024]' : 'bg-white border border-gray-200 rounded-2xl group-hover:border-[#d6002a]/30'}`} />
+                  <div className={`absolute inset-0 ${isSelected ? 'bg-gradient-to-br from-[#00E676] to-[#00c46a]' : 'bg-white border border-gray-200 rounded-2xl group-hover:border-[#00E676]/30'}`} />
                 )}
                 
                 <div className="relative h-full flex flex-col items-center justify-center p-3 z-10">
                   <div className="w-8 h-8 flex items-center justify-center mb-2">
-                    <IconComponent className={`w-5 h-5 transition-all duration-300 ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-600 group-hover:text-[#d6002a]'}`} />
+                    <IconComponent className={`w-5 h-5 transition-all duration-300 ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-600 group-hover:text-[#00E676]'}`} />
                   </div>
                   <span className={`
                     text-xs font-medium text-center line-clamp-2 leading-tight transition-all duration-300
-                    ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-700 group-hover:text-[#d6002a]'}
+                    ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-700 group-hover:text-[#00E676]'}
                   `}>
                     {category.name}
                   </span>
@@ -158,7 +158,7 @@ export function CategoryTabs({
 
                 {isSelected && (
                   <div className="absolute top-2 right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg animate-scale-in">
-                    <Icons.Check className="w-4 h-4 text-[#d6002a]" />
+                    <Icons.Check className="w-4 h-4 text-[#00E676]" />
                   </div>
                 )}
               </button>
@@ -194,34 +194,76 @@ export function CategoryTabs({
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             <button
+              type="button"
               onClick={() => onSubCategorySelect('')}
               className={`
-                flex-shrink-0 px-5 py-2.5 rounded-full text-sm font-medium
-                transition-all duration-200
+                flex flex-shrink-0 items-center gap-2.5 pl-2 pr-5 py-2 rounded-full text-sm font-medium
+                transition-all duration-200 min-h-[44px]
                 ${!selectedSubCategory 
-                  ? 'bg-[#d6002a] text-white shadow-sm' 
+                  ? 'bg-[#00E676] text-white shadow-sm ring-2 ring-[#00E676]/30' 
                   : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                 }
               `}
             >
+              {(() => {
+                const allImg = getCategoryImage(selectedCategory)
+                if (!allImg) {
+                  return (
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
+                        !selectedSubCategory ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      <LayoutGrid className="h-4 w-4" aria-hidden />
+                    </span>
+                  )
+                }
+                return (
+                  <span
+                    className="h-9 w-9 shrink-0 rounded-full bg-cover bg-center ring-2 ring-white/40"
+                    style={{ backgroundImage: `url(${allImg})` }}
+                    aria-hidden
+                  />
+                )
+              })()}
               Tümü
             </button>
             {subCategories.map((subCategory) => {
               const isSelected = selectedSubCategory === subCategory.name
+              const groupImage =
+                getGroupImage(subCategory.name) ?? getCategoryImage(selectedCategory)
               return (
                 <button
+                  type="button"
                   key={subCategory.id}
                   onClick={() => onSubCategorySelect(subCategory.name)}
                   className={`
-                    flex-shrink-0 px-5 py-2.5 rounded-full text-sm font-medium
-                    transition-all duration-200
+                    flex flex-shrink-0 items-center gap-2.5 pl-2 pr-5 py-2 rounded-full text-sm font-medium
+                    transition-all duration-200 text-left min-h-[44px] max-w-[280px]
                     ${isSelected 
-                      ? 'bg-[#d6002a] text-white shadow-sm' 
+                      ? 'bg-[#00E676] text-white shadow-sm ring-2 ring-[#00E676]/30' 
                       : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
                     }
                   `}
                 >
-                  {subCategory.name}
+                  {groupImage ? (
+                    <span
+                      className={`h-9 w-9 shrink-0 rounded-full bg-cover bg-center ring-2 ${
+                        isSelected ? 'ring-white/50' : 'ring-gray-200'
+                      }`}
+                      style={{ backgroundImage: `url(${groupImage})` }}
+                      aria-hidden
+                    />
+                  ) : (
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                        isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
+                      }`}
+                    >
+                      {subCategory.name.slice(0, 1).toLocaleUpperCase('tr-TR')}
+                    </span>
+                  )}
+                  <span className="line-clamp-2 leading-snug">{subCategory.name}</span>
                 </button>
               )
             })}

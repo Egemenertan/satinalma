@@ -139,7 +139,7 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
         <h3 className="text-sm font-semibold text-gray-900">Ürün Resimleri</h3>
         <label 
           htmlFor="product-image-upload"
-          className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl cursor-pointer transition-all text-sm font-medium"
+          className="flex items-center gap-2 px-4 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl cursor-pointer transition-all text-sm font-medium"
         >
           <Upload className="w-4 h-4" />
           Resim Ekle
@@ -156,23 +156,23 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
 
       {/* Yeni Yüklenenler */}
       {newImages.length > 0 && (
-        <div className="mb-6 p-4 bg-blue-50 rounded-xl border border-blue-200">
+        <div className="mb-6 p-4 bg-primary-50 rounded-xl border border-primary-200">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-sm font-medium text-blue-900">
+            <p className="text-sm font-medium text-primary-900">
               {newImages.length} yeni resim seçildi
             </p>
             <Button
               onClick={uploadNewImages}
               disabled={isUploadingImages}
               size="sm"
-              className="bg-blue-600 hover:bg-blue-700 text-white"
+              className="bg-primary-600 hover:bg-primary-700 text-white"
             >
               {isUploadingImages ? 'Yükleniyor...' : 'Kaydet'}
             </Button>
           </div>
           <div className="grid grid-cols-3 gap-3">
             {imagePreviewUrls.map((url, index) => (
-              <div key={index} className="relative group aspect-square rounded-xl overflow-hidden border-2 border-blue-300">
+              <div key={index} className="relative group aspect-square rounded-xl overflow-hidden border-2 border-primary-300">
                 <img
                   src={url}
                   alt={`Yeni ${index + 1}`}

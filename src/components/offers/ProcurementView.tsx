@@ -21,6 +21,21 @@ import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
 import ReturnedMaterialsCard from './ReturnedMaterialsCard'
 
+/** Depodan tamamen gönderilmiş (qty=0) ve siparişi olmayan kalemler satın alma ekranında gösterilmez. */
+function isPurchaseRequestItemVisibleForProcurement(
+  item: { id: string; quantity: number },
+  materialOrders: any[] | undefined,
+  localOrderTracking: Record<string, any>
+) {
+  if (item.quantity > 0) return true
+  const hasOrders =
+    Array.isArray(materialOrders) && materialOrders.some((order: any) => order.material_item_id === item.id)
+  const hasLocalOrders = Object.values(localOrderTracking).some(
+    (order: any) => order?.material_item_id === item.id
+  )
+  return hasOrders || hasLocalOrders
+}
+
 interface ProcurementViewProps extends OffersPageProps {
   currentOrder: any
   localOrderTracking: {[key: string]: any}
@@ -40,6 +55,13 @@ export default function ProcurementView({
 }: ProcurementViewProps) {
   const router = useRouter()
   const supabase = createClient()
+
+  const procurementVisibleItems = React.useMemo(() => {
+    if (!request?.purchase_request_items?.length) return []
+    return request.purchase_request_items.filter((item) =>
+      isPurchaseRequestItemVisibleForProcurement(item, materialOrders, localOrderTracking)
+    )
+  }, [request?.purchase_request_items, materialOrders, localOrderTracking])
 
   // Local state
   const [newOffers, setNewOffers] = useState<Offer[]>([
@@ -128,22 +150,10 @@ export default function ProcurementView({
   }
 
   const selectAllMaterials = () => {
-    if (!request?.purchase_request_items) return
-    
-    const activeItems = request.purchase_request_items.filter(item => {
-      if (item.quantity > 0) return true
-      if (item.quantity === 0) {
-        const hasOrders = Array.isArray(materialOrders) 
-          ? materialOrders.some(order => order.material_item_id === item.id)
-          : false
-        const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
-          order.material_item_id === item.id
-        )
-        return !hasOrders && !hasLocalOrders
-      }
-      return false
-    })
-    
+    if (!procurementVisibleItems.length) return
+
+    const activeItems = procurementVisibleItems
+
     const allMaterialIds = activeItems.map(item => item.id)
     const newSelected = new Set(selectedMaterials)
     
@@ -706,8 +716,8 @@ export default function ProcurementView({
     updated[index] = { ...updated[index], [field]: value }
 
     // Auto-calculate total price and delivery date
-    if (field === 'unit_price' && request?.purchase_request_items && request.purchase_request_items.length > 0) {
-      const totalQuantity = request.purchase_request_items.reduce((sum, item) => sum + item.quantity, 0)
+    if (field === 'unit_price' && procurementVisibleItems.length > 0) {
+      const totalQuantity = procurementVisibleItems.reduce((sum, item) => sum + item.quantity, 0)
       updated[index].total_price = Number(value) * totalQuantity
     }
 
@@ -1186,7 +1196,8 @@ DOVEC GROUP
   // Sipariş detayları görünümünü kaldırdık - malzeme tedarikçi yönetimi devam etsin
 
   const totalOffers = existingOffers.length
-  const firstItem = request?.purchase_request_items?.[0]
+  const firstProcurementListItem =
+    procurementVisibleItems[0] ?? request?.purchase_request_items?.[0]
 
   // İade edilen malzeme var mı kontrol et
   const hasReturnedMaterials = (() => {
@@ -1450,8 +1461,16 @@ DOVEC GROUP
         }}
       />
 
+      {!hasReturnedMaterials &&
+        Boolean(request?.purchase_request_items?.length) &&
+        procurementVisibleItems.length === 0 && (
+          <div className="mb-6 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600">
+            Depodan gönderimi tamamlanan malzemeler satın alma listesinde gösterilmez.
+          </div>
+        )}
+
       {/* Malzeme Bazlı Tedarikçi/Sipariş Yönetimi - İade varsa gösterme */}
-      {!hasReturnedMaterials && request?.purchase_request_items && request.purchase_request_items.length > 0 && (
+      {!hasReturnedMaterials && procurementVisibleItems.length > 0 && (
         <div className="space-y-6">
           {/* Başlık */}
           <div className="flex items-center justify-between">
@@ -1460,8 +1479,8 @@ DOVEC GROUP
                 Malzemeler
               </h2>
               <p className="text-sm text-gray-500 mt-0.5">
-                {request.purchase_request_items.filter(item => item.quantity > 0).length > 0 
-                  ? `${request.purchase_request_items.length} malzeme`
+                {procurementVisibleItems.some(item => item.quantity > 0)
+                  ? `${procurementVisibleItems.length} malzeme`
                   : 'Tüm siparişler tamamlandı'
                 }
               </p>
@@ -1469,19 +1488,7 @@ DOVEC GROUP
             
             {/* Multi-select controls */}
             {(() => {
-              const activeItems = request.purchase_request_items.filter(item => {
-                if (item.quantity > 0) return true
-                if (item.quantity === 0) {
-                  const hasOrders = Array.isArray(materialOrders) 
-                    ? materialOrders.some(order => order.material_item_id === item.id)
-                    : false
-                  const hasLocalOrders = Object.values(localOrderTracking).some((order: any) => 
-                    order.material_item_id === item.id
-                  )
-                  return !hasOrders && !hasLocalOrders
-                }
-                return false
-              })
+              const activeItems = procurementVisibleItems
               
               return activeItems.length > 1 && (
                 <div className="flex items-center gap-2">
@@ -1516,14 +1523,14 @@ DOVEC GROUP
           {/* Malzeme Listesi */}
           <div className="space-y-3">
             {(() => {
-              const allItems = request.purchase_request_items || []
+              const listItems = procurementVisibleItems
               
-              return allItems.length === 0 ? (
+              return listItems.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-gray-400">Malzeme bulunamadı</p>
                 </div>
               ) : (
-                allItems.map((item, index) => {
+                listItems.map((item, index) => {
                   const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
                   
                   return (
@@ -1601,7 +1608,7 @@ DOVEC GROUP
                           
                           <div className="flex-1">
                             <div className="flex items-center gap-3 bg-gray-100 border border-gray-200 rounded-3xl px-5 py-3 mb-4">
-                              {request.purchase_request_items.length > 1 && (
+                              {procurementVisibleItems.length > 1 && (
                                 <div className="w-7 h-7 bg-gray-900 text-white rounded-full flex items-center justify-center text-sm font-bold">
                                   {index + 1}
                                 </div>
@@ -3436,8 +3443,8 @@ DOVEC GROUP
           setCurrentMaterialForAssignment(null)
           clearMaterialSelection() // Çoklu seçimi temizle
         }}
-        itemName={currentMaterialForAssignment?.name || firstItem?.item_name || ''}
-        itemUnit={currentMaterialForAssignment?.unit || firstItem?.unit}
+        itemName={currentMaterialForAssignment?.name || firstProcurementListItem?.item_name || ''}
+        itemUnit={currentMaterialForAssignment?.unit || firstProcurementListItem?.unit}
         materialClass={request?.material_class || undefined}
         materialGroup={request?.material_group || undefined}
         selectedMaterials={selectedMaterials.size > 0 ? selectedMaterials : undefined}

@@ -23,6 +23,8 @@ interface NotificationPayload {
   title: string;
   body: string;
   data?: any;
+  /** Ana ekran / PWA ikon rozeti (Badging API). Verilmezse istemci tarafında +1 yapılır. */
+  badgeCount?: number;
   userIds?: string[]; // Specific users to send to
   roles?: string[]; // Send to users with specific roles
   siteId?: string; // Send to users of a specific site
@@ -118,6 +120,9 @@ export async function POST(request: NextRequest) {
     const notificationPayload = JSON.stringify({
       title: payload.title,
       body: payload.body,
+      ...(typeof payload.badgeCount === 'number'
+        ? { badgeCount: payload.badgeCount }
+        : {}),
       data: {
         ...payload.data,
         timestamp: new Date().toISOString()

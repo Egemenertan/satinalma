@@ -4,6 +4,10 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
 import { PurchaseRequest, MaterialSupplier, OrderInfo, ShipmentInfo, SupplierInfo } from '../types'
+import {
+  isProfileDepartmentIt,
+  purchaseRequestHasItWarehouseVisibleItem
+} from '@/lib/warehouse-it-material-filter'
 
 export function useOfferData(requestId: string) {
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
@@ -48,7 +52,9 @@ export function useOfferData(requestId: string) {
           purchase_request_items(
             id, item_name, description, quantity, unit, 
             specifications, brand, original_quantity, 
-            image_urls, purpose, delivery_date, product_id
+            image_urls, purpose, delivery_date, product_id,
+            material_group, material_group_code,
+            material_class, material_item_name
           )
         `)
         .eq('id', requestId)
@@ -57,6 +63,25 @@ export function useOfferData(requestId: string) {
       if (!error && data) {
         // Items artık data içinde geliyor, ayrı sorguya gerek yok
         const items = data.purchase_request_items || []
+
+        const { data: { user: viewer } } = await supabase.auth.getUser()
+        if (viewer) {
+          const { data: viewerProfile } = await supabase
+            .from('profiles')
+            .select('role, department')
+            .eq('id', viewer.id)
+            .single()
+
+          const itWmRestricted =
+            viewerProfile?.role === 'warehouse_manager' &&
+            isProfileDepartmentIt(viewerProfile.department ?? undefined)
+
+          if (itWmRestricted && !purchaseRequestHasItWarehouseVisibleItem(items)) {
+            setError('Bu talebi görüntüleme yetkiniz bulunmuyor.')
+            setRequest(null)
+            return
+          }
+        }
 
         if (data.requested_by) {
           

@@ -16,6 +16,7 @@ import {
   AlertCircle
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import {
   Select,
   SelectContent,
@@ -332,6 +333,15 @@ export default function CreateZimmetModal({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) throw new Error('Kullanıcı bulunamadı')
 
+      const selectedUser = users.find((u) => u.id === selectedUserId)
+      if (!selectedUser) {
+        showToast('Seçilen kullanıcı bulunamadı', 'error')
+        return
+      }
+
+      const ownerDisplayName = selectedUser.full_name?.trim() ?? ''
+      const ownerEmailCanonical = buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName)
+
       // Her ürün için zimmet oluştur
       for (const detail of productDetails) {
         // 1. Ana depodan stoğu düş
@@ -425,7 +435,10 @@ export default function CreateZimmetModal({
             .from('user_inventory')
             .update({
               quantity: updatedQuantity,
-              updated_at: new Date().toISOString()
+              updated_at: new Date().toISOString(),
+              owner_name: ownerDisplayName || null,
+              owner_email: ownerEmailCanonical || null,
+              source_warehouse_id: detail.warehouseId || null,
             })
             .eq('id', existingInventory.id)
 
@@ -448,7 +461,11 @@ export default function CreateZimmetModal({
               assigned_by: user.id,
               status: 'active',
               category: detail.category,
-              notes: `Manuel zimmet - ${detail.stockType === 'new' ? 'Yeni' : 'Kullanılmış'} - Depo: ${detail.warehouseId || 'Genel'}`
+              notes: `Manuel zimmet - ${detail.stockType === 'new' ? 'Yeni' : 'Kullanılmış'} - Depo: ${detail.warehouseId || 'Genel'}`,
+              owner_name: ownerDisplayName || null,
+              owner_email: ownerEmailCanonical || null,
+              source_warehouse_id: detail.warehouseId || null,
+              assigned_date: new Date().toISOString(),
             })
 
           if (insertInventoryError) {

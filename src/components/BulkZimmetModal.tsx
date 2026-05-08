@@ -16,6 +16,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import {
   Select,
   SelectContent,
@@ -259,6 +260,7 @@ export default function BulkZimmetModal({
 
         if (updateError) throw new Error(`${detail.name} için stok güncellenemedi`)
 
+        const ownerDisplayName = (selectedEmployee.first_name || '').trim()
         const { error: inventoryError } = await supabase
           .from('user_inventory')
           .insert({
@@ -272,8 +274,8 @@ export default function BulkZimmetModal({
             notes: 'Toplu zimmet işlemi',
             category: null,
             consumed_quantity: 0,
-            owner_name: selectedEmployee.first_name,
-            owner_email: selectedEmployee.work_email,
+            owner_name: ownerDisplayName || null,
+            owner_email: buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName) || null,
             source_warehouse_id: detail.warehouseId
           })
 

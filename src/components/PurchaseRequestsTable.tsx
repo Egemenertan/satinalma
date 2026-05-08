@@ -19,6 +19,10 @@ import {
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
+import {
+  isProfileDepartmentIt,
+  fetchPurchaseRequestIdsVisibleToItWarehouseManager
+} from '@/lib/warehouse-it-material-filter'
 
 import { 
   Search, 
@@ -204,6 +208,9 @@ const fetchPurchaseRequests = async (
   const effectiveRole = role || userRole // Key'den veya paramdan al
   
   const { user, profile, supabase } = await fetcherWithAuth('auth')
+
+  const isItWarehouseManager =
+    effectiveRole === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
   
   // Özel site ID'si için ek statuslar
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
@@ -275,9 +282,9 @@ const fetchPurchaseRequests = async (
   }
   
   // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
-  // Diğer tüm roller için, profilde department doluysa sadece o departmana ait talepler getirilir.
+  // IT depo yöneticileri ise talep kalemlerine göre ayrı kısıtlanır; talep.departmanı ile sınırlanmaz.
   const userDepartment: string | null =
-    effectiveRole !== 'department_head' && profile?.department
+    effectiveRole !== 'department_head' && profile?.department && !isItWarehouseManager
       ? profile.department
       : null
 
@@ -348,6 +355,46 @@ const fetchPurchaseRequests = async (
       return { requests: [], totalCount: 0 }
     }
   }
+
+  /** IT WM: izin verilen malzeme gruplarındaki kalemleri olan talepler */
+  let itWarehouseScopedIds: string[] | null = null
+  if (isItWarehouseManager) {
+    itWarehouseScopedIds = await fetchPurchaseRequestIdsVisibleToItWarehouseManager(supabase)
+    if (!itWarehouseScopedIds.length) {
+      return { requests: [], totalCount: 0 }
+    }
+  }
+
+  /** Arama / IT WM / sıra dışı / gecikme filtreleri tek id kümesinde birleştirilir */
+  let mergedRequestIdFilter: string[] | null = itWarehouseScopedIds
+
+  if (matchingRequestIds !== null) {
+    if (!matchingRequestIds.length) return { requests: [], totalCount: 0 }
+    if (!mergedRequestIdFilter) mergedRequestIdFilter = [...matchingRequestIds]
+    else {
+      const m = new Set(matchingRequestIds)
+      mergedRequestIdFilter = mergedRequestIdFilter.filter((id) => m.has(id))
+    }
+    if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
+  }
+
+  if (unorderedRequestIds !== null) {
+    if (!mergedRequestIdFilter) mergedRequestIdFilter = [...unorderedRequestIds]
+    else {
+      const u = new Set(unorderedRequestIds)
+      mergedRequestIdFilter = mergedRequestIdFilter.filter((id) => u.has(id))
+    }
+    if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
+  }
+
+  if (overdueFilterIds !== null) {
+    if (!mergedRequestIdFilter) mergedRequestIdFilter = [...overdueFilterIds]
+    else {
+      const o = new Set(overdueFilterIds)
+      mergedRequestIdFilter = mergedRequestIdFilter.filter((id) => o.has(id))
+    }
+    if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
+  }
   
   let countQuery = supabase
     .from('purchase_requests')
@@ -407,23 +454,8 @@ const fetchPurchaseRequests = async (
     countQuery = countQuery.eq('department', userDepartment)
   }
   
-  // Siparişi olmayan talepler filtresi
-  if (unorderedRequestIds !== null) {
-    countQuery = countQuery.in('id', unorderedRequestIds)
-  }
-  
-  // Teslim alınmamış siparişler filtresi
-  if (overdueFilterIds !== null) {
-    countQuery = countQuery.in('id', overdueFilterIds)
-  }
-  
-  // Gelişmiş arama filtresi
-  if (matchingRequestIds !== null) {
-    if (matchingRequestIds.length === 0) {
-      // Hiç eşleşme yok, boş sonuç dön
-      return { requests: [], totalCount: 0 }
-    }
-    countQuery = countQuery.in('id', matchingRequestIds)
+  if (mergedRequestIdFilter !== null) {
+    countQuery = countQuery.in('id', mergedRequestIdFilter)
   }
   
   // Status filtresi
@@ -527,21 +559,11 @@ const fetchPurchaseRequests = async (
     requestsQuery = requestsQuery.eq('department', userDepartment)
   }
   
-  // Siparişi olmayan talepler filtresi
-  if (unorderedRequestIds !== null) {
-    requestsQuery = requestsQuery.in('id', unorderedRequestIds)
-  }
-  
-  // Teslim alınmamış siparişler filtresi
-  if (overdueFilterIds !== null) {
-    requestsQuery = requestsQuery.in('id', overdueFilterIds)
-  }
-  
   // Gelişmiş arama filtresi
-  if (matchingRequestIds !== null && matchingRequestIds.length > 0) {
-    requestsQuery = requestsQuery.in('id', matchingRequestIds)
+  if (mergedRequestIdFilter !== null) {
+    requestsQuery = requestsQuery.in('id', mergedRequestIdFilter)
   }
-  
+
   // Status filtresi
   if (statusFilter && statusFilter !== 'all') {
     requestsQuery = requestsQuery.eq('status', statusFilter)
@@ -1029,7 +1051,7 @@ export default function PurchaseRequestsTable({
     if (deliveredMaterials === totalMaterials) {
       return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#2C5444' }, rounded: 'rounded-xl' }
     } else if (deliveredMaterials > 0 || partialMaterials > 0) {
-      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-[#d6002a]/10 text-[#d6002a]', rounded: 'rounded-full' }
+      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-red-100 text-red-800', rounded: 'rounded-full' }
     }
     
     return null
@@ -1179,10 +1201,10 @@ export default function PurchaseRequestsTable({
           <div className="flex flex-wrap gap-1">
             <Badge 
               variant="outline" 
-              className=" text-[#d6002a] border-0 rounded-full text-xs font-medium px-1 py-0.5"
+              className="text-red-700 border-red-200 rounded-full text-xs font-medium px-1 py-0.5"
             >
               <span className="flex items-center gap-1">
-                <RotateCcw className="w-3 h-3 text-[#d6002a]" />
+                <RotateCcw className="w-3 h-3 text-red-600" />
                 İade Var
               </span>
             </Badge>
@@ -1257,15 +1279,15 @@ export default function PurchaseRequestsTable({
       'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'ordered': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
       'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
-      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
-      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
-      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
-      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-red-100 text-red-800 border-0' },
+      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-red-100 text-red-800 border-0' },
+      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
+      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-red-100 text-red-800 border-0' },
       'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
-      'iade var': { label: 'İade Var', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'iade var': { label: 'İade Var', className: 'bg-red-100 text-red-800 border-0' },
       'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
-      'reddedildi': { label: 'Reddedildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
-      rejected: { label: 'Reddedildi', className: 'bg-[#d6002a]/10 text-[#d6002a] border-0' },
+      'reddedildi': { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
+      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
       
       // Eski statuslar için backward compatibility
@@ -1290,10 +1312,10 @@ export default function PurchaseRequestsTable({
           <div className="flex flex-wrap gap-1">
             <Badge 
               variant="outline" 
-              className="border-[#d6002a] text-[#d6002a] border-1 rounded-full text-xs font-medium px-1 py-0.5"
+              className="border-red-300 text-red-700 border rounded-full text-xs font-medium px-1 py-0.5"
             >
               <span className="flex items-center gap-1">
-                <RotateCcw className="w-3 h-3 text-[#d6002a]" />
+                <RotateCcw className="w-3 h-3 text-red-600" />
                 İade Var
               </span>
             </Badge>
@@ -1307,12 +1329,12 @@ export default function PurchaseRequestsTable({
     const urgencyConfig = {
       critical: { 
         label: 'Kritik', 
-        className: 'bg-[#d6002a]/10 text-[#d6002a] border-0',
+        className: 'bg-red-100 text-red-800 border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       high: { 
         label: 'Yüksek', 
-        className: 'bg-[#d6002a]/10 text-[#d6002a] border-0',
+        className: 'bg-red-100 text-red-800 border-0',
         icon: <AlertTriangle className="w-3 h-3" />
       },
       normal: { 
@@ -1856,7 +1878,7 @@ export default function PurchaseRequestsTable({
                             }`}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-[#d6002a]"></span>
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-500"></span>
                               <span className="font-medium text-sm">Kısmen Teslim Alındı</span>
                             </div>
                           </button>
@@ -1968,7 +1990,7 @@ export default function PurchaseRequestsTable({
                   {unorderedOnlyFilter && (
                     <Badge 
                       variant="outline" 
-                      className="bg-[#d6002a] text-white border-0 gap-1 cursor-pointer hover:bg-[#b80024] animate-pulse"
+                      className="bg-red-600 text-white border-0 gap-1 cursor-pointer hover:bg-red-700 animate-pulse"
                       onClick={() => {
                         setUnorderedOnlyFilter(false)
                         if (onUnorderedFilterChange) {
@@ -1985,7 +2007,7 @@ export default function PurchaseRequestsTable({
                   {overdueOnlyFilter && (
                     <Badge 
                       variant="outline" 
-                      className="bg-[#d6002a] text-white border-0 gap-1 cursor-pointer hover:bg-[#b80024] animate-pulse"
+                      className="bg-red-600 text-white border-0 gap-1 cursor-pointer hover:bg-red-700 animate-pulse"
                       onClick={() => {
                         setOverdueOnlyFilter(false)
                         if (onOverdueFilterChange) {
@@ -2113,7 +2135,7 @@ export default function PurchaseRequestsTable({
                         }}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'kismen_teslim_alindi' ? 'bg-gray-100 font-medium' : ''}`}
                       >
-                        <span className="w-2 h-2 rounded-full bg-[#d6002a]"></span>
+                        <span className="w-2 h-2 rounded-full bg-red-500"></span>
                         Kısmen Teslim Alındı
                       </button>
                       <button
@@ -2208,9 +2230,9 @@ export default function PurchaseRequestsTable({
                 <Loading size="md" text="Yükleniyor..." />
               </div>
             ) : error ? (
-              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-[#d6002a]">
+              <div className="bg-white rounded-3xl border border-gray-200 p-6 text-center text-red-600">
                 <div className="flex flex-col items-center gap-2">
-                  <AlertTriangle className="w-8 h-8 text-[#d6002a]/50" />
+                  <AlertTriangle className="w-8 h-8 text-red-500/80" />
                   <span>Veriler yüklenirken hata oluştu</span>
                   <Button 
                     variant="outline" 
@@ -2359,7 +2381,7 @@ export default function PurchaseRequestsTable({
                         {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
                           <Badge 
                             variant="outline" 
-                            className="bg-[#d6002a] text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            className="bg-red-600 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                             title={`${request.unordered_materials_count} malzemenin siparişi verilmedi!`}
                           >
                             {request.unordered_materials_count}
@@ -2369,7 +2391,7 @@ export default function PurchaseRequestsTable({
                         {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
                           <Badge 
                             variant="outline" 
-                            className="bg-[#d6002a] text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                            className="bg-red-600 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                             title={`${request.overdue_deliveries_count} siparişin teslim tarihi geçti!`}
                           >
                             {request.overdue_deliveries_count}
@@ -2424,7 +2446,7 @@ export default function PurchaseRequestsTable({
                           {canDeleteRequest(request) ? (
                             <button
                               onClick={(e) => openDeleteModal(request, e)}
-                              className="w-full text-left px-3 py-2 text-sm text-[#d6002a] hover:bg-[#d6002a]/5 flex items-center gap-2"
+                              className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 flex items-center gap-2"
                             >
                               <Trash2 className="w-4 h-4" />
                               Kaldır
@@ -2708,7 +2730,7 @@ export default function PurchaseRequestsTable({
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-8 h-8 p-0 rounded-xl ${
                           currentPage === pageNum 
-                            ? 'bg-[#d6002a] text-white' 
+                            ? 'bg-[#00E676] text-white' 
                             : 'border-gray-200 hover:bg-gray-50'
                         }`}
                       >
@@ -2795,7 +2817,7 @@ export default function PurchaseRequestsTable({
         <DialogContent className="sm:max-w-md bg-white rounded-2xl border-0 shadow-xl">
           <DialogHeader className="text-center pb-2">
             <DialogTitle className="flex items-center justify-center gap-2 text-gray-800 text-lg font-medium">
-              <Trash2 className="w-5 h-5 text-[#d6002a]" />
+              <Trash2 className="w-5 h-5 text-red-600" />
               Talebi Kaldır
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm mt-2">
@@ -2847,7 +2869,7 @@ export default function PurchaseRequestsTable({
               variant="destructive"
               onClick={handleDeleteRequest}
               disabled={isDeleting}
-              className="flex-1 bg-[#d6002a] hover:bg-[#b80024] rounded-xl border-0"
+              className="flex-1 rounded-xl border-0"
             >
               {isDeleting ? (
                 <>

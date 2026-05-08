@@ -347,7 +347,7 @@ export default function SitesPage() {
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#d6002a] inline-block">Şantiyeler</h1>
+            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
             <p className="text-gray-600 mt-4 text-base">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
           </div>
         </div>
@@ -355,7 +355,7 @@ export default function SitesPage() {
         {/* Mobile: Header */}
         <div className="sm:hidden space-y-4">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#d6002a] inline-block">Şantiyeler</h1>
+            <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
             <p className="text-gray-600 mt-4 text-sm">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
           </div>
         </div>

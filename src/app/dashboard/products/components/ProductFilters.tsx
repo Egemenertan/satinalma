@@ -10,14 +10,15 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Search, X, Filter } from 'lucide-react'
 import { useBrandsWithProductCount } from '@/app/dashboard/brands/hooks'
+import type { StatusFilter } from '@/services/products.service'
 
 interface ProductFiltersProps {
   searchTerm: string
   brandId: string
-  isActive: boolean | undefined
+  statusFilter: StatusFilter
   onSearchChange: (value: string) => void
   onBrandChange: (value: string) => void
-  onIsActiveChange: (value: boolean | undefined) => void
+  onStatusFilterChange: (value: StatusFilter) => void
   onClearFilters: () => void
   hasActiveFilters: boolean
 }
@@ -25,10 +26,10 @@ interface ProductFiltersProps {
 export function ProductFilters({
   searchTerm,
   brandId,
-  isActive,
+  statusFilter,
   onSearchChange,
   onBrandChange,
-  onIsActiveChange,
+  onStatusFilterChange,
   onClearFilters,
   hasActiveFilters,
 }: ProductFiltersProps) {
@@ -65,20 +66,17 @@ export function ProductFilters({
 
       {/* Status Filter */}
       <Select 
-        value={isActive === undefined ? 'all' : isActive ? 'active' : 'inactive'} 
-        onValueChange={(value) => {
-          if (value === 'all') onIsActiveChange(undefined)
-          else if (value === 'active') onIsActiveChange(true)
-          else onIsActiveChange(false)
-        }}
+        value={statusFilter} 
+        onValueChange={(value) => onStatusFilterChange(value as StatusFilter)}
       >
-        <SelectTrigger className="w-full sm:w-40 rounded-2xl border-gray-200 bg-white">
+        <SelectTrigger className="w-full sm:w-44 rounded-2xl border-gray-200 bg-white">
           <SelectValue placeholder="Durum" />
         </SelectTrigger>
         <SelectContent className="bg-white">
           <SelectItem value="all">Tümü</SelectItem>
           <SelectItem value="active">Aktif</SelectItem>
           <SelectItem value="inactive">Pasif</SelectItem>
+          <SelectItem value="available">Mevcut Olanlar</SelectItem>
         </SelectContent>
       </Select>
 

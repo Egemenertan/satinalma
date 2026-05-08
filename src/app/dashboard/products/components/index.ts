@@ -9,6 +9,7 @@ export * from './ProductsGrid'
 export * from './ProductsTable'
 export * from './ProductModal'
 export * from './ProductStatsCards'
+export * from './ProductsInsights'
 export * from './ProductForm'
 export * from './StockOperationsForm'
 

@@ -59,10 +59,41 @@ export interface InvoiceData {
   notes?: string
 }
 
+/** Dashboard grafikleri için hafif satır (servis içi) */
+export interface OrderMinimalAnalyticsRow {
+  created_at: string
+  status: string
+  amount: number
+  currency: string
+  is_delivered: boolean
+}
+
+/** Siparişler sayfası üst özet / grafik verisi */
+export interface OrderAnalyticsSnapshot {
+  /** Tablo ile uyumlu filtrelenmiş toplam kayıt */
+  totalCount: number
+  delivered: number
+  partiallyDelivered: number
+  returned: number
+  pending: number
+  /** Son günler için günlük oluşturulan sipariş sayısı (grafik) */
+  dailyOrderCounts: { dayKey: string; label: string; count: number }[]
+  /** TRY sipariş tutarı — günlük toplam */
+  dailyTryAmounts: { dayKey: string; label: string; amount: number }[]
+  /** Örneklem kullanıldıysa (manager geniş liste) */
+  isSampled: boolean
+  /**
+   * Grafik tarih ekseni bugünden son N gün değil; filtrelenmiş kayıtların en yeni oluşturma tarihine göre kaydırıldı
+   * (oluşturma ↔ teslim tarihi uyumsuzluğunda grafik görünür kalır).
+   */
+  performanceChartAnchoredToNewestCreation?: boolean
+}
+
 export interface OrdersResponse {
   orders: OrderData[]
   totalCount: number
   totalPages: number
+  analytics: OrderAnalyticsSnapshot | null
 }
 
 export interface OrderFilters {

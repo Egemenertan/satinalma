@@ -192,7 +192,7 @@ export function ProductModal({
                   </DialogDescription>
                   {isBulkOperation && (
                     <div className="mt-2">
-                      <Badge className="bg-blue-50 text-blue-700 border-blue-200 rounded-full px-4 py-2">
+                      <Badge className="bg-primary-50 text-primary-700 border-primary-200 rounded-full px-4 py-2">
                         <Package className="w-4 h-4 mr-2" />
                         {selectedProductIds.length} ürün seçili - Toplu işlem modu
                       </Badge>

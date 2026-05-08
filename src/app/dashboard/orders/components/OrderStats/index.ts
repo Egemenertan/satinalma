@@ -1,4 +1,4 @@
-export { OrderStatsCards } from './OrderStatsCards'
+export { OrdersInsightsSection } from './OrdersInsightsSection'
 
 
 

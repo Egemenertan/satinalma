@@ -160,13 +160,43 @@ export const COLOR_MAP: Record<string, string> = {
   'Hijyen ve Temizlik': '#8b5cf6'
 }
 
+/** Genel Merkez Ofisi — ana sınıf (kategori) kart görselleri */
 export const CATEGORY_IMAGES: Record<string, string> = {
-  'Kırtasiye Malzemeleri': 'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=800&q=80',
-  'Reklam Ürünleri': 'https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&q=80',
-  'Ofis Ekipmanları': 'https://images.unsplash.com/photo-1593062096033-9a26b09da705?w=800&q=80',
-  'Promosyon Ürünleri': 'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=800&q=80',
-  'Mutfak Malzemeleri': 'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80',
-  'Hijyen ve Temizlik': 'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80'
+  'Hijyen ve Temizlik':
+    'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80',
+  'Kırtasiye Malzemeleri':
+    'https://images.unsplash.com/photo-1484480974693-6ca0a78fb36b?w=800&q=80',
+  'Mutfak Malzemeleri':
+    'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80',
+  'Ofis Ekipmanları':
+    'https://images.unsplash.com/photo-1593062096033-9a26b09da705?w=800&q=80',
+  'Promosyon Ürünleri':
+    'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=800&q=80',
+  'Reklam Ürünleri':
+    'https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&q=80'
+}
+
+function normalizeImageKey(value: string): string {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .trim()
+    .replace(/\s+/g, ' ')
+}
+
+/** DB’deki sınıf adı küçük farklarla gelse bile ofis kategorisi görselini bulur */
+export function getCategoryImage(className: string): string | undefined {
+  const trimmed = className.trim()
+  if (CATEGORY_IMAGES[trimmed]) return CATEGORY_IMAGES[trimmed]
+
+  const norm = normalizeImageKey(trimmed)
+  const entries = Object.entries(CATEGORY_IMAGES).sort((a, b) => b[0].length - a[0].length)
+
+  for (const [key, url] of entries) {
+    const k = normalizeImageKey(key)
+    if (norm === k) return url
+    if (norm.includes(k) || k.includes(norm)) return url
+  }
+  return undefined
 }
 
 export const GROUP_IMAGES: Record<string, string> = {
@@ -191,9 +221,26 @@ export const GROUP_IMAGES: Record<string, string> = {
   'Genel Temizlik': 'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80'
 }
 
+export function getGroupImage(groupName: string): string | undefined {
+  const trimmed = groupName.trim()
+  if (GROUP_IMAGES[trimmed]) return GROUP_IMAGES[trimmed]
+
+  const norm = normalizeImageKey(trimmed)
+  const entries = Object.entries(GROUP_IMAGES).sort((a, b) => b[0].length - a[0].length)
+
+  for (const [key, url] of entries) {
+    const k = normalizeImageKey(key)
+    if (norm === k) return url
+    if (norm.includes(k) || k.includes(norm)) return url
+  }
+  return undefined
+}
+
 export function getIconForClass(className: string): string {
-  for (const [key, icon] of Object.entries(ICON_MAP)) {
-    if (className.toLowerCase().includes(key.toLowerCase())) {
+  const lower = className.toLowerCase()
+  const entries = Object.entries(ICON_MAP).sort((a, b) => b[0].length - a[0].length)
+  for (const [key, icon] of entries) {
+    if (lower.includes(key.toLowerCase())) {
       return icon
     }
   }
@@ -201,8 +248,10 @@ export function getIconForClass(className: string): string {
 }
 
 export function getColorForClass(className: string): string {
-  for (const [key, color] of Object.entries(COLOR_MAP)) {
-    if (className.toLowerCase().includes(key.toLowerCase())) {
+  const lower = className.toLowerCase()
+  const entries = Object.entries(COLOR_MAP).sort((a, b) => b[0].length - a[0].length)
+  for (const [key, color] of entries) {
+    if (lower.includes(key.toLowerCase())) {
       return color
     }
   }

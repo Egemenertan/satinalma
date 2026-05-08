@@ -79,7 +79,7 @@ export default function DashboardHeader() {
                     {userEmail}
                   </div>
                 </div>
-                <div className="w-9 h-9 bg-[#d6002a] rounded-full flex items-center justify-center">
+                <div className="w-9 h-9 bg-[#00E676] rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-white">
                     {userName ? userName.charAt(0).toUpperCase() : 'U'}
                   </span>

@@ -22,9 +22,7 @@ export const invalidatePurchaseRequestsCache = () => {
 
 // Dashboard cache'leri
 export const invalidateDashboardCache = () => {
-  mutate('dashboard_stats', undefined, { revalidate: true })
-  mutate('daily_request_data', undefined, { revalidate: true })
-  mutate('recent_requests', undefined, { revalidate: true })
+  mutate('dashboard_bundle', undefined, { revalidate: true })
 }
 
 // Sites cache'leri

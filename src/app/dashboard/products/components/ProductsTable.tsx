@@ -203,7 +203,7 @@ export function ProductsTable({
           <div
             key={product.id}
             className={`bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 cursor-pointer hover:border-gray-300 hover:shadow-md ${
-              isSelected ? 'bg-blue-50 ring-2 ring-blue-500' : ''
+              isSelected ? 'bg-primary-50 ring-2 ring-primary-500' : ''
             }`}
             onClick={() => onProductClick(product.id)}
           >
@@ -308,9 +308,9 @@ export function ProductsTable({
                 {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
                   <div className="flex flex-wrap gap-1.5">
                     {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
-                      <div key={stock.warehouse_id} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                        <span className="text-xs font-medium text-blue-700">{stock.quantity}</span>
-                        <span className="text-[10px] text-blue-500 ml-1">{stock.warehouses?.name?.slice(0, 8) || 'Depo'}</span>
+                      <div key={stock.warehouse_id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
+                        <span className="text-xs font-medium text-primary-700">{stock.quantity}</span>
+                        <span className="text-[10px] text-primary-500 ml-1">{stock.warehouses?.name?.slice(0, 8) || 'Depo'}</span>
                       </div>
                     ))}
                     {product.warehouse_stocks.length > 3 && (
@@ -409,9 +409,9 @@ export function ProductsTable({
               {product.warehouse_stocks && product.warehouse_stocks.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
                   {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
-                    <div key={stock.warehouse_id} className="bg-blue-50 border border-blue-200 rounded-lg px-2 py-1">
-                      <span className="text-xs font-medium text-blue-700">{stock.quantity}</span>
-                      <span className="text-[10px] text-blue-500 ml-1">{stock.warehouses?.name?.slice(0, 10) || 'Depo'}</span>
+                    <div key={stock.warehouse_id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
+                      <span className="text-xs font-medium text-primary-700">{stock.quantity}</span>
+                      <span className="text-[10px] text-primary-500 ml-1">{stock.warehouses?.name?.slice(0, 10) || 'Depo'}</span>
                     </div>
                   ))}
                   {product.warehouse_stocks.length > 3 && (

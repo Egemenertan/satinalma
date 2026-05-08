@@ -4,6 +4,8 @@ export type {
   OrdersResponse,
   OrderFilters,
   GroupedOrder,
+  OrderAnalyticsSnapshot,
+  OrderMinimalAnalyticsRow,
 } from './order.types'
 
 export type {

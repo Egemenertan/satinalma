@@ -155,7 +155,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </button>
           <div className="flex items-center gap-2">
             <NotificationPanel isOpen={isNotificationPanelOpen} onOpenChange={handleNotificationPanelChange} showMobileButton={true} />
-            <Button variant="ghost" size="sm" onClick={() => handleSidebarMobileChange(!isMobileMenuOpen)} className="h-10 w-10 p-0 rounded-xl">
+            <Button variant="ghost" size="sm" onClick={() => handleSidebarMobileChange(!isMobileMenuOpen)} className="h-10 w-10 p-0 rounded-full">
               {isMobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
           </div>

@@ -3,6 +3,8 @@
  * Ürün yönetimi için temiz ve optimize edilmiş Supabase sorguları
  */
 
+import { format, subDays } from 'date-fns'
+import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
 import type { Database } from '@/types/database.types'
 
@@ -13,6 +15,8 @@ type Brand = Database['public']['Tables']['brands']['Row']
 type ProductCategory = Database['public']['Tables']['product_categories']['Row']
 type WarehouseStock = Database['public']['Tables']['warehouse_stock']['Row']
 
+export type StatusFilter = 'all' | 'active' | 'inactive' | 'available'
+
 export interface ProductFilters {
   search?: string
   brandId?: string
@@ -20,6 +24,7 @@ export interface ProductFilters {
   categoryId?: string
   productType?: string
   isActive?: boolean
+  statusFilter?: StatusFilter
   minPrice?: number
   maxPrice?: number
 }
@@ -29,6 +34,39 @@ export interface ProductWithDetails extends Omit<Product, 'category'> {
   category?: ProductCategory | null
   total_stock?: number
   warehouse_stocks?: WarehouseStock[]
+}
+
+/** Ana depo satırı: user_id boş — zimmet verildiğinde miktar buradan düşülür. */
+function isMainDepotStockRow(stock: { user_id?: string | null }) {
+  return stock.user_id == null || stock.user_id === undefined
+}
+
+function sumMainDepotQty(
+  stocks:any[]| undefined,
+  warehouseId?: string
+): number {
+  return (stocks || [])
+    .filter(
+      (s: any) =>
+        isMainDepotStockRow(s) && (!warehouseId || s.warehouse_id === warehouseId)
+    )
+    .reduce((sum: number, s: any) => sum + (parseFloat(s.quantity) || 0), 0)
+}
+
+/** Liste kartı: normalde depo+zimmet toplamı; "Mevcut Olanlar"da yalnızca serbest depo miktarı. */
+function totalStockForProductList(
+  product: any,
+  userInventorySum: number,
+  filters?: ProductFilters
+) {
+  const warehouseAll = sumMainDepotQty(product.warehouse_stocks, undefined)
+  const warehouseScoped = filters?.siteId
+    ? sumMainDepotQty(product.warehouse_stocks, filters.siteId)
+    : warehouseAll
+  if (filters?.statusFilter === 'available') {
+    return warehouseScoped
+  }
+  return warehouseAll + userInventorySum
 }
 
 /**
@@ -51,10 +89,22 @@ export async function fetchProducts(
     // Önce site'deki ürün ID'lerini al
     const { data: stockProducts } = await supabase
       .from('warehouse_stock')
-      .select('product_id')
+      .select('product_id, quantity')
       .eq('warehouse_id', filters.siteId)
     
-    const siteProductIds = stockProducts?.map(s => s.product_id) || []
+    let siteProductIds = stockProducts?.map(s => s.product_id) || []
+    
+    // "Mevcut Olanlar": depoda serbest (user_id null) ve quantity > 0
+    if (filters?.statusFilter === 'available') {
+      const { data: freeRows } = await supabase
+        .from('warehouse_stock')
+        .select('product_id')
+        .eq('warehouse_id', filters.siteId)
+        .is('user_id', null)
+        .gt('quantity', 0)
+      const allowed = new Set((freeRows || []).map((r) => r.product_id))
+      siteProductIds = siteProductIds.filter((id) => allowed.has(id))
+    }
     console.log('📦 Site product IDs count:', siteProductIds.length)
     
     if (siteProductIds.length === 0) {
@@ -134,7 +184,14 @@ export async function fetchProducts(
     if (filters?.brandId) query = query.eq('brand_id', filters.brandId)
     if (filters?.categoryId) query = query.eq('category_id', filters.categoryId)
     if (filters?.productType) query = query.eq('product_type', filters.productType)
-    if (filters?.isActive !== undefined) query = query.eq('is_active', filters.isActive)
+    
+    // isActive filtresi - "available" modunda aktif ürünleri göster
+    if (filters?.statusFilter === 'available') {
+      query = query.eq('is_active', true)
+    } else if (filters?.isActive !== undefined) {
+      query = query.eq('is_active', filters.isActive)
+    }
+    
     if (filters?.minPrice !== undefined) query = query.gte('unit_price', filters.minPrice)
     if (filters?.maxPrice !== undefined) query = query.lte('unit_price', filters.maxPrice)
     
@@ -154,27 +211,23 @@ export async function fetchProducts(
     
     // Calculate total stock for each product
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
-      const warehouseStock = (product.warehouse_stocks || [])
-        .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
-        .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
-      
       const { data: inventories } = await supabase
         .from('user_inventory')
         .select('quantity')
         .eq('product_id', product.id)
         .eq('status', 'active')
-      
+
       const userInventoryStock = (inventories || []).reduce(
         (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
         0
       )
-      
+
       return {
         ...product,
-        total_stock: warehouseStock + userInventoryStock,
+        total_stock: totalStockForProductList(product, userInventoryStock, filters),
       }
     }))
-    
+
     return {
       products: productsWithStock as ProductWithDetails[],
       totalCount: count || 0,
@@ -182,22 +235,39 @@ export async function fetchProducts(
       currentPage: page,
     }
   }
-  
-  // Site olmadan sadece arama varsa
+
   if (searchTerm && !filters?.siteId) {
     console.log('🔍 Search only mode (no site):', searchTerm)
     
+    // "Mevcut Olanlar" filtresi için önce depoda mevcut (zimmetlenmemiş) ürünleri bul
+    let availableProductIds: string[] | null = null
+    if (filters?.statusFilter === 'available') {
+      const { data: stockData } = await supabase
+        .from('warehouse_stock')
+        .select('product_id')
+        .is('user_id', null)
+        .gt('quantity', 0)
+      availableProductIds = [...new Set((stockData || []).map((s) => s.product_id))]
+      if (availableProductIds.length === 0) {
+        return { products: [], totalCount: 0, totalPages: 0 }
+      }
+    }
+    
     // Name ile eşleşenleri ara
-    const { data: nameMatches } = await supabase
+    let nameQuery = supabase
       .from('products')
       .select('id')
       .ilike('name', `%${searchTerm}%`)
+    if (availableProductIds) nameQuery = nameQuery.in('id', availableProductIds)
+    const { data: nameMatches } = await nameQuery
     
     // SKU ile eşleşenleri ara
-    const { data: skuMatches } = await supabase
+    let skuQuery = supabase
       .from('products')
       .select('id')
       .ilike('sku', `%${searchTerm}%`)
+    if (availableProductIds) skuQuery = skuQuery.in('id', availableProductIds)
+    const { data: skuMatches } = await skuQuery
     
     // Seri numarasına göre ara
     const { data: inventoryProducts } = await supabase
@@ -212,10 +282,15 @@ export async function fetchProducts(
     
     const nameMatchIds = nameMatches?.map(p => p.id) || []
     const skuMatchIds = skuMatches?.map(p => p.id) || []
-    const serialMatchIds = [
+    let serialMatchIds = [
       ...(inventoryProducts?.map(inv => inv.product_id).filter(Boolean) || []),
       ...(pendingProducts?.map(inv => inv.product_id).filter(Boolean) || [])
     ]
+    
+    // "Mevcut Olanlar" filtresinde serial match'leri de sınırla
+    if (availableProductIds) {
+      serialMatchIds = serialMatchIds.filter(id => availableProductIds!.includes(id))
+    }
     
     const allMatchingIds = [...new Set([...nameMatchIds, ...skuMatchIds, ...serialMatchIds])]
     
@@ -246,7 +321,14 @@ export async function fetchProducts(
     if (filters?.brandId) query = query.eq('brand_id', filters.brandId)
     if (filters?.categoryId) query = query.eq('category_id', filters.categoryId)
     if (filters?.productType) query = query.eq('product_type', filters.productType)
-    if (filters?.isActive !== undefined) query = query.eq('is_active', filters.isActive)
+    
+    // isActive filtresi - "available" modunda aktif ürünleri göster
+    if (filters?.statusFilter === 'available') {
+      query = query.eq('is_active', true)
+    } else if (filters?.isActive !== undefined) {
+      query = query.eq('is_active', filters.isActive)
+    }
+    
     if (filters?.minPrice !== undefined) query = query.gte('unit_price', filters.minPrice)
     if (filters?.maxPrice !== undefined) query = query.lte('unit_price', filters.maxPrice)
     
@@ -266,24 +348,20 @@ export async function fetchProducts(
     
     // Calculate total stock for each product
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
-      const warehouseStock = (product.warehouse_stocks || [])
-        .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
-        .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
-      
       const { data: inventories } = await supabase
         .from('user_inventory')
         .select('quantity')
         .eq('product_id', product.id)
         .eq('status', 'active')
-      
+
       const userInventoryStock = (inventories || []).reduce(
         (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
         0
       )
-      
+
       return {
         ...product,
-        total_stock: warehouseStock + userInventoryStock,
+        total_stock: totalStockForProductList(product, userInventoryStock, filters),
       }
     }))
     
@@ -298,12 +376,50 @@ export async function fetchProducts(
   // Site filtresi varsa (arama olmadan)
   let siteProductIds: string[] | null = null
   if (filters?.siteId) {
-    const { data: stockProducts } = await supabase
+    let stockQuery = supabase
       .from('warehouse_stock')
       .select('product_id')
       .eq('warehouse_id', filters.siteId)
     
+    const { data: stockProducts } = await stockQuery
+    
     siteProductIds = stockProducts?.map(s => s.product_id) || []
+    if (siteProductIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+  }
+  
+  // "Mevcut Olanlar": depoda serbest kalan (user_id null, quantity > 0); zimmet zaten depo satırından düşülüyor
+  let availableProductIds: string[] | null = null
+  if (filters?.statusFilter === 'available') {
+    let stockQuery = supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .is('user_id', null)
+      .gt('quantity', 0)
+
+    if (filters?.siteId) {
+      stockQuery = stockQuery.eq('warehouse_id', filters.siteId)
+    }
+
+    const { data: stockData } = await stockQuery
+
+    if (!stockData || stockData.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+
+    availableProductIds = [...new Set(stockData.map((s) => s.product_id))]
+
+    console.log('🏷️ Mevcut Olanlar filtresi:', {
+      serbest_urun_sayisi: availableProductIds.length,
+    })
+
+    if (siteProductIds) {
+      siteProductIds = siteProductIds.filter((id) => availableProductIds!.includes(id))
+    } else {
+      siteProductIds = availableProductIds
+    }
+
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }
@@ -319,7 +435,7 @@ export async function fetchProducts(
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
 
-  // Site filtresi uygula (varsa)
+  // Site veya available filtresi uygula (varsa)
   if (siteProductIds) {
     query = query.in('id', siteProductIds)
   }
@@ -336,7 +452,10 @@ export async function fetchProducts(
     query = query.eq('product_type', filters.productType)
   }
 
-  if (filters?.isActive !== undefined) {
+  // isActive filtresi - "available" modunda aktif ürünleri göster
+  if (filters?.statusFilter === 'available') {
+    query = query.eq('is_active', true)
+  } else if (filters?.isActive !== undefined) {
     query = query.eq('is_active', filters.isActive)
   }
 
@@ -363,38 +482,35 @@ export async function fetchProducts(
   // Calculate total stock for each product
   // Toplam = Depo Stokları (user_id: null) + Kullanıcı Zimmetleri (user_inventory)
   const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
-    // Depo stokları (sadece user_id: null olanlar)
     const warehouseStock = (product.warehouse_stocks || [])
       .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
       .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
-    
-    // Kullanıcı zimmetleri (user_inventory)
-    const supabase = createClient()
-    const { data: inventories } = await supabase
+
+    const supabaseClient = createClient()
+    const { data: inventories } = await supabaseClient
       .from('user_inventory')
       .select('quantity')
       .eq('product_id', product.id)
       .eq('status', 'active')
-    
+
     const userInventoryStock = (inventories || []).reduce(
       (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
       0
     )
-    
-    const totalStock = warehouseStock + userInventoryStock
-    
-    // Debug log (geliştirme sırasında)
-    if (userInventoryStock > 0) {
+
+    const listTotal = totalStockForProductList(product, userInventoryStock, filters)
+
+    if (userInventoryStock > 0 && filters?.statusFilter !== 'available') {
       console.log(`📊 ${product.name}:`, {
         depo: warehouseStock,
         zimmet: userInventoryStock,
-        toplam: totalStock
+        toplam: listTotal,
       })
     }
-    
+
     return {
       ...product,
-      total_stock: totalStock,
+      total_stock: listTotal,
     }
   }))
 
@@ -668,6 +784,7 @@ export async function fetchProductStats(siteId?: string) {
         totalProducts: 0,
         lowStockCount: 0,
         totalValue: 0,
+        topProducts: [],
       }
     }
   }
@@ -730,7 +847,7 @@ export async function fetchProductStats(siteId?: string) {
     })
   }
 
-  // En çok stoklu 5 ürün
+  // En çok stoklu 100 ürün
   let topProductsQuery = supabase
     .from('products')
     .select('id, name, warehouse_stock(quantity, warehouse_id)')
@@ -762,17 +879,139 @@ export async function fetchProductStats(siteId?: string) {
     }
   })
   
-  // En çok stoklu 10 ürünü seç
+  // En çok stoklu 100 ürünü seç
   const topProducts = productsWithStock
     .filter(p => p.count > 0)
     .sort((a, b) => b.count - a.count)
-    .slice(0, 10)
+    .slice(0, 100)
 
   return {
     totalProducts: totalProducts || 0,
     lowStockCount: lowStockProducts?.length || 0,
     totalValue: Math.round(totalValue * 100) / 100,
     topProducts
+  }
+}
+
+/** Günlük grafik serisi (ürünler sayfası özet) */
+export interface ProductsDailyPoint {
+  dayKey: string
+  label: string
+  newProducts: number
+  stockInQty: number
+}
+
+export interface ProductsInsightsBundle {
+  stats: {
+    totalProducts: number
+    lowStockCount: number
+    totalValue: number
+    totalStockUnits: number
+  }
+  dailyPoints: ProductsDailyPoint[]
+}
+
+function productsDayKeyFromIso(iso: string): string {
+  const m = /^(\d{4}-\d{2}-\d{2})/.exec(iso.trim())
+  if (m) return m[1]
+  return format(new Date(iso), 'yyyy-MM-dd')
+}
+
+function buildProductsDailyShell(): ProductsDailyPoint[] {
+  const out: ProductsDailyPoint[] = []
+  for (let i = 29; i >= 0; i--) {
+    const d = subDays(new Date(), i)
+    const dayKey = format(d, 'yyyy-MM-dd')
+    out.push({
+      dayKey,
+      label: format(d, 'd MMM', { locale: tr }),
+      newProducts: 0,
+      stockInQty: 0,
+    })
+  }
+  return out
+}
+
+function mergeProductTrendRows(
+  shell: ProductsDailyPoint[],
+  creations: { created_at: string }[] | null,
+  movements: { created_at: string; quantity: number | null }[] | null
+): ProductsDailyPoint[] {
+  const map = new Map(shell.map(d => [d.dayKey, { ...d }]))
+  for (const c of creations || []) {
+    const k = productsDayKeyFromIso(c.created_at)
+    const row = map.get(k)
+    if (row) row.newProducts += 1
+  }
+  for (const m of movements || []) {
+    const k = productsDayKeyFromIso(m.created_at)
+    const row = map.get(k)
+    if (row) row.stockInQty += Math.abs(Number(m.quantity) || 0)
+  }
+  return shell.map(d => map.get(d.dayKey)!)
+}
+
+/**
+ * Ürünler dashboard kartları + 30 günlük trend + top stok
+ */
+export async function fetchProductsInsightsBundle(siteId?: string): Promise<ProductsInsightsBundle> {
+  const statsBase = await fetchProductStats(siteId)
+  const shell = buildProductsDailyShell()
+  const supabase = createClient()
+
+  let productIds: string[] | undefined
+  if (siteId) {
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .eq('warehouse_id', siteId)
+    productIds = [...new Set((stockProducts || []).map(s => s.product_id))]
+    if (productIds.length === 0) {
+      return {
+        stats: {
+          totalProducts: 0,
+          lowStockCount: 0,
+          totalValue: 0,
+          totalStockUnits: 0,
+        },
+        dailyPoints: shell,
+      }
+    }
+  }
+
+  const windowStart = format(subDays(new Date(), 29), 'yyyy-MM-dd')
+
+  let pq = supabase
+    .from('products')
+    .select('created_at')
+    .eq('is_active', true)
+    .gte('created_at', `${windowStart}T00:00:00`)
+  if (productIds) pq = pq.in('id', productIds)
+  const { data: recentCreations } = await pq
+
+  let mq = supabase
+    .from('stock_movements')
+    .select('created_at, quantity')
+    .eq('movement_type', 'giriş')
+    .gte('created_at', `${windowStart}T00:00:00`)
+  if (siteId) mq = mq.eq('warehouse_id', siteId)
+  const { data: movements } = await mq
+
+  let sq = supabase.from('warehouse_stock').select('quantity')
+  if (siteId) sq = sq.eq('warehouse_id', siteId)
+  const { data: stocks } = await sq
+  const totalStockUnits = Math.round((stocks || []).reduce((s, r) => s + Number(r.quantity || 0), 0))
+
+  const dailyPoints = mergeProductTrendRows(shell, recentCreations, movements)
+
+  return {
+    stats: {
+      totalProducts: statsBase.totalProducts,
+      lowStockCount: statsBase.lowStockCount,
+      totalValue: statsBase.totalValue,
+      totalStockUnits,
+    },
+    dailyPoints,
   }
 }
 

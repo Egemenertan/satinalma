@@ -13,7 +13,7 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
         group relative w-full bg-white rounded-2xl border overflow-hidden
         transition-all duration-200 text-left
         ${isInCart 
-          ? 'border-[#d6002a] ring-2 ring-[#d6002a]/20 shadow-md' 
+          ? 'border-[#00E676] ring-2 ring-[#00E676]/20 shadow-md' 
           : 'border-gray-200 hover:border-gray-300 hover:shadow-lg hover:-translate-y-1'
         }
       `}
@@ -22,13 +22,13 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
       <div className={`
         relative w-full aspect-square flex items-center justify-center
         transition-all duration-200
-        ${isInCart ? 'bg-[#d6002a]/5' : 'bg-gradient-to-br from-gray-50 to-gray-100'}
+        ${isInCart ? 'bg-[#00E676]/5' : 'bg-gradient-to-br from-gray-50 to-gray-100'}
       `}>
         <div className={`
           w-16 h-16 rounded-2xl flex items-center justify-center
           transition-all duration-200
           ${isInCart 
-            ? 'bg-[#d6002a] shadow-md' 
+            ? 'bg-[#00E676] shadow-md' 
             : 'bg-white shadow-md group-hover:shadow-lg group-hover:scale-110'
           }
         `}>
@@ -41,8 +41,8 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
         {/* In Cart Badge */}
         {isInCart && (
           <div className="absolute top-3 right-3 animate-scale-in">
-            <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-md ring-2 ring-[#d6002a]">
-              <Check className="w-4 h-4 text-[#d6002a]" />
+            <div className="w-7 h-7 bg-white rounded-full flex items-center justify-center shadow-md ring-2 ring-[#00E676]">
+              <Check className="w-4 h-4 text-[#00E676]" />
             </div>
           </div>
         )}
@@ -66,7 +66,7 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
             className={`
               mb-2 text-xs font-medium transition-all duration-200
               ${isInCart 
-                ? 'bg-[#d6002a]/10 text-[#d6002a]' 
+                ? 'bg-[#00E676]/10 text-[#00E676]' 
                 : 'bg-gray-100 text-gray-600'
               }
             `}
@@ -79,7 +79,7 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
         <h3 className={`
           font-semibold text-sm leading-tight line-clamp-2 mb-2
           transition-colors duration-200
-          ${isInCart ? 'text-[#d6002a]' : 'text-gray-900'}
+          ${isInCart ? 'text-[#00E676]' : 'text-gray-900'}
         `}>
           {item.name}
         </h3>
@@ -97,7 +97,7 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
           flex items-center justify-center gap-2
           transition-all duration-200
           ${isInCart 
-            ? 'bg-[#d6002a] text-white' 
+            ? 'bg-[#00E676] text-white' 
             : 'bg-gray-100 text-gray-700 group-hover:bg-gray-900 group-hover:text-white'
           }
         `}>

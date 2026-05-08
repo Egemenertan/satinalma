@@ -10,6 +10,10 @@ import PurchaseRequestsTable from '@/components/PurchaseRequestsTable'
 import { Package, Plus, TrendingUp, Clock, CheckCircle, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { invalidateStatsCache, invalidatePurchaseRequestsCache } from '@/lib/cache'
+import {
+  isProfileDepartmentIt,
+  fetchPurchaseRequestIdsVisibleToItWarehouseManager
+} from '@/lib/warehouse-it-material-filter'
 
 // Haftalık/aylık aktivite verisi için fetcher - Gerçek veriler
 const fetchWeeklyActivity = async (
@@ -17,7 +21,9 @@ const fetchWeeklyActivity = async (
   role: string, 
   isMobile: boolean = false, 
   siteId?: string | string[], 
-  department?: string
+  department?: string,
+  /** IT warehouse_manager: görünür talep id'leri */
+  wmItScopedIds?: string[]
 ) => {
   const supabase = createClient()
   
@@ -59,11 +65,22 @@ const fetchWeeklyActivity = async (
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const userDepartment = department || 'Genel'
     query = query.eq('site_id', GMO_SITE_ID).eq('department', userDepartment)
+  } else if (role === 'warehouse_manager') {
+    query = query.neq('status', 'departman_onayı_bekliyor')
+    if (wmItScopedIds !== undefined) {
+      if (wmItScopedIds.length === 0) return []
+      query = query.in('id', wmItScopedIds)
+    }
   }
 
   // Departman filtresi: profilde department doluysa, sadece o departmana ait aktivite.
   // department_head zaten kendi mantığında uyguluyor, tekrar uygulanmaz.
-  if (role !== 'department_head' && department) {
+  // IT depo yöneticisi için talebin departman alanı kullanılmaz (malzeme grubu filtresi var).
+  if (
+    role !== 'department_head' &&
+    department &&
+    !(role === 'warehouse_manager' && isProfileDepartmentIt(department))
+  ) {
     query = query.eq('department', department)
   }
   
@@ -134,9 +151,29 @@ const fetchPageData = async () => {
     }
   }
   
+  // IT depo yöneticisi: malzeme grubu kapsamındaki talepler
+  let wmItScopedIds: string[] | undefined
+  if (profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)) {
+    wmItScopedIds = await fetchPurchaseRequestIdsVisibleToItWarehouseManager(supabase)
+  }
+
   // Aktivite verisini çek (desktop için 30 gün, mobile için 10 gün)
-  const weeklyActivity = await fetchWeeklyActivity(user.id, profile?.role || '', false, profile?.site_id, profile?.department)
-  const mobileActivity = await fetchWeeklyActivity(user.id, profile?.role || '', true, profile?.site_id, profile?.department)
+  const weeklyActivity = await fetchWeeklyActivity(
+    user.id,
+    profile?.role || '',
+    false,
+    profile?.site_id,
+    profile?.department,
+    wmItScopedIds
+  )
+  const mobileActivity = await fetchWeeklyActivity(
+    user.id,
+    profile?.role || '',
+    true,
+    profile?.site_id,
+    profile?.department,
+    wmItScopedIds
+  )
 
   // 4. Stats sorgusu - Veritabanında aggregate fonksiyonlarını kullan
   let statsQuery = supabase
@@ -186,8 +223,19 @@ const fetchPageData = async () => {
 
   // Departman filtresi: profilde department doluysa, istatistikler de o departmana göre.
   // department_head zaten kendi blok mantığında uyguluyor.
-  if (profile?.role !== 'department_head' && profile?.department) {
+  const skipDeptFilterItWm =
+    profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
+
+  if (profile?.role !== 'department_head' && profile?.department && !skipDeptFilterItWm) {
     statsQuery = statsQuery.eq('department', profile.department)
+  }
+
+  if (wmItScopedIds !== undefined) {
+    if (wmItScopedIds.length === 0) {
+      statsQuery = statsQuery.eq('id', '00000000-0000-4000-a000-000000000003')
+    } else {
+      statsQuery = statsQuery.in('id', wmItScopedIds)
+    }
   }
   
   const { data: requests, error, count } = await statsQuery
@@ -247,8 +295,18 @@ const fetchPageData = async () => {
     }
 
     // Departman filtresi: profilde department doluysa, aylık dağılım da o departmana göre.
-    if (profile?.role !== 'department_head' && profile?.department) {
+    const skipDeptMonthly =
+      profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
+    if (profile?.role !== 'department_head' && profile?.department && !skipDeptMonthly) {
       monthQuery = monthQuery.eq('department', profile.department)
+    }
+
+    if (wmItScopedIds !== undefined) {
+      if (wmItScopedIds.length === 0) {
+        monthQuery = monthQuery.eq('id', '00000000-0000-4000-a000-000000000003')
+      } else {
+        monthQuery = monthQuery.in('id', wmItScopedIds)
+      }
     }
     
     const { count } = await monthQuery
@@ -504,14 +562,14 @@ export default function RequestsPage() {
         
         {/* Sipariş Bekleyen Talepler Uyarısı - Sadece Purchasing Officer için */}
         {userRole === 'purchasing_officer' && pendingOrdersCount > 0 && (
-          <div className="flex items-center gap-3 p-4 bg-[#d6002a]/5 border border-[#d6002a]/20 rounded-2xl">
+          <div className="flex items-center gap-3 p-4 bg-[#00E676]/5 border border-[#00E676]/20 rounded-2xl">
             <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-[#d6002a] rounded-full flex items-center justify-center animate-pulse">
+              <div className="w-8 h-8 bg-[#00E676] rounded-full flex items-center justify-center animate-pulse">
                 <span className="text-white font-bold text-sm">{pendingOrdersCount}</span>
               </div>
             </div>
             <div className="flex-1">
-              <p className="text-sm font-medium text-[#d6002a]">
+              <p className="text-sm font-medium text-[#00E676]">
                 {pendingOrdersCount === 1 
                   ? 'Sipariş bekleyen 1 talebin var!' 
                   : `Sipariş bekleyen ${pendingOrdersCount} talebin var!`}
@@ -523,7 +581,7 @@ export default function RequestsPage() {
             <Button
               onClick={() => setShowUnorderedOnly(true)}
               size="sm"
-              className="flex-shrink-0 bg-white hover:bg-[#d6002a] text-[#d6002a] border border-[#d6002a] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
+              className="flex-shrink-0 bg-white hover:bg-[#00E676] text-[#00E676] border border-[#00E676] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
             >
               Göz At
             </Button>
@@ -532,12 +590,12 @@ export default function RequestsPage() {
         
         {/* Teslim Alınmamış Siparişler Uyarısı - Site Manager, Santiye Depo ve Santiye Depo Yöneticisi için */}
         {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
-          <div className="flex items-center gap-3 p-4 bg-[#d6002a]/5 border border-[#d6002a]/20 rounded-2xl">
+          <div className="flex items-center gap-3 p-4 bg-[#00E676]/5 border border-[#00E676]/20 rounded-2xl">
             <div className="flex-shrink-0">
              
             </div>
             <div className="flex-1">
-              <p className="text-lg font-medium text-[#d6002a]">
+              <p className="text-lg font-medium text-[#00E676]">
                 {overdueDeliveriesCount === 1 
                   ? 'Teslim alınmamış 1 siparişin var!' 
                   : `Teslim alınmamış ${overdueDeliveriesCount} siparişin var!`}
@@ -550,7 +608,7 @@ export default function RequestsPage() {
             <Button
               onClick={() => setShowOverdueOnly(true)}
               size="sm"
-              className="flex-shrink-0 bg-white hover:bg-[#d6002a] text-[#d6002a] border border-[#d6002a] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
+              className="flex-shrink-0 bg-white hover:bg-[#00E676] text-[#00E676] border border-[#00E676] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
             >
               Göz At
             </Button>
@@ -563,14 +621,14 @@ export default function RequestsPage() {
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#d6002a] inline-block">Satın Alma Talepleri</h1>
+            <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Satın Alma Talepleri</h1>
             <p className="text-gray-600 mt-4 text-base">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <div className="flex items-center gap-4">
             <Button 
               onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
               disabled={showSiteWarning}
-              className="px-8 py-5 rounded-2xl text-md bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="px-8 py-5 rounded-2xl text-md bg-[#00E676] text-white hover:bg-[#00c46a] hover:shadow-lg transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
               title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
             >
               
@@ -582,7 +640,7 @@ export default function RequestsPage() {
         {/* Mobile: Header only */}
         <div className="sm:hidden">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#d6002a] inline-block">Satın Alma Talepleri</h1>
+            <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Satın Alma Talepleri</h1>
             <p className="text-gray-600 mt-4 text-sm">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
             
             {/* Mobile: Create Request Button */}
@@ -590,7 +648,7 @@ export default function RequestsPage() {
               <Button 
                 onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
                 disabled={showSiteWarning}
-                className="w-1/2 h-12 rounded-2xl text-sm font-medium bg-[#d6002a] text-white hover:bg-[#b80024] hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-1/2 h-12 rounded-2xl text-sm font-medium bg-[#00E676] text-white hover:bg-[#00c46a] hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
                 title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
               >
                 <Plus className="w-5 h-5" />
@@ -632,7 +690,7 @@ export default function RequestsPage() {
                         <div key={i} className="flex-1 flex flex-col items-center gap-2">
                           <div className="w-full flex items-end justify-center" style={{ height: '70px' }}>
                             <div 
-                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-lg shadow-[#d6002a]/30' : 'bg-gray-900'}`}
+                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#00E676] shadow-lg shadow-[#00E676]/30' : 'bg-gray-900'}`}
                               style={{ 
                                 height: `${height}%`,
                                 animationDelay: `${i * 80}ms`
@@ -648,31 +706,31 @@ export default function RequestsPage() {
               </Card>
 
               {/* Toplam İstatistikler - Trend */}
-              <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
+              <Card className="border-neutral-800 bg-neutral-950 text-white rounded-2xl shadow-lg hover:shadow-xl transition-all overflow-hidden">
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between mb-4">
                     <div>
-                      <p className="text-sm font-medium text-white/80 mb-1">Toplam Performans</p>
+                      <p className="text-sm font-medium text-white/65 mb-1">Toplam Performans</p>
                       <p className="text-3xl font-bold text-white">{stats?.total || 0}</p>
-                      <p className="text-xs text-white/70 mt-1">Toplam talep sayısı</p>
+                      <p className="text-xs text-white/50 mt-1">Toplam talep sayısı</p>
                     </div>
-                    <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <div className="w-12 h-12 rounded-xl bg-white/10 flex items-center justify-center border border-white/10">
                       <TrendingUp className="w-6 h-6 text-white" />
                     </div>
                   </div>
                   
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/20">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                      <p className="text-xs text-white/70 mb-1">Bekleyen</p>
+                  <div className="grid grid-cols-3 gap-2 pt-3 border-t border-white/10">
+                    <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                      <p className="text-xs text-white/55 mb-1">Bekleyen</p>
                       <p className="text-xl font-bold text-white">{stats?.pending || 0}</p>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                      <p className="text-xs text-white/70 mb-1">Onaylı</p>
+                    <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                      <p className="text-xs text-white/55 mb-1">Onaylı</p>
                       <p className="text-xl font-bold text-white">{stats?.approved || 0}</p>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-xl p-2.5">
-                      <p className="text-xs text-white/70 mb-1">Acil</p>
+                    <div className="bg-white/5 rounded-xl p-2.5 border border-white/10">
+                      <p className="text-xs text-white/55 mb-1">Acil</p>
                       <p className="text-xl font-bold text-white">{stats?.urgent || 0}</p>
                     </div>
                   </div>
@@ -707,8 +765,8 @@ export default function RequestsPage() {
                       <path d="M 50 0 L 0 0 0 25" fill="none" stroke="#f3f4f6" strokeWidth="1"/>
                     </pattern>
                     <linearGradient id="redGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-                      <stop offset="0%" style={{ stopColor: '#d6002a', stopOpacity: 0.8 }} />
-                      <stop offset="100%" style={{ stopColor: '#d6002a', stopOpacity: 0.1 }} />
+                      <stop offset="0%" style={{ stopColor: '#00E676', stopOpacity: 0.8 }} />
+                      <stop offset="100%" style={{ stopColor: '#00E676', stopOpacity: 0.1 }} />
                     </linearGradient>
                   </defs>
                   <rect width="100%" height="100%" fill="url(#grid)" />
@@ -736,7 +794,7 @@ export default function RequestsPage() {
                         <path
                           d={pathData}
                           fill="none"
-                          stroke="#d6002a"
+                          stroke="#00E676"
                           strokeWidth="2.5"
                           strokeLinecap="round"
                           strokeLinejoin="round"
@@ -757,8 +815,8 @@ export default function RequestsPage() {
                                 onMouseEnter={() => setHoveredPoint({ x, y, count: d.count, date: d.date })}
                                 onMouseLeave={() => setHoveredPoint(null)}
                               />
-                              <circle cx={x} cy={y} r="4" fill="#d6002a" style={{ pointerEvents: 'none' }} />
-                              <circle cx={x} cy={y} r="6" fill="none" stroke="#d6002a" strokeWidth="2" opacity="0.3" style={{ pointerEvents: 'none' }} />
+                              <circle cx={x} cy={y} r="4" fill="#00E676" style={{ pointerEvents: 'none' }} />
+                              <circle cx={x} cy={y} r="6" fill="none" stroke="#00E676" strokeWidth="2" opacity="0.3" style={{ pointerEvents: 'none' }} />
                             </g>
                           )
                         })}
@@ -773,7 +831,7 @@ export default function RequestsPage() {
                               height="32"
                               rx="6"
                               fill="white"
-                              stroke="#d6002a"
+                              stroke="#00E676"
                               strokeWidth="2"
                               filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"
                             />
@@ -792,7 +850,7 @@ export default function RequestsPage() {
                               y={hoveredPoint.y - 16}
                               textAnchor="middle"
                               fontSize="13"
-                              fill="#d6002a"
+                              fill="#00E676"
                               fontWeight="700"
                             >
                               {hoveredPoint.count} talep
@@ -862,7 +920,7 @@ export default function RequestsPage() {
                         <div key={i} className="flex-1 flex flex-col items-center gap-1">
                           <div className="w-full flex items-end justify-center" style={{ height: '50px' }}>
                             <div 
-                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#d6002a] shadow-md shadow-[#d6002a]/30' : 'bg-gray-900'}`}
+                              className={`w-full rounded-t-lg animate-bar-grow ${isLast ? 'bg-[#00E676] shadow-md shadow-[#00E676]/30' : 'bg-gray-900'}`}
                               style={{ 
                                 height: `${height}%`,
                                 animationDelay: `${i * 80}ms`
@@ -878,30 +936,31 @@ export default function RequestsPage() {
               </Card>
 
               {/* Toplam İstatistikler */}
-              <Card className="bg-gradient-to-br from-[#d6002a] to-[#b80024] border-0 rounded-2xl shadow-lg">
+              <Card className="border-neutral-800 bg-neutral-950 text-white rounded-2xl shadow-lg">
                 <CardContent className="p-3.5">
                   <div className="flex items-start justify-between mb-3">
                     <div>
-                      <p className="text-xs font-medium text-white/80 mb-1">Toplam Performans</p>
+                      <p className="text-xs font-medium text-white/65 mb-1">Toplam Performans</p>
                       <p className="text-2xl font-bold text-white">{stats?.total || 0}</p>
+                      <p className="text-[10px] text-white/50 mt-0.5">Toplam talep sayısı</p>
                     </div>
-                    <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
+                    <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center border border-white/10">
                       <TrendingUp className="w-5 h-5 text-white" />
                     </div>
                   </div>
                   
                   {/* Stats Grid */}
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                      <p className="text-[10px] text-white/70 mb-0.5">Bekleyen</p>
+                  <div className="grid grid-cols-3 gap-1.5 pt-2 border-t border-white/10">
+                    <div className="bg-white/5 rounded-lg p-1.5 border border-white/10">
+                      <p className="text-[10px] text-white/55 mb-0.5">Bekleyen</p>
                       <p className="text-base font-bold text-white">{stats?.pending || 0}</p>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                      <p className="text-[10px] text-white/70 mb-0.5">Onaylı</p>
+                    <div className="bg-white/5 rounded-lg p-1.5 border border-white/10">
+                      <p className="text-[10px] text-white/55 mb-0.5">Onaylı</p>
                       <p className="text-base font-bold text-white">{stats?.approved || 0}</p>
                     </div>
-                    <div className="bg-white/10 backdrop-blur-sm rounded-lg p-1.5">
-                      <p className="text-[10px] text-white/70 mb-0.5">Acil</p>
+                    <div className="bg-white/5 rounded-lg p-1.5 border border-white/10">
+                      <p className="text-[10px] text-white/55 mb-0.5">Acil</p>
                       <p className="text-base font-bold text-white">{stats?.urgent || 0}</p>
                     </div>
                   </div>
@@ -932,9 +991,9 @@ export default function RequestsPage() {
                         <path d="M 40 0 L 0 0 0 20" fill="none" stroke="#f9fafb" strokeWidth="1"/>
                       </pattern>
                       <linearGradient id="redGradient-mobile" x1="0%" y1="0%" x2="0%" y2="100%">
-                        <stop offset="0%" style={{ stopColor: '#d6002a', stopOpacity: 0.4 }} />
-                        <stop offset="50%" style={{ stopColor: '#d6002a', stopOpacity: 0.2 }} />
-                        <stop offset="100%" style={{ stopColor: '#d6002a', stopOpacity: 0.05 }} />
+                        <stop offset="0%" style={{ stopColor: '#00E676', stopOpacity: 0.4 }} />
+                        <stop offset="50%" style={{ stopColor: '#00E676', stopOpacity: 0.2 }} />
+                        <stop offset="100%" style={{ stopColor: '#00E676', stopOpacity: 0.05 }} />
                       </linearGradient>
                       <filter id="glow">
                         <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
@@ -970,7 +1029,7 @@ export default function RequestsPage() {
                           <path
                             d={pathData}
                             fill="none"
-                            stroke="#d6002a"
+                            stroke="#00E676"
                             strokeWidth="3"
                             strokeLinecap="round"
                             strokeLinejoin="round"
@@ -994,8 +1053,8 @@ export default function RequestsPage() {
                                   onTouchStart={() => setHoveredPointMobile({ x, y, count: d.count, date: d.date })}
                                   onTouchEnd={() => setHoveredPointMobile(null)}
                                 />
-                                <circle cx={x} cy={y} r="4" fill="white" stroke="#d6002a" strokeWidth="2" style={{ pointerEvents: 'none' }} />
-                                <circle cx={x} cy={y} r="2" fill="#d6002a" style={{ pointerEvents: 'none' }} />
+                                <circle cx={x} cy={y} r="4" fill="white" stroke="#00E676" strokeWidth="2" style={{ pointerEvents: 'none' }} />
+                                <circle cx={x} cy={y} r="2" fill="#00E676" style={{ pointerEvents: 'none' }} />
                               </g>
                             )
                           })}
@@ -1010,7 +1069,7 @@ export default function RequestsPage() {
                                 height="28"
                                 rx="6"
                                 fill="white"
-                                stroke="#d6002a"
+                                stroke="#00E676"
                                 strokeWidth="2"
                                 filter="drop-shadow(0 4px 6px rgba(0,0,0,0.1))"
                               />
@@ -1029,7 +1088,7 @@ export default function RequestsPage() {
                                 y={hoveredPointMobile.y - 16}
                                 textAnchor="middle"
                                 fontSize="11"
-                                fill="#d6002a"
+                                fill="#00E676"
                                 fontWeight="700"
                               >
                                 {hoveredPointMobile.count} talep

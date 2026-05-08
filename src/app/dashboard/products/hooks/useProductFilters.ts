@@ -4,14 +4,14 @@
  */
 
 import { useState, useCallback, useMemo } from 'react'
-import type { ProductFilters } from '@/services/products.service'
+import type { ProductFilters, StatusFilter } from '@/services/products.service'
 
 export function useProductFilters() {
   const [searchTerm, setSearchTerm] = useState('')
   const [brandId, setBrandId] = useState<string>('')
   const [siteId, setSiteId] = useState<string>('')
   const [productType, setProductType] = useState<string>('')
-  const [isActive, setIsActive] = useState<boolean | undefined>(true)
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
   const [minPrice, setMinPrice] = useState<number | undefined>(undefined)
   const [maxPrice, setMaxPrice] = useState<number | undefined>(undefined)
   const [currentPage, setCurrentPage] = useState(1)
@@ -25,12 +25,23 @@ export function useProductFilters() {
     if (brandId) f.brandId = brandId
     if (siteId) f.siteId = siteId
     if (productType) f.productType = productType
-    if (isActive !== undefined) f.isActive = isActive
+    
+    // Status filter logic
+    f.statusFilter = statusFilter
+    if (statusFilter === 'active') {
+      f.isActive = true
+    } else if (statusFilter === 'inactive') {
+      f.isActive = false
+    } else if (statusFilter === 'all') {
+      f.isActive = undefined
+    }
+    // 'available' durumunda isActive undefined kalır, service'de özel işlem yapılır
+    
     if (minPrice !== undefined) f.minPrice = minPrice
     if (maxPrice !== undefined) f.maxPrice = maxPrice
     
     return f
-  }, [searchTerm, brandId, siteId, productType, isActive, minPrice, maxPrice])
+  }, [searchTerm, brandId, siteId, productType, statusFilter, minPrice, maxPrice])
 
   // Clear all filters
   const clearFilters = useCallback(() => {
@@ -38,7 +49,7 @@ export function useProductFilters() {
     setBrandId('')
     setSiteId('')
     setProductType('')
-    setIsActive(true)
+    setStatusFilter('active')
     setMinPrice(undefined)
     setMaxPrice(undefined)
     setCurrentPage(1)
@@ -52,8 +63,8 @@ export function useProductFilters() {
 
   // Has active filters
   const hasActiveFilters = useMemo(() => {
-    return !!(searchTerm || brandId || siteId || productType || isActive !== true || minPrice !== undefined || maxPrice !== undefined)
-  }, [searchTerm, brandId, siteId, productType, isActive, minPrice, maxPrice])
+    return !!(searchTerm || brandId || siteId || productType || statusFilter !== 'active' || minPrice !== undefined || maxPrice !== undefined)
+  }, [searchTerm, brandId, siteId, productType, statusFilter, minPrice, maxPrice])
 
   return {
     // State
@@ -61,7 +72,7 @@ export function useProductFilters() {
     brandId,
     siteId,
     productType,
-    isActive,
+    statusFilter,
     minPrice,
     maxPrice,
     currentPage,
@@ -74,7 +85,7 @@ export function useProductFilters() {
     setBrandId,
     setSiteId,
     setProductType,
-    setIsActive,
+    setStatusFilter,
     setMinPrice,
     setMaxPrice,
     setCurrentPage,

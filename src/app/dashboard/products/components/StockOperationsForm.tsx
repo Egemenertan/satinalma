@@ -17,6 +17,7 @@ import { addStock, removeStock, transferStock, adjustStock } from '@/services/st
 import { createClient } from '@/lib/supabase/client'
 import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck, Upload, X, FileText, UserPlus } from 'lucide-react'
 import { validateImageFile } from '@/lib/utils/imageUpload'
+import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 
 type OperationType = 'giriş' | 'çıkış' | 'transfer' | 'düzeltme' | 'zimmet'
 
@@ -211,6 +212,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
           // 3. user_inventory'ye ekle - owner olarak kaydet
           const { data: { user } } = await supabase.auth.getUser()
           
+          const ownerDisplayName = (selectedEmployee.first_name || '').trim()
           const { error: inventoryError } = await supabase
             .from('user_inventory')
             .insert({
@@ -224,8 +226,8 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
               notes: data.reason || 'Ürün detayından zimmet verildi',
               category: null,
               consumed_quantity: 0,
-              owner_name: selectedEmployee.first_name,
-              owner_email: selectedEmployee.work_email,
+              owner_name: ownerDisplayName || null,
+              owner_email: buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName) || null,
               source_warehouse_id: data.warehouse_id
             })
           
@@ -254,6 +256,8 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
       // Cache'i güncelle
       queryClient.invalidateQueries({ queryKey: ['product-stock', productId] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
+      queryClient.invalidateQueries({ queryKey: ['product-stats'] })
       
       // Success mesajı
       alert(`✅ Stok ${operationType} işlemi başarıyla tamamlandı!`)
@@ -358,7 +362,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     },
     transfer: {
       icon: ArrowLeftRight,
-      color: 'from-blue-600 to-blue-500',
+      color: 'from-primary-600 to-primary-500',
       label: 'Stok Transferi',
       quantityLabel: 'Transfer Miktarı',
     },
@@ -537,7 +541,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
                 </SelectItem>
                 <SelectItem value="hek">
                   <span className="flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                    <span className="w-2 h-2 rounded-full bg-primary-500"></span>
                     HEK
                   </span>
                 </SelectItem>
