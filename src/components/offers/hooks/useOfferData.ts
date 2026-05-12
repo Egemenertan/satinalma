@@ -13,6 +13,7 @@ export function useOfferData(requestId: string) {
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
   const [existingOffers, setExistingOffers] = useState<any[]>([])
   const [userRole, setUserRole] = useState<string>('user')
+  const [userDepartment, setUserDepartment] = useState<string | null>(null)
   const [materialSuppliers, setMaterialSuppliers] = useState<{[itemId: string]: MaterialSupplier}>({})
   const [materialOrders, setMaterialOrders] = useState<any[]>([])
   const [shipmentData, setShipmentData] = useState<{[key: string]: ShipmentInfo}>({})
@@ -28,13 +29,16 @@ export function useOfferData(requestId: string) {
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('role, department')
           .eq('id', user.id)
           .single()
         
         if (profile?.role) {
           setUserRole(profile.role)
         }
+        setUserDepartment(profile?.department ?? null)
+      } else {
+        setUserDepartment(null)
       }
     } catch (error) {
       console.error('Error fetching user role:', error)
@@ -456,6 +460,7 @@ export function useOfferData(requestId: string) {
     request,
     existingOffers,
     userRole,
+    userDepartment,
     materialSuppliers,
     materialOrders,
     shipmentData,

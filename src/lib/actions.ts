@@ -5,6 +5,13 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { NotificationService } from './notifications'
 import EmailService from './email'
+import {
+  IT_STATUS_INCELEMEDE,
+  normalizeMaterialGroupToken,
+  purchaseLinesTriggerItWorkflow,
+  IT_WORKFLOW_STATUSES,
+  isPazarlamaDepartment
+} from './it-workflow'
 
 
 
@@ -152,6 +159,23 @@ Bu bildirim Satın Alma Yönetim Sistemi tarafından otomatik olarak gönderilmi
   }
 }
 
+async function loadActiveItMaterialGroupTokens(
+  supabase: ReturnType<typeof createClient>
+): Promise<Set<string>> {
+  const { data } = await supabase
+    .from('material_group_it_routes')
+    .select('material_group')
+    .eq('is_active', true)
+
+  const set = new Set<string>()
+  for (const row of data ?? []) {
+    const t = normalizeMaterialGroupToken((row as { material_group?: string }).material_group)
+    if (t) set.add(t)
+  }
+  return set
+}
+
+
 export async function createPurchaseRequest(data: {
   material: string
   quantity: number
@@ -171,6 +195,11 @@ export async function createPurchaseRequest(data: {
     // Gerçek kullanıcıyı al
     const user = await getAuthenticatedUser()
     const supabase = createClient()
+
+    const itGroupTokens = await loadActiveItMaterialGroupTokens(supabase)
+    const useItWorkflow = purchaseLinesTriggerItWorkflow(itGroupTokens, [
+      { material_class: data.material_class, material_group: data.material_group }
+    ])
     
     // Tarih ve request number oluştur
     const now = new Date()
@@ -187,7 +216,11 @@ export async function createPurchaseRequest(data: {
     })
     
     let initialStatus = 'pending'
-    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+    
+    if (useItWorkflow) {
+      initialStatus = IT_STATUS_INCELEMEDE
+      console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
+    } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
@@ -217,7 +250,8 @@ export async function createPurchaseRequest(data: {
       material_class: data.material_class || null,
       material_group: data.material_group || null,
       material_item_name: data.material_item_name || null,
-      image_urls: data.image_urls || null
+      image_urls: data.image_urls || null,
+      it_workflow_applies: useItWorkflow
     }
     
     // Purchase request oluştur
@@ -259,7 +293,9 @@ export async function createPurchaseRequest(data: {
       original_quantity: Math.round(data.quantity), // İlk talep edilen miktar
       unit: data.unit,
       unit_price: 0,
-      specifications: data.purpose || ''
+      specifications: data.purpose || '',
+      material_class: data.material_class || null,
+      material_group: data.material_group || null
     }
     
     const { error: itemError } = await supabase
@@ -271,14 +307,16 @@ export async function createPurchaseRequest(data: {
     }
 
     // Approval history kaydı ekle (kritik değil)
-    let historyComment = 'Talep oluşturuldu'
-    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+    let historyComment = useItWorkflow
+      ? 'Talep oluşturuldu (IT Yönetim incelemesinde — tetikleyici malzeme grubu)'
+      : 'Talep oluşturuldu'
+    if (!useItWorkflow && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (user.role === 'santiye_depo_yonetici') {
+    } else if (!useItWorkflow && user.role === 'santiye_depo_yonetici') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (user.role === 'santiye_depo') {
+    } else if (!useItWorkflow && user.role === 'santiye_depo') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
-    } else if (user.role === 'purchasing_officer') {
+    } else if (!useItWorkflow && user.role === 'purchasing_officer') {
       historyComment = 'Talep oluşturuldu (Satın Alma Sorumlusu - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
     
@@ -546,6 +584,14 @@ export async function createMultiMaterialPurchaseRequest(data: {
     console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
     
     const supabase = createClient()
+    const itGroupTokens = await loadActiveItMaterialGroupTokens(supabase)
+    const useItWorkflow = purchaseLinesTriggerItWorkflow(
+      itGroupTokens,
+      data.materials.map(m => ({
+        material_class: m.material_class,
+        material_group: m.material_group
+      }))
+    )
     
     // Tarih ve request number oluştur
     const now = new Date()
@@ -557,10 +603,6 @@ export async function createMultiMaterialPurchaseRequest(data: {
       : data.materials[0]?.material_name || 'Malzeme Talebi'
     
     // Kullanıcı rolüne ve email'e göre status belirle
-    // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
-    // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
-    // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
-    // Özel site (18e8e316-1291-429d-a591-5cec97d235b7) için site_personnel kullanıcıları "onay_bekliyor" statusu ile oluşturur
     console.log('🔍 Kullanıcı bilgileri (Multi):', { 
       email: user.email, 
       role: user.role,
@@ -569,8 +611,11 @@ export async function createMultiMaterialPurchaseRequest(data: {
     
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
-    
-    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+
+    if (useItWorkflow) {
+      initialStatus = IT_STATUS_INCELEMEDE
+      console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
+    } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
@@ -605,7 +650,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       site_id: data.site_id || null,
       site_name: data.site_name || null,
       delivery_date: data.required_date || null,
-      image_urls: data.materials[0]?.image_urls || null
+      image_urls: data.materials[0]?.image_urls || null,
+      it_workflow_applies: useItWorkflow
     }
     
     // Purchase request oluştur
@@ -657,14 +703,16 @@ export async function createMultiMaterialPurchaseRequest(data: {
     console.log('✅ Purchase request items oluşturuldu')
 
     // Approval history kaydı ekle
-    let historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
-    if (user.email === 'hasan.oztunc@dovecgroup.com') {
+    let historyComment = useItWorkflow
+      ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — IT Yönetim incelemesinde (tetikleyici grup)`
+      : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
+    if (!useItWorkflow && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (user.role === 'santiye_depo_yonetici') {
+    } else if (!useItWorkflow && user.role === 'santiye_depo_yonetici') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (user.role === 'santiye_depo') {
+    } else if (!useItWorkflow && user.role === 'santiye_depo') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
-    } else if (user.role === 'purchasing_officer') {
+    } else if (!useItWorkflow && user.role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
     
@@ -795,13 +843,33 @@ export async function updatePurchaseRequest(data: {
       throw new Error('Güncellenecek talep bulunamadı')
     }
 
-    // Sadece kendi taleplerini düzenleyebilir (güvenlik)
-    if (existingRequest.requested_by !== user.id && user.role !== 'admin') {
+    const isRequestOwner = existingRequest.requested_by === user.id
+
+    const itReviewStatuses = IT_WORKFLOW_STATUSES as readonly string[]
+    const isItWorkflowEditorContext =
+      existingRequest.it_workflow_applies === true &&
+      existingRequest.status != null &&
+      itReviewStatuses.includes(existingRequest.status) &&
+      (user.role === 'manager' ||
+        (user.role === 'department_head' && isPazarlamaDepartment(user.department)))
+
+    // Talep sahibi, admin veya IT Yönetim düzenleyicisi (Pazarlama dept head / manager)
+    if (!isRequestOwner && user.role !== 'admin' && !isItWorkflowEditorContext) {
       throw new Error('Bu talebi düzenleme yetkiniz yok')
     }
 
     // Request'in durumu düzenlemeye uygun mu? (kullanıcı rolüne göre)
     const canEditByRole = () => {
+      if (
+        existingRequest.it_workflow_applies === true &&
+        existingRequest.status != null &&
+        itReviewStatuses.includes(existingRequest.status)
+      ) {
+        if (user.role === 'admin' || user.role === 'manager') return true
+        if (user.role === 'department_head' && isPazarlamaDepartment(user.department)) return true
+        return false
+      }
+
       // Site Personnel: sadece pending durumunda
       if (user.role === 'site_personnel') {
         return existingRequest.status === 'pending'
@@ -831,12 +899,17 @@ export async function updatePurchaseRequest(data: {
     }
 
     // Purchase request güncelle
+    const requestPatch: Record<string, unknown> = {
+      specifications: data.specifications || null,
+      updated_at: new Date().toISOString()
+    }
+    if (data.materials.length === 1) {
+      requestPatch.title = data.materials[0].material_name
+    }
+
     const { error: updateRequestError } = await supabase
       .from('purchase_requests')
-      .update({
-        specifications: data.specifications || null,
-        updated_at: new Date().toISOString()
-      })
+      .update(requestPatch)
       .eq('id', data.requestId)
 
     if (updateRequestError) {

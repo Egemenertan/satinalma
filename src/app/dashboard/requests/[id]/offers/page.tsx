@@ -14,6 +14,8 @@ import SitePersonnelView from '@/components/offers/SitePersonnelView'
 import SiteManagerView from '@/components/offers/SiteManagerView'
 import ProcurementView from '@/components/offers/ProcurementView'
 import DepartmentHeadView from '@/components/offers/DepartmentHeadView'
+import ItWorkflowView from '@/components/offers/ItWorkflowView'
+import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 
 export default function OffersPage() {
   const params = useParams()
@@ -29,6 +31,7 @@ export default function OffersPage() {
     request,
     existingOffers,
     userRole,
+    userDepartment,
     materialSuppliers,
     materialOrders,
     shipmentData,
@@ -171,6 +174,22 @@ export default function OffersPage() {
       showToast
     }
 
+    const itStatuses = IT_WORKFLOW_STATUSES as readonly string[]
+    if (
+      request.it_workflow_applies &&
+      request.status &&
+      itStatuses.includes(request.status)
+    ) {
+      return (
+        <ItWorkflowView
+          {...commonProps}
+          currentOrder={currentOrder}
+          userRole={userRole}
+          userDepartment={userDepartment ?? null}
+        />
+      )
+    }
+
     // GMO için department_head kontrolü (EN ÜSTTE - diğer rollerin ÖNCESİNDE)
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     
@@ -299,6 +318,8 @@ export default function OffersPage() {
               </Badge>
               <Badge className={`border ${getStatusColor(request.status)} text-xs px-2 py-1`}>
                 {request.status === 'pending' ? 'Beklemede' :
+                 request.status === 'it_incelemesinde' ? 'IT Yönetim — İncelemede' :
+                 request.status === 'it_onaylandi' ? 'IT Yönetim — Onaylandı' :
                  request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
                  request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
                  request.status === 'sipariş verildi' ? 'Sipariş Verildi' :
@@ -338,6 +359,8 @@ export default function OffersPage() {
                 </Badge>
                 <Badge className={`border ${getStatusColor(request.status)} text-[10px] px-1.5 py-0.5 truncate max-w-[150px]`}>
                   {request.status === 'pending' ? 'Beklemede' :
+                   request.status === 'it_incelemesinde' ? 'IT Yönetim — İncelemede' :
+                   request.status === 'it_onaylandi' ? 'IT Yönetim — Onaylandı' :
                    request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
                    request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
                    request.status === 'sipariş verildi' ? 'Sipariş Verildi' :

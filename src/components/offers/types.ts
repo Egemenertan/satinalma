@@ -47,6 +47,7 @@ export interface PurchaseRequest {
   notes?: string
   original_request_id?: string
   return_order_id?: string
+  it_workflow_applies?: boolean
   purchase_request_items: PurchaseRequestItem[]
   profiles: {
     full_name: string
@@ -140,6 +141,8 @@ export const getStatusColor = (status: string) => {
     case 'alternatif onaylandı': return 'bg-purple-100 text-purple-700 border-purple-200'
     case 'satın almaya gönderildi': return 'bg-purple-100 text-purple-700 border-purple-200'
     case 'eksik malzemeler talep edildi': return 'bg-indigo-100 text-indigo-700 border-indigo-200'
+    case 'it_incelemesinde': return 'bg-sky-100 text-sky-800 border-sky-200'
+    case 'it_onaylandi': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
     default: return 'bg-gray-100 text-gray-700 border-gray-200'
   }
 }

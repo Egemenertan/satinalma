@@ -259,6 +259,8 @@ export default function SantiyeDepoView({
 
   // PDF export butonu gösterilmeli mi?
   const shouldShowPDFExportButton = () => {
+    if (request?.status === 'gönderildi') return true
+
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
     

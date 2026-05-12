@@ -14,6 +14,12 @@ import {
   isProfileDepartmentIt,
   fetchPurchaseRequestIdsVisibleToItWarehouseManager
 } from '@/lib/warehouse-it-material-filter'
+import {
+  canSeeItWorkflowTab,
+  isPazarlamaDepartment,
+  IT_STATUS_INCELEMEDE,
+  IT_STATUS_ONAYLANDI
+} from '@/lib/it-workflow'
 
 // Haftalık/aylık aktivite verisi için fetcher - Gerçek veriler
 const fetchWeeklyActivity = async (
@@ -368,10 +374,46 @@ const fetchPageData = async () => {
       console.warn('Overdue deliveries count failed:', err)
     }
   }
-  
+
+  /** IT sekmesinde işlem bekleyen talep sayısı (incelemede + / veya onaylandı — site manager Pazarlama’da yalnızca onaylandı). */
+  let itWorkflowAttentionCount = 0
+  if (
+    canSeeItWorkflowTab({
+      role: profile?.role,
+      department: profile?.department
+    })
+  ) {
+    try {
+      let itAttnQuery = supabase
+        .from('purchase_requests')
+        .select('id', { count: 'exact', head: true })
+        .eq('it_workflow_applies', true)
+
+      if (profile?.role === 'site_manager' && isPazarlamaDepartment(profile?.department)) {
+        itAttnQuery = itAttnQuery.eq('status', IT_STATUS_ONAYLANDI)
+      } else {
+        itAttnQuery = itAttnQuery.in('status', [IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI])
+      }
+
+      const { count: itAttnCount, error: itAttnError } = await itAttnQuery
+      if (itAttnError) {
+        console.warn('IT bildirim sayımı hatası:', itAttnError)
+      } else {
+        itWorkflowAttentionCount = itAttnCount ?? 0
+      }
+    } catch (e) {
+      console.warn('IT bildirim sayımı:', e)
+    }
+  }
+
   return {
     userInfo: { displayName, email: profile?.email },
     role: profile?.role || '',
+    canSeeItWorkflowTab: canSeeItWorkflowTab({
+      role: profile?.role,
+      department: profile?.department
+    }),
+    itWorkflowAttentionCount,
     stats,
     pendingOrdersCount,
     overdueDeliveriesCount,
@@ -384,6 +426,7 @@ const fetchPageData = async () => {
 
 export default function RequestsPage() {
   const router = useRouter()
+  const [requestsListTab, setRequestsListTab] = useState<'main' | 'it'>('main')
   const [showUnorderedOnly, setShowUnorderedOnly] = useState(() => {
     // localStorage'dan filtreyi oku
     if (typeof window !== 'undefined') {
@@ -417,6 +460,8 @@ export default function RequestsPage() {
       fallbackData: {
         userInfo: { displayName: 'Kullanıcı', email: '' },
         role: '',
+        canSeeItWorkflowTab: false,
+        itWorkflowAttentionCount: 0,
         stats: { total: 0, pending: 0, approved: 0, urgent: 0, thisMonth: 0, monthlyData: [], monthChange: 0 },
         pendingOrdersCount: 0,
         overdueDeliveriesCount: 0,
@@ -439,7 +484,10 @@ export default function RequestsPage() {
   const userSiteId = pageData?.siteId
   const weeklyActivity = pageData?.weeklyActivity || []
   const mobileActivity = pageData?.mobileActivity || []
-
+  const canSeeItWorkflowTabUser = pageData?.canSeeItWorkflowTab === true
+  const itWorkflowAttentionCount = pageData?.itWorkflowAttentionCount ?? 0
+  const showItTabNotification =
+    canSeeItWorkflowTabUser && itWorkflowAttentionCount > 0 && requestsListTab === 'main'
 
   // Real-time updates için subscription - Optimize edildi
   useEffect(() => {
@@ -880,11 +928,43 @@ export default function RequestsPage() {
         </div>
 
         {/* Requests Table */}
+        {canSeeItWorkflowTabUser && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            <Button
+              type="button"
+              variant={requestsListTab === 'main' ? 'default' : 'outline'}
+              className={requestsListTab === 'main' ? 'bg-[#00E676] hover:bg-[#00c46a] text-white' : ''}
+              onClick={() => setRequestsListTab('main')}
+            >
+              Talepler
+            </Button>
+            <Button
+              type="button"
+              variant={requestsListTab === 'it' ? 'default' : 'outline'}
+              className={`relative overflow-visible ${requestsListTab === 'it' ? 'bg-sky-600 hover:bg-sky-700 text-white' : ''}`}
+              onClick={() => setRequestsListTab('it')}
+              aria-label={
+                showItTabNotification
+                  ? `IT Yönetim — ${itWorkflowAttentionCount} işlem bekleyen talep`
+                  : 'IT Yönetim'
+              }
+            >
+              IT Yönetim
+              {showItTabNotification ? (
+                <span
+                  className="pointer-events-none absolute -right-1 -top-1 z-10 h-2.5 min-w-2.5 rounded-full bg-red-500 ring-2 ring-gray-50"
+                  aria-hidden
+                />
+              ) : null}
+            </Button>
+          </div>
+        )}
         <PurchaseRequestsTable 
           userRole={userRole} 
-          showUnorderedOnly={showUnorderedOnly}
+          listView={canSeeItWorkflowTabUser && requestsListTab === 'it' ? 'it' : 'main'}
+          showUnorderedOnly={requestsListTab === 'main' ? showUnorderedOnly : false}
           onUnorderedFilterChange={setShowUnorderedOnly}
-          showOverdueOnly={showOverdueOnly}
+          showOverdueOnly={requestsListTab === 'main' ? showOverdueOnly : false}
           onOverdueFilterChange={setShowOverdueOnly}
           overdueRequestIds={overdueRequestIds}
         />
@@ -1126,11 +1206,43 @@ export default function RequestsPage() {
         </div>
 
         {/* Requests Table */}
+        {canSeeItWorkflowTabUser && (
+          <div className="flex flex-wrap gap-2 px-4">
+            <Button
+              type="button"
+              variant={requestsListTab === 'main' ? 'default' : 'outline'}
+              className={requestsListTab === 'main' ? 'bg-[#00E676] hover:bg-[#00c46a] text-white' : ''}
+              onClick={() => setRequestsListTab('main')}
+            >
+              Talepler
+            </Button>
+            <Button
+              type="button"
+              variant={requestsListTab === 'it' ? 'default' : 'outline'}
+              className={`relative overflow-visible ${requestsListTab === 'it' ? 'bg-sky-600 hover:bg-sky-700 text-white' : ''}`}
+              onClick={() => setRequestsListTab('it')}
+              aria-label={
+                showItTabNotification
+                  ? `IT Yönetim — ${itWorkflowAttentionCount} işlem bekleyen talep`
+                  : 'IT Yönetim'
+              }
+            >
+              IT Yönetim
+              {showItTabNotification ? (
+                <span
+                  className="pointer-events-none absolute -right-1 -top-1 z-10 h-2.5 min-w-2.5 rounded-full bg-red-500 ring-2 ring-white"
+                  aria-hidden
+                />
+              ) : null}
+            </Button>
+          </div>
+        )}
         <PurchaseRequestsTable 
           userRole={userRole} 
-          showUnorderedOnly={showUnorderedOnly}
+          listView={canSeeItWorkflowTabUser && requestsListTab === 'it' ? 'it' : 'main'}
+          showUnorderedOnly={requestsListTab === 'main' ? showUnorderedOnly : false}
           onUnorderedFilterChange={setShowUnorderedOnly}
-          showOverdueOnly={showOverdueOnly}
+          showOverdueOnly={requestsListTab === 'main' ? showOverdueOnly : false}
           onOverdueFilterChange={setShowOverdueOnly}
           overdueRequestIds={overdueRequestIds}
         />

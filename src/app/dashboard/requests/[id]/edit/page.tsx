@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 import { updatePurchaseRequest } from '@/lib/actions'
+import { isPazarlamaDepartment, IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 import { 
   Package, 
   Building2, 
@@ -291,6 +292,33 @@ export default function EditPurchaseRequestPage() {
           return
         }
 
+        const { data: { user: editorUser } } = await supabase.auth.getUser()
+        if (editorUser) {
+          const { data: editorProf } = await supabase
+            .from('profiles')
+            .select('role, department')
+            .eq('id', editorUser.id)
+            .single()
+
+          const rd = requestData as { status?: string; it_workflow_applies?: boolean }
+          if (rd.status === 'it_incelemesinde' && rd.it_workflow_applies) {
+            const canEditIt =
+              editorProf?.role === 'admin' ||
+              editorProf?.role === 'manager' ||
+              (editorProf?.role === 'department_head' &&
+                isPazarlamaDepartment(editorProf?.department))
+            if (!canEditIt) {
+              showToast(
+                'Bu aşamada talebi yalnızca Pazarlama departman yöneticisi düzenleyebilir.',
+                'error'
+              )
+              router.push(`/dashboard/requests/${requestId}/offers`)
+              setInitialLoading(false)
+              return
+            }
+          }
+        }
+
         // Shipment verilerini çek - "depoda yok" malzemeleri filtrelemek için
         const { data: shipments, error: shipmentError } = await supabase
           .from('shipments')
@@ -310,6 +338,14 @@ export default function EditPurchaseRequestPage() {
         }
 
         console.log('🚫 Depoda yok malzemeler:', Array.from(unavailableItemIds))
+
+        // IT Yönetim aşamasında depo işlemi yok; shipments'ta shipped_quantity=0 kayıtları
+        // yanlışlıkla tüm kalemleri "depoda yok" sanıp düzenlemeyi engellemesin.
+        const rdIt = requestData as { status?: string; it_workflow_applies?: boolean }
+        const skipDepotUnavailableFilter =
+          rdIt.it_workflow_applies === true &&
+          rdIt.status != null &&
+          (IT_WORKFLOW_STATUSES as readonly string[]).includes(rdIt.status)
 
         // Form verilerini doldur
         setFormData({
@@ -341,14 +377,17 @@ export default function EditPurchaseRequestPage() {
           image_preview_urls: []
         })) || []
 
-        // "Depoda yok" malzemeleri filtrele
-        const materials = allMaterials.filter(material => !unavailableItemIds.has(material.id))
+        // "Depoda yok" malzemeleri filtrele (IT inceleme / onay hariç)
+        const materials = skipDepotUnavailableFilter
+          ? allMaterials
+          : allMaterials.filter(material => !unavailableItemIds.has(material.id))
         
         console.log('📊 Malzeme filtreleme:', {
           totalMaterials: allMaterials.length,
           unavailableCount: unavailableItemIds.size,
           editableMaterials: materials.length,
-          filteredOutIds: Array.from(unavailableItemIds)
+          filteredOutIds: Array.from(unavailableItemIds),
+          skipDepotUnavailableFilter
         })
 
         console.log('🔍 Malzeme adları debug:', materials.map(m => ({
@@ -543,19 +582,70 @@ export default function EditPurchaseRequestPage() {
     }))
   }
 
+  const uploadImagesForMaterial = async (
+    materialId: string,
+    files: File[]
+  ): Promise<string[]> => {
+    if (files.length === 0) return []
+
+    const MAX_FILE_SIZE_MB = 10
+    const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+    const uploadedUrls: string[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `${file.name} dosyası çok büyük (maksimum ${MAX_FILE_SIZE_MB}MB). Lütfen daha küçük boyutlu bir fotoğraf seçin.`
+        )
+      }
+
+      const fileExt = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+      const uniqueId = Math.random().toString(36).substring(2, 15)
+      const fileName = `purchase_requests/materials/${materialId}/${Date.now()}_${uniqueId}.${fileExt}`
+
+      const { error } = await supabase.storage
+        .from('satinalma')
+        .upload(fileName, file, {
+          cacheControl: '3600',
+          upsert: false
+        })
+
+      if (error) {
+        if (error.message?.includes('Payload too large') || error.message?.includes('413')) {
+          throw new Error(`${file.name} dosyası çok büyük. Lütfen daha küçük boyutlu bir fotoğraf seçin.`)
+        }
+        throw new Error(`${file.name} yüklenirken hata: ${error.message}`)
+      }
+
+      const { data: urlData } = supabase.storage.from('satinalma').getPublicUrl(fileName)
+      uploadedUrls.push(urlData.publicUrl)
+    }
+
+    return uploadedUrls
+  }
+
   const handleImageUpload = (files: FileList | null) => {
     if (!files || selectedMaterials.length === 0) return
 
+    const MAX_IMAGES = 3
     const currentMaterial = selectedMaterials[currentMaterialIndex]
+    const existingUrlCount = (currentMaterial.image_urls || []).length
+    const pendingCount = (currentMaterial.uploaded_images || []).length
+    const slots = MAX_IMAGES - existingUrlCount - pendingCount
+
+    if (slots <= 0) {
+      showToast('En fazla 3 fotoğraf eklenebilir', 'error')
+      return
+    }
+
     const currentImages = currentMaterial.uploaded_images || []
-    const newFiles = Array.from(files).slice(0, 3 - currentImages.length)
+    const newFiles = Array.from(files).filter(f => f.type.startsWith('image/')).slice(0, slots)
     const newPreviewUrls: string[] = []
 
     newFiles.forEach(file => {
-      if (file.type.startsWith('image/')) {
-        const previewUrl = URL.createObjectURL(file)
-        newPreviewUrls.push(previewUrl)
-      }
+      newPreviewUrls.push(URL.createObjectURL(file))
     })
 
     const updatedMaterials = [...selectedMaterials]
@@ -567,21 +657,36 @@ export default function EditPurchaseRequestPage() {
     setSelectedMaterials(updatedMaterials)
   }
 
-  const removeImage = (index: number) => {
+  const removeImage = (previewIndex: number) => {
     if (selectedMaterials.length === 0) return
 
     const currentMaterial = selectedMaterials[currentMaterialIndex]
     const imageUrls = currentMaterial.image_preview_urls || []
-    
-    if (imageUrls[index]) {
-      URL.revokeObjectURL(imageUrls[index])
+
+    if (imageUrls[previewIndex]) {
+      URL.revokeObjectURL(imageUrls[previewIndex])
     }
-    
+
     const updatedMaterials = [...selectedMaterials]
     updatedMaterials[currentMaterialIndex] = {
       ...updatedMaterials[currentMaterialIndex],
-      uploaded_images: (currentMaterial.uploaded_images || []).filter((_, i) => i !== index),
-      image_preview_urls: imageUrls.filter((_, i) => i !== index)
+      uploaded_images: (currentMaterial.uploaded_images || []).filter((_, i) => i !== previewIndex),
+      image_preview_urls: imageUrls.filter((_, i) => i !== previewIndex)
+    }
+    setSelectedMaterials(updatedMaterials)
+  }
+
+  const removeExistingImageUrl = (urlIndex: number) => {
+    if (selectedMaterials.length === 0) return
+
+    const currentMaterial = selectedMaterials[currentMaterialIndex]
+    const urls = [...(currentMaterial.image_urls || [])]
+    urls.splice(urlIndex, 1)
+
+    const updatedMaterials = [...selectedMaterials]
+    updatedMaterials[currentMaterialIndex] = {
+      ...updatedMaterials[currentMaterialIndex],
+      image_urls: urls
     }
     setSelectedMaterials(updatedMaterials)
   }
@@ -659,8 +764,11 @@ export default function EditPurchaseRequestPage() {
       case 4:
         return true // Skip validation for these steps in edit mode
       case 5:
-        return selectedMaterials.length > 0 && selectedMaterials.every(material => 
-          material.unit && material.quantity && material.purpose
+        return selectedMaterials.length > 0 && selectedMaterials.every(material =>
+          material.material_name?.trim() &&
+          material.unit &&
+          material.quantity &&
+          material.purpose
         )
       case 6:
         return true
@@ -672,10 +780,13 @@ export default function EditPurchaseRequestPage() {
   }
 
   const isFormValid = () => {
-    return formData.construction_site && 
+    return formData.construction_site &&
            selectedMaterials.length > 0 &&
-           selectedMaterials.every(material => 
-             material.unit && material.quantity && material.purpose
+           selectedMaterials.every(material =>
+             material.material_name?.trim() &&
+             material.unit &&
+             material.quantity &&
+             material.purpose
            )
   }
 
@@ -717,22 +828,67 @@ export default function EditPurchaseRequestPage() {
         return ['pending', 'rejected'].includes(currentStatus)
       }
 
-      // Get current request status for validation
       const { data: currentRequest } = await supabase
         .from('purchase_requests')
-        .select('status')
+        .select('status, it_workflow_applies')
         .eq('id', requestId)
         .single()
 
-      if (currentRequest && !canEditByRole(currentRequest.status, userRole)) {
-        throw new Error(`Bu durumda olan talepler düzenlenemez. Mevcut durum: ${currentRequest.status}, Rolünüz: ${userRole}`)
+      const itStatuses = IT_WORKFLOW_STATUSES as readonly string[]
+      let allowItWorkflowEdit = false
+      if (
+        currentRequest?.it_workflow_applies &&
+        currentRequest.status &&
+        itStatuses.includes(currentRequest.status)
+      ) {
+        if (userRole === 'admin' || userRole === 'manager') {
+          allowItWorkflowEdit = true
+        } else if (userRole === 'department_head') {
+          const { data: { user: u } } = await supabase.auth.getUser()
+          if (u) {
+            const { data: prof } = await supabase
+              .from('profiles')
+              .select('department')
+              .eq('id', u.id)
+              .single()
+            if (isPazarlamaDepartment(prof?.department)) allowItWorkflowEdit = true
+          }
+        }
       }
-      
+
+      if (
+        currentRequest &&
+        !allowItWorkflowEdit &&
+        !canEditByRole(currentRequest.status, userRole)
+      ) {
+        throw new Error(
+          `Bu durumda olan talepler düzenlenemez. Mevcut durum: ${currentRequest.status}, Rolünüz: ${userRole}`
+        )
+      }
+
+      const materialsPrepared = await Promise.all(
+        selectedMaterials.map(async material => {
+          const qty = Math.round(parseFloat(material.quantity))
+          let imageUrls = [...(material.image_urls || [])]
+          if (material.uploaded_images && material.uploaded_images.length > 0) {
+            const uploaded = await uploadImagesForMaterial(material.id, material.uploaded_images)
+            imageUrls = [...imageUrls, ...uploaded]
+          }
+          return { material, qty, imageUrls }
+        })
+      )
+
       // Purchase request'i güncelle
+      const requestTitle =
+        materialsPrepared.length === 1
+          ? materialsPrepared[0].material.material_name.trim()
+          : undefined
+
       const { error: updateRequestError } = await supabase
         .from('purchase_requests')
         .update({
           specifications: formData.specifications,
+          ...(requestTitle ? { title: requestTitle } : {}),
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
@@ -752,12 +908,12 @@ export default function EditPurchaseRequestPage() {
       }
 
       // Yeni items'ları ekle
-      const itemsData = selectedMaterials.map(material => ({
+      const itemsData = materialsPrepared.map(({ material, qty, imageUrls }) => ({
         purchase_request_id: requestId,
-        item_name: material.material_name,
+        item_name: material.material_name.trim(),
         description: `${material.brand || ''} ${material.material_name}`.trim(),
-        quantity: Math.round(parseFloat(material.quantity)),
-        original_quantity: Math.round(parseFloat(material.quantity)),
+        quantity: qty,
+        original_quantity: qty,
         unit: material.unit,
         unit_price: 0,
         specifications: material.specifications || null,
@@ -766,8 +922,8 @@ export default function EditPurchaseRequestPage() {
         brand: material.brand || null,
         material_class: material.material_class || null,
         material_group: material.material_group || null,
-        material_item_name: material.material_item_name || null,
-        image_urls: material.image_urls || null
+        material_item_name: material.material_item_name?.trim() || material.material_name.trim() || null,
+        image_urls: imageUrls.length > 0 ? imageUrls : null
       }))
 
       const { error: insertItemsError } = await supabase
@@ -794,23 +950,35 @@ export default function EditPurchaseRequestPage() {
     }
 
     setLoading(true)
-    
+
     try {
-      // Malzemeleri hazırla
-      const materialsData = selectedMaterials.map((material) => ({
-        id: material.id, // UUID olarak gönder
-        material_name: material.material_name,
-        quantity: Math.round(parseFloat(material.quantity)),
-        unit: material.unit,
-        brand: material.brand,
-        material_class: material.material_class,
-        material_group: material.material_group,
-        material_item_name: material.material_item_name,
-        specifications: material.specifications,
-        purpose: material.purpose,
-        delivery_date: material.delivery_date,
-        image_urls: material.image_urls // Mevcut resimler korunur
-      }))
+      const materialsData = await Promise.all(
+        selectedMaterials.map(async material => {
+          const qty = Math.round(parseFloat(material.quantity))
+          let imageUrls = [...(material.image_urls || [])]
+
+          if (material.uploaded_images && material.uploaded_images.length > 0) {
+            showToast(`${material.material_name} için görseller yükleniyor...`, 'info')
+            const uploaded = await uploadImagesForMaterial(material.id, material.uploaded_images)
+            imageUrls = [...imageUrls, ...uploaded]
+          }
+
+          return {
+            id: material.id,
+            material_name: material.material_name.trim(),
+            quantity: qty,
+            unit: material.unit,
+            brand: material.brand,
+            material_class: material.material_class,
+            material_group: material.material_group,
+            material_item_name: material.material_item_name?.trim() || material.material_name.trim(),
+            specifications: material.specifications,
+            purpose: material.purpose,
+            delivery_date: material.delivery_date,
+            image_urls: imageUrls.length > 0 ? imageUrls : undefined
+          }
+        })
+      )
 
       // Güncelleme server action'ını çağır
       console.log('🔄 Update request çağrılıyor:', {
@@ -1022,12 +1190,22 @@ export default function EditPurchaseRequestPage() {
                 <div>
                   <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-2">
                     <FileText className="w-4 h-4" />
-                    Malzeme Adı
+                    Malzeme Adı *
                   </Label>
                   <Input
                     value={currentMaterial?.material_name || ''}
-                    readOnly
-                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 bg-gray-50 text-gray-600 cursor-not-allowed text-base lg:text-base"
+                    onChange={e => {
+                      const v = e.target.value
+                      const updatedMaterials = [...selectedMaterials]
+                      updatedMaterials[currentMaterialIndex] = {
+                        ...updatedMaterials[currentMaterialIndex],
+                        material_name: v,
+                        material_item_name: v
+                      }
+                      setSelectedMaterials(updatedMaterials)
+                    }}
+                    placeholder="Malzeme adı"
+                    className="h-10 lg:h-12 rounded-lg lg:rounded-xl border-gray-200 focus:border-black focus:ring-black/20 text-base lg:text-base"
                   />
                 </div>
                 
@@ -1160,26 +1338,93 @@ export default function EditPurchaseRequestPage() {
                 />
               </div>
 
-              {/* Mevcut Resimler */}
-              {currentMaterial?.image_urls && currentMaterial.image_urls.length > 0 && (
-                <div className="space-y-4">
-                  <Label className="text-sm font-medium text-gray-700 flex items-center gap-2">
-                    <ImageIcon className="w-4 h-4" />
-                    Mevcut Malzeme Fotoğrafları
-                  </Label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {currentMaterial.image_urls.map((url, index) => (
-                      <div key={index} className="aspect-square bg-gray-100 rounded-xl overflow-hidden">
-                        <img
-                          src={url}
-                          alt={`${currentMaterial.material_name} ${index + 1}`}
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
+              {/* Mevcut + yeni fotoğraflar */}
+              <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
+                <Label className="text-sm font-medium text-gray-700 flex items-center gap-2 mb-3">
+                  <ImageIcon className="w-4 h-4" />
+                  Malzeme fotoğrafları (en fazla 3)
+                </Label>
+
+                {(() => {
+                  const cm = selectedMaterials[currentMaterialIndex]
+                  const totalPhotos =
+                    (cm?.image_urls?.length || 0) + (cm?.uploaded_images?.length || 0)
+                  return (
+                    <>
+                      {(cm?.image_urls?.length || 0) > 0 && (
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          {(cm!.image_urls || []).map((url, index) => (
+                            <div
+                              key={`saved-${url}-${index}`}
+                              className="relative aspect-square bg-gray-100 rounded-xl overflow-hidden group border border-gray-200"
+                            >
+                              <img
+                                src={url}
+                                alt={`${cm!.material_name} ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeExistingImageUrl(index)}
+                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Kaldır"
+                              >
+                                <X className="w-6 h-6 text-white" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {(cm?.image_preview_urls?.length || 0) > 0 && (
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          {(cm!.image_preview_urls || []).map((url, index) => (
+                            <div
+                              key={`new-${index}`}
+                              className="relative w-20 h-20 rounded-xl overflow-hidden group border border-gray-200"
+                            >
+                              <img
+                                src={url}
+                                alt={`Yeni ${index + 1}`}
+                                className="w-full h-full object-cover"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => removeImage(index)}
+                                className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                                title="Kaldır"
+                              >
+                                <X className="w-5 h-5 text-white" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {totalPhotos < 3 && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={triggerCameraCapture}
+                            className="flex-1 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center gap-2 text-gray-600 hover:bg-gray-50 active:scale-[0.98] transition-all"
+                          >
+                            <Camera className="w-4 h-4" />
+                            <span className="text-sm font-medium">Kamera</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={triggerGallerySelect}
+                            className="flex-1 h-12 rounded-xl bg-white border border-gray-200 flex items-center justify-center gap-2 text-gray-600 hover:bg-gray-50 active:scale-[0.98] transition-all"
+                          >
+                            <Upload className="w-4 h-4" />
+                            <span className="text-sm font-medium">Galeri</span>
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </div>
 
               {/* Malzeme Navigasyon Butonları */}
               {selectedMaterials.length > 1 && (

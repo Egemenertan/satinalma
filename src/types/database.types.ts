@@ -1303,6 +1303,7 @@ export type Database = {
           urgency_level: string | null
           visibility_level: string | null
           workflow_status: string | null
+          it_workflow_applies: boolean
         }
         Insert: {
           approved_at?: string | null
@@ -1347,6 +1348,7 @@ export type Database = {
           urgency_level?: string | null
           visibility_level?: string | null
           workflow_status?: string | null
+          it_workflow_applies?: boolean
         }
         Update: {
           approved_at?: string | null
@@ -1391,6 +1393,7 @@ export type Database = {
           urgency_level?: string | null
           visibility_level?: string | null
           workflow_status?: string | null
+          it_workflow_applies?: boolean
         }
         Relationships: [
           {

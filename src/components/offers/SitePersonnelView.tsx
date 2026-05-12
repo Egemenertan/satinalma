@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Check, Truck, Clock, Edit } from 'lucide-react'
+import { Check, Truck, Clock, Edit, ImageIcon } from 'lucide-react'
 import { OffersPageProps } from './types'
 import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 import { useRouter } from 'next/navigation'
@@ -170,6 +170,14 @@ export default function SitePersonnelView({
           <div className="space-y-4 sm:space-y-6">
             {request.purchase_request_items.map((item, index) => {
               const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
+              const itemImages =
+                Array.isArray(item.image_urls) && item.image_urls.length > 0
+                  ? item.image_urls
+                  : index === 0 &&
+                      Array.isArray(request.image_urls) &&
+                      request.image_urls.length > 0
+                    ? request.image_urls
+                    : []
               
               return (
                 <div key={item.id} className="border border-gray-200/80 rounded-2xl p-3 sm:p-6 bg-white hover:shadow-sm transition-shadow duration-300">
@@ -214,6 +222,46 @@ export default function SitePersonnelView({
                         {item.specifications && (
                           <div className="text-xs sm:text-sm text-gray-500 mt-2 p-2 bg-gray-50 rounded-lg break-words">
                             {item.specifications}
+                          </div>
+                        )}
+
+                        {itemImages.length > 0 && (
+                          <div className="mt-3 sm:mt-4">
+                            <p className="text-xs sm:text-sm font-medium text-gray-700 mb-2 flex items-center gap-1.5">
+                              <ImageIcon className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-gray-500" />
+                              Malzeme görselleri
+                            </p>
+                            <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-2">
+                              {itemImages.slice(0, 12).map((url: string, imgIndex: number) => (
+                                <button
+                                  key={`${url}-${imgIndex}`}
+                                  type="button"
+                                  className="aspect-square bg-gray-100 rounded-xl overflow-hidden border border-gray-200/80 hover:ring-2 hover:ring-gray-300 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-gray-400"
+                                  onClick={() => {
+                                    const img = new Image()
+                                    img.src = url
+                                    img.onload = () => {
+                                      const w = window.open('', '_blank', 'width=800,height=600,scrollbars=yes,resizable=yes')
+                                      if (w) {
+                                        w.document.write(`
+                        <html>
+                          <head><title>${item.item_name} — ${imgIndex + 1}</title>
+                          <style>body{margin:0;background:#000;display:flex;align-items:center;justify-content:center;min-height:100vh} img{max-width:100%;max-height:100%;object-fit:contain}</style>
+                          </head><body><img src="${url.replace(/"/g, '&quot;')}" alt="" /></body></html>`)
+                                        w.document.close()
+                                      }
+                                    }
+                                  }}
+                                  title="Büyütmek için tıklayın"
+                                >
+                                  <img
+                                    src={url}
+                                    alt={`${item.item_name} ${imgIndex + 1}`}
+                                    className="w-full h-full object-cover"
+                                  />
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         )}
                         

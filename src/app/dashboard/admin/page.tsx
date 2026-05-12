@@ -19,9 +19,11 @@ import {
   Shield,
   CheckCircle2,
   XCircle,
-  RefreshCw
+  RefreshCw,
+  Package
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import { Checkbox } from '@/components/ui/checkbox'
 
 interface Profile {
   id: string
@@ -47,6 +49,9 @@ export default function AdminPage() {
   const [currentUserRole, setCurrentUserRole] = useState<UserRole | null>(null)
   const router = useRouter()
   const supabase = createClient()
+  const [materialGroupsAll, setMaterialGroupsAll] = useState<string[]>([])
+  const [selectedItGroups, setSelectedItGroups] = useState<string[]>([])
+  const [savingItRoutes, setSavingItRoutes] = useState(false)
 
   // Kullanıcının admin olup olmadığını kontrol et
   useEffect(() => {
@@ -96,6 +101,29 @@ export default function AdminPage() {
 
       setProfiles(profilesData || [])
       setSites(sitesData || [])
+
+      const { data: groupRows } = await supabase
+        .from('all_materials')
+        .select('group')
+        .not('group', 'is', null)
+
+      const uniqGroups = Array.from(
+        new Set(
+          (groupRows || [])
+            .map(r => (r as { group?: string }).group)
+            .filter((g): g is string => typeof g === 'string' && g.trim() !== '')
+        )
+      ).sort()
+      setMaterialGroupsAll(uniqGroups)
+
+      const { data: itRows } = await supabase
+        .from('material_group_it_routes')
+        .select('material_group, is_active')
+
+      const activeGroups = (itRows || [])
+        .filter(r => r.is_active)
+        .map(r => r.material_group)
+      setSelectedItGroups(activeGroups)
     } catch (error) {
       console.error('Veri çekme hatası:', error)
     } finally {
@@ -154,6 +182,34 @@ export default function AdminPage() {
     admins: profiles.filter(p => p.role === 'admin').length,
     managers: profiles.filter(p => p.role === 'manager').length,
     others: profiles.filter(p => !['admin', 'manager'].includes(p.role)).length
+  }
+
+  const saveItMaterialRoutes = async () => {
+    setSavingItRoutes(true)
+    try {
+      for (const g of materialGroupsAll) {
+        const should = selectedItGroups.includes(g)
+        const { error } = await supabase.from('material_group_it_routes').upsert(
+          {
+            material_group: g,
+            is_active: should,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'material_group' }
+        )
+        if (error) throw error
+      }
+    } catch (e) {
+      console.error('IT malzeme grupları kaydedilemedi:', e)
+    } finally {
+      setSavingItRoutes(false)
+    }
+  }
+
+  const toggleItGroup = (group: string, checked: boolean) => {
+    setSelectedItGroups(prev =>
+      checked ? [...prev, group] : prev.filter(g => g !== group)
+    )
   }
 
   if (currentUserRole !== 'admin') {
@@ -248,6 +304,48 @@ export default function AdminPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card className="bg-white border border-gray-100 shadow-sm">
+        <CardHeader>
+          <CardTitle className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+            <Package className="h-5 w-5 text-sky-600" />
+            IT Yönetim — tetikleyici malzeme grupları
+          </CardTitle>
+          <CardDescription>
+            Seçilen gruplardan biri talepte yer alırsa durum <strong>it_incelemesinde</strong> olur; Pazarlama{' '}
+            <code className="text-xs bg-gray-100 px-1 rounded">department_head</code> ve ardından{' '}
+            <code className="text-xs bg-gray-100 px-1 rounded">site_manager</code> işler.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {materialGroupsAll.length === 0 ? (
+            <p className="text-sm text-gray-500">Malzeme grubu listesi yüklenemedi veya boş.</p>
+          ) : (
+            <div className="max-h-64 overflow-y-auto border border-gray-100 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {materialGroupsAll.map((g) => (
+                <label
+                  key={g}
+                  className="flex items-start gap-2 text-sm text-gray-800 cursor-pointer"
+                >
+                  <Checkbox
+                    checked={selectedItGroups.includes(g)}
+                    onCheckedChange={v => toggleItGroup(g, v === true)}
+                  />
+                  <span className="leading-tight">{g}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <Button
+            type="button"
+            onClick={() => void saveItMaterialRoutes()}
+            disabled={savingItRoutes || materialGroupsAll.length === 0}
+            className="bg-sky-600 hover:bg-sky-700 text-white"
+          >
+            {savingItRoutes ? 'Kaydediliyor...' : 'IT tetikleyicilerini kaydet'}
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* Arama ve Kullanıcı Listesi */}
       <Card className="bg-white border border-gray-100 shadow-sm">

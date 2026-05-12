@@ -23,6 +23,11 @@ import {
   isProfileDepartmentIt,
   fetchPurchaseRequestIdsVisibleToItWarehouseManager
 } from '@/lib/warehouse-it-material-filter'
+import {
+  canSeeItWorkflowTab,
+  isPazarlamaDepartment,
+  IT_STATUS_ONAYLANDI
+} from '@/lib/it-workflow'
 
 import { 
   Search, 
@@ -84,6 +89,7 @@ interface PurchaseRequest {
   notifications?: string[] // Bildirimler: ["iade var", "acil"] gibi
   unordered_materials_count?: number // Siparişi verilmemiş malzeme sayısı
   overdue_deliveries_count?: number // Teslim alınmamış sipariş sayısı
+  it_workflow_applies?: boolean
   // Relations
   sites?: Array<{
     name: string
@@ -114,7 +120,7 @@ const fetcherWithAuth = async (url: string) => {
   // Profile bilgisini çek (site_id ve department için gerekli)
   const { data: profile } = await supabase
     .from('profiles')
-    .select('site_id, department')
+    .select('site_id, department, role')
     .eq('id', user.id)
     .single()
 
@@ -202,12 +208,20 @@ const fetchPurchaseRequests = async (
   overdueOnly?: boolean,
   overdueRequestIds?: string[]
 ) => {
-  const [_, currentPage, pageSize, role] = key.split('/')
-  const page = parseInt(currentPage)
-  const size = parseInt(pageSize)
-  const effectiveRole = role || userRole // Key'den veya paramdan al
+  const segments = key.split('/')
+  const page = parseInt(segments[1] || '1', 10)
+  const size = parseInt(segments[2] || '20', 10)
+  const roleFromKey = segments[3] || userRole || 'user'
+  const listView: 'main' | 'it' = segments[4] === 'it' ? 'it' : 'main'
+  const effectiveRole = roleFromKey || userRole // Key'den veya paramdan al
   
   const { user, profile, supabase } = await fetcherWithAuth('auth')
+
+  if (listView === 'it') {
+    if (!canSeeItWorkflowTab({ role: effectiveRole, department: profile?.department })) {
+      return { requests: [], totalCount: 0 }
+    }
+  }
 
   const isItWarehouseManager =
     effectiveRole === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
@@ -396,6 +410,99 @@ const fetchPurchaseRequests = async (
     if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
   }
   
+  if (listView === 'it') {
+    let itCountQuery = supabase
+      .from('purchase_requests')
+      .select('id', { count: 'exact', head: true })
+      .eq('it_workflow_applies', true)
+
+    if (effectiveRole === 'site_manager' && isPazarlamaDepartment(profile?.department)) {
+      itCountQuery = itCountQuery.eq('status', IT_STATUS_ONAYLANDI)
+    }
+
+    if (mergedRequestIdFilter !== null) {
+      itCountQuery = itCountQuery.in('id', mergedRequestIdFilter)
+    }
+    if (statusFilter && statusFilter !== 'all') {
+      itCountQuery = itCountQuery.eq('status', statusFilter)
+    }
+    if (locationFilter && locationFilter !== 'all') {
+      itCountQuery = itCountQuery.eq('site_id', locationFilter)
+    }
+
+    const { count: itCount, error: itCountError } = await itCountQuery
+    if (itCountError) {
+      throw new Error(itCountError.message)
+    }
+
+    const fromIt = (page - 1) * size
+    const toIt = fromIt + size - 1
+
+    let itRequestsQuery = supabase
+      .from('purchase_requests')
+      .select(`
+      id,
+      request_number,
+      title,
+      status,
+      urgency_level,
+      created_at,
+      delivery_date,
+      requested_by,
+      site_name,
+      site_id,
+      sent_quantity,
+      notifications,
+      it_workflow_applies,
+      sites:site_id (
+        name
+      ),
+      profiles:requested_by (
+        full_name,
+        email
+      )
+    `)
+      .eq('it_workflow_applies', true)
+      .range(fromIt, toIt)
+      .order('created_at', { ascending: false })
+
+    if (effectiveRole === 'site_manager' && isPazarlamaDepartment(profile?.department)) {
+      itRequestsQuery = itRequestsQuery.eq('status', IT_STATUS_ONAYLANDI)
+    }
+
+    if (mergedRequestIdFilter !== null) {
+      itRequestsQuery = itRequestsQuery.in('id', mergedRequestIdFilter)
+    }
+    if (statusFilter && statusFilter !== 'all') {
+      itRequestsQuery = itRequestsQuery.eq('status', statusFilter)
+    }
+    if (locationFilter && locationFilter !== 'all') {
+      itRequestsQuery = itRequestsQuery.eq('site_id', locationFilter)
+    }
+
+    const { data: itRequests, error: itReqError } = await itRequestsQuery
+    if (itReqError) {
+      console.error('IT workflow requests fetch error:', itReqError)
+      throw new Error(
+        `IT talepleri yüklenirken hata oluştu: ${itReqError?.message || 'Bilinmeyen hata'}`
+      )
+    }
+
+    const formattedIt = (itRequests || []).map((request: Record<string, unknown>) => {
+      let processedProfiles = request.profiles as unknown
+      if (Array.isArray(processedProfiles) && processedProfiles.length > 0) {
+        processedProfiles = processedProfiles[0]
+      }
+      return {
+        ...request,
+        sites: request.sites as unknown,
+        profiles: processedProfiles
+      }
+    })
+
+    return { requests: formattedIt as unknown as PurchaseRequest[], totalCount: itCount || 0 }
+  }
+
   let countQuery = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
@@ -453,6 +560,11 @@ const fetchPurchaseRequests = async (
   if (userDepartment) {
     countQuery = countQuery.eq('department', userDepartment)
   }
+
+  if (listView === 'main') {
+    const itOr = `requested_by.eq.${user.id},it_workflow_applies.eq.false,and(it_workflow_applies.eq.true,status.not.in.(it_incelemesinde,it_onaylandi))`
+    countQuery = countQuery.or(itOr)
+  }
   
   if (mergedRequestIdFilter !== null) {
     countQuery = countQuery.in('id', mergedRequestIdFilter)
@@ -494,6 +606,7 @@ const fetchPurchaseRequests = async (
       site_id,
       sent_quantity,
       notifications,
+      it_workflow_applies,
       sites:site_id (
         name
       ),
@@ -557,6 +670,11 @@ const fetchPurchaseRequests = async (
   // department_head rolü kendi mantığında zaten uyguluyor, dışarıda bırakılır.
   if (userDepartment) {
     requestsQuery = requestsQuery.eq('department', userDepartment)
+  }
+
+  if (listView === 'main') {
+    const itOrR = `requested_by.eq.${user.id},it_workflow_applies.eq.false,and(it_workflow_applies.eq.true,status.not.in.(it_incelemesinde,it_onaylandi))`
+    requestsQuery = requestsQuery.or(itOrR)
   }
   
   // Gelişmiş arama filtresi
@@ -754,6 +872,7 @@ const fetchPurchaseRequests = async (
 
 interface PurchaseRequestsTableProps {
   userRole?: string // Layout'tan gelen role prop'u
+  listView?: 'main' | 'it'
   showUnorderedOnly?: boolean // Siparişi verilmemiş talepleri göster
   onUnorderedFilterChange?: (active: boolean) => void // Filtre değişikliğini parent'a bildir
   showOverdueOnly?: boolean // Teslim alınmamış siparişleri göster
@@ -763,6 +882,7 @@ interface PurchaseRequestsTableProps {
 
 export default function PurchaseRequestsTable({ 
   userRole: propUserRole, 
+  listView: propListView = 'main',
   showUnorderedOnly = false,
   onUnorderedFilterChange,
   showOverdueOnly = false,
@@ -829,6 +949,7 @@ export default function PurchaseRequestsTable({
   
   // Kullanıcı site bilgisi
   const [userSiteIds, setUserSiteIds] = useState<string[]>([])
+  const [viewerDepartment, setViewerDepartment] = useState<string | null>(null)
 
   // Kullanıcı site bilgisini çek
   useEffect(() => {
@@ -839,13 +960,18 @@ export default function PurchaseRequestsTable({
         if (user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('site_id')
+            .select('site_id, department')
             .eq('id', user.id)
             .single()
           
           if (profile?.site_id) {
             setUserSiteIds(Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
           }
+          setViewerDepartment(
+            profile?.department != null && String(profile.department).trim() !== ''
+              ? String(profile.department).trim()
+              : null
+          )
         }
       } catch (error) {
         console.error('Kullanıcı site bilgisi alınamadı:', error)
@@ -945,6 +1071,33 @@ export default function PurchaseRequestsTable({
   // Role prop'tan veya fallback olarak 'user' kullan
   const userRole = propUserRole || 'user'
 
+  /** Satırda "Satın Almaya Gönder" / Onayla: klasik depo onayı veya IT onayı sonrası (Pazarlama site manager). */
+  const showSendToPurchasingInRow = (request: PurchaseRequest) => {
+    const standardStatuses =
+      request.status === 'onay_bekliyor' ||
+      request.status === 'kısmen gönderildi' ||
+      request.status === 'depoda mevcut değil' ||
+      request.status === 'ana depoda yok'
+
+    if (
+      (userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') &&
+      standardStatuses
+    ) {
+      return true
+    }
+
+    if (
+      userRole === 'site_manager' &&
+      isPazarlamaDepartment(viewerDepartment) &&
+      request.it_workflow_applies === true &&
+      request.status === IT_STATUS_ONAYLANDI
+    ) {
+      return true
+    }
+
+    return false
+  }
+
   // Arama state'i
   const [searchTerm, setSearchTerm] = useState('')
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
@@ -982,9 +1135,9 @@ export default function PurchaseRequestsTable({
   
   // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${JSON.stringify(overdueRequestIds)}`,
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${JSON.stringify(overdueRequestIds)}`,
     () => fetchPurchaseRequests(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}`,
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}`,
       userRole,
       debouncedSearchTerm,
       statusFilter,
@@ -1147,7 +1300,11 @@ export default function PurchaseRequestsTable({
   // Filter uygulaması
   const filteredRequests = filteredByDeliveryStatus.filter((req: any) => {
     // Site manager için tab bazlı filtreleme
-    if (userRole === 'site_manager' && activeTab === 'approval_pending') {
+    if (
+      userRole === 'site_manager' &&
+      activeTab === 'approval_pending' &&
+      propListView !== 'it'
+    ) {
       const approvalPendingStatuses = ['kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok']
       if (!approvalPendingStatuses.includes(req.status)) {
         return false
@@ -1273,6 +1430,8 @@ export default function PurchaseRequestsTable({
       'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
       'onay_bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
       'departman_onayı_bekliyor': { label: '🔔 Departman Onayı Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200 border' },
+      'it_incelemesinde': { label: 'IT Yönetim — İncelemede', className: 'bg-sky-50 text-sky-800 border border-sky-200' },
+      'it_onaylandi': { label: 'IT Yönetim — Onaylandı (Satın almaya hazır)', className: 'bg-emerald-50 text-emerald-800 border border-emerald-200' },
       'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
       'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
       'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
@@ -1752,7 +1911,7 @@ export default function PurchaseRequestsTable({
            
             
             {/* Tab Menu - Sadece site manager için */}
-            {userRole === 'site_manager' && (
+            {userRole === 'site_manager' && propListView !== 'it' && (
               <div className="order-2 sm:order-1">
                 <div className="flex items-center gap-2 p-1 bg-gray-50 rounded-lg border border-gray-100">
                   <button
@@ -2403,15 +2562,7 @@ export default function PurchaseRequestsTable({
                     {/* Actions - Site Manager ve Santiye Depo Yöneticisi için özel buton + Kebab Menu */}
                     <div className="relative flex justify-center items-center gap-2">
                       {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu */}
-                      {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
-                        // Tüm siteler için aynı statuslarda buton göster
-                        return (
-                          request.status === 'onay_bekliyor' || 
-                          request.status === 'kısmen gönderildi' || 
-                          request.status === 'depoda mevcut değil' || 
-                          request.status === 'ana depoda yok'
-                        )
-                      })() && (
+                      {showSendToPurchasingInRow(request) && (
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
                           disabled={approving === request.id}
@@ -2426,7 +2577,9 @@ export default function PurchaseRequestsTable({
                           ) : (
                             <>
                               <Check className="h-3 w-3 mr-1.5" />
-                              {request.status === 'onay_bekliyor' ? 'Onayla' : 'Satın Almaya Gönder'}
+                              {request.status === 'onay_bekliyor'
+                                ? 'Onayla'
+                                : 'Satın Almaya Gönder'}
                             </>
                           )}
                         </Button>
@@ -2543,16 +2696,8 @@ export default function PurchaseRequestsTable({
                       </div>
                     </div>
                     
-                    {/* Site Manager ve Santiye Depo Yöneticisi için Satın Almaya Gönder / Onayla butonu - Mobile */}
-                    {(userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') && (() => {
-                      // Tüm siteler için aynı statuslarda buton göster
-                      return (
-                        request.status === 'onay_bekliyor' || 
-                        request.status === 'kısmen gönderildi' || 
-                        request.status === 'depoda mevcut değil' || 
-                        request.status === 'ana depoda yok'
-                      )
-                    })() && (
+                    {/* Site Manager: depo onayı veya IT onayı sonrası satın almaya gönder — Mobile */}
+                    {showSendToPurchasingInRow(request) && (
                       <div className="pt-2">
                         <Button
                           onClick={(e) => handleSiteManagerApproval(request.id, e)}
