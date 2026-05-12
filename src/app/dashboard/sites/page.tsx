@@ -39,16 +39,6 @@ interface Site {
   approved_requests: number
   recent_requesters: string[]
   last_request_date?: string
-  // Onaylanan teklifler
-  approved_offers?: Array<{
-    id: string
-    supplier_name: string
-    total_price: number
-    currency: string
-    delivery_days: number
-    request_title: string
-    selected_at: string
-  }>
 }
 
 // Sites with stats fetcher fonksiyonu
@@ -140,47 +130,6 @@ const fetchSitesWithStats = async () => {
           ? allRequests.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())[0].created_at
           : undefined
 
-        // Onaylanan teklifleri çek
-        let approvedOffers: any[] = []
-        try {
-          const { data: offersData, error: offersError } = await supabase
-            .from('offers')
-            .select(`
-              id,
-              supplier_name,
-              total_price,
-              currency,
-              delivery_days,
-              selected_at,
-              purchase_requests!inner(
-                title,
-                status
-              )
-            `)
-            .eq('site_id', site.id)
-            .eq('is_selected', true)
-            .eq('purchase_requests.status', 'approved')
-            .order('selected_at', { ascending: false })
-            .limit(10)
-
-          if (!offersError && offersData) {
-            approvedOffers = offersData.map(offer => {
-              const purchaseRequest = offer.purchase_requests as any
-              return {
-                id: offer.id,
-                supplier_name: offer.supplier_name,
-                total_price: offer.total_price,
-                currency: offer.currency,
-                delivery_days: offer.delivery_days,
-                request_title: purchaseRequest?.title || 'Bilinmeyen Talep',
-                selected_at: offer.selected_at
-              }
-            })
-          }
-        } catch (error) {
-          console.error('Error fetching approved offers for site', site.id, error)
-        }
-
         return {
           ...site,
           total_requests: totalRequests,
@@ -189,7 +138,6 @@ const fetchSitesWithStats = async () => {
           approved_requests: approvedRequests,
           recent_requesters: recentRequesters,
           last_request_date: lastRequestDate,
-          approved_offers: approvedOffers
         }
       } catch (error) {
         console.error('Error processing site', site.id, error)
@@ -201,7 +149,6 @@ const fetchSitesWithStats = async () => {
           approved_requests: 0,
           recent_requesters: [],
           last_request_date: undefined,
-          approved_offers: []
         }
       }
     })
@@ -252,17 +199,6 @@ export default function SitesPage() {
         }, 
         () => {
           console.log('📡 Purchase requests update for sites triggered')
-          invalidateSitesCache()
-        }
-      )
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'offers' 
-        }, 
-        () => {
-          console.log('📡 Offers update for sites triggered')
           invalidateSitesCache()
         }
       )
@@ -348,7 +284,9 @@ export default function SitesPage() {
         <div className="hidden sm:flex items-center justify-between">
           <div>
             <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
-            <p className="text-gray-600 mt-4 text-base">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
+            <p className="text-gray-600 mt-4 text-base">
+              Şantiye listesi — detaylı istatistikler ve teklifler için bir şantiyeye tıklayın
+            </p>
           </div>
         </div>
 
@@ -356,7 +294,7 @@ export default function SitesPage() {
         <div className="sm:hidden space-y-4">
           <div>
             <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
-            <p className="text-gray-600 mt-4 text-sm">Tüm şantiyeleri ve istatistiklerini görüntüleyin</p>
+            <p className="text-gray-600 mt-4 text-sm">Detaylar için şantiye kartına dokunun veya tıklayın</p>
           </div>
         </div>
       </div>

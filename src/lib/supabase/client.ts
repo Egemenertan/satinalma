@@ -19,5 +19,14 @@ export function createClient() {
     throw new Error('Missing Supabase environment variables. Please check your .env.local file.')
   }
 
-  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey)
+  const isProd = process.env.NODE_ENV === 'production'
+
+  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey, {
+    cookies: {},
+    cookieOptions: {
+      path: '/',
+      sameSite: 'lax',
+      ...(isProd ? { secure: true } : {}),
+    },
+  })
 }

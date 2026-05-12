@@ -10,11 +10,13 @@ interface DateFilterProps {
   dateRange: { from: Date | undefined; to?: Date | undefined }
   onChange: (range: { from: Date | undefined; to?: Date | undefined }) => void
   onClear: () => void
+  /** Varsayılan false (siparişler listesi). true: odak tuzağı ile daha modal hissi. */
+  popoverModal?: boolean
 }
 
-export function DateFilter({ dateRange, onChange, onClear }: DateFilterProps) {
+export function DateFilter({ dateRange, onChange, onClear, popoverModal = false }: DateFilterProps) {
   return (
-    <Popover modal={false}>
+    <Popover modal={popoverModal}>
       <PopoverTrigger asChild>
         <button
           type="button"

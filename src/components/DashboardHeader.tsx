@@ -57,11 +57,11 @@ export default function DashboardHeader() {
 
   return (
     <header className="hidden lg:block fixed top-3 left-[5.5rem] right-0 z-[45]">
-      <div className="flex justify-center px-10 overflow-visible">
-        <div className="bg-white/70 backdrop-blur-xl rounded-3xl border border-gray-200/60 px-8 py-1.5 flex items-center justify-between w-1/2 overflow-visible">
+      <div className="flex justify-start px-10 overflow-visible">
+        <div className="bg-white/70 backdrop-blur-xl rounded-xl border border-gray-200/60 px-8 py-1.5 flex items-center justify-between w-1/2 overflow-visible">
           <div className="flex items-center">
             <span className="text-2xl font-bold text-gray-900">
-              Döveç Lojistik
+              Dovec Lojistik
             </span>
           </div>
 

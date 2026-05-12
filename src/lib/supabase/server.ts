@@ -13,10 +13,17 @@ export function createClient() {
     throw new Error('Missing Supabase environment variables. Please check your .env.local file.')
   }
 
+  const isProd = process.env.NODE_ENV === 'production'
+
   return createServerClient<Database>(
     supabaseUrl,
     supabaseAnonKey,
     {
+      cookieOptions: {
+        path: '/',
+        sameSite: 'lax',
+        ...(isProd ? { secure: true } : {}),
+      },
       cookies: {
         get(name: string) {
           return cookieStore.get(name)?.value

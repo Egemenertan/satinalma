@@ -22,8 +22,26 @@ export function NotificationManager() {
 
   useEffect(() => {
     if (originalTitleRef.current === null) {
-      originalTitleRef.current = document.title;
+      originalTitleRef.current = document.title.replace(/^\(\d+\)\s+/, '');
     }
+
+    const onTabBadge = (event: Event) => {
+      const delta = (event as CustomEvent<{ delta?: number }>).detail?.delta ?? 0;
+      if (!delta) return;
+      setNotificationCount((prev) => {
+        const next = Math.max(0, prev + delta);
+        const base = originalTitleRef.current ?? document.title.replace(/^\(\d+\)\s+/, '');
+        if (next > 0) {
+          document.title = `(${next}) ${base}`;
+        } else {
+          document.title = base;
+        }
+        syncAppIconBadge(next);
+        return next;
+      });
+    };
+
+    window.addEventListener('satinalma:tab-badge', onTabBadge as EventListener);
 
     // Register service worker message listener
     if ('serviceWorker' in navigator) {
@@ -32,6 +50,7 @@ export function NotificationManager() {
 
     // Cleanup on unmount
     return () => {
+      window.removeEventListener('satinalma:tab-badge', onTabBadge as EventListener);
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
       }
@@ -55,7 +74,11 @@ export function NotificationManager() {
   };
 
   const updateDocumentTitle = (count: number) => {
-    const base = originalTitleRef.current ?? document.title;
+    const raw = originalTitleRef.current ?? document.title;
+    const base = raw.replace(/^\(\d+\)\s+/, '');
+    if (originalTitleRef.current === null) {
+      originalTitleRef.current = base;
+    }
     if (count > 0) {
       document.title = `(${count}) ${base}`;
     } else {

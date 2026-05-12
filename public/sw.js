@@ -1,17 +1,12 @@
 // Service Worker for PWA and Push Notifications
 
-const CACHE_NAME = 'satinalma-v2';
+// v3: Uygulama sayfalarını önbellek-öncelikli sunmak oturum/SSR ile çakışabiliyordu;
+// yalnız hafif shell + offline sayfası precache; navigasyon ağı öncelikli.
+const CACHE_NAME = 'satinalma-v3';
 const BADGE_CACHE = 'satinalma-badge-v1';
 const BADGE_KEY = 'badge-count';
 
-const urlsToCache = [
-  '/',
-  '/dashboard',
-  '/dashboard/requests',
-  '/dashboard/suppliers',
-  '/dashboard/offers',
-  '/offline.html'
-];
+const urlsToCache = ['/offline.html'];
 
 function getNav() {
   try {
@@ -56,13 +51,39 @@ self.addEventListener('install', (event) => {
   );
 });
 
-// Fetch event - serve cached content when offline
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.map((key) => {
+          if (key !== CACHE_NAME && key !== BADGE_CACHE) {
+            return caches.delete(key);
+          }
+        })
+      )
+    )
+  );
+});
+
+// Fetch: API ve navigasyon her zaman ağ — oturum çerezleri ve middleware güvenilir kalsın.
 self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  const url = new URL(req.url);
+
+  if (req.mode === 'navigate') {
+    event.respondWith(
+      fetch(req).catch(() => caches.match('/offline.html'))
+    );
+    return;
+  }
+
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(req));
+    return;
+  }
+
   event.respondWith(
-    caches.match(event.request)
-      .then((response) => {
-        return response || fetch(event.request);
-      })
+    fetch(req).catch(() => caches.match(req))
   );
 });
 

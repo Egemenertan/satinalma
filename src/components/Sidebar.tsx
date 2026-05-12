@@ -451,7 +451,7 @@ export default function Sidebar({
           "bg-white shadow-lg",
           // Desktop - Ada tasarımı (sol tarafta)
           "hidden lg:flex",
-          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-full lg:border lg:border-gray-200/60",
+          "lg:top-3 lg:bottom-3 lg:left-3 lg:rounded-xl lg:border lg:border-gray-200/60",
           isCollapsed ? "lg:w-16" : "lg:w-64",
           // Mobile - Tam sayfa
           isMobileOpen ? "flex inset-0 w-full h-full" : "hidden lg:flex",

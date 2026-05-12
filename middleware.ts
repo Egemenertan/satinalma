@@ -89,10 +89,17 @@ export async function middleware(request: NextRequest) {
   //    refresh edilmiş token'lar kaybolur → kullanıcı atılır).
   let supabaseResponse = NextResponse.next({ request })
 
+  const isProd = process.env.NODE_ENV === 'production'
+
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      cookieOptions: {
+        path: '/',
+        sameSite: 'lax',
+        ...(isProd ? { secure: true } : {}),
+      },
       cookies: {
         get(name: string) {
           return request.cookies.get(name)?.value

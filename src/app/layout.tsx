@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { NotificationManager } from "@/components/NotificationManager";
+import { WarehouseGmoPurchaseRequestAlerts } from "@/components/WarehouseGmoPurchaseRequestAlerts";
 import { Providers } from "./providers";
-import { STORAGE_URLS } from "@/lib/constants";
+import { AuthSessionSync } from "@/components/AuthSessionSync";
 
 export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
@@ -50,8 +51,10 @@ export default function RootLayout({
     <html lang="tr">
       <body className="font-helvetica-neue">
         <Providers>
+          <AuthSessionSync />
           <ToastProvider>
             <NotificationManager />
+            <WarehouseGmoPurchaseRequestAlerts />
             <div className="min-h-screen ">
               {children}
             </div>
