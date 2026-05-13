@@ -6,7 +6,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Package, ChevronDown, User, Users } from 'lucide-react'
+import { Package, ChevronDown, User, Users, Hash } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 
 interface ProductStockTabProps {
@@ -18,6 +18,7 @@ interface ProductStockTabProps {
 interface UserInventory {
   id: string
   quantity: number
+  serial_number: string | null
   owner_name: string | null
   owner_email: string | null
   pending_user_name: string | null
@@ -32,18 +33,58 @@ interface UserInventory {
 }
 
 
+function parseSerialTokens(raw: string | null | undefined): string[] {
+  if (!raw || !String(raw).trim()) return []
+  return String(raw)
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
 export function ProductStockTab({ product, stockData, totalStock }: ProductStockTabProps) {
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
   const [userInventories, setUserInventories] = useState<UserInventory[]>([])
   const [loadingInventories, setLoadingInventories] = useState(false)
   const [showUserInventories, setShowUserInventories] = useState(false)
+  /** Depo giriş hareketlerinde kayıtlı seri numaraları (depo id → benzersiz liste) */
+  const [serialsByWarehouseId, setSerialsByWarehouseId] = useState<Record<string, string[]>>({})
   const supabase = createClient()
 
   useEffect(() => {
     if (product?.id) {
       fetchUserInventories()
+      fetchGirisSerialNumbers()
     }
   }, [product?.id])
+
+  const fetchGirisSerialNumbers = async () => {
+    if (!product?.id) return
+    try {
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .select('serial_number, warehouse_id')
+        .eq('product_id', product.id)
+        .eq('movement_type', 'giriş')
+        .not('serial_number', 'is', null)
+
+      if (error) throw error
+
+      const map: Record<string, Set<string>> = {}
+      for (const row of data || []) {
+        const wid = row.warehouse_id as string | null
+        if (!wid) continue
+        if (!map[wid]) map[wid] = new Set()
+        for (const token of parseSerialTokens(row.serial_number as string)) {
+          map[wid].add(token)
+        }
+      }
+      setSerialsByWarehouseId(
+        Object.fromEntries(Object.entries(map).map(([k, v]) => [k, [...v].sort((a, b) => a.localeCompare(b, 'tr'))]))
+      )
+    } catch (e) {
+      console.error('Giriş seri numaraları yüklenemedi:', e)
+    }
+  }
 
   const fetchUserInventories = async () => {
     try {
@@ -53,6 +94,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
         .select(`
           id,
           quantity,
+          serial_number,
           assigned_date,
           status,
           owner_name,
@@ -123,15 +165,41 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   // Artık tüm zimmetler user_inventory'de ve stoktan düşülmüş durumda
   const totalAvailable = totalWarehouseStock
   const totalZimmetli = totalUserInventory
-  
-  console.log('📊 Stok Durumu Tab:', {
-    'Depo Stoğu (Mevcut)': totalAvailable,
-    'Zimmetli': totalZimmetli,
-    'GENEL TOPLAM': totalAvailable + totalZimmetli
-  })
+
+  const serialsForWarehouse = (warehouseId: string | null | undefined) => {
+    if (!warehouseId) return []
+    return serialsByWarehouseId[warehouseId] || []
+  }
+
+  const allGirisSerialsUnique = [...new Set(Object.values(serialsByWarehouseId).flat())].sort((a, b) =>
+    a.localeCompare(b, 'tr')
+  )
 
   return (
     <>
+      {allGirisSerialsUnique.length > 0 && (
+        <div className="bg-slate-50 rounded-2xl border border-slate-200 p-4 flex gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white border border-slate-200">
+            <Hash className="h-4 w-4 text-slate-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+              Depo girişlerinde kayıtlı seri numaraları
+            </p>
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {allGirisSerialsUnique.map((sn) => (
+                <span
+                  key={sn}
+                  className="inline-flex text-xs font-mono bg-white text-slate-800 px-2 py-1 rounded-lg border border-slate-200"
+                >
+                  {sn}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Ana Depo */}
       {anaDepo && (
         <div className="bg-white rounded-2xl border border-gray-300 shadow-sm overflow-hidden">
@@ -148,6 +216,21 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                 <p className="text-gray-500 text-xs font-medium">{product?.unit || ''}</p>
               </div>
             </div>
+            {serialsForWarehouse(anaDepo.warehouse_id).length > 0 && (
+              <div className="mt-4 pt-4 border-t border-gray-100">
+                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Bu depodaki giriş serileri</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {serialsForWarehouse(anaDepo.warehouse_id).map((sn) => (
+                    <span
+                      key={sn}
+                      className="text-xs font-mono bg-gray-50 text-gray-900 px-2 py-1 rounded-lg border border-gray-200"
+                    >
+                      {sn}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Duruma Göre Breakdown */}
@@ -245,6 +328,18 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                         </span>
                       )}
                     </div>
+                    {serialsForWarehouse(stock.warehouse_id).length > 0 && (
+                      <div className="flex flex-wrap gap-1 mt-2">
+                        {serialsForWarehouse(stock.warehouse_id).map((sn) => (
+                          <span
+                            key={sn}
+                            className="text-[10px] font-mono bg-gray-100 text-gray-800 px-1.5 py-0.5 rounded border border-gray-200"
+                          >
+                            {sn}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
@@ -307,6 +402,11 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   <span className="text-xs font-medium text-gray-900">{displayName}</span>
                                   {displayEmail && (
                                     <span className="text-xs text-gray-500 ml-1">({displayEmail})</span>
+                                  )}
+                                  {inv.serial_number && (
+                                    <span className="text-[10px] font-mono text-gray-700 mt-0.5 block">
+                                      Seri: {inv.serial_number}
+                                    </span>
                                   )}
                                 </div>
                               </div>
@@ -394,6 +494,11 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                               {secondaryUser && (
                                 <p className="text-xs text-primary-600">
                                   2. Zimmetli: {secondaryUser}
+                                </p>
+                              )}
+                              {inventory.serial_number && (
+                                <p className="text-xs font-mono text-gray-800 mt-1">
+                                  Seri no: {inventory.serial_number}
                                 </p>
                               )}
                               <p className="text-xs text-gray-400 mt-0.5">

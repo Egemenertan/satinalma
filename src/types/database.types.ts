@@ -1667,6 +1667,7 @@ export type Database = {
           reason: string | null
           reference_id: string | null
           reference_type: string | null
+          serial_number: string | null
           supplier_id: string | null
           supplier_name: string | null
           unit_price: number | null
@@ -1688,6 +1689,7 @@ export type Database = {
           reason?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          serial_number?: string | null
           supplier_id?: string | null
           supplier_name?: string | null
           unit_price?: number | null
@@ -1709,6 +1711,7 @@ export type Database = {
           reason?: string | null
           reference_id?: string | null
           reference_type?: string | null
+          serial_number?: string | null
           supplier_id?: string | null
           supplier_name?: string | null
           unit_price?: number | null

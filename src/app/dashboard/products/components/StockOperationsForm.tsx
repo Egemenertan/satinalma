@@ -38,6 +38,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     product_condition: 'yeni' as 'yeni' | 'kullanılmış' | 'arızalı' | 'hek', // Ürün durumu (sadece giriş için)
     assigned_to: '', // Zimmet alan (sadece transfer için)
     quantity: '',
+    serial_number: '', // Stok girişinde ürün seri no(ları); virgülle çoklu
     unit_price: '', // Birim fiyat (sadece giriş için)
     currency: 'TRY', // Para birimi (sadece giriş için)
     reason: '',
@@ -119,7 +120,8 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
             data.product_condition,
             data.unit_price ? parseFloat(data.unit_price) : undefined,
             data.currency || 'TRY',
-            invoiceFiles
+            invoiceFiles,
+            data.serial_number?.trim() || undefined
           )
         case 'çıkış':
           return await removeStock(
@@ -270,6 +272,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
         product_condition: 'yeni',
         assigned_to: '',
         quantity: '',
+        serial_number: '',
         unit_price: '',
         currency: 'TRY',
         reason: '',
@@ -330,6 +333,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
       product_condition: 'yeni',
       assigned_to: '',
       quantity: '',
+      serial_number: '',
       unit_price: '',
       currency: 'TRY',
       reason: '',
@@ -553,6 +557,26 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
                 </SelectItem>
               </SelectContent>
             </Select>
+          </div>
+        )}
+
+        {/* Seri numarası (sadece stok girişi) */}
+        {operationType === 'giriş' && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+            <Label htmlFor="serial_number" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+              Seri numarası (Opsiyonel)
+            </Label>
+            <Input
+              id="serial_number"
+              value={formData.serial_number}
+              onChange={(e) => handleChange('serial_number', e.target.value)}
+              placeholder="Örn: SN-2024-001 veya birden fazla için virgülle ayırın"
+              className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl font-mono text-sm"
+              autoComplete="off"
+            />
+            <p className="text-xs text-gray-500 mt-2">
+              Bu giriş hareketi kaydına yazılır; geçmiş sekmesinden görüntülenebilir.
+            </p>
           </div>
         )}
 

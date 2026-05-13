@@ -222,7 +222,8 @@ export async function updateStockWithMovement(
   assignedTo?: string,
   unitPrice?: number,
   currency?: string,
-  invoiceFiles?: File[]
+  invoiceFiles?: File[],
+  serialNumber?: string
 ): Promise<WarehouseStock> {
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -315,6 +316,7 @@ export async function updateStockWithMovement(
     assigned_to: assignedTo,
     unit_price: unitPrice,
     currency: currency || 'TRY',
+    serial_number: serialNumber?.trim() || null,
   }
 
   // İlk önce hareketi ekle ve ID'sini al
@@ -362,7 +364,8 @@ export async function addStock(
   productCondition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek',
   unitPrice?: number,
   currency?: string,
-  invoiceFiles?: File[]
+  invoiceFiles?: File[],
+  serialNumber?: string
 ): Promise<WarehouseStock> {
   return await updateStockWithMovement(
     productId,
@@ -377,7 +380,8 @@ export async function addStock(
     undefined,
     unitPrice,
     currency,
-    invoiceFiles
+    invoiceFiles,
+    serialNumber
   )
 }
 

@@ -12,3 +12,5 @@ export type { RequestSubmittedPDFData, RequestMaterialItem } from './requestPdfC
 // Zimmet PDF
 export { generateTeslimPDF, generateSayimPDF } from './zimmetPdfGenerator'
 export type { ZimmetItemData } from './zimmetPdfGenerator'
+export { printZimmetAssignmentListPdf } from './zimmetAssignmentListPdf'
+export type { ZimmetAssignmentListPdfPayload, ZimmetAssignmentListRow } from './zimmetAssignmentListPdf'

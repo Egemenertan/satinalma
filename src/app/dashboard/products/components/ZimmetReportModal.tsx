@@ -1,5 +1,5 @@
 /**
- * Depo çıkışlı (source_warehouse_id dolu) zimmet kayıtlarını çalışana göre Excel olarak dışa aktarır.
+ * Depo çıkışlı (source_warehouse_id dolu) zimmet kayıtlarını çalışana göre PDF (yazdır) olarak çıkarır.
  */
 
 'use client'
@@ -16,8 +16,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
-import { Check, FileSpreadsheet, Loader2, Search, User } from 'lucide-react'
-import * as XLSX from 'xlsx'
+import { Check, FileText, Loader2, Search, User } from 'lucide-react'
 import {
   buildDovecGroupWorkEmailFromDisplayName,
 } from '@/lib/dovec-work-email'
@@ -262,56 +261,81 @@ export function ZimmetReportModal({
         return
       }
 
-      const header = [
-        'Sahip Mail',
-        'Ürün Adı',
-        'SKU',
-        'Marka',
-        'Birim',
-        'Zimmet Miktarı',
-        'Ürün Tipi',
-        'Kaynak Depo',
-        'Seri No',
-      ]
+      const { data: authData } = await client.auth.getUser()
+      const user = authData?.user
+      let exportedByDisplayName = user?.email ?? '—'
+      let exportedByEmail: string | undefined = user?.email ?? undefined
+      if (user?.id) {
+        const { data: prof } = await client
+          .from('profiles')
+          .select('full_name, email')
+          .eq('id', user.id)
+          .maybeSingle()
+        if (prof?.full_name?.trim()) exportedByDisplayName = prof.full_name.trim()
+        else if (prof?.email) exportedByDisplayName = prof.email
+        exportedByEmail = prof?.email || user.email || undefined
+      }
 
-      const body = matched.map((r: any) => {
+      const filterNote =
+        [
+          'user_inventory: status=aktif; source_warehouse_id dolu; owner_email eşlemesi VEYA kullanıcı profili (profiles.id=user_id)',
+          profileId ? `profiles.id: ${profileId}` : 'profiles.id: eşlenmedi',
+          `E-posta adayları (owner): ${emailCandidates.join('; ') || '—'}`,
+        ].join(' · ')
+
+      const tableRows = matched.map((r: any) => {
         const p = r.products
         const brandName = Array.isArray(p?.brand) ? p.brand[0]?.name : p?.brand?.name
         const wh = r.warehouse
         const whName = Array.isArray(wh) ? wh[0]?.name : wh?.name
         const ptype = PRODUCT_TYPE_TR[p?.product_type] || p?.product_type || ''
-        return [
-          (r.owner_email as string) ||
+        return {
+          ownerEmail:
+            (r.owner_email as string) ||
             selectedEmployee.work_email ||
             selectedEmployee.personal_email ||
             '',
-          p?.name || r.item_name || '',
-          p?.sku || '',
-          brandName || '',
-          p?.unit || r.unit || '',
-          Number(r.quantity ?? 0),
-          ptype,
-          whName || '',
-          r.serial_number || '',
-        ]
+          productName: p?.name || r.item_name || '',
+          sku: p?.sku || '',
+          brand: brandName || '',
+          unit: p?.unit || r.unit || '',
+          quantity: Number(r.quantity ?? 0),
+          productType: ptype,
+          sourceWarehouse: whName || '',
+          serialNumber: (r.serial_number as string) || '',
+        }
       })
-
-      const filterNote = `user_inventory: owner_email şu adreslerden biriyle eşleşen veya (varsa) kullanıcı profili ile eşleşen kayıtlar. E-posta listesi: ${emailCandidates.join('; ')}`
-      const sheetData = [[filterNote], [], header, ...body]
-      const ws = XLSX.utils.aoa_to_sheet(sheetData)
-      const wb = XLSX.utils.book_new()
-      XLSX.utils.book_append_sheet(wb, ws, 'Depo Zimmet')
 
       const safeName = (selectedEmployee.first_name || 'calisan')
         .replace(/[/\\?%*:|"<>]/g, '')
         .slice(0, 40)
       const whPart = warehouseLabel
-        ? `_${warehouseLabel.replace(/[/\\?%*:|"<>]/g, '').slice(0, 24)}`
+        ? ` · ${warehouseLabel.replace(/[/\\?%*:|"<>]/g, '').slice(0, 24)}`
         : ''
-      const fname = `Zimmet_Raporu_${safeName}${whPart}_${new Date().toISOString().split('T')[0]}.xlsx`
-      XLSX.writeFile(wb, fname)
+      const docTitle = `Zimmet raporu — ${safeName}${whPart}`
 
-      showToast(`Excel indirildi (${matched.length} satır)`, 'success')
+      const { printZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
+
+      await printZimmetAssignmentListPdf({
+        docTitleSuffix: docTitle,
+        titleMain: 'ZİMMET ENVANTER RAPORU',
+        titleSub:
+          'Dovec Satın Alma — depodan çıkışlı aktif kullanıcı zimmet özetleri (user_inventory)',
+        assignedPersonName: selectedEmployee.first_name || 'Çalışan',
+        assignedPersonEmailLine:
+          `${selectedEmployee.work_email || ''}${selectedEmployee.personal_email ? ` · ${selectedEmployee.personal_email}` : ''}`.trim(),
+        exportedByDisplayName,
+        exportedByEmail,
+        generatedAtLabel: new Date().toLocaleString('tr-TR'),
+        warehouseScopeLine: warehouseLabel
+          ? `Kaynak depo / site filtresi: ${warehouseLabel}`
+          : 'Tüm kaynak depolar dahil',
+        rowCountNote: `${matched.length} zimmet kalemi listelenmiştir`,
+        filterNoteTechnical: filterNote.slice(0, 4000),
+        rows: tableRows,
+      })
+
+      showToast(`PDF yazdırıldı (${matched.length} satır). Kaydet seçeneğiyle PDF alabilirsiniz.`, 'success')
       onOpenChange(false)
     } catch (e) {
       console.error(e)
@@ -326,8 +350,8 @@ export function ZimmetReportModal({
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-semibold text-gray-900">
-            <FileSpreadsheet className="w-6 h-6 text-emerald-600" />
-            Zimmet Raporu (Excel)
+            <FileText className="w-6 h-6 text-emerald-600" />
+            Zimmet Raporu (PDF)
           </DialogTitle>
           <p className="text-sm text-gray-500 pt-1">
             Seçilen çalışanın e-postalarına göre{' '}
@@ -438,8 +462,8 @@ export function ZimmetReportModal({
               </>
             ) : (
               <>
-                <FileSpreadsheet className="w-4 h-4 mr-2" />
-                Excel indir
+                <FileText className="w-4 h-4 mr-2" />
+                PDF al
               </>
             )}
           </Button>

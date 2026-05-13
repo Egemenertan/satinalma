@@ -211,6 +211,11 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
                 📦 {movement.supplier_name}
               </p>
             )}
+            {movement.serial_number && movement.movement_type === 'giriş' && (
+              <p className="text-xs text-gray-700 mt-1 font-mono">
+                Seri no: {movement.serial_number}
+              </p>
+            )}
             {movement.reason && (
               <p className="text-xs text-gray-500 mt-1 italic">
                 {movement.reason}
