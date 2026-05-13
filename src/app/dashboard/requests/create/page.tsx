@@ -62,6 +62,58 @@ const isOfficeCategory = (categoryName: string): boolean => {
   return OFFICE_CATEGORY_KEYWORDS.some((keyword) => normalized.includes(keyword))
 }
 
+const normalizeSiteDisplayKey = (name: string): string =>
+  name.trim().toLocaleLowerCase('tr-TR')
+
+/** Tire/nokta vb. ayıraçları boşluğa çevirir (D-Point, D.Point …) */
+const normalizeSiteNameLoose = (name: string): string =>
+  name
+    .trim()
+    .toLocaleLowerCase('tr-TR')
+    .replace(/[._]+/g, ' ')
+    .replace(/-/g, ' ')
+    .replace(/\s+/g, ' ')
+
+/** DB’de kırık URL olsa bile talep oluşturma — site seçiminde D Point için bucket görseli */
+function isDPointSiteLabel(name: string): boolean {
+  const n = normalizeSiteNameLoose(name)
+  if (n === 'd point' || n === 'dpoint') return true
+  const parts = n.split(' ').filter(Boolean)
+  if (parts.length >= 2 && parts[0] === 'd' && parts[1] === 'point') return true
+  return false
+}
+
+/**
+ * Products sayfasındaki gibi tüm sites kataloğuna göre eksik görseli tamamlar.
+ * Profil farklı UUID'ye bağlı eski/boş görsel satırını işaret ettiğinde, aynı isimli
+ * başka bir sites kaydındaki image_url kullanılır.
+ * D Point: DB'de dolu ama yüklenmeyen URL olabiliyor; bu adımda her zaman bucket görseli kullanılır.
+ */
+function enrichSiteImagesFromCatalog(
+  picked: Site[],
+  catalog: Site[],
+  dPointHeroPublicUrl: string
+): Site[] {
+  const imageByName = new Map<string, string>()
+  for (const row of catalog) {
+    const url = row.image_url?.trim()
+    if (!url) continue
+    const key = normalizeSiteDisplayKey(row.name)
+    if (!imageByName.has(key)) imageByName.set(key, url)
+  }
+
+  return picked.map((site) => {
+    if (isDPointSiteLabel(site.name)) {
+      return { ...site, image_url: dPointHeroPublicUrl }
+    }
+    const own = site.image_url?.trim()
+    if (own) return site
+    const fb = imageByName.get(normalizeSiteDisplayKey(site.name))
+    if (fb) return { ...site, image_url: fb }
+    return site
+  })
+}
+
 export default function CreatePurchaseRequestPage() {
   const router = useRouter()
   const { showToast } = useToast()
@@ -76,7 +128,6 @@ export default function CreatePurchaseRequestPage() {
   const [sites, setSites] = useState<Site[]>([])
   const [userSite, setUserSite] = useState<Site | null>(null)
   const [selectedSite, setSelectedSite] = useState<Site | null>(null)
-  const [siteImages, setSiteImages] = useState<Record<string, string>>({})
   
   // User type state
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
@@ -170,43 +221,85 @@ export default function CreatePurchaseRequestPage() {
             return
           }
 
-          if (userSiteIds.length === 1) {
-            const { data: siteData, error: siteError } = await supabase
+          if (userSiteIds.length === 0) {
+            // site zorunlu olmayan roller; alışveriş adımında kalır
+          } else {
+            // Products sayfası ile aynı kaynak: tüm sites satırları, sonra profil ID'lerine göre süzme
+            const { data: catalogData, error: catalogError } = await supabase
               .from('sites')
               .select('id, name, image_url')
-              .eq('id', userSiteIds[0])
-              .single()
-
-            if (!siteError && siteData) {
-              setUserSite(siteData)
-              setSelectedSite(siteData)
-              
-              if (siteData.id === SPECIAL_SITE_ID) {
-                // Merkez ofis için ofis kategorileri aktif
-              }
-              
-              if (siteData.name === 'Genel Merkez Ofisi') {
-                setIsGenelMerkezUser(true)
-              }
-            }
-          } else if (userSiteIds.length > 1) {
-            const { data: userSitesData, error: sitesError } = await supabase
-              .from('sites')
-              .select('id, name, image_url')
-              .in('id', userSiteIds)
               .order('name')
 
-            if (!sitesError && userSitesData) {
-              setSites(userSitesData)
-              setPageStep('site-selection')
-              
-              const imageMap: Record<string, string> = {}
-              userSitesData.forEach((site: Site) => {
-                if (site.image_url) {
-                  imageMap[site.name] = site.image_url
+            if (catalogError) {
+              console.error('sites catalog (create request):', catalogError)
+            }
+
+            let catalog: Site[] = (catalogData as Site[] | null) ?? []
+            const allowed = new Set(userSiteIds)
+            let picked = catalog.filter((s) => allowed.has(s.id))
+
+            if (picked.length < userSiteIds.length) {
+              const pickedIds = new Set(picked.map((p) => p.id))
+              const missingIds = userSiteIds.filter((id) => !pickedIds.has(id))
+              if (missingIds.length > 0) {
+                const { data: extraRows, error: extraErr } = await supabase
+                  .from('sites')
+                  .select('id, name, image_url')
+                  .in('id', missingIds)
+
+                if (!extraErr && extraRows?.length) {
+                  const extra = extraRows as Site[]
+                  picked = [...picked, ...extra]
+                  const mergedById = new Map<string, Site>()
+                  for (const row of [...catalog, ...extra]) {
+                    mergedById.set(row.id, row)
+                  }
+                  catalog = Array.from(mergedById.values())
                 }
-              })
-              setSiteImages(imageMap)
+              }
+            }
+
+            picked.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+
+            const { data: dPointPublic } = supabase.storage
+              .from('satinalma')
+              .getPublicUrl('dpointhero.webp')
+            const dPointHeroPublicUrl = dPointPublic.publicUrl
+
+            picked = enrichSiteImagesFromCatalog(picked, catalog, dPointHeroPublicUrl)
+
+            if (userSiteIds.length === 1) {
+              let siteData = picked[0]
+              if (!siteData) {
+                const { data: row, error: rowErr } = await supabase
+                  .from('sites')
+                  .select('id, name, image_url')
+                  .eq('id', userSiteIds[0])
+                  .single()
+                if (!rowErr && row) {
+                  const catForFb = catalog.length > 0 ? catalog : [row as Site]
+                  ;[siteData] = enrichSiteImagesFromCatalog(
+                    [row as Site],
+                    catForFb,
+                    dPointHeroPublicUrl
+                  )
+                }
+              }
+              if (siteData) {
+                setUserSite(siteData)
+                setSelectedSite(siteData)
+
+                if (siteData.id === SPECIAL_SITE_ID) {
+                  // Merkez ofis için ofis kategorileri aktif
+                }
+
+                if (siteData.name === 'Genel Merkez Ofisi') {
+                  setIsGenelMerkezUser(true)
+                }
+              }
+            } else {
+              setSites(picked)
+              setPageStep('site-selection')
             }
           }
         }
@@ -601,22 +694,22 @@ export default function CreatePurchaseRequestPage() {
 
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {sites.map((site) => {
-              const hasImage = siteImages[site.name]
+              const imageUrl = site.image_url?.trim()
+              const hasImage = Boolean(imageUrl)
               return (
                 <button
                   key={site.id}
                   type="button"
                   onClick={() => handleSiteSelect(site)}
-                  className="aspect-square p-4 rounded-3xl transition-all duration-200 relative overflow-hidden hover:shadow-lg hover:scale-[1.02] group border border-gray-200"
-                  style={{
-                    backgroundImage: hasImage ? `url(${siteImages[site.name]})` : 'none',
-                    backgroundSize: 'cover',
-                    backgroundPosition: 'center',
-                    backgroundColor: hasImage ? 'transparent' : '#f9fafb'
-                  }}
+                  className="aspect-square p-4 rounded-3xl transition-all duration-200 relative overflow-hidden hover:shadow-lg hover:scale-[1.02] group border border-gray-200 bg-[#f9fafb]"
                 >
-                  {hasImage ? (
+                  {hasImage && imageUrl ? (
                     <>
+                      <img
+                        src={imageUrl}
+                        alt=""
+                        className="absolute inset-0 h-full w-full object-cover"
+                      />
                       <div className="absolute inset-0 bg-black/40 group-hover:bg-black/50 transition-colors duration-200" />
                       <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
                     </>
