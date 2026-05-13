@@ -25,6 +25,7 @@ import {
 } from '@/lib/warehouse-it-material-filter'
 import {
   canSeeItWorkflowTab,
+  isItWorkflowElevatedRole,
   isPazarlamaDepartment,
   IT_STATUS_ONAYLANDI
 } from '@/lib/it-workflow'
@@ -298,7 +299,10 @@ const fetchPurchaseRequests = async (
   // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
   // IT depo yöneticileri ise talep kalemlerine göre ayrı kısıtlanır; talep.departmanı ile sınırlanmaz.
   const userDepartment: string | null =
-    effectiveRole !== 'department_head' && profile?.department && !isItWarehouseManager
+    effectiveRole !== 'department_head' &&
+    profile?.department &&
+    !isItWarehouseManager &&
+    !isItWorkflowElevatedRole(effectiveRole)
       ? profile.department
       : null
 
@@ -507,7 +511,8 @@ const fetchPurchaseRequests = async (
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
   
-  // Rol bazlı filtreleme
+  // Rol bazlı filtreleme (admin/manager/super_admin: site/departmana göre daraltma yok)
+  if (!isItWorkflowElevatedRole(effectiveRole)) {
   if (effectiveRole === 'purchasing_officer') {
     // Purchasing officer:
     // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
@@ -554,6 +559,7 @@ const fetchPurchaseRequests = async (
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
   }
+  }
 
   // Departman filtresi: profilde department doluysa, sadece o departmana ait talepler.
   // department_head rolü kendi mantığında zaten uyguluyor, dışarıda bırakılır.
@@ -561,7 +567,7 @@ const fetchPurchaseRequests = async (
     countQuery = countQuery.eq('department', userDepartment)
   }
 
-  if (listView === 'main') {
+  if (listView === 'main' && !isItWorkflowElevatedRole(effectiveRole)) {
     const itOr = `requested_by.eq.${user.id},it_workflow_applies.eq.false,and(it_workflow_applies.eq.true,status.not.in.(it_incelemesinde,it_onaylandi))`
     countQuery = countQuery.or(itOr)
   }
@@ -619,6 +625,7 @@ const fetchPurchaseRequests = async (
     .order('created_at', { ascending: false })
   
   // Rol bazlı filtreleme (aynı mantık)
+  if (!isItWorkflowElevatedRole(effectiveRole)) {
   if (effectiveRole === 'purchasing_officer') {
     // Purchasing officer:
     // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
@@ -665,6 +672,7 @@ const fetchPurchaseRequests = async (
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
   }
+  }
 
   // Departman filtresi: profilde department doluysa, sadece o departmana ait talepler.
   // department_head rolü kendi mantığında zaten uyguluyor, dışarıda bırakılır.
@@ -672,7 +680,7 @@ const fetchPurchaseRequests = async (
     requestsQuery = requestsQuery.eq('department', userDepartment)
   }
 
-  if (listView === 'main') {
+  if (listView === 'main' && !isItWorkflowElevatedRole(effectiveRole)) {
     const itOrR = `requested_by.eq.${user.id},it_workflow_applies.eq.false,and(it_workflow_applies.eq.true,status.not.in.(it_incelemesinde,it_onaylandi))`
     requestsQuery = requestsQuery.or(itOrR)
   }
@@ -1756,7 +1764,58 @@ export default function PurchaseRequestsTable({
       if (requestError || !requestData) {
         throw new Error('Talep bilgisi alınamadı.')
       }
-      
+
+      if (requestData.status === IT_STATUS_ONAYLANDI) {
+        const newStatus = 'satın almaya gönderildi'
+        const successMessage = 'Talep satın almaya gönderildi!'
+        const historyComment = 'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi'
+
+        const optimisticUpdate = data
+          ? {
+              ...data,
+              requests: data.requests.map((req: any) =>
+                req.id === requestId ? { ...req, status: newStatus } : req
+              ),
+            }
+          : null
+
+        if (optimisticUpdate) {
+          mutate(`purchase_requests/${currentPage}/${pageSize}`, optimisticUpdate, false)
+        }
+
+        const { error } = await supabase
+          .from('purchase_requests')
+          .update({
+            status: newStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', requestId)
+
+        if (error) throw error
+
+        await supabase.from('approval_history').insert({
+          purchase_request_id: requestId,
+          action: 'approved',
+          performed_by: user.id,
+          comments: historyComment,
+        })
+
+        try {
+          const { handlePurchaseRequestStatusChange } = await import('../lib/teams-webhook')
+          await handlePurchaseRequestStatusChange(requestId, newStatus, IT_STATUS_ONAYLANDI)
+        } catch {
+          /* non-blocking */
+        }
+
+        invalidatePurchaseRequestsCache()
+        mutate('purchase_requests_stats')
+        mutate('pending_requests_count')
+        setTimeout(() => refreshData(), 100)
+        setTimeout(() => refreshData(), 300)
+        showToast(successMessage, 'success')
+        return
+      }
+
       // Ana depoda stok kontrolü yap
       console.log('🔍 Ana depoda stok kontrolü yapılıyor...')
       const { data: stockCheckData, error: stockCheckError } = await supabase

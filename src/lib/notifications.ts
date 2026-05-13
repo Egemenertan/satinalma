@@ -1,5 +1,6 @@
 import { createClient } from './supabase/server';
 import EmailService from './email';
+import { SPECIAL_SITE_ID } from './constants';
 
 interface NotificationData {
   title: string;
@@ -198,22 +199,22 @@ export class NotificationService {
     // Direkt email gönder (ilgili rollerdeki kullanıcılara)
     let userEmails = await this.getUserEmailsByRoles(['admin', 'manager', 'supervisor'], siteId);
     console.log(`📧 Admin/Manager/Supervisor emailler: ${userEmails.join(', ') || 'YOK'}`);
-    
-    // Eğer siteId varsa, site_manager rolündeki kullanıcılara da email gönder
+
     if (siteId) {
-      console.log(`🏗️ Site ID bulundu: ${siteId}, site_manager rolündeki kullanıcılara email gönderiliyor...`);
+      console.log(`🏗️ Site ID: ${siteId}, site_manager emailleri ekleniyor...`);
       const siteManagerEmails = await this.getUserEmailsByRoles(['site_manager'], siteId);
       console.log(`📧 Site manager emailler: ${siteManagerEmails.join(', ') || 'YOK'}`);
-      
-      // Test için şimdilik her iki email adresine de gönder
-      const testEmails = ['egemen.ertan@dovecgroup.com', 'ertanegemenyusuf@gmail.com'];
-      console.log(`🧪 TEST MODU: ${testEmails.join(', ')} adreslerine email gönderiliyor...`);
-      userEmails = testEmails;
-      
-      // Gerçek kullanıma geçildiğinde bu satırları aktif et:
-      // userEmails = [...userEmails, ...siteManagerEmails];
-      // userEmails = [...new Set(userEmails)]; // Tekrarları kaldır
+      userEmails = [...userEmails, ...siteManagerEmails];
     }
+
+    // Genel Merkez Ofisi talebi: depo yöneticilerine de e-posta (site filtreli profil olmasa da merkez talebi)
+    if (siteId === SPECIAL_SITE_ID) {
+      const wmEmails = await this.getUserEmailsByRoles(['warehouse_manager']);
+      console.log(`📧 Genel Merkez — warehouse_manager emailler: ${wmEmails.join(', ') || 'YOK'}`);
+      userEmails = [...userEmails, ...wmEmails];
+    }
+
+    userEmails = [...new Set(userEmails)];
     
     if (userEmails.length > 0) {
       const emailService = new EmailService();

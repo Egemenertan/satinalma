@@ -13,6 +13,7 @@ import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import SitePersonnelView from './SitePersonnelView'
 import { useRouter } from 'next/navigation'
+import { IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
 
 interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'materialOrders' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   currentOrder: any
@@ -50,6 +51,33 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       const { data: { user }, error: userError } = await supabase.auth.getUser()
       if (userError || !user) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
+      }
+
+      if (request.status === IT_STATUS_ONAYLANDI && request.it_workflow_applies) {
+        const newStatus = 'satın almaya gönderildi'
+        const { error: updateError } = await supabase
+          .from('purchase_requests')
+          .update({
+            status: newStatus,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', request.id)
+
+        if (updateError) {
+          throw new Error('Status güncellenemedi: ' + updateError.message)
+        }
+
+        await supabase.from('approval_history').insert({
+          purchase_request_id: request.id,
+          action: 'approved',
+          performed_by: user.id,
+          comments: 'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi',
+        })
+
+        invalidatePurchaseRequestsCache()
+        await onRefresh()
+        showToast('Malzemeler satın almaya gönderildi!', 'success')
+        return
       }
 
       // Ana depoda stok kontrolü yap

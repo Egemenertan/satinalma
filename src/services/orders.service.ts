@@ -33,14 +33,14 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     .eq('id', user.id)
     .single()
 
-  // Sadece purchasing_officer ve manager erişebilir
-  const allowedRoles = ['purchasing_officer', 'manager']
+  // purchasing_officer, manager ve admin erişebilir
+  const allowedRoles = ['purchasing_officer', 'manager', 'admin']
   if (!allowedRoles.includes(profile?.role)) {
     throw new Error('Bu sayfaya erişim yetkiniz yoktur')
   }
 
-  // Manager tüm siteleri görür; purchasing_officer yalnızca kendi sitelerini
-  const isManager = profile?.role === 'manager'
+  // Manager ve admin tüm siteleri görür; purchasing_officer yalnızca kendi sitelerini
+  const isManager = profile?.role === 'manager' || profile?.role === 'admin'
   // site_id kolonu UUID[] (array) — manager'da null/boş olabilir
   const userSiteIds: string[] = isManager ? [] : (profile?.site_id ?? [])
 

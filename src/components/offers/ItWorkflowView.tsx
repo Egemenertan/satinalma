@@ -318,51 +318,10 @@ export default function ItWorkflowView({
       } = await supabase.auth.getUser()
       if (userError || !user) throw new Error('Oturum bulunamadı')
 
-      const { data: stockCheckData, error: stockCheckError } = await supabase.rpc(
-        'check_main_warehouse_stock',
-        { request_id_param: request.id }
-      )
-
-      if (stockCheckError) throw stockCheckError
-
-      const allItemsInStock =
-        stockCheckData && stockCheckData.length > 0
-          ? stockCheckData.every((item: { has_stock?: boolean }) => item.has_stock === true)
-          : false
-
-      const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
-      const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
-
-      let newStatus = 'satın almaya gönderildi'
-      let successMessage = 'Malzemeler satın almaya gönderildi!'
-      let historyComment =
-        'Pazarlama site manager — IT Yönetim sonrası satın almaya gönderildi'
-
-      if (isSpecialSite) {
-        if (allItemsInStock) {
-          newStatus = 'onaylandı'
-          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
-          historyComment =
-            'Pazarlama site manager — IT onayı sonrası onaylandı (ana depoda stok mevcut)'
-        } else {
-          newStatus = 'satın almaya gönderildi'
-          successMessage = 'Malzemeler satın almaya gönderildi! (Ana depoda stok yok)'
-          historyComment =
-            'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi (ana depoda stok yok)'
-        }
-      } else {
-        if (allItemsInStock) {
-          newStatus = 'onaylandı'
-          successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'
-          historyComment =
-            'Pazarlama site manager — IT onayı sonrası onaylandı (ana depoda stok mevcut)'
-        } else {
-          newStatus = 'satın almaya gönderildi'
-          successMessage = 'Malzemeler satın almaya gönderildi! (Ana depoda stok yok)'
-          historyComment =
-            'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi (ana depoda stok yok)'
-        }
-      }
+      const newStatus = 'satın almaya gönderildi'
+      const successMessage = 'Malzemeler satın almaya gönderildi!'
+      const historyComment =
+        'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi'
 
       const { error: updateError } = await supabase
         .from('purchase_requests')

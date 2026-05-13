@@ -46,7 +46,7 @@ import {
 } from '@/lib/site-invoice-aggregation'
 import { SiteFinanceFxProvider, SiteFinanceFxToolbar } from '@/contexts/site-finance-fx'
 import { SiteDetailPdfReportButton } from '@/components/finance/site-detail-pdf-report-button'
-import type { SiteDetailPdfOrderRow, SiteDetailPdfSupplierRow } from '@/lib/pdf/site-detail-summary-pdf'
+import type { SiteDetailPdfOrderRow } from '@/lib/pdf/site-detail-summary-pdf'
 
 function createSlug(text: string) {
   return text
@@ -1043,12 +1043,12 @@ export default function SiteDetailPage() {
     [financeDailySeries.invoiceSeries],
   )
 
-  const pdfSupplierRowsForReport = useMemo(
-    (): SiteDetailPdfSupplierRow[] =>
+  const supplierBreakdownForPdf = useMemo(
+    () =>
       supplierBreakdown.map((row) => ({
         name: row.name,
         orderCount: row.orderCount,
-        invoicedLine: formatCurrencyTotalsLine(row.invoicedByCurrency, formatCurrency),
+        invoicedByCurrency: row.invoicedByCurrency,
       })),
     [supplierBreakdown],
   )
@@ -1170,9 +1170,10 @@ export default function SiteDetailPage() {
             totals={pdfTotalsForReport}
             lineItemCount={lineItemCount}
             financeChartCurrencyCodes={pdfFinanceChartCurrencies}
-            supplierRows={pdfSupplierRowsForReport}
+            supplierBreakdownForPdf={supplierBreakdownForPdf}
             orderRows={pdfOrderRowsForReport}
             materialGroupRowsBase={materialGroupBreakdownBase}
+            financeDailySeriesForPdf={financeDailySeries}
           />
         </div>
       </div>

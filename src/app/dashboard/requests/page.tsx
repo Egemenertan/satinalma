@@ -16,6 +16,7 @@ import {
 } from '@/lib/warehouse-it-material-filter'
 import {
   canSeeItWorkflowTab,
+  isItWorkflowElevatedRole,
   isPazarlamaDepartment,
   IT_STATUS_INCELEMEDE,
   IT_STATUS_ONAYLANDI
@@ -82,10 +83,12 @@ const fetchWeeklyActivity = async (
   // Departman filtresi: profilde department doluysa, sadece o departmana ait aktivite.
   // department_head zaten kendi mantığında uyguluyor, tekrar uygulanmaz.
   // IT depo yöneticisi için talebin departman alanı kullanılmaz (malzeme grubu filtresi var).
+  // Admin/manager üst görünüm: departmana göre daraltılmaz.
   if (
     role !== 'department_head' &&
     department &&
-    !(role === 'warehouse_manager' && isProfileDepartmentIt(department))
+    !(role === 'warehouse_manager' && isProfileDepartmentIt(department)) &&
+    !isItWorkflowElevatedRole(role)
   ) {
     query = query.eq('department', department)
   }
@@ -232,7 +235,12 @@ const fetchPageData = async () => {
   const skipDeptFilterItWm =
     profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
 
-  if (profile?.role !== 'department_head' && profile?.department && !skipDeptFilterItWm) {
+  if (
+    profile?.role !== 'department_head' &&
+    profile?.department &&
+    !skipDeptFilterItWm &&
+    !isItWorkflowElevatedRole(profile.role)
+  ) {
     statsQuery = statsQuery.eq('department', profile.department)
   }
 
@@ -303,7 +311,12 @@ const fetchPageData = async () => {
     // Departman filtresi: profilde department doluysa, aylık dağılım da o departmana göre.
     const skipDeptMonthly =
       profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
-    if (profile?.role !== 'department_head' && profile?.department && !skipDeptMonthly) {
+    if (
+      profile?.role !== 'department_head' &&
+      profile?.department &&
+      !skipDeptMonthly &&
+      !isItWorkflowElevatedRole(profile.role)
+    ) {
       monthQuery = monthQuery.eq('department', profile.department)
     }
 

@@ -29,12 +29,21 @@ export function isPazarlamaDepartment(
   return normalizeMaterialGroupToken(department) === normalizeMaterialGroupToken(IT_WORKFLOW_DEPARTMENT_LABEL)
 }
 
+const IT_TAB_ELEVATED_ROLES = ['admin', 'super_admin', 'manager'] as const
+
+/** IT Yönetim sekmesi + tam kapsamlı liste için admin / üst düzey roller */
+export function isItWorkflowElevatedRole(role: string | null | undefined): boolean {
+  if (!role || typeof role !== 'string') return false
+  const r = role.trim().toLowerCase()
+  return (IT_TAB_ELEVATED_ROLES as readonly string[]).includes(r)
+}
+
 export function canSeeItWorkflowTab(profile: {
   role?: string | null
   department?: string | null
 } | null): boolean {
   if (!profile?.role) return false
-  if (profile.role === 'admin' || profile.role === 'manager') return true
+  if (isItWorkflowElevatedRole(profile.role)) return true
   if (!isPazarlamaDepartment(profile.department)) return false
   return profile.role === 'department_head' || profile.role === 'site_manager'
 }
