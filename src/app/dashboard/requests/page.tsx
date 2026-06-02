@@ -68,10 +68,13 @@ const fetchWeeklyActivity = async (
       query = query.in('site_id', userSiteIds)
     }
   } else if (role === 'department_head') {
-    // Department head için GMO + departmanına ait
+    // Department head için: Kendi oluşturduğu tüm talepler + GMO departman talepleri
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const userDepartment = department || 'Genel'
-    query = query.eq('site_id', GMO_SITE_ID).eq('department', userDepartment)
+    query = query.or(
+      `requested_by.eq.${userId},` +
+      `and(site_id.eq.${GMO_SITE_ID},department.eq.${userDepartment})`
+    )
   } else if (role === 'warehouse_manager') {
     query = query.neq('status', 'departman_onayı_bekliyor')
     if (wmItScopedIds !== undefined) {
@@ -193,15 +196,16 @@ const fetchPageData = async () => {
   if (profile?.role === 'site_personnel') {
     statsQuery = statsQuery.eq('requested_by', user.id)
   } else if (profile?.role === 'department_head') {
-    // Department head: Sadece GMO + kendi departmanı
+    // Department head: Kendi oluşturduğu tüm talepleri + kendi departmanının GMO taleplerini görebilir
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const userDepartment = profile.department || 'Genel'
     
-    statsQuery = statsQuery
-      .eq('site_id', GMO_SITE_ID)
-      .eq('department', userDepartment)
+    statsQuery = statsQuery.or(
+      `requested_by.eq.${user.id},` +
+      `and(site_id.eq.${GMO_SITE_ID},department.eq.${userDepartment})`
+    )
     
-    console.log(`📊 Department head filtresi: Site=GMO, Department=${userDepartment}`)
+    console.log(`📊 Department head filtresi: Own requests OR (Site=GMO AND Department=${userDepartment})`)
   } else if (profile?.role === 'purchasing_officer') {
     // Purchasing officer:
     // 1. Kendi sitelerine ait VE belirli statuslardaki talepler
@@ -287,7 +291,10 @@ const fetchPageData = async () => {
     } else if (profile?.role === 'department_head') {
       const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
       const userDepartment = profile.department || 'Genel'
-      monthQuery = monthQuery.eq('site_id', GMO_SITE_ID).eq('department', userDepartment)
+      monthQuery = monthQuery.or(
+        `requested_by.eq.${user.id},` +
+        `and(site_id.eq.${GMO_SITE_ID},department.eq.${userDepartment})`
+      )
     } else if (profile?.role === 'purchasing_officer') {
       const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'teklif bekliyor', 'onaylandı', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
       const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])

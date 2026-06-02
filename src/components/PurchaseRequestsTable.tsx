@@ -536,12 +536,13 @@ const fetchPurchaseRequests = async (
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     countQuery = countQuery.eq('requested_by', user.id)
   } else if (effectiveRole === 'department_head') {
-    // Department head: Sadece GMO sitesi + kendi departmanı
+    // Department head: Kendi oluşturduğu tüm talepler + GMO departman talepleri
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const headDepartment = profile?.department || 'Genel'
-    countQuery = countQuery
-      .eq('site_id', GMO_SITE_ID)
-      .eq('department', headDepartment)
+    countQuery = countQuery.or(
+      `requested_by.eq.${user.id},` +
+      `and(site_id.eq.${GMO_SITE_ID},department.eq.${headDepartment})`
+    )
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     countQuery = countQuery.neq('status', 'departman_onayı_bekliyor')
@@ -649,12 +650,13 @@ const fetchPurchaseRequests = async (
     // Site personnel sadece kendi oluşturduğu talepleri görebilir
     requestsQuery = requestsQuery.eq('requested_by', user.id)
   } else if (effectiveRole === 'department_head') {
-    // Department head: Sadece GMO sitesi + kendi departmanı
+    // Department head: Kendi oluşturduğu tüm talepler + GMO departman talepleri
     const GMO_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const headDepartment = profile?.department || 'Genel'
-    requestsQuery = requestsQuery
-      .eq('site_id', GMO_SITE_ID)
-      .eq('department', headDepartment)
+    requestsQuery = requestsQuery.or(
+      `requested_by.eq.${user.id},` +
+      `and(site_id.eq.${GMO_SITE_ID},department.eq.${headDepartment})`
+    )
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     requestsQuery = requestsQuery.neq('status', 'departman_onayı_bekliyor')

@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient } from './supabase/server'
+import { createClient, createServiceRoleClient } from './supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { NotificationService } from './notifications'
@@ -582,7 +582,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     // Gerçek kullanıcıyı al
     const user = await getAuthenticatedUser()
     console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
-    
+
     const supabase = createClient()
     const itGroupTokens = await loadActiveItMaterialGroupTokens(supabase)
     const useItWorkflow = purchaseLinesTriggerItWorkflow(
