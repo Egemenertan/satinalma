@@ -68,6 +68,7 @@ const fetchPendingRequestsCount = async () => {
 }
 
 interface NavItem {
+  id?: string
   title: string
   href?: string
   icon: React.ElementType
@@ -170,6 +171,7 @@ export default function Sidebar({
   const [userRole, setUserRole] = useState<string>('user')
   const [userEmail, setUserEmail] = useState<string>('')
   const [userName, setUserName] = useState<string>('')
+  const [userSiteIds, setUserSiteIds] = useState<string[]>([])
   const [showRoleAssignmentModal, setShowRoleAssignmentModal] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
   
@@ -205,12 +207,18 @@ export default function Sidebar({
         // Profile bilgilerini çek
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role, full_name')
+          .select('role, full_name, site_id')
           .eq('id', user.id)
           .single()
         
         if (profile?.role) {
           setUserRole(profile.role)
+        }
+        
+        // site_id bilgisini set et
+        if (profile?.site_id) {
+          const siteIds = Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id]
+          setUserSiteIds(siteIds)
         }
         
         // İsim bilgisini set et - önce full_name, yoksa email'den al
@@ -599,9 +607,18 @@ export default function Sidebar({
           "flex-1 py-4",
           isCollapsed && !isMobileOpen ? "px-2 space-y-1 overflow-visible" : isMobileOpen ? "px-6 grid grid-cols-2 gap-3 content-start overflow-y-auto" : "px-4 space-y-1 overflow-y-auto"
         )}>
-          {getNavigation(pendingCount || 0, userRole).map((item) => (
-            <NavItemComponent key={item.title} item={item} />
-          ))}
+          {getNavigation(pendingCount || 0, userRole)
+            .filter(item => {
+              // f7f3d36e-0c31-4e9a-8883-94c39330660b site ID'sine ait kullanıcılar tedarikçiler sayfasına erişemez
+              const restrictedSiteId = 'f7f3d36e-0c31-4e9a-8883-94c39330660b'
+              if (item.id === 'suppliers' && userSiteIds.includes(restrictedSiteId)) {
+                return false
+              }
+              return true
+            })
+            .map((item) => (
+              <NavItemComponent key={item.title} item={item} />
+            ))}
         </nav>
 
         {/* User Profile */}

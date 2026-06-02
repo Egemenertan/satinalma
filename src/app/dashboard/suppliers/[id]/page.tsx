@@ -121,6 +121,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   const [loading, setLoading] = useState(true)
   const [orders, setOrders] = useState<Order[]>([])
   const [loadingOrders, setLoadingOrders] = useState(false)
+  const [hasAccess, setHasAccess] = useState(false)
   
   // Image viewer state
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
@@ -140,6 +141,41 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   
   // Report generation state
   const [generatingPDF, setGeneratingPDF] = useState<string | null>(null)
+
+  // Erişim kontrolü
+  useEffect(() => {
+    const checkAccess = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        router.push('/auth/login')
+        return
+      }
+
+      // Kullanıcının site_id'sini kontrol et
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('site_id')
+        .eq('id', user.id)
+        .single()
+
+      const restrictedSiteId = 'f7f3d36e-0c31-4e9a-8883-94c39330660b'
+      
+      if (profile?.site_id) {
+        const siteIds = Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id]
+        
+        // Eğer kullanıcı kısıtlanmış site ID'sine aitse erişimi engelle
+        if (siteIds.includes(restrictedSiteId)) {
+          router.push('/dashboard')
+          return
+        }
+      }
+
+      setHasAccess(true)
+    }
+
+    checkAccess()
+  }, [router])
 
   useEffect(() => {
     let isActive = true
@@ -573,7 +609,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
     }
   }
 
-  if (loading) {
+  if (loading || !hasAccess) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>

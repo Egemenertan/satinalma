@@ -20,9 +20,6 @@
 # production
 /build
 
-# Expo / React Native — ayrı repo veya yerel geliştirme; web projesine commit edilmez
-/mobile/
-
 # misc
 .DS_Store
 *.pem
@@ -43,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 sql/
+
+# mobile app (local development only)
+/mobile/

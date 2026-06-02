@@ -84,19 +84,19 @@ function MiniArea({
     <svg className="h-24 w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
         <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#00E676" stopOpacity="0.22" />
-          <stop offset="100%" stopColor="#00E676" stopOpacity="0" />
+          <stop offset="0%" stopColor="#01E884" stopOpacity="0.22" />
+          <stop offset="100%" stopColor="#01E884" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={fillPath} fill={`url(#${gid})`} />
       <path
         d={line}
         fill="none"
-        stroke="#00E676"
+        stroke="#01E884"
         strokeWidth="2"
         strokeLinecap="round"
         vectorEffect="non-scaling-stroke"
-        style={{ filter: 'drop-shadow(0 0 6px rgba(0, 230, 118, 0.35))' }}
+        style={{ filter: 'drop-shadow(0 0 6px rgba(1, 232, 132, 0.35))' }}
       />
     </svg>
   )
@@ -240,7 +240,7 @@ export function OrdersInsightsSection({
             <DeltaPill value={volumeTrend} />
           </div>
           <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{snapshot.delivered}</span>
-          <SparkBars heightsPct={sparkHeights} accentClass="bg-primary shadow-[0_0_12px_rgba(0,230,118,0.35)]" />
+          <SparkBars heightsPct={sparkHeights} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.35)]" />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
@@ -281,7 +281,7 @@ export function OrdersInsightsSection({
           <div className="mt-5 flex items-center gap-3">
             <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-elegant-gray-200 dark:bg-elegant-gray-800">
               <div
-                className="h-full rounded-full bg-primary shadow-[0_0_8px_rgba(0,230,118,0.45)]"
+                className="h-full rounded-full bg-[#01E884] shadow-[0_0_8px_rgba(1,232,132,0.45)]"
                 style={{
                   width: `${Math.min(100, snapshot.totalCount === 0 ? 0 : (snapshot.delivered / snapshot.totalCount) * 100)}%`,
                 }}
@@ -395,10 +395,10 @@ export function OrdersInsightsSection({
                     <div
                       className={cn(
                         'h-full w-full rounded-t-md transition-all duration-300',
-                        tipOpen && 'ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-elegant-gray-900',
+                        tipOpen && 'ring-2 ring-[#01E884] ring-offset-2 ring-offset-white dark:ring-offset-elegant-gray-900',
                         isHi
-                          ? 'bg-primary shadow-[0_0_18px_rgba(0,230,118,0.32)] ring-1 ring-primary/30'
-                          : 'bg-elegant-gray-400 hover:bg-elegant-gray-500 dark:bg-elegant-gray-500 dark:hover:bg-elegant-gray-400'
+                          ? 'bg-[#01E884] shadow-[0_0_18px_rgba(1,232,132,0.32)] ring-1 ring-[#01E884]/30'
+                          : 'bg-[#01E884]/70 hover:bg-[#01E884]/85 dark:bg-[#01E884]/70 dark:hover:bg-[#01E884]/85'
                       )}
                     />
                   </div>

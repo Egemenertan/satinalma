@@ -89,22 +89,22 @@ function LogisticsSparkline({
     <svg className="h-28 w-full" viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
       <defs>
         <linearGradient id={safeGid} x1="0" x2="0" y1="0" y2="1">
-          <stop offset="0%" stopColor="#00E676" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#00E676" stopOpacity="0" />
+          <stop offset="0%" stopColor="#01E884" stopOpacity="0.28" />
+          <stop offset="100%" stopColor="#01E884" stopOpacity="0" />
         </linearGradient>
       </defs>
       <path d={fillPath} fill={`url(#${safeGid})`} />
       <path
         d={line}
         fill="none"
-        stroke="#00E676"
+        stroke="#01E884"
         strokeWidth="2.2"
         strokeLinecap="round"
         strokeLinejoin="round"
         vectorEffect="non-scaling-stroke"
-        style={{ filter: 'drop-shadow(0 0 10px rgba(0, 230, 118, 0.38))' }}
+        style={{ filter: 'drop-shadow(0 0 10px rgba(1, 232, 132, 0.38))' }}
       />
-      <circle cx={lastCx} cy={lastCy} r={3.5} fill="#00E676" style={{ filter: 'drop-shadow(0 0 6px rgba(0,230,118,0.6))' }} />
+      <circle cx={lastCx} cy={lastCy} r={3.5} fill="#01E884" style={{ filter: 'drop-shadow(0 0 6px rgba(1,232,132,0.6))' }} />
     </svg>
   )
 }
@@ -266,7 +266,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
           </div>
           <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{stats.totalRequests}</span>
           <p className="mt-1 text-xs text-elegant-gray-500">Kayıtlı satın alma talepleri</p>
-          <SparkBars heightsPct={sparkHeights} accentClass="bg-primary shadow-[0_0_12px_rgba(0,230,118,0.35)]" />
+          <SparkBars heightsPct={sparkHeights} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.35)]" />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
@@ -313,7 +313,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
             {formatCurrency(stats.totalAmount, 'TRY')}
           </span>
           <p className="mt-1 text-xs text-elegant-gray-500">Tüm taleplerdeki tutar alanları</p>
-          <SparkBars heightsPct={amountSpark} accentClass="bg-primary shadow-[0_0_12px_rgba(0,230,118,0.3)]" />
+          <SparkBars heightsPct={amountSpark} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.3)]" />
         </div>
       </div>
 
@@ -405,10 +405,10 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                     <div
                       className={cn(
                         'h-full w-full rounded-t-md transition-all duration-300',
-                        tipOpen && 'ring-2 ring-primary ring-offset-2 ring-offset-white dark:ring-offset-elegant-gray-900',
+                        tipOpen && 'ring-2 ring-[#01E884] ring-offset-2 ring-offset-white dark:ring-offset-elegant-gray-900',
                         isHi
-                          ? 'bg-primary shadow-[0_0_18px_rgba(0,230,118,0.28)] ring-1 ring-primary/25'
-                          : 'bg-elegant-gray-400 hover:bg-elegant-gray-500 dark:bg-elegant-gray-500 dark:hover:bg-elegant-gray-400'
+                          ? 'bg-[#01E884] shadow-[0_0_18px_rgba(1,232,132,0.28)] ring-1 ring-[#01E884]/25'
+                          : 'bg-[#01E884]/70 hover:bg-[#01E884]/85 dark:bg-[#01E884]/70 dark:hover:bg-[#01E884]/85'
                       )}
                     />
                   </div>

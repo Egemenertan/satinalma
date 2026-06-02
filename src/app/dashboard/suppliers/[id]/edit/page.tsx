@@ -73,6 +73,7 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
   const supabase = createClient()
   const [loading, setLoading] = useState(false)
   const [loadingSupplier, setLoadingSupplier] = useState(true)
+  const [hasAccess, setHasAccess] = useState(false)
   
   // Material selection states
   const [materialClasses, setMaterialClasses] = useState<string[]>([])
@@ -109,6 +110,41 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
     const { name, value } = e.target
     setFormData(prev => ({ ...prev, [name]: value }))
   }
+
+  // Erişim kontrolü
+  useEffect(() => {
+    const checkAccess = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      
+      if (!user) {
+        router.push('/auth/login')
+        return
+      }
+
+      // Kullanıcının site_id'sini kontrol et
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('site_id')
+        .eq('id', user.id)
+        .single()
+
+      const restrictedSiteId = 'f7f3d36e-0c31-4e9a-8883-94c39330660b'
+      
+      if (profile?.site_id) {
+        const siteIds = Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id]
+        
+        // Eğer kullanıcı kısıtlanmış site ID'sine aitse erişimi engelle
+        if (siteIds.includes(restrictedSiteId)) {
+          router.push('/dashboard')
+          return
+        }
+      }
+
+      setHasAccess(true)
+    }
+
+    checkAccess()
+  }, [router])
 
   useEffect(() => {
     const loadData = async () => {
@@ -459,7 +495,7 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
     }
   }
 
-  if (loadingSupplier) {
+  if (loadingSupplier || !hasAccess) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>

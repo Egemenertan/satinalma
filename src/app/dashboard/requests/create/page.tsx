@@ -132,7 +132,8 @@ export default function CreatePurchaseRequestPage() {
   // User type state
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
   const [hasHygieneDefaultSite, setHasHygieneDefaultSite] = useState(false)
-  const hasOfficeCategoryAccess = isGenelMerkezUser || hasHygieneDefaultSite
+  const [hasMultipleSiteTypes, setHasMultipleSiteTypes] = useState(false)
+  const hasOfficeCategoryAccess = isGenelMerkezUser || hasHygieneDefaultSite || hasMultipleSiteTypes
   
   // Category state
   const [categories, setCategories] = useState<MaterialCategory[]>([])
@@ -213,6 +214,13 @@ export default function CreatePurchaseRequestPage() {
 
           // Belirli siteye bağlı kullanıcılar için kategori varsayılanı
           setHasHygieneDefaultSite(userSiteIds.includes(HYGIENE_DEFAULT_SITE_ID))
+          
+          // Kullanıcının hem Genel Merkez hem de başka sitelere erişimi var mı kontrol et
+          const hasGenelMerkez = userSiteIds.includes(SPECIAL_SITE_ID)
+          const hasOtherSites = userSiteIds.some(id => id !== SPECIAL_SITE_ID)
+          if (hasGenelMerkez && hasOtherSites) {
+            setHasMultipleSiteTypes(true)
+          }
           
           // Eğer site_id zorunlu olan rollerde site ataması yoksa, geri gönder
           if (requiresSiteId && userSiteIds.length === 0) {
@@ -627,12 +635,20 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const filteredCategories = categories.filter((category) => {
+    // Eğer kullanıcının hem Genel Merkez hem de başka sitelere erişimi varsa, tüm kategorileri göster
+    if (hasMultipleSiteTypes) {
+      return true
+    }
+    
+    // Tek tip site erişimi olan kullanıcılar için eski mantık
     if (isOfficeCategory(category.name)) {
       return hasOfficeCategoryAccess
     }
     return !hasOfficeCategoryAccess
   })
-  const allowedSearchCategories = hasOfficeCategoryAccess
+  const allowedSearchCategories = hasMultipleSiteTypes
+    ? filteredCategories.map((category) => category.name)
+    : hasOfficeCategoryAccess
     ? filteredCategories.filter((category) => isOfficeCategory(category.name)).map((category) => category.name)
     : filteredCategories.map((category) => category.name)
 
@@ -746,7 +762,7 @@ export default function CreatePurchaseRequestPage() {
               setShowCreateMaterialModal(true)
             }}
             onEnterSearch={() => {}}
-            restrictToStationery={hasOfficeCategoryAccess}
+            restrictToStationery={hasOfficeCategoryAccess && !hasMultipleSiteTypes}
             allowedCategoryNames={allowedSearchCategories}
             localCreatedMaterials={localCreatedMaterials}
             className="w-full"
@@ -861,7 +877,7 @@ export default function CreatePurchaseRequestPage() {
         onOpenChange={setShowCreateMaterialModal}
         initialClass={createMaterialData.class}
         initialGroup={createMaterialData.group}
-        restrictToStationery={hasOfficeCategoryAccess}
+        restrictToStationery={hasOfficeCategoryAccess && !hasMultipleSiteTypes}
         onMaterialCreated={(material) => {
           setLocalCreatedMaterials((prev) => {
             const key = `${material.class}|${material.group}|${material.item_name}`.toLocaleLowerCase('tr-TR').trim()
