@@ -1,8 +1,5 @@
 import { useEffect, useRef } from 'react'
-import { Animated, Dimensions, Easing, StyleSheet, View } from 'react-native'
-import { LinearGradient } from 'expo-linear-gradient'
-
-const { width: SCREEN_WIDTH } = Dimensions.get('window')
+import { Animated, Easing, StyleSheet, View } from 'react-native'
 
 type SkeletonProps = {
   width?: number | string
@@ -22,31 +19,36 @@ export function Skeleton({
   marginTop = 0,
   marginRight = 0,
   style,
-}: SkeletonProps) {
-  const shimmerAnim = useRef(new Animated.Value(-1)).current
+  light = false,
+}: SkeletonProps & { light?: boolean }) {
+  const pulseAnim = useRef(new Animated.Value(0.4)).current
 
   useEffect(() => {
-    const shimmer = Animated.loop(
-      Animated.timing(shimmerAnim, {
-        toValue: 1,
-        duration: 1500,
-        easing: Easing.inOut(Easing.ease),
-        useNativeDriver: true,
-      })
+    const pulse = Animated.loop(
+      Animated.sequence([
+        Animated.timing(pulseAnim, {
+          toValue: 1,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+        Animated.timing(pulseAnim, {
+          toValue: 0.4,
+          duration: 800,
+          easing: Easing.inOut(Easing.ease),
+          useNativeDriver: true,
+        }),
+      ])
     )
-    shimmer.start()
-    return () => shimmer.stop()
-  }, [shimmerAnim])
-
-  const translateX = shimmerAnim.interpolate({
-    inputRange: [-1, 1],
-    outputRange: [-SCREEN_WIDTH, SCREEN_WIDTH],
-  })
+    pulse.start()
+    return () => pulse.stop()
+  }, [pulseAnim])
 
   return (
-    <View
+    <Animated.View
       style={[
         styles.skeleton,
+        light && styles.skeletonLight,
         {
           width,
           height,
@@ -54,31 +56,20 @@ export function Skeleton({
           marginBottom,
           marginTop,
           marginRight,
-          overflow: 'hidden',
+          opacity: pulseAnim,
         },
         style,
       ]}
-    >
-      <Animated.View
-        style={[
-          StyleSheet.absoluteFill,
-          { transform: [{ translateX }] },
-        ]}
-      >
-        <LinearGradient
-          colors={['transparent', 'rgba(255,255,255,0.4)', 'transparent']}
-          start={{ x: 0, y: 0.5 }}
-          end={{ x: 1, y: 0.5 }}
-          style={StyleSheet.absoluteFill}
-        />
-      </Animated.View>
-    </View>
+    />
   )
 }
 
 const styles = StyleSheet.create({
   skeleton: {
-    backgroundColor: '#e8ecef',
+    backgroundColor: '#d1d5db',
+  },
+  skeletonLight: {
+    backgroundColor: 'rgba(255,255,255,0.2)',
   },
 })
 
@@ -160,8 +151,8 @@ export function RequestsPageSkeleton() {
         {/* Monthly Chart Skeleton */}
         <View style={requestsPageSkeletonStyles.chartCard}>
           <View style={requestsPageSkeletonStyles.chartHeader}>
-            <Skeleton width={140} height={16} borderRadius={8} />
-            <Skeleton width={80} height={14} borderRadius={7} />
+            <Skeleton width={140} height={16} borderRadius={8} light />
+            <Skeleton width={80} height={14} borderRadius={7} light />
           </View>
           <View style={requestsPageSkeletonStyles.chartBars}>
             {[0.4, 0.7, 0.5, 0.9, 0.6, 0.3].map((h, i) => (
@@ -169,9 +160,10 @@ export function RequestsPageSkeleton() {
                 <Skeleton 
                   width={24} 
                   height={Math.round(100 * h)} 
-                  borderRadius={12} 
+                  borderRadius={12}
+                  light
                 />
-                <Skeleton width={24} height={12} borderRadius={6} marginTop={8} />
+                <Skeleton width={24} height={12} borderRadius={6} marginTop={8} light />
               </View>
             ))}
           </View>
