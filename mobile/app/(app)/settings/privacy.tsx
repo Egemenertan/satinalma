@@ -1,11 +1,205 @@
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { useTranslation } from 'react-i18next'
 import { ISLAND_BOTTOM_BAR_CONTENT_INSET } from '../../../src/components/island/islandTokens'
 import { stats } from '../../../src/theme/statsDesignTokens'
 
 const CONTACT_EMAIL = 'info@dovecconstruction.com'
 const WEB_PRIVACY_URL = 'https://dovec.app/privacy-policy'
 
+const content = {
+  tr: {
+    title: 'Gizlilik Politikası',
+    updated: 'Son güncelleme: 04.06.2026',
+    sendEmail: 'E-posta Gönder',
+    viewOnWeb: "Web'de Görüntüle",
+    sections: [
+      {
+        title: '1. Giriş',
+        body: 'Dovec Group ("Şirket", "biz") olarak, DLX Satın Alma mobil uygulaması ("Uygulama") üzerinden kişisel verilerinizin gizliliğine büyük önem veriyoruz. Bu Gizlilik Politikası, hangi verileri topladığımızı, nasıl kullandığımızı, sakladığımızı ve koruduğumuzu açıklamaktadır.',
+      },
+      {
+        title: '2. Toplanan Veriler',
+        body: `Uygulamamız aşağıdaki kişisel verileri toplamaktadır:
+
+Hesap Bilgileri:
+• Ad ve soyad
+• Kurumsal e-posta adresi
+• Departman ve rol bilgileri
+• Şirket içi site/lokasyon atamaları
+
+Kullanım Verileri:
+• Satın alma talepleri ve onay geçmişi
+• Uygulama içi aktiviteler
+• Cihaz bilgileri (model, işletim sistemi)
+• IP adresi ve oturum bilgileri
+
+Medya:
+• Taleplere eklenen fotoğraflar
+• İrsaliye ve belge görüntüleri`,
+      },
+      {
+        title: '3. Verilerin Kullanım Amaçları',
+        body: `Toplanan veriler yalnızca aşağıdaki amaçlarla kullanılmaktadır:
+
+• Satın alma taleplerinin oluşturulması, işlenmesi ve takibi
+• Onay iş akışlarının yönetimi
+• Push bildirimleri ve uygulama içi bildirimler gönderimi
+• Kullanıcı kimlik doğrulama ve yetkilendirme
+• Uygulama performansının izlenmesi ve iyileştirilmesi
+• Yasal yükümlülüklerin yerine getirilmesi`,
+      },
+      {
+        title: '4. Veri Saklama Süresi',
+        body: `• Hesap verileri: Hesabınız aktif olduğu sürece saklanır
+• Satın alma talepleri: Yasal gereklilikler gereği 10 yıl saklanır
+• Oturum logları: 1 yıl saklanır
+• Silinen hesaplar: Hesap silme talebinden sonra 30 gün içinde tüm kişisel veriler kalıcı olarak silinir`,
+      },
+      {
+        title: '5. Veri Güvenliği',
+        body: `Verilerinizi korumak için endüstri standardı güvenlik önlemleri uygulanmaktadır:
+
+• TLS 1.3 şifreleme ile veri iletimi
+• AES-256 şifreleme ile veri depolama
+• ISO 27001 sertifikalı veri merkezleri
+• Düzenli güvenlik denetimleri ve penetrasyon testleri
+• Rol tabanlı erişim kontrolleri
+• Detaylı aktivite loglaması`,
+      },
+      {
+        title: '6. Kullanıcı Hakları',
+        body: `6698 sayılı KVKK ve GDPR kapsamında aşağıdaki haklara sahipsiniz:
+
+• Erişim hakkı: Verilerinizin bir kopyasını talep edebilirsiniz
+• Düzeltme hakkı: Yanlış veya eksik verilerin düzeltilmesini isteyebilirsiniz
+• Silme hakkı: Hesabınızı silebilirsiniz (yasal saklama yükümlülükleri saklıdır)
+• İtiraz hakkı: Veri işlemeye itiraz edebilirsiniz
+• Taşınabilirlik hakkı: Verilerinizi yapılandırılmış formatta alabilirsiniz
+
+Hesap silme işlemi için Ayarlar > "Profili tamamen kaldır" seçeneğini kullanabilirsiniz.`,
+      },
+      {
+        title: '7. Bildirim İzinleri',
+        body: 'Uygulama, talep durumu güncellemeleri ve onay bildirimleri için push notification izni talep etmektedir. Bu izni istediğiniz zaman cihaz ayarlarından iptal edebilirsiniz. Bildirim izni verilmese de uygulama tam işlevsellikle çalışmaya devam eder.',
+      },
+      {
+        title: '8. Çocukların Gizliliği',
+        body: 'Bu uygulama kurumsal kullanım için tasarlanmıştır ve 18 yaşın altındaki bireylere yönelik değildir. 18 yaşın altındaki kullanıcılardan bilerek veri toplamıyoruz. Böyle bir durum tespit edilirse, ilgili veriler derhal silinecektir.',
+      },
+      {
+        title: '9. Politika Değişiklikleri',
+        body: 'Bu gizlilik politikası zaman zaman güncellenebilir. Önemli değişiklikler yapıldığında uygulama içi bildirim ile kullanıcılar bilgilendirilecektir. Güncel politika her zaman uygulama içinden erişilebilir durumdadır.',
+      },
+      {
+        title: '10. İletişim',
+        body: `Gizlilik politikası veya kişisel verileriniz hakkında sorularınız için bizimle iletişime geçebilirsiniz:
+
+Dovec Group
+E-posta: ${CONTACT_EMAIL}`,
+        hasContact: true,
+      },
+    ],
+  },
+  en: {
+    title: 'Privacy Policy',
+    updated: 'Last updated: 04.06.2026',
+    sendEmail: 'Send Email',
+    viewOnWeb: 'View on Web',
+    sections: [
+      {
+        title: '1. Introduction',
+        body: 'At Dovec Group ("Company", "we"), we place great importance on the privacy of your personal data through the DLX Purchasing mobile application ("App"). This Privacy Policy explains what data we collect, how we use it, store it, and protect it.',
+      },
+      {
+        title: '2. Data Collected',
+        body: `Our application collects the following personal data:
+
+Account Information:
+• First and last name
+• Corporate email address
+• Department and role information
+• Company site/location assignments
+
+Usage Data:
+• Purchase requests and approval history
+• In-app activities
+• Device information (model, operating system)
+• IP address and session information
+
+Media:
+• Photos attached to requests
+• Delivery notes and document images`,
+      },
+      {
+        title: '3. Purpose of Data Use',
+        body: `Collected data is used only for the following purposes:
+
+• Creation, processing, and tracking of purchase requests
+• Management of approval workflows
+• Sending push notifications and in-app notifications
+• User authentication and authorization
+• Monitoring and improving application performance
+• Fulfilling legal obligations`,
+      },
+      {
+        title: '4. Data Retention Period',
+        body: `• Account data: Retained as long as your account is active
+• Purchase requests: Retained for 10 years due to legal requirements
+• Session logs: Retained for 1 year
+• Deleted accounts: All personal data is permanently deleted within 30 days after account deletion request`,
+      },
+      {
+        title: '5. Data Security',
+        body: `Industry-standard security measures are implemented to protect your data:
+
+• Data transmission with TLS 1.3 encryption
+• Data storage with AES-256 encryption
+• ISO 27001 certified data centers
+• Regular security audits and penetration testing
+• Role-based access controls
+• Detailed activity logging`,
+      },
+      {
+        title: '6. User Rights',
+        body: `Under KVKK Law No. 6698 and GDPR, you have the following rights:
+
+• Right of access: You can request a copy of your data
+• Right to rectification: You can request correction of inaccurate or incomplete data
+• Right to erasure: You can delete your account (subject to legal retention obligations)
+• Right to object: You can object to data processing
+• Right to portability: You can receive your data in a structured format
+
+To delete your account, use Settings > "Remove profile completely".`,
+      },
+      {
+        title: '7. Notification Permissions',
+        body: 'The app requests push notification permission for request status updates and approval notifications. You can revoke this permission at any time from your device settings. The app continues to function fully even without notification permission.',
+      },
+      {
+        title: '8. Children\'s Privacy',
+        body: 'This app is designed for corporate use and is not intended for individuals under 18 years of age. We do not knowingly collect data from users under 18. If such a case is detected, the relevant data will be deleted immediately.',
+      },
+      {
+        title: '9. Policy Changes',
+        body: 'This privacy policy may be updated from time to time. Users will be notified via in-app notification when significant changes are made. The current policy is always accessible from within the app.',
+      },
+      {
+        title: '10. Contact',
+        body: `For questions about the privacy policy or your personal data, please contact us:
+
+Dovec Group
+Email: ${CONTACT_EMAIL}`,
+        hasContact: true,
+      },
+    ],
+  },
+}
+
 export default function PrivacyPolicyScreen() {
+  const { i18n } = useTranslation()
+  const lang = i18n.language?.startsWith('tr') ? 'tr' : 'en'
+  const c = content[lang]
+
   const openEmail = () => {
     Linking.openURL(`mailto:${CONTACT_EMAIL}`)
   }
@@ -20,120 +214,25 @@ export default function PrivacyPolicyScreen() {
       contentContainerStyle={[styles.content, { paddingBottom: ISLAND_BOTTOM_BAR_CONTENT_INSET + 24 }]}
       showsVerticalScrollIndicator={false}
     >
-      <Text style={styles.title}>Gizlilik Politikası</Text>
-      <Text style={styles.updated}>Son güncelleme: 04.06.2026</Text>
+      <Text style={styles.title}>{c.title}</Text>
+      <Text style={styles.updated}>{c.updated}</Text>
 
-      <View style={styles.section}>
-        <Text style={styles.heading}>1. Giriş</Text>
-        <Text style={styles.body}>
-          Dovec Group ("Şirket", "biz") olarak, DLX Satın Alma mobil uygulaması ("Uygulama") üzerinden kişisel verilerinizin gizliliğine büyük önem veriyoruz. Bu Gizlilik Politikası, hangi verileri topladığımızı, nasıl kullandığımızı, sakladığımızı ve koruduğumuzu açıklamaktadır.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>2. Toplanan Veriler</Text>
-        <Text style={styles.body}>
-          Uygulamamız aşağıdaki kişisel verileri toplamaktadır:{'\n\n'}
-          <Text style={styles.bold}>Hesap Bilgileri:</Text>{'\n'}
-          • Ad ve soyad{'\n'}
-          • Kurumsal e-posta adresi{'\n'}
-          • Departman ve rol bilgileri{'\n'}
-          • Şirket içi site/lokasyon atamaları{'\n\n'}
-          <Text style={styles.bold}>Kullanım Verileri:</Text>{'\n'}
-          • Satın alma talepleri ve onay geçmişi{'\n'}
-          • Uygulama içi aktiviteler{'\n'}
-          • Cihaz bilgileri (model, işletim sistemi){'\n'}
-          • IP adresi ve oturum bilgileri{'\n\n'}
-          <Text style={styles.bold}>Medya:</Text>{'\n'}
-          • Taleplere eklenen fotoğraflar{'\n'}
-          • İrsaliye ve belge görüntüleri
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>3. Verilerin Kullanım Amaçları</Text>
-        <Text style={styles.body}>
-          Toplanan veriler yalnızca aşağıdaki amaçlarla kullanılmaktadır:{'\n\n'}
-          • Satın alma taleplerinin oluşturulması, işlenmesi ve takibi{'\n'}
-          • Onay iş akışlarının yönetimi{'\n'}
-          • Push bildirimleri ve uygulama içi bildirimler gönderimi{'\n'}
-          • Kullanıcı kimlik doğrulama ve yetkilendirme{'\n'}
-          • Uygulama performansının izlenmesi ve iyileştirilmesi{'\n'}
-          • Yasal yükümlülüklerin yerine getirilmesi
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>4. Veri Saklama Süresi</Text>
-        <Text style={styles.body}>
-          • Hesap verileri: Hesabınız aktif olduğu sürece saklanır{'\n'}
-          • Satın alma talepleri: Yasal gereklilikler gereği 10 yıl saklanır{'\n'}
-          • Oturum logları: 1 yıl saklanır{'\n'}
-          • Silinen hesaplar: Hesap silme talebinden sonra 30 gün içinde tüm kişisel veriler kalıcı olarak silinir
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>5. Veri Güvenliği</Text>
-        <Text style={styles.body}>
-          Verilerinizi korumak için endüstri standardı güvenlik önlemleri uygulanmaktadır:{'\n\n'}
-          • TLS 1.3 şifreleme ile veri iletimi{'\n'}
-          • AES-256 şifreleme ile veri depolama{'\n'}
-          • ISO 27001 sertifikalı veri merkezleri{'\n'}
-          • Düzenli güvenlik denetimleri ve penetrasyon testleri{'\n'}
-          • Rol tabanlı erişim kontrolleri{'\n'}
-          • Detaylı aktivite loglaması
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>6. Kullanıcı Hakları</Text>
-        <Text style={styles.body}>
-          6698 sayılı KVKK ve GDPR kapsamında aşağıdaki haklara sahipsiniz:{'\n\n'}
-          • <Text style={styles.bold}>Erişim hakkı:</Text> Verilerinizin bir kopyasını talep edebilirsiniz{'\n'}
-          • <Text style={styles.bold}>Düzeltme hakkı:</Text> Yanlış veya eksik verilerin düzeltilmesini isteyebilirsiniz{'\n'}
-          • <Text style={styles.bold}>Silme hakkı:</Text> Hesabınızı silebilirsiniz (yasal saklama yükümlülükleri saklıdır){'\n'}
-          • <Text style={styles.bold}>İtiraz hakkı:</Text> Veri işlemeye itiraz edebilirsiniz{'\n'}
-          • <Text style={styles.bold}>Taşınabilirlik hakkı:</Text> Verilerinizi yapılandırılmış formatta alabilirsiniz{'\n\n'}
-          Hesap silme işlemi için Ayarlar {'>'} "Profili tamamen kaldır" seçeneğini kullanabilirsiniz.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>7. Bildirim İzinleri</Text>
-        <Text style={styles.body}>
-          Uygulama, talep durumu güncellemeleri ve onay bildirimleri için push notification izni talep etmektedir. Bu izni istediğiniz zaman cihaz ayarlarından iptal edebilirsiniz. Bildirim izni verilmese de uygulama tam işlevsellikle çalışmaya devam eder.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>8. Çocukların Gizliliği</Text>
-        <Text style={styles.body}>
-          Bu uygulama kurumsal kullanım için tasarlanmıştır ve 18 yaşın altındaki bireylere yönelik değildir. 18 yaşın altındaki kullanıcılardan bilerek veri toplamıyoruz. Böyle bir durum tespit edilirse, ilgili veriler derhal silinecektir.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>9. Politika Değişiklikleri</Text>
-        <Text style={styles.body}>
-          Bu gizlilik politikası zaman zaman güncellenebilir. Önemli değişiklikler yapıldığında uygulama içi bildirim ile kullanıcılar bilgilendirilecektir. Güncel politika her zaman uygulama içinden erişilebilir durumdadır.
-        </Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.heading}>10. İletişim</Text>
-        <Text style={styles.body}>
-          Gizlilik politikası veya kişisel verileriniz hakkında sorularınız için bizimle iletişime geçebilirsiniz:{'\n\n'}
-          <Text style={styles.bold}>Dovec Group</Text>{'\n'}
-          E-posta: {CONTACT_EMAIL}
-        </Text>
-        <Pressable style={styles.emailBtn} onPress={openEmail}>
-          <Text style={styles.emailBtnText}>E-posta Gönder</Text>
-        </Pressable>
-        <Pressable style={styles.webBtn} onPress={openWebVersion}>
-          <Text style={styles.webBtnText}>Web'de Görüntüle</Text>
-        </Pressable>
-      </View>
+      {c.sections.map((section, index) => (
+        <View key={index} style={styles.section}>
+          <Text style={styles.heading}>{section.title}</Text>
+          <Text style={styles.body}>{section.body}</Text>
+          {section.hasContact && (
+            <>
+              <Pressable style={styles.emailBtn} onPress={openEmail}>
+                <Text style={styles.emailBtnText}>{c.sendEmail}</Text>
+              </Pressable>
+              <Pressable style={styles.webBtn} onPress={openWebVersion}>
+                <Text style={styles.webBtnText}>{c.viewOnWeb}</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      ))}
     </ScrollView>
   )
 }
@@ -167,10 +266,6 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     color: stats.onSurfaceVariant,
-  },
-  bold: {
-    fontWeight: '600',
-    color: stats.onSurface,
   },
   emailBtn: {
     marginTop: 16,
