@@ -1,0 +1,41 @@
+{
+  "cli": {
+    "version": ">= 18.9.1",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yxzmxfwpgsqabtamnfql.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable__YGQoV6R2yYhmIy3RlWR2g_JMIIk8Q4"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yxzmxfwpgsqabtamnfql.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable__YGQoV6R2yYhmIy3RlWR2g_JMIIk8Q4"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://yxzmxfwpgsqabtamnfql.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable__YGQoV6R2yYhmIy3RlWR2g_JMIIk8Q4"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "egemenyusufertan@icloud.com",
+        "appleTeamId": "592QQ45TLH"
+      },
+      "android": {
+        "track": "internal"
+      }
+    }
+  }
+}
