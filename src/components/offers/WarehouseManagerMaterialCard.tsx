@@ -8,6 +8,7 @@ import { Package, FileText, CheckCircle, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
+import { NotificationService } from '@/lib/notifications'
 
 interface WarehouseManagerMaterialCardProps {
   item: any
@@ -468,19 +469,39 @@ export default function WarehouseManagerMaterialCard({
       const newStatus = allItemsUnavailable ? 'ana depoda yok' : request.status
       
       if (allItemsUnavailable || allItems.length === 1) {
-        // Tüm malzemeler depoda yok veya tek malzeme varsa status'u güncelle
-        const { error: statusError } = await supabase
-          .from('purchase_requests')
-          .update({ 
-            status: 'ana depoda yok',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', request.id)
+        // Status zaten "ana depoda yok" ise tekrar güncelleme ve bildirim gönderme
+        const isAlreadyUnavailable = request.status === 'ana depoda yok'
         
-        if (statusError) {
-          console.error('❌ Status güncelleme hatası:', statusError)
+        if (!isAlreadyUnavailable) {
+          // Tüm malzemeler depoda yok veya tek malzeme varsa status'u güncelle
+          const { error: statusError } = await supabase
+            .from('purchase_requests')
+            .update({ 
+              status: 'ana depoda yok',
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', request.id)
+          
+          if (statusError) {
+            console.error('❌ Status güncelleme hatası:', statusError)
+          } else {
+            console.log('✅ Talep statusu "ana depoda yok" olarak güncellendi')
+            
+            // Site manager'a push notification gönder - sadece ilk kez
+            try {
+              await NotificationService.notifySiteManagerDepotUnavailable(
+                request.id,
+                request.request_number || `REQ-${request.id.slice(-6)}`,
+                request.title || 'Satın Alma Talebi',
+                request.site_id,
+                request.site_name || request.sites?.name
+              )
+            } catch (notifError) {
+              console.error('❌ Bildirim gönderme hatası:', notifError)
+            }
+          }
         } else {
-          console.log('✅ Talep statusu "ana depoda yok" olarak güncellendi')
+          console.log('ℹ️ Status zaten "ana depoda yok", bildirim gönderilmedi')
         }
       } else {
         // Kısmi durum - RPC ile normal güncelleme
