@@ -441,6 +441,112 @@ export class NotificationService {
   }
 
   /**
+   * Site manager'a "Ana Depoda Yok" bildirimi gönder
+   * Satın almaya gönderilmesi beklenen talep var
+   */
+  static async notifySiteManagerDepotUnavailable(
+    requestId: string,
+    requestNumber: string,
+    requestTitle: string,
+    siteId: string,
+    siteName?: string
+  ): Promise<void> {
+    try {
+      const supabase = createClient()
+      
+      console.log(`📧 Ana depoda yok bildirimi gönderiliyor: ${requestNumber} -> Site: ${siteName || siteId}`)
+      
+      // Site'a ait site_manager'ları bul
+      const { data: siteManagers, error: managersError } = await supabase
+        .from('profiles')
+        .select('id, email, full_name')
+        .eq('role', 'site_manager')
+        .contains('site_id', [siteId])
+        .eq('is_active', true)
+
+      if (managersError) {
+        console.error('❌ Site manager sorgu hatası:', managersError)
+        return
+      }
+
+      if (!siteManagers || siteManagers.length === 0) {
+        console.warn(`⚠️ ${siteName || siteId} için aktif site_manager bulunamadı`)
+        return
+      }
+
+      console.log(`📧 ${siteManagers.length} site_manager'a bildirim gönderiliyor...`)
+
+      // Her site_manager'a in-app notification gönder
+      for (const manager of siteManagers) {
+        await supabase.from('notifications').insert({
+          user_id: manager.id,
+          title: 'Yönetici onayı bekleniyor',
+          message: `${requestNumber} satın almaya gönderilmeyi bekliyor`,
+          type: 'depot_unavailable',
+          reference_type: 'purchase_request',
+          reference_id: requestId,
+          is_read: false
+        })
+      }
+      console.log(`✉️ ${siteManagers.length} site_manager'a in-app bildirim gönderildi`)
+
+      // Push notification gönder - sadece 1 kez, kısa mesaj
+      const managerUserIds = siteManagers.map(m => m.id)
+      if (managerUserIds.length > 0) {
+        const pushPayload = {
+          title: 'Yönetici onayı bekleniyor',
+          body: `${requestNumber} satın almaya gönderilmeyi bekliyor`,
+          data: {
+            type: 'depot_unavailable',
+            requestId,
+            url: `/dashboard/requests/${requestId}`
+          },
+          userIds: managerUserIds
+        }
+
+        try {
+          await this.sendNotification(pushPayload)
+          console.log(`✅ Push notification gönderildi (${managerUserIds.length} kullanıcı)`)
+        } catch (pushError) {
+          console.error('❌ Push notification hatası:', pushError)
+        }
+      }
+
+      // Email bildirimi gönder
+      const managerEmails = siteManagers.map(m => m.email).filter(Boolean)
+      if (managerEmails.length > 0) {
+        const template = {
+          subject: `Yönetici onayı bekleniyor - ${requestNumber}`,
+          html: `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <div style="background: #111827; padding: 20px; border-radius: 12px 12px 0 0;">
+                <h1 style="color: white; margin: 0; font-size: 18px;">Yönetici Onayı Bekleniyor</h1>
+              </div>
+              <div style="background: #f9fafb; padding: 20px; border: 1px solid #e5e7eb; border-top: none; border-radius: 0 0 12px 12px;">
+                <p style="color: #374151; margin: 0 0 15px 0;">
+                  <strong>${requestNumber}</strong> satın almaya gönderilmeyi bekliyor.
+                </p>
+                <a href="${process.env.NEXT_PUBLIC_APP_URL || 'https://app.example.com'}/dashboard/requests/${requestId}" 
+                   style="display: inline-block; background: #01E884; color: #111827; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: 600;">
+                  Talebi İncele
+                </a>
+              </div>
+            </div>
+          `,
+          text: `Yönetici Onayı Bekleniyor\n\n${requestNumber} satın almaya gönderilmeyi bekliyor.`
+        }
+
+        const emailResult = await this.sendDirectEmails(managerEmails, template)
+        console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`)
+      }
+
+      console.log(`✅ Ana depoda yok bildirimleri tamamlandı`)
+    } catch (error) {
+      console.error('❌ notifySiteManagerDepotUnavailable hatası:', error)
+    }
+  }
+
+  /**
    * GMO department head'lerine departman bazlı bildirim gönder
    * @param requestId - Purchase request ID
    * @param department - Departman adı (Marketing, IT, HR, vb.)
