@@ -4,12 +4,12 @@
     "slug": "dlx-satinalma",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/dlx.png",
+    "icon": "./assets/dlxx.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "scheme": "com.dlx",
     "splash": {
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#01E884"
     },
     "ios": {
       "supportsTablet": false,
@@ -25,7 +25,7 @@
       "package": "com.dlx",
       "versionCode": 1,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/dlx.png",
+        "foregroundImage": "./assets/dlxx.png",
         "backgroundColor": "#01E884"
       },
       "edgeToEdgeEnabled": true,
@@ -41,7 +41,7 @@
           "image": "./assets/dld.png",
           "imageWidth": 150,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#01E884"
         }
       ],
       "expo-router",
