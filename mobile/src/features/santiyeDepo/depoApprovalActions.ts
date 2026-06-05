@@ -12,8 +12,12 @@ export async function depoManagerApproveRequest(
 ): Promise<ApproveResult> {
   const { requestId, currentStatus, siteId } = opts
 
-  const { data: userRes } = await supabase.auth.getUser()
-  const user = userRes.user
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  const user = session?.user
   if (!user) return { ok: false, message: 'Oturum bulunamadı' }
 
   const { data: stockCheckData, error: stockCheckError } = await supabase.rpc('check_main_warehouse_stock', {
@@ -74,8 +78,12 @@ export async function depoManagerRejectRequest(
   const trimmed = reason.trim()
   if (!trimmed) return { ok: false, message: 'Red nedeni gerekli' }
 
-  const { data: userRes } = await supabase.auth.getUser()
-  const user = userRes.user
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  const user = session?.user
   if (!user) return { ok: false, message: 'Oturum bulunamadı' }
 
   const { error: updateError } = await supabase

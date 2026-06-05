@@ -70,11 +70,13 @@ export function useItWorkflowActionsRn({
   const onApproveStage1 = useCallback(async () => {
     setBusyApprove1(true)
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-      if (userError || !user) throw new Error('Oturum bulunamadı')
+      let { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) {
+        const { data: refreshData } = await supabase.auth.refreshSession()
+        session = refreshData.session
+      }
+      const user = session?.user
+      if (!user) throw new Error('Oturum bulunamadı')
 
       const { error: updateError } = await supabase
         .from('purchase_requests')
@@ -110,11 +112,13 @@ export function useItWorkflowActionsRn({
     }
     setBusyReject(true)
     try {
-      const {
-        data: { user },
-        error: userError,
-      } = await supabase.auth.getUser()
-      if (userError || !user) throw new Error('Oturum bulunamadı')
+      let { data: { session } } = await supabase.auth.getSession()
+      if (!session?.user) {
+        const { data: refreshData } = await supabase.auth.refreshSession()
+        session = refreshData.session
+      }
+      const user = session?.user
+      if (!user) throw new Error('Oturum bulunamadı')
 
       const { error: updateError } = await supabase
         .from('purchase_requests')

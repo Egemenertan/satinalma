@@ -19,9 +19,16 @@ export async function siteManagerApproveOrSendToPurchasing(
   currentStatus: string | null,
   siteId: string | null
 ): Promise<SiteManagerApproveResult> {
-  const { data: auth, error: userError } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (userError || !user) {
+  let { data: { session } } = await supabase.auth.getSession()
+  
+  // Session yoksa veya expire olduysa refresh deneyelim
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  
+  const user = session?.user
+  if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
   }
 
@@ -136,9 +143,13 @@ export async function siteManagerRejectRequest(
     throw new Error('Lütfen reddedilme nedenini belirtin.')
   }
 
-  const { data: auth, error: userError } = await supabase.auth.getUser()
-  const user = auth?.user
-  if (userError || !user) {
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  const user = session?.user
+  if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı.')
   }
 

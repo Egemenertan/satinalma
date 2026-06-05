@@ -110,8 +110,12 @@ export function PartialDeliveryModalRn({ visible, onClose, order, materialItem, 
       return
     }
 
-    const { data: userRes } = await supabase.auth.getUser()
-    const user = userRes.user
+    let { data: { session } } = await supabase.auth.getSession()
+    if (!session?.user) {
+      const { data: refreshData } = await supabase.auth.refreshSession()
+      session = refreshData.session
+    }
+    const user = session?.user
     if (!user) {
       Alert.alert('Teslim alma', 'Oturum bulunamadı.')
       return

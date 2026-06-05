@@ -16,11 +16,13 @@ export async function itWorkflowConfirmSendGonderildi(
 ): Promise<{ summary: string }> {
   const { requestId, items, sendQuantities } = params
 
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser()
-  if (userError || !user) throw new Error('Oturum bulunamadı')
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  const user = session?.user
+  if (!user) throw new Error('Oturum bulunamadı')
 
   const toShip: { item: PurchaseRequestItemRow; qty: number }[] = []
 

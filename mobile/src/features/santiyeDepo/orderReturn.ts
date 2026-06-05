@@ -143,8 +143,12 @@ export async function processOrderReturn(
   const { order, materialItem, returnQty, returnNotes, reorderRequested, photoUrls, userRole } = opts
   if (!returnNotes.trim()) return { ok: false, message: 'İade nedeni zorunludur' }
 
-  const { data: userRes } = await supabase.auth.getUser()
-  const user = userRes.user
+  let { data: { session } } = await supabase.auth.getSession()
+  if (!session?.user) {
+    const { data: refreshData } = await supabase.auth.refreshSession()
+    session = refreshData.session
+  }
+  const user = session?.user
   if (!user) return { ok: false, message: 'Oturum bulunamadı' }
 
   let purchaseRequestId = order.purchase_request_id
