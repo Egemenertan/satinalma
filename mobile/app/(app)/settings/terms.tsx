@@ -1,6 +1,6 @@
 import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
-import { useTranslation } from 'react-i18next'
 import { ISLAND_BOTTOM_BAR_CONTENT_INSET } from '../../../src/components/island/islandTokens'
+import { useAppLocale } from '../../../src/i18n/useAppLocale'
 import { stats } from '../../../src/theme/statsDesignTokens'
 
 const CONTACT_EMAIL = 'info@dovecconstruction.com'
@@ -238,9 +238,8 @@ Email: ${CONTACT_EMAIL}`,
 }
 
 export default function TermsOfServiceScreen() {
-  const { i18n } = useTranslation()
-  const lang = i18n.language?.startsWith('tr') ? 'tr' : 'en'
-  const c = content[lang]
+  const { locale } = useAppLocale()
+  const c = content[locale]
 
   const openEmail = () => {
     Linking.openURL(`mailto:${CONTACT_EMAIL}`)
