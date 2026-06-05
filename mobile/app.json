@@ -9,8 +9,6 @@
     "newArchEnabled": true,
     "scheme": "com.dlx",
     "splash": {
-      "image": "./assets/dld.png",
-      "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "ios": {
@@ -37,6 +35,15 @@
       "favicon": "./assets/dl.png"
     },
     "plugins": [
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/dld.png",
+          "imageWidth": 150,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff"
+        }
+      ],
       "expo-router",
       [
         "expo-navigation-bar",
