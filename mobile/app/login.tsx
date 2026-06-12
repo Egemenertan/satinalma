@@ -12,10 +12,12 @@ import {
   TextInput,
   View,
 } from 'react-native'
+import Ionicons from '@expo/vector-icons/Ionicons'
+import * as AppleAuthentication from 'expo-apple-authentication'
 import * as WebBrowser from 'expo-web-browser'
 import { useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
-import { SafeAreaView } from 'react-native-safe-area-context'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { ensureProfile } from '../src/lib/ensureProfile'
 import { supabase } from '../src/lib/supabase'
 import { useAuth } from '../src/providers/AuthProvider'
@@ -100,6 +102,22 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [microsoftLoading, setMicrosoftLoading] = useState(false)
+  const [appleLoading, setAppleLoading] = useState(false)
+  const [appleAvailable, setAppleAvailable] = useState(false)
+
+  useEffect(() => {
+    // iOS 13+ ve simulator'da Apple Sign In kullanılabilirliğini kontrol et
+    if (Platform.OS === 'ios') {
+      AppleAuthentication.isAvailableAsync().then((available) => {
+        console.log('🍎 Apple Sign In available:', available)
+        setAppleAvailable(available)
+      }).catch((err) => {
+        console.log('🍎 Apple Sign In check error:', err)
+        // Hata olsa bile true yap - build sorunu olabilir
+        setAppleAvailable(true)
+      })
+    }
+  }, [])
 
   useEffect(() => {
     // Session varsa ve login işlemi devam etmiyorsa yönlendir
@@ -218,11 +236,14 @@ export default function LoginScreen() {
       }
 
       console.log('👤 Profile kontrol ediliyor...')
+      const companyName = user.user_metadata?.company_name
+      const isNewRegistration = Boolean(companyName)
       const ensured = await ensureProfile(
         supabase,
         user.id,
         user.email,
-        user.user_metadata?.full_name || user.user_metadata?.name
+        user.user_metadata?.full_name || user.user_metadata?.name,
+        { companyName, isNewRegistration }
       )
       if (ensured === 'deactivated') {
         await supabase.auth.signOut()
@@ -246,6 +267,86 @@ export default function LoginScreen() {
     }
   }, [refreshProfile, router, t])
 
+  const signInWithApple = useCallback(async () => {
+    setAppleLoading(true)
+    try {
+      console.log('🍎 Apple Sign In başlatılıyor...')
+      
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      })
+
+      console.log('✅ Apple credential alındı:', {
+        hasIdentityToken: !!credential.identityToken,
+        hasEmail: !!credential.email,
+        hasFullName: !!credential.fullName,
+      })
+
+      if (!credential.identityToken) {
+        Alert.alert(t('auth.oauthTitle'), t('auth.appleNoToken'))
+        return
+      }
+
+      // Supabase'e Apple token ile sign in
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: credential.identityToken,
+      })
+
+      if (error) {
+        console.error('❌ Apple Supabase error:', error)
+        Alert.alert(t('auth.oauthTitle'), error.message)
+        return
+      }
+
+      const user = data?.user
+      if (!user) {
+        Alert.alert(t('auth.oauthTitle'), t('auth.oauthNoSession'))
+        return
+      }
+
+      console.log('👤 Apple user:', user.id)
+
+      // Full name'i credential'dan al (sadece ilk giriş için gelir)
+      const fullName = credential.fullName
+        ? `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim()
+        : user.user_metadata?.full_name || user.email?.split('@')[0]
+
+      const ensured = await ensureProfile(
+        supabase,
+        user.id,
+        user.email || credential.email,
+        fullName,
+        { companyName: undefined, isNewRegistration: false }
+      )
+
+      if (ensured === 'deactivated') {
+        await supabase.auth.signOut()
+        Alert.alert(t('auth.accountDisabled'), t('auth.accountDisabledBody'))
+        return
+      }
+
+      console.log('🔄 Profile yükleniyor...')
+      await refreshProfile(user.id)
+
+      console.log('✅ Apple Login başarılı!')
+      router.replace('/(app)/requests')
+    } catch (e: unknown) {
+      if ((e as { code?: string }).code === 'ERR_REQUEST_CANCELED') {
+        // Kullanıcı iptal etti
+        console.log('Apple Sign In iptal edildi')
+        return
+      }
+      const message = e instanceof Error ? e.message : t('common.unknownError')
+      Alert.alert(t('auth.oauthTitle'), message)
+    } finally {
+      setAppleLoading(false)
+    }
+  }, [refreshProfile, router, t])
+
   async function onSubmit() {
     if (!email.trim() || !password) {
       Alert.alert(t('auth.missingFields'), t('auth.missingFieldsBody'))
@@ -263,21 +364,30 @@ export default function LoginScreen() {
     } = await supabase.auth.getSession()
     const u = s?.user
     if (u) {
-      const ensured = await ensureProfile(supabase, u.id, u.email, u.user_metadata?.full_name || u.user_metadata?.name)
+      const companyName = u.user_metadata?.company_name
+      const isNewRegistration = Boolean(companyName)
+      const ensured = await ensureProfile(
+        supabase,
+        u.id,
+        u.email,
+        u.user_metadata?.full_name || u.user_metadata?.name,
+        { companyName, isNewRegistration }
+      )
       if (ensured === 'deactivated') {
         await supabase.auth.signOut()
         Alert.alert(t('auth.accountDisabled'), t('auth.accountDisabledBody'))
         return
       }
-      await refreshProfile()
+      await refreshProfile(u.id)
     }
     router.replace('/(app)/requests')
   }
 
-  const busy = submitting || microsoftLoading
+  const busy = submitting || microsoftLoading || appleLoading
+  const insets = useSafeAreaInsets()
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <View style={[styles.container, { paddingTop: insets.top }]}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.flex}
@@ -285,11 +395,12 @@ export default function LoginScreen() {
       >
         <ScrollView
           style={styles.flex}
-          contentContainerStyle={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          <View style={styles.logoSection}>
+          {/* Logo */}
+          <View style={styles.logoContainer}>
             <Image
               source={require('../assets/dld.png')}
               style={styles.logo}
@@ -359,80 +470,194 @@ export default function LoginScreen() {
               </>
             )}
           </Pressable>
+
+          {/* Apple Sign In - only on iOS */}
+          {Platform.OS === 'ios' && (
+            <Pressable
+              style={[styles.btnApple, busy && styles.btnDisabled]}
+              onPress={signInWithApple}
+              disabled={busy}
+              accessibilityRole="button"
+              accessibilityLabel={t('auth.appleA11y')}
+            >
+              {appleLoading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="logo-apple" size={20} color="#fff" />
+                  <Text style={styles.btnAppleText}>{t('auth.loginApple')}</Text>
+                </>
+              )}
+            </Pressable>
+          )}
+
+          {/* Register link */}
+          <View style={styles.registerRow}>
+            <Text style={styles.registerText}>{t('auth.noAccount')}</Text>
+            <Pressable onPress={() => router.push('/register')}>
+              <Text style={styles.registerLink}>{t('auth.register')}</Text>
+            </Pressable>
+          </View>
+
+          {/* Bottom padding for safe area */}
+          <View style={{ height: insets.bottom + 16 }} />
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </View>
   )
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: '#ffffff' },
+  container: {
+    flex: 1,
+    backgroundColor: '#ffffff',
+  },
   flex: { flex: 1 },
-  scroll: {
+  scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
-    backgroundColor: '#ffffff',
   },
-  logoSection: {
+  
+  logoContainer: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 32,
   },
   logo: {
-    width: 140,
-    height: 48,
-    maxWidth: '60%',
+    width: 180,
+    height: 62,
   },
-  hero: { marginBottom: 28, alignItems: 'center' },
-  h1: { fontSize: 26, fontWeight: '700', color: '#111827', letterSpacing: -0.5, textAlign: 'center' },
+  
+  hero: { 
+    marginBottom: 24, 
+    alignItems: 'center',
+  },
+  h1: { 
+    fontSize: 28, 
+    fontWeight: '700', 
+    color: '#111827', 
+    letterSpacing: -0.5, 
+    textAlign: 'center',
+  },
   lead: {
     fontSize: 15,
     color: '#6b7280',
     textAlign: 'center',
-    marginTop: 10,
+    marginTop: 8,
     lineHeight: 22,
     paddingHorizontal: 8,
   },
+  
   input: {
-    borderWidth: 1,
+    borderWidth: 1.5,
     borderColor: '#e5e7eb',
     borderRadius: 50,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     fontSize: 16,
-    marginBottom: 12,
-    backgroundColor: '#fff',
+    marginBottom: 14,
+    backgroundColor: '#f9fafb',
     color: '#111827',
   },
+  
   btnPrimary: {
     backgroundColor: '#111827',
     borderRadius: 50,
-    paddingVertical: 16,
+    paddingVertical: 18,
     alignItems: 'center',
     marginTop: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 4,
   },
-  btnPrimaryText: { color: '#fff', fontSize: 16, fontWeight: '600' },
+  btnPrimaryText: { 
+    color: '#fff', 
+    fontSize: 17, 
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
   btnDisabled: { opacity: 0.65 },
-  orRow: { flexDirection: 'row', alignItems: 'center', marginVertical: 22, gap: 12 },
-  orLine: { flex: 1, height: StyleSheet.hairlineWidth * 2, backgroundColor: '#e5e7eb' },
-  orText: { fontSize: 11, fontWeight: '600', color: '#9ca3af', letterSpacing: 0.8 },
+  
+  orRow: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginVertical: 20, 
+    gap: 12,
+  },
+  orLine: { 
+    flex: 1, 
+    height: 1, 
+    backgroundColor: '#e5e7eb',
+  },
+  orText: { 
+    fontSize: 12, 
+    fontWeight: '600', 
+    color: '#9ca3af', 
+    letterSpacing: 1,
+  },
+  
   btnMicrosoft: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 12,
     backgroundColor: '#ffffff',
-    borderWidth: 2,
+    borderWidth: 1.5,
     borderColor: '#e5e7eb',
     borderRadius: 50,
     paddingVertical: 16,
     paddingHorizontal: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06,
+    shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 2,
   },
-  btnMicrosoftText: { fontSize: 16, fontWeight: '600', color: '#111827' },
+  btnMicrosoftText: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#111827',
+  },
+  
+  btnApple: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    backgroundColor: '#000000',
+    borderRadius: 50,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    marginTop: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  btnAppleText: { 
+    fontSize: 16, 
+    fontWeight: '600', 
+    color: '#ffffff',
+  },
+  
+  registerRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 24,
+    gap: 6,
+  },
+  registerText: {
+    fontSize: 15,
+    color: '#6b7280',
+  },
+  registerLink: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#111827',
+  },
 })

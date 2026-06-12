@@ -4,7 +4,7 @@ import { Image, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
 import { islandTokens } from './islandTokens'
 
-const LogoImage = require('../../../assets/dld.png')
+const LogoImage = require('../../../assets/dlx.png')
 
 export type IslandHeaderProps = {
   title: string

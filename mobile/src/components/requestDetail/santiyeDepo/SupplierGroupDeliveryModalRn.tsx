@@ -79,7 +79,7 @@ export function SupplierGroupDeliveryModalRn({
   const insets = useSafeAreaInsets()
   const { height: winH } = useWindowDimensions()
   const sheetBodyHeight = Math.round(winH * 0.92)
-  const footerPad = useMemo(() => Math.max(insets.bottom, 20) + 8, [insets.bottom])
+  const footerPad = useMemo(() => Math.max(insets.bottom, 20) + 24, [insets.bottom])
 
   // Backward compat: eğer groups yoksa lines'dan tek grup oluştur
   const groups = useMemo<SupplierGroup[]>(() => {

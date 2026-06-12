@@ -21,6 +21,8 @@ export type ProfileRow = {
   construction_site_id?: string | null
   deleted_at?: string | null
   is_active?: boolean | null
+  organization_id?: string | null
+  company_name?: string | null
 }
 
 export type OrderListItem = {
@@ -420,12 +422,14 @@ function applyRoleScope(query: any, effectiveRole: string, userId: string, profi
     if (userSiteIds.length > 0) {
       return query.in('site_id', userSiteIds).neq('status', 'onay_bekliyor')
     }
-    return query
+    // Site ataması olmayan santiye_depo sadece kendi taleplerini görebilir
+    return query.eq('requested_by', userId)
   }
   if (userSiteIds.length > 0) {
     return query.in('site_id', userSiteIds)
   }
-  return query
+  // Site ataması olmayan kullanıcılar sadece kendi taleplerini görebilir
+  return query.eq('requested_by', userId)
 }
 
 async function fetchItWorkflowList(

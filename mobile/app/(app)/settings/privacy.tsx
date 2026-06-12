@@ -3,19 +3,19 @@ import { ISLAND_BOTTOM_BAR_CONTENT_INSET } from '../../../src/components/island/
 import { useAppLocale } from '../../../src/i18n/useAppLocale'
 import { stats } from '../../../src/theme/statsDesignTokens'
 
-const CONTACT_EMAIL = 'info@dovecconstruction.com'
-const WEB_PRIVACY_URL = 'https://dovec.app/privacy-policy'
+const SUPPORT_URL = 'https://www.dlxflow.com/support'
+const WEB_PRIVACY_URL = 'https://www.dlxflow.com/privacy'
 
 const content = {
   tr: {
     title: 'Gizlilik Politikası',
     updated: 'Son güncelleme: 04.06.2026',
-    sendEmail: 'E-posta Gönder',
+    contactSupport: 'Destek ile İletişim',
     viewOnWeb: "Web'de Görüntüle",
     sections: [
       {
         title: '1. Giriş',
-        body: 'Dovec Group ("Şirket", "biz") olarak, DLX Satın Alma mobil uygulaması ("Uygulama") üzerinden kişisel verilerinizin gizliliğine büyük önem veriyoruz. Bu Gizlilik Politikası, hangi verileri topladığımızı, nasıl kullandığımızı, sakladığımızı ve koruduğumuzu açıklamaktadır.',
+        body: 'DLX ("Hizmet Sağlayıcı", "biz") olarak, DLX Satın Alma mobil uygulaması ("Uygulama") üzerinden kişisel verilerinizin gizliliğine büyük önem veriyoruz. Bu Gizlilik Politikası, hangi verileri topladığımızı, nasıl kullandığımızı, sakladığımızı ve koruduğumuzu açıklamaktadır.',
       },
       {
         title: '2. Toplanan Veriler',
@@ -23,9 +23,9 @@ const content = {
 
 Hesap Bilgileri:
 • Ad ve soyad
-• Kurumsal e-posta adresi
-• Departman ve rol bilgileri
-• Şirket içi site/lokasyon atamaları
+• E-posta adresi
+• Şirket adı ve departman bilgileri
+• Rol ve lokasyon atamaları
 
 Kullanım Verileri:
 • Satın alma talepleri ve onay geçmişi
@@ -94,8 +94,8 @@ Hesap silme işlemi için Ayarlar > "Profili tamamen kaldır" seçeneğini kulla
         title: '10. İletişim',
         body: `Gizlilik politikası veya kişisel verileriniz hakkında sorularınız için bizimle iletişime geçebilirsiniz:
 
-Dovec Group
-E-posta: ${CONTACT_EMAIL}`,
+DLX Destek
+${SUPPORT_URL}`,
         hasContact: true,
       },
     ],
@@ -103,12 +103,12 @@ E-posta: ${CONTACT_EMAIL}`,
   en: {
     title: 'Privacy Policy',
     updated: 'Last updated: 04.06.2026',
-    sendEmail: 'Send Email',
+    contactSupport: 'Contact Support',
     viewOnWeb: 'View on Web',
     sections: [
       {
         title: '1. Introduction',
-        body: 'At Dovec Group ("Company", "we"), we place great importance on the privacy of your personal data through the DLX Purchasing mobile application ("App"). This Privacy Policy explains what data we collect, how we use it, store it, and protect it.',
+        body: 'At DLX ("Service Provider", "we"), we place great importance on the privacy of your personal data through the DLX Purchasing mobile application ("App"). This Privacy Policy explains what data we collect, how we use it, store it, and protect it.',
       },
       {
         title: '2. Data Collected',
@@ -116,9 +116,9 @@ E-posta: ${CONTACT_EMAIL}`,
 
 Account Information:
 • First and last name
-• Corporate email address
-• Department and role information
-• Company site/location assignments
+• Email address
+• Company name and department information
+• Role and location assignments
 
 Usage Data:
 • Purchase requests and approval history
@@ -187,8 +187,8 @@ To delete your account, use Settings > "Remove profile completely".`,
         title: '10. Contact',
         body: `For questions about the privacy policy or your personal data, please contact us:
 
-Dovec Group
-Email: ${CONTACT_EMAIL}`,
+DLX Support
+${SUPPORT_URL}`,
         hasContact: true,
       },
     ],
@@ -199,8 +199,8 @@ export default function PrivacyPolicyScreen() {
   const { locale } = useAppLocale()
   const c = content[locale]
 
-  const openEmail = () => {
-    Linking.openURL(`mailto:${CONTACT_EMAIL}`)
+  const openSupport = () => {
+    Linking.openURL(SUPPORT_URL)
   }
 
   const openWebVersion = () => {
@@ -222,8 +222,8 @@ export default function PrivacyPolicyScreen() {
           <Text style={styles.body}>{section.body}</Text>
           {section.hasContact && (
             <>
-              <Pressable style={styles.emailBtn} onPress={openEmail}>
-                <Text style={styles.emailBtnText}>{c.sendEmail}</Text>
+              <Pressable style={styles.supportBtn} onPress={openSupport}>
+                <Text style={styles.supportBtnText}>{c.contactSupport}</Text>
               </Pressable>
               <Pressable style={styles.webBtn} onPress={openWebVersion}>
                 <Text style={styles.webBtnText}>{c.viewOnWeb}</Text>
@@ -266,14 +266,14 @@ const styles = StyleSheet.create({
     lineHeight: 24,
     color: stats.onSurfaceVariant,
   },
-  emailBtn: {
+  supportBtn: {
     marginTop: 16,
     backgroundColor: stats.primary,
     borderRadius: 12,
     paddingVertical: 14,
     alignItems: 'center',
   },
-  emailBtnText: {
+  supportBtnText: {
     color: '#ffffff',
     fontSize: 15,
     fontWeight: '600',

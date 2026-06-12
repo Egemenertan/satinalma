@@ -14,7 +14,8 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dlx",
-      "buildNumber": "1",
+      "buildNumber": "14",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSCameraUsageDescription": "İade ve teslim süreçlerinde fotoğraf çekmek için kamera erişimi gerekir.",
         "NSPhotoLibraryUsageDescription": "Talep eklerken malzeme görsellerini seçebilmek için fotoğraf galerinize erişim gerekir.",
@@ -22,8 +23,9 @@
       }
     },
     "android": {
-      "package": "com.dlx",
-      "versionCode": 1,
+      "package": "com.dlx_satinalma",
+      "versionCode": 14,
+      "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "foregroundImage": "./assets/dlxx.png",
         "backgroundColor": "#01E884"
@@ -67,7 +69,8 @@
           "photosPermission": "Talep eklerken malzeme görsellerini seçebilmek için fotoğraf galerinize erişim gerekir.",
           "cameraPermission": "İade ve teslim süreçlerinde fotoğraf çekmek için kamera erişimi gerekir."
         }
-      ]
+      ],
+      "expo-apple-authentication"
     ]
   }
 }

@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Modal,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -162,7 +163,7 @@ function resolveProfileSiteIds(profile: { site_id?: string | string[] | null; co
 
 export default function RequestsListScreen() {
   const router = useRouter()
-  const { user, profile } = useAuth()
+  const { user, profile, refreshProfile } = useAuth()
   const { t, i18n } = useTranslation()
   const dateLocale = i18n.language.startsWith('en') ? 'en-US' : 'tr-TR'
   const [listView, setListView] = useState<'main' | 'it'>('main')
@@ -197,6 +198,13 @@ export default function RequestsListScreen() {
       }
     })()
   }, [])
+
+  // Sayfa mount olduğunda profili yenile (org setup sonrası güncel data için)
+  useEffect(() => {
+    if (user?.id) {
+      void refreshProfile(user.id)
+    }
+  }, [user?.id, refreshProfile])
 
   useEffect(() => {
     if (!prefsLoaded) return
@@ -248,11 +256,73 @@ export default function RequestsListScreen() {
 
   const hasSiteAssignment = userSiteIds.length > 0
   const requiresSiteId = REQUIRES_SITE.includes(userRole)
-  const showSiteWarning = requiresSiteId && !hasSiteAssignment
+  
+  // Organizasyon kontrolü - SADECE yeni kullanıcılar için (site_id'si olmayanlar)
+  // Mevcut kullanıcılar (site_id'si olanlar) direkt devam etsin
+  const hasOrganization = Boolean(profile?.organization_id)
+  const isExistingUser = hasSiteAssignment // Site ataması varsa mevcut kullanıcı
+  const showOrgSetup = profile && !hasOrganization && !isExistingUser
+  
+  useEffect(() => {
+    if (showOrgSetup) {
+      router.replace('/setup-organization')
+    }
+  }, [showOrgSetup, router])
+
+  // Site ataması olmayan kullanıcılar için uyarı (mevcut davranış)
+  const showSiteWarning = requiresSiteId && !hasSiteAssignment && !showOrgSetup
+
+  // Site oluşturma modal state
+  const [siteModalOpen, setSiteModalOpen] = useState(false)
+  const [newSiteName, setNewSiteName] = useState('')
+  const [creatingSite, setCreatingSite] = useState(false)
+
+  const handleCreateSite = async () => {
+    if (!newSiteName.trim()) {
+      Alert.alert(t('common.error'), t('site.nameRequired'))
+      return
+    }
+    if (!user?.id) return
+
+    setCreatingSite(true)
+    try {
+      // 1. Site oluştur
+      const { data: site, error: siteError } = await supabase
+        .from('sites')
+        .insert({ name: newSiteName.trim() })
+        .select()
+        .single()
+
+      if (siteError) throw siteError
+
+      // 2. Kullanıcının profile'ına site_id ekle
+      const { error: profileError } = await supabase
+        .from('profiles')
+        .update({ site_id: [site.id] })
+        .eq('id', user.id)
+
+      if (profileError) {
+        console.warn('Profile update error:', profileError.message)
+      }
+
+      // 3. Profile'ı yenile
+      await refreshProfile(user.id)
+
+      // 4. Modal kapat ve sayfayı yenile
+      setSiteModalOpen(false)
+      setNewSiteName('')
+      Alert.alert(t('common.success'), t('site.created'))
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : t('common.unknownError')
+      Alert.alert(t('site.createFailed'), message)
+    } finally {
+      setCreatingSite(false)
+    }
+  }
 
   const { data: pageData, refetch: refetchPageData, isFetching: pageDataFetching } = useQuery({
     queryKey: ['requests_page_data', user?.id],
-    enabled: Boolean(user?.id && profile),
+    enabled: Boolean(user?.id && profile) && !showOrgSetup,
     staleTime: 45_000,
     gcTime: 6 * 60_000,
     queryFn: async () => {
@@ -300,7 +370,8 @@ export default function RequestsListScreen() {
   const isOverdueRole = ['site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(userRole)
   const overdueDataReady = !overdueOnly || !isOverdueRole || pageData !== undefined
   /** Liste AsyncStorage ile bloklanmıyor; tercihler yüklendikçe sorgu anahtarı güncellenir (ek istek olabilir). */
-  const listQueryEnabled = Boolean(user?.id && profile) && overdueDataReady
+  // Organizasyon kurulumu gerekiyorsa query'yi çalıştırma
+  const listQueryEnabled = Boolean(user?.id && profile) && overdueDataReady && !showOrgSetup
 
   const listQueryKey = useMemo(
     () => [
@@ -361,10 +432,27 @@ export default function RequestsListScreen() {
     },
   })
 
-  const onRefresh = useCallback(() => {
-    void refetchPageData()
-    void refetchList()
+  const [isManualRefreshing, setIsManualRefreshing] = useState(false)
+
+  const onRefresh = useCallback(async () => {
+    setIsManualRefreshing(true)
+    try {
+      await Promise.all([refetchPageData(), refetchList()])
+    } finally {
+      setIsManualRefreshing(false)
+    }
   }, [refetchPageData, refetchList])
+
+  // Sayfa focus aldığında arka planda sessizce verileri yenile
+  useFocusEffect(
+    useCallback(() => {
+      if (listQueryEnabled) {
+        // Arka planda sessizce yenile - RefreshControl gösterme
+        void refetchList()
+        void refetchPageData()
+      }
+    }, [listQueryEnabled, refetchList, refetchPageData])
+  )
 
   const handleSiteManagerQuickSend = useCallback(
     async (item: PurchaseRequestListRow) => {
@@ -497,8 +585,11 @@ export default function RequestsListScreen() {
 
       {showSiteWarning ? (
         <View style={styles.bannerDanger}>
-          <Text style={styles.bannerDangerTitle}>{t('notifications.siteWaitTitle')}</Text>
-          <Text style={styles.bannerDangerBody}>{t('notifications.siteWaitBody')}</Text>
+          <Text style={styles.bannerDangerTitle}>{t('site.noSiteTitle')}</Text>
+          <Text style={styles.bannerDangerBody}>{t('site.noSiteBody')}</Text>
+          <Pressable style={styles.bannerButton} onPress={() => setSiteModalOpen(true)}>
+            <Text style={styles.bannerButtonText}>{t('site.createSite')}</Text>
+          </Pressable>
         </View>
       ) : null}
 
@@ -688,6 +779,15 @@ export default function RequestsListScreen() {
     )
   }
 
+  // Organizasyon kurulumu için yönlendirme yapılırken loading göster
+  if (showOrgSetup) {
+    return (
+      <View style={styles.container}>
+        <RequestsPageSkeleton />
+      </View>
+    )
+  }
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -698,7 +798,7 @@ export default function RequestsListScreen() {
         ListFooterComponent={listFooter}
         refreshControl={
           <RefreshControl
-            refreshing={pageDataFetching || listFetching}
+            refreshing={isManualRefreshing}
             onRefresh={onRefresh}
             tintColor="#6b7280"
             colors={['#6b7280']}
@@ -975,6 +1075,56 @@ export default function RequestsListScreen() {
         </View>
       </SwipeDismissSheet>
 
+      {/* Site Oluşturma Modal */}
+      <Modal
+        visible={siteModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setSiteModalOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.siteModalContent}>
+            <Text style={styles.siteModalTitle}>{t('site.createSite')}</Text>
+            <Text style={styles.siteModalSubtitle}>{t('site.createSiteSubtitle')}</Text>
+            
+            <TextInput
+              style={styles.siteModalInput}
+              placeholder={t('site.namePlaceholder')}
+              placeholderTextColor="#9ca3af"
+              value={newSiteName}
+              onChangeText={setNewSiteName}
+              editable={!creatingSite}
+              autoFocus
+            />
+
+            <View style={styles.siteModalButtons}>
+              <Pressable
+                style={styles.siteModalCancelBtn}
+                onPress={() => {
+                  setSiteModalOpen(false)
+                  setNewSiteName('')
+                }}
+                disabled={creatingSite}
+              >
+                <Text style={styles.siteModalCancelText}>{t('common.cancel')}</Text>
+              </Pressable>
+              
+              <Pressable
+                style={[styles.siteModalCreateBtn, creatingSite && styles.btnDisabled]}
+                onPress={handleCreateSite}
+                disabled={creatingSite}
+              >
+                {creatingSite ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.siteModalCreateText}>{t('site.create')}</Text>
+                )}
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
     </View>
   )
 }
@@ -999,6 +1149,29 @@ const styles = StyleSheet.create({
   },
   bannerDangerTitle: { fontFamily: statsFont.bold, fontSize: 14, color: stats.error },
   bannerDangerBody: { marginTop: 4, ...statsType.bodyMd, color: stats.onErrorContainer },
+  bannerInfo: {
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: 'rgba(59, 130, 246, 0.22)',
+    borderRadius: 24,
+    padding: 14,
+    ...(stats.shadowSm ?? {}),
+  },
+  bannerInfoTitle: { fontFamily: statsFont.bold, fontSize: 14, color: '#1d4ed8' },
+  bannerInfoBody: { marginTop: 4, ...statsType.bodyMd, color: '#1e40af' },
+  bannerButton: {
+    backgroundColor: '#111827',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  bannerButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontFamily: statsFont.semibold,
+  },
   bannerOk: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1407,4 +1580,72 @@ const styles = StyleSheet.create({
   },
   modalClose: { marginTop: 12, padding: 14, alignItems: 'center' },
   modalCloseText: { ...statsType.labelMd, color: '#374151', fontSize: 14 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  siteModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '100%',
+    maxWidth: 400,
+  },
+  siteModalTitle: {
+    fontSize: 20,
+    fontFamily: statsFont.bold,
+    color: stats.onSurface,
+    marginBottom: 8,
+  },
+  siteModalSubtitle: {
+    fontSize: 14,
+    color: stats.onSurfaceVariant,
+    marginBottom: 20,
+  },
+  siteModalInput: {
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+    borderRadius: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 16,
+    backgroundColor: '#f9fafb',
+    color: '#111827',
+    marginBottom: 20,
+  },
+  siteModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  siteModalCancelBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: '#e5e7eb',
+  },
+  siteModalCancelText: {
+    fontSize: 15,
+    fontFamily: statsFont.semibold,
+    color: '#6b7280',
+  },
+  siteModalCreateBtn: {
+    flex: 1,
+    paddingVertical: 14,
+    alignItems: 'center',
+    borderRadius: 12,
+    backgroundColor: '#111827',
+  },
+  siteModalCreateText: {
+    fontSize: 15,
+    fontFamily: statsFont.semibold,
+    color: '#fff',
+  },
+  btnDisabled: {
+    opacity: 0.65,
+  },
 })

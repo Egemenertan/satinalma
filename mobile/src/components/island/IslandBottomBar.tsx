@@ -9,14 +9,12 @@ type MaterialGlyph = ComponentProps<typeof MaterialIcons>['name']
 
 const ICON_OFF = '#ffffff'
 const ICON_ON = '#01E884'
-const ICON_WHITE = '#ffffff'
 
 function TabGlyph({
   name,
   nameActive,
   active,
   size,
-  style,
   colorOff,
   colorOn,
 }: {
@@ -24,17 +22,15 @@ function TabGlyph({
   nameActive?: MaterialGlyph
   active: boolean
   size: number
-  style?: ComponentProps<typeof MaterialIcons>['style']
   colorOff?: string
   colorOn?: string
 }) {
   const glyph = active && nameActive ? nameActive : name
   const offColor = colorOff ?? ICON_OFF
   const onColor = colorOn ?? ICON_ON
-  return <MaterialIcons name={glyph} size={size} color={active ? onColor : offColor} style={style} />
+  return <MaterialIcons name={glyph} size={size} color={active ? onColor : offColor} />
 }
 
-/** Kök sekmeler: push yerine dismissTo — üst üste aynı liste birikmez, geri/profilsiz “hayalet” ekran oluşmaz */
 function goRequestsTab(router: ReturnType<typeof useRouter>) {
   router.dismissTo('/(app)/requests')
 }
@@ -49,10 +45,11 @@ function goProfileTab(router: ReturnType<typeof useRouter>) {
 
 type TabKey = 'list' | 'create' | 'profile'
 
-/** Alt nave: siyah yüzen ada; wrap şeffaf — sadece ada görünür, alt güvenli alan arkada içerik görünür */
-const RADIUS_MD = 999
+const RADIUS_PILL = 999
 const BAR_BG = '#000000'
-const SIDE_INSET = 20
+const SIDE_INSET = 16
+const GAP = 10
+const PRIMARY_GREEN = '#01E884'
 
 export function IslandBottomBar() {
   const router = useRouter()
@@ -66,36 +63,16 @@ export function IslandBottomBar() {
 
   return (
     <View style={[styles.wrap, { paddingBottom: bottomPad }]} pointerEvents="box-none">
-      <View style={[styles.island, styles.islandNarrow]} accessibilityRole="tablist">
+      {/* Sol: Tab bar (Talepler + Profil) */}
+      <View style={styles.island} accessibilityRole="tablist">
         <Pressable
           style={({ pressed }) => [styles.tab, active === 'list' && styles.tabActive, pressed && styles.tabPressed]}
           onPress={() => goRequestsTab(router)}
           accessibilityRole="tab"
           accessibilityState={{ selected: active === 'list' }}
         >
-          <TabGlyph name="assignment" active={active === 'list'} size={24} />
+          <TabGlyph name="assignment" active={active === 'list'} size={22} />
           <Text style={[styles.tabLabel, active === 'list' && styles.tabLabelOn]}>{t('tabs.requests')}</Text>
-        </Pressable>
-
-        <View style={styles.divider} />
-
-        <Pressable
-          style={({ pressed }) => [styles.tab, active === 'create' && styles.tabActive, pressed && styles.tabPressed]}
-          onPress={() => goCreateTab(router)}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: active === 'create' }}
-        >
-          <TabGlyph
-            name="add-circle-outline"
-            nameActive="add-circle"
-            active={active === 'create'}
-            size={24}
-            colorOff={ICON_WHITE}
-            colorOn={ICON_ON}
-          />
-          <Text style={[styles.tabLabel, active === 'create' && styles.tabLabelOn]}>
-            {t('tabs.newRequest')}
-          </Text>
         </Pressable>
 
         <View style={styles.divider} />
@@ -106,10 +83,25 @@ export function IslandBottomBar() {
           accessibilityRole="tab"
           accessibilityState={{ selected: active === 'profile' }}
         >
-          <TabGlyph name="person-outline" nameActive="person" active={active === 'profile'} size={24} />
+          <TabGlyph name="person-outline" nameActive="person" active={active === 'profile'} size={22} />
           <Text style={[styles.tabLabel, active === 'profile' && styles.tabLabelOn]}>{t('tabs.profile')}</Text>
         </Pressable>
       </View>
+
+      {/* Sağ: Yeni Talep Pill Button */}
+      <Pressable
+        style={({ pressed }) => [
+          styles.createPill,
+          active === 'create' && styles.createPillActive,
+          pressed && styles.createPillPressed,
+        ]}
+        onPress={() => goCreateTab(router)}
+        accessibilityRole="button"
+        accessibilityLabel={t('tabs.newRequest')}
+      >
+        <MaterialIcons name="add" size={24} color="#000000" />
+        <Text style={styles.createPillText}>{t('tabs.newRequest')}</Text>
+      </Pressable>
     </View>
   )
 }
@@ -120,17 +112,21 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    alignItems: 'center',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
     paddingHorizontal: SIDE_INSET,
     backgroundColor: 'transparent',
+    gap: GAP,
   },
   island: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: BAR_BG,
-    borderRadius: RADIUS_MD,
-    padding: 5,
-    justifyContent: 'center',
+    borderRadius: RADIUS_PILL,
+    paddingVertical: 3,
+    paddingHorizontal: 3,
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -139,41 +135,26 @@ const styles = StyleSheet.create({
         shadowRadius: 14,
       },
       android: {
-        elevation: 0,
-        borderWidth: StyleSheet.hairlineWidth,
-        borderColor: 'rgba(255, 255, 255, 0.14)',
+        elevation: 8,
       },
       default: { elevation: 0 },
     }),
-  },
-  islandNarrow: {
-    maxWidth: 380,
-    width: '100%',
   },
   tab: {
     flex: 1,
     flexDirection: 'column',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 8,
-    paddingHorizontal: 6,
-    borderRadius: 16,
-    gap: 2,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    borderRadius: RADIUS_PILL,
+    gap: 1,
   },
   tabActive: {
     backgroundColor: 'rgba(255, 255, 255, 0.12)',
-    borderRadius: 9999,
-  },
-  tabCreateDefault: {
-    backgroundColor: '#ffffff',
-    borderRadius: 9999,
-  },
-  tabActiveCreate: {
-    backgroundColor: 'rgba(1, 232, 132, 0.2)',
-    borderRadius: 9999,
   },
   tabPressed: {
-    opacity: 0.92,
+    opacity: 0.85,
   },
   tabLabel: {
     fontSize: 11,
@@ -185,16 +166,45 @@ const styles = StyleSheet.create({
   tabLabelOn: {
     color: '#ffffff',
   },
-  tabLabelWhite: {
-    color: '#ffffff',
-  },
-  tabLabelDark: {
-    color: '#111827',
-  },
   divider: {
     width: StyleSheet.hairlineWidth * 2,
     alignSelf: 'stretch',
     backgroundColor: 'rgba(255, 255, 255, 0.14)',
-    marginVertical: 8,
+    marginVertical: 6,
+  },
+  createPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'stretch',
+    gap: 4,
+    backgroundColor: PRIMARY_GREEN,
+    borderRadius: RADIUS_PILL,
+    paddingHorizontal: 14,
+    ...Platform.select({
+      ios: {
+        shadowColor: PRIMARY_GREEN,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 8,
+      },
+      default: { elevation: 0 },
+    }),
+  },
+  createPillActive: {
+    backgroundColor: '#00cc75',
+  },
+  createPillPressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.98 }],
+  },
+  createPillText: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#000000',
+    letterSpacing: -0.3,
   },
 })

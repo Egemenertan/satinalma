@@ -3,10 +3,10 @@ import type { ComponentProps } from 'react'
 import { useRouter } from 'expo-router'
 import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native'
 import { useTranslation } from 'react-i18next'
-import { ISLAND_BOTTOM_BAR_CONTENT_INSET, islandTokens } from '../../../src/components/island/islandTokens'
+import { ISLAND_BOTTOM_BAR_CONTENT_INSET } from '../../../src/components/island/islandTokens'
 import { useAppLocale } from '../../../src/i18n/useAppLocale'
 import { useAuth } from '../../../src/providers/AuthProvider'
-import { stats } from '../../../src/theme/statsDesignTokens'
+import { stats, statsFont } from '../../../src/theme/statsDesignTokens'
 
 function getInitials(name: string, localeTag: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean)
@@ -35,8 +35,6 @@ export default function ProfileScreen() {
     user?.email?.split('@')[0]?.replace(/[._-]/g, ' ') ||
     t('common.user')
   const email = user?.email ?? profile?.email ?? t('common.dash')
-  const roleLabel = profile?.role ? String(profile.role).replace(/_/g, ' ') : t('common.dash')
-  const dept = profile?.department?.trim() || t('common.dash')
 
   const pickLanguage = () => {
     Alert.alert(t('profile.languageTitle'), '', [
@@ -53,146 +51,193 @@ export default function ProfileScreen() {
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
-      <View style={styles.hero}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{getInitials(label, localeTag)}</Text>
+      <View style={styles.heroCard}>
+        <View style={styles.heroRow}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{getInitials(label, localeTag)}</Text>
+          </View>
+          <View style={styles.heroInfo}>
+            <Text style={styles.name} numberOfLines={1}>{label}</Text>
+            <Text style={styles.email} numberOfLines={1}>{email}</Text>
+          </View>
         </View>
-        <Text style={styles.name}>{label}</Text>
-        <Text style={styles.email}>{email}</Text>
       </View>
 
-      <View style={styles.card}>
-        <Row icon="work" label={t('profile.role')} value={roleLabel} />
-        <View style={styles.divider} />
-        <Row icon="business" label={t('profile.department')} value={dept} />
+      <View style={styles.actionsSection}>
+        <Text style={styles.sectionTitle}>{t('profile.settings')}</Text>
+        
+        <ActionRow
+          icon="language"
+          label={t('profile.language')}
+          onPress={pickLanguage}
+        />
+        
+        <ActionRow
+          icon="settings"
+          label={t('nav.settings')}
+          onPress={() => router.push('/(app)/settings')}
+          chevron
+        />
       </View>
 
-      <Pressable
-        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.78 }]}
-        onPress={pickLanguage}
-        accessibilityRole="button"
-        accessibilityLabel={t('profile.language')}
-      >
-        <MaterialIcons name="language" size={22} color={islandTokens.text} />
-        <Text style={styles.secondaryBtnText}>{t('profile.language')}</Text>
-      </Pressable>
-
-      <Pressable
-        style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.88 }]}
-        onPress={() => router.push('/(app)/settings')}
-        accessibilityRole="button"
-        accessibilityLabel={t('nav.settings')}
-      >
-        <MaterialIcons name="settings" size={22} color={stats.onPrimary} />
-        <Text style={styles.primaryBtnText}>{t('profile.settings')}</Text>
-      </Pressable>
-
-      <Pressable
-        style={({ pressed }) => [styles.secondaryBtn, pressed && { opacity: 0.78 }]}
-        onPress={() => {
-          Alert.alert(t('profile.logoutTitle'), t('profile.logoutBody'), [
-            { text: t('common.cancel'), style: 'cancel' },
-            { text: t('profile.logout'), style: 'destructive', onPress: () => void signOut() },
-          ])
-        }}
-        accessibilityRole="button"
-        accessibilityLabel={t('profile.logout')}
-      >
-        <MaterialIcons name="logout" size={22} color={islandTokens.text} />
-        <Text style={styles.secondaryBtnText}>{t('profile.logout')}</Text>
-      </Pressable>
+      <View style={styles.logoutSection}>
+        <Pressable
+          style={({ pressed }) => [styles.logoutBtn, pressed && styles.logoutBtnPressed]}
+          onPress={() => {
+            Alert.alert(t('profile.logoutTitle'), t('profile.logoutBody'), [
+              { text: t('common.cancel'), style: 'cancel' },
+              { text: t('profile.logout'), style: 'destructive', onPress: () => void signOut() },
+            ])
+          }}
+          accessibilityRole="button"
+          accessibilityLabel={t('profile.logout')}
+        >
+          <MaterialIcons name="logout" size={20} color={stats.error} />
+          <Text style={styles.logoutBtnText}>{t('profile.logout')}</Text>
+        </Pressable>
+      </View>
     </ScrollView>
   )
 }
 
-function Row({
+function ActionRow({
   icon,
   label,
-  value,
+  onPress,
+  chevron,
 }: {
   icon: ComponentProps<typeof MaterialIcons>['name']
   label: string
-  value: string
+  onPress: () => void
+  chevron?: boolean
 }) {
   return (
-    <View style={styles.row}>
-      <MaterialIcons name={icon} size={22} color={islandTokens.muted} style={styles.rowIcon} />
-      <View style={styles.rowBody}>
-        <Text style={styles.rowLabel}>{label}</Text>
-        <Text style={styles.rowValue}>{value}</Text>
+    <Pressable
+      style={({ pressed }) => [styles.actionRow, pressed && styles.actionRowPressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+    >
+      <View style={styles.actionIconWrap}>
+        <MaterialIcons name={icon} size={20} color="#01E884" />
       </View>
-    </View>
+      <Text style={styles.actionLabel}>{label}</Text>
+      {chevron && (
+        <MaterialIcons name="chevron-right" size={22} color="#9ca3af" />
+      )}
+    </Pressable>
   )
 }
 
 const styles = StyleSheet.create({
   scroll: { flex: 1, backgroundColor: stats.background },
-  content: { paddingHorizontal: stats.gutter, paddingTop: 8 },
-  hero: { alignItems: 'center', marginBottom: 24 },
-  avatar: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: islandTokens.fillActive,
-    marginBottom: 14,
-  },
-  avatarText: { fontSize: 32, fontWeight: '800', color: islandTokens.text, letterSpacing: -1 },
-  name: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: stats.onSurface,
-    letterSpacing: -0.4,
-    textAlign: 'center',
-  },
-  email: {
-    marginTop: 6,
-    fontSize: 14,
-    fontWeight: '500',
-    color: stats.onSurfaceVariant,
-    textAlign: 'center',
-  },
-  card: {
-    borderRadius: stats.radiusXl,
-    backgroundColor: stats.surfaceContainerLow,
-    borderWidth: StyleSheet.hairlineWidth * 2,
-    borderColor: stats.outlineVariant,
-    paddingVertical: 6,
+  content: { paddingHorizontal: stats.gutter, paddingTop: 16 },
+
+  heroCard: {
+    backgroundColor: '#000000',
+    borderRadius: 32,
+    padding: 20,
     marginBottom: 16,
   },
-  divider: {
-    marginLeft: 52,
-    height: StyleSheet.hairlineWidth * 2,
-    backgroundColor: stats.outlineVariant,
-  },
-  row: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12 },
-  rowIcon: { marginRight: 12 },
-  rowBody: { flex: 1, minWidth: 0 },
-  rowLabel: { fontSize: 12, fontWeight: '700', color: stats.onSurfaceVariant, letterSpacing: 0.2 },
-  rowValue: { marginTop: 4, fontSize: 15, fontWeight: '600', color: stats.onSurface },
-  primaryBtn: {
+  heroRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    backgroundColor: stats.primary,
-    borderRadius: stats.radiusXl,
-    paddingVertical: 16,
-    marginBottom: 12,
+    gap: 16,
   },
-  primaryBtnText: { color: stats.onPrimary, fontSize: 16, fontWeight: '700' },
-  secondaryBtn: {
-    flexDirection: 'row',
+  avatar: {
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 10,
-    backgroundColor: stats.surfaceBright,
-    borderRadius: stats.radiusXl,
-    paddingVertical: 16,
-    marginBottom: 12,
-    borderWidth: StyleSheet.hairlineWidth * 2,
-    borderColor: stats.outlineVariant,
+    backgroundColor: '#01E884',
   },
-  secondaryBtnText: { color: stats.onSurface, fontSize: 16, fontWeight: '700' },
+  avatarText: { 
+    fontSize: 24, 
+    fontFamily: statsFont.bold, 
+    color: '#000000', 
+    letterSpacing: -0.5 
+  },
+  heroInfo: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    fontSize: 20,
+    fontFamily: statsFont.bold,
+    color: '#ffffff',
+    letterSpacing: -0.3,
+  },
+  email: {
+    marginTop: 4,
+    fontSize: 14,
+    fontFamily: statsFont.medium,
+    color: '#9ca3af',
+  },
+
+  actionsSection: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontFamily: statsFont.bold,
+    color: '#6b7280',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
+    marginBottom: 12,
+    marginLeft: 4,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffffff',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
+  },
+  actionRowPressed: {
+    backgroundColor: '#f9fafb',
+  },
+  actionIconWrap: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: 'rgba(1, 232, 132, 0.1)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 12,
+  },
+  actionLabel: {
+    flex: 1,
+    fontSize: 15,
+    fontFamily: statsFont.semibold,
+    color: stats.onSurface,
+  },
+
+  logoutSection: {
+    marginTop: 8,
+  },
+  logoutBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    gap: 12,
+    backgroundColor: 'rgba(186, 26, 26, 0.08)',
+    borderRadius: 24,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(186, 26, 26, 0.15)',
+  },
+  logoutBtnPressed: {
+    backgroundColor: 'rgba(186, 26, 26, 0.12)',
+  },
+  logoutBtnText: { 
+    color: stats.error, 
+    fontSize: 15, 
+    fontFamily: statsFont.semibold,
+  },
 })

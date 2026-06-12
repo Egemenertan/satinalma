@@ -15,7 +15,6 @@ const supabaseAnonKey =
 module.exports = {
   expo: {
     ...appJson.expo,
-    scheme: 'satinalma',
     plugins: [
       ...(appJson.expo.plugins || []),
       'expo-font',

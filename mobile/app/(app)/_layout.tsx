@@ -6,7 +6,7 @@ import { stats } from '../../src/theme/statsDesignTokens'
 import { useAuth } from '../../src/providers/AuthProvider'
 
 export default function AppGroupLayout() {
-  const { session, loading } = useAuth()
+  const { session, loading, profile } = useAuth()
   const { t } = useTranslation()
 
   if (loading) {

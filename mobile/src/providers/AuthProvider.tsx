@@ -18,7 +18,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined)
 async function loadProfile(userId: string): Promise<ProfileRow | null> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('role, site_id, department, full_name, email, construction_site_id, deleted_at, is_active')
+    .select('role, site_id, department, full_name, email, construction_site_id, deleted_at, is_active, organization_id, company_name')
     .eq('id', userId)
     .maybeSingle()
   if (error || !data) return null
@@ -60,12 +60,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let mounted = true
-    supabase.auth.getSession().then(({ data: { session: s } }) => {
-      if (!mounted) return
-      setSession(s)
-      setUser(s?.user ?? null)
-      setLoading(false)
-    })
+    
+    // Timeout - 10 saniye sonra loading'i kapat (network sorunlarında takılmayı önle)
+    const timeoutId = setTimeout(() => {
+      if (mounted && loading) {
+        console.warn('⏱️ Auth session timeout - loading kapatılıyor')
+        setLoading(false)
+      }
+    }, 10_000)
+    
+    supabase.auth.getSession()
+      .then(({ data: { session: s } }) => {
+        if (!mounted) return
+        console.log('✅ Session alındı:', s?.user?.id ?? 'yok')
+        setSession(s)
+        setUser(s?.user ?? null)
+        setLoading(false)
+      })
+      .catch((error) => {
+        // Network hatası, timeout vs. durumlarında loading'i kapat
+        console.error('❌ getSession hatası:', error)
+        if (mounted) {
+          setSession(null)
+          setUser(null)
+          setLoading(false)
+        }
+      })
+    
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((event, s) => {
@@ -73,8 +94,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSession(s)
       setUser(s?.user ?? null)
     })
+    
     return () => {
       mounted = false
+      clearTimeout(timeoutId)
       subscription.unsubscribe()
     }
   }, [])
@@ -87,16 +110,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
     console.log('📡 Profile yükleniyor (useEffect)...')
-    loadProfile(user.id).then((p) => {
-      if (profileIsDeactivated(p)) {
-        console.log('❌ Profile deactivated')
-        void supabase.auth.signOut()
+    loadProfile(user.id)
+      .then((p) => {
+        if (profileIsDeactivated(p)) {
+          console.log('❌ Profile deactivated')
+          void supabase.auth.signOut()
+          setProfile(null)
+          return
+        }
+        console.log('✅ Profile set edildi (useEffect):', p?.full_name || p?.email)
+        setProfile(p)
+      })
+      .catch((error) => {
+        console.error('❌ Profile yükleme hatası:', error)
+        // Hata olsa bile null set et - uygulama takılmasın
         setProfile(null)
-        return
-      }
-      console.log('✅ Profile set edildi (useEffect):', p?.full_name || p?.email)
-      setProfile(p)
-    })
+      })
   }, [user?.id])
 
   const signIn = useCallback(async (email: string, password: string) => {

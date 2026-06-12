@@ -42,7 +42,7 @@ export function MaterialCardRn({
         )}
       </Pressable>
 
-      {/* Ürün Bilgileri */}
+      {/* Ürün Bilgileri - Sabit yükseklik ile butonlar aynı hizada kalır */}
       <Pressable style={styles.infoSection} onPress={() => onOpenDetail(item)}>
         <Text style={styles.groupText} numberOfLines={1}>
           {item.group || 'Genel'}
@@ -52,7 +52,7 @@ export function MaterialCardRn({
         </Text>
       </Pressable>
 
-      {/* Alt Aksiyonlar */}
+      {/* Alt Aksiyonlar - Her zaman en altta */}
       <View style={styles.actionsSection}>
         {cartQuantity > 0 ? (
           <View style={styles.quantityControlFull}>
@@ -87,7 +87,7 @@ const styles = StyleSheet.create({
   card: {
     width: '48%',
     backgroundColor: '#ffffff',
-    borderRadius: 20,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: '#e5e7eb',
     marginBottom: 12,
@@ -97,6 +97,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.06,
     shadowRadius: 4,
     elevation: 2,
+    flexDirection: 'column',
   },
   cardInCart: {
     borderColor: '#01E884',
@@ -141,6 +142,7 @@ const styles = StyleSheet.create({
   infoSection: {
     padding: 10,
     paddingBottom: 6,
+    height: 62,
   },
   groupText: {
     fontSize: 11,
@@ -161,6 +163,7 @@ const styles = StyleSheet.create({
     paddingTop: 4,
     borderTopWidth: 1,
     borderTopColor: '#f3f4f6',
+    height: 60,
   },
   quantityControlFull: {
     flex: 1,
@@ -168,7 +171,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     backgroundColor: '#ecfdf5',
-    borderRadius: 12,
+    borderRadius: 50,
     borderWidth: 1,
     borderColor: '#10b981',
     paddingHorizontal: 4,
@@ -201,7 +204,7 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: '#01E884',
     paddingVertical: 10,
-    borderRadius: 12,
+    borderRadius: 50,
     shadowColor: '#01E884',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,

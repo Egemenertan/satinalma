@@ -316,7 +316,7 @@ export function ReturnOrderModalRn({ visible, onClose, order, materialItem, user
               </ScrollView>
             </ScrollView>
 
-            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) + 8 }]}>
+            <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom, 20) + 44 }]}>
               <Pressable style={styles.btnGhost} onPress={close} disabled={busy}>
                 <Text style={styles.btnGhostText}>İptal</Text>
               </Pressable>
