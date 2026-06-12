@@ -43,3 +43,7 @@ sql/
 
 # mobile app - tracked for EAS build
 # /mobile/
+
+# mobile credentials (sensitive)
+mobile/credentials.json
+mobile/google-services.json
