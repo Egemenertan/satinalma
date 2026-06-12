@@ -339,7 +339,8 @@ export async function createPurchaseRequest(data: {
         requestNumber,
         user.full_name || user.email || 'Bilinmeyen Kullanıcı',
         data.site_id || undefined,
-        data.site_name || undefined
+        data.site_name || undefined,
+        user.role // Department head bildirimi kontrolü için
       )
     } catch (notificationError) {
       console.error('Failed to send notifications:', notificationError)
@@ -754,7 +755,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       requestNumber,
       user.full_name || user.email || 'Bilinmeyen Kullanıcı',
       data.site_id || undefined,
-      data.site_name || undefined
+      data.site_name || undefined,
+      user.role // Department head bildirimi kontrolü için
     ).catch(notificationError => {
       console.error('❌ Bildirim gönderilemedi (arka plan):', notificationError)
     })

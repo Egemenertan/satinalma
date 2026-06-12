@@ -24,7 +24,6 @@ const PROTECTED_API_PREFIXES = ['/api'] as const
 
 const PUBLIC_API_PREFIXES = ['/api/public/', '/api/auth/'] as const
 const DEFAULT_DASHBOARD_ROLE = 'site_personnel' as const
-const DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 
 function isPublicRoute(pathname: string): boolean {
   if (pathname === '/') return true
@@ -149,6 +148,7 @@ export async function middleware(request: NextRequest) {
       if (profileReadError) {
         console.warn('[middleware] profile read failed (devam ediliyor):', profileReadError.message)
       } else if (!profile) {
+        // Yeni profil oluştur (site_id boş bırak - admin atamalı)
         const { error: profileInsertError } = await supabase
           .from('profiles')
           .insert({
@@ -156,7 +156,7 @@ export async function middleware(request: NextRequest) {
             email: normalizedEmail,
             full_name: fullName,
             role: DEFAULT_DASHBOARD_ROLE,
-            site_id: [DEFAULT_SITE_ID],
+            site_id: null,
             created_at: new Date().toISOString(),
           })
 
@@ -164,28 +164,17 @@ export async function middleware(request: NextRequest) {
           console.warn('[middleware] profile insert failed (devam ediliyor):', profileInsertError.message)
         }
       } else if (profile.role === 'user') {
-        // Microsoft ile yeni gelen "user" rolünü default dashboard rolüne yükselt
+        // Microsoft ile yeni gelen "user" rolünü default dashboard rolüne yükselt (site_id'ye dokunma)
         const { error: profileUpdateError } = await supabase
           .from('profiles')
-          .update({
-            role: DEFAULT_DASHBOARD_ROLE,
-            site_id: [DEFAULT_SITE_ID],
-          })
+          .update({ role: DEFAULT_DASHBOARD_ROLE })
           .eq('id', user.id)
 
         if (profileUpdateError) {
           console.warn('[middleware] role upgrade failed (devam ediliyor):', profileUpdateError.message)
         }
-      } else if (!Array.isArray(profile.site_id) || profile.site_id.length === 0) {
-        const { error: profileSiteUpdateError } = await supabase
-          .from('profiles')
-          .update({ site_id: [DEFAULT_SITE_ID] })
-          .eq('id', user.id)
-
-        if (profileSiteUpdateError) {
-          console.warn('[middleware] site assign failed (devam ediliyor):', profileSiteUpdateError.message)
-        }
       }
+      // NOT: site_id boşsa otomatik atama YAPILMAZ - admin manuel atamalı
     } catch (err) {
       // Beklenmeyen hata: yine de kullanıcıyı atma
       console.warn('[middleware] role check unexpected error (devam ediliyor):', err)

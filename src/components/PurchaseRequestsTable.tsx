@@ -253,10 +253,20 @@ const fetchPurchaseRequests = async (
     
     const normalizedSearch = normalizeTurkish(searchTerm.trim())
     
-    // 1. Purchase requests tablosunda ara (request_number, title, description)
+    // 1. Purchase requests tablosunda ara (request_number, title, description) + talep eden bilgisi
     const { data: requestsData } = await supabase
       .from('purchase_requests')
-      .select('id, request_number, title, description')
+      .select(`
+        id, 
+        request_number, 
+        title, 
+        description,
+        requested_by,
+        profiles:requested_by (
+          full_name,
+          email
+        )
+      `)
     
     // 2. Purchase request items tablosunda ara (item_name)
     const { data: itemsData } = await supabase
@@ -266,13 +276,24 @@ const fetchPurchaseRequests = async (
     // Client-side filtreleme ile Türkçe karakter desteği
     const matchingIds = new Set<string>()
     
-    // Requests'lerde ara
+    // Requests'lerde ara (request_number, title, description + talep eden ismi)
     if (requestsData) {
-      requestsData.forEach(req => {
+      requestsData.forEach((req: any) => {
+        // Profile bilgisini al (Supabase bazen array döndürebilir)
+        let profileFullName = ''
+        let profileEmail = ''
+        if (req.profiles) {
+          const profile = Array.isArray(req.profiles) ? req.profiles[0] : req.profiles
+          profileFullName = profile?.full_name || ''
+          profileEmail = profile?.email || ''
+        }
+        
         const searchableText = [
           req.request_number || '',
           req.title || '',
-          req.description || ''
+          req.description || '',
+          profileFullName,
+          profileEmail
         ].join(' ')
         
         if (normalizeTurkish(searchableText).includes(normalizedSearch)) {

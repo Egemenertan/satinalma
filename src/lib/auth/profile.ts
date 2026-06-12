@@ -7,12 +7,12 @@ import type { UserRole } from '@/lib/types'
 import { DEFAULT_ROLE } from './domain'
 
 type Supabase = SupabaseClient<any, any, any>
-const DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 
 /**
  * Kullanıcı profili oluştur veya güncelle.
  * Yeni kullanıcılar site_personnel olur.
  * Mevcut user rolündekiler site_personnel'e yükseltilir.
+ * NOT: Site ataması boşsa otomatik atama YAPILMAZ - admin manuel atamalı.
  */
 export async function ensureProfile(
   supabase: Supabase,
@@ -33,32 +33,20 @@ export async function ensureProfile(
   // Profil varsa
   if (profile) {
     const role = (profile.role as UserRole) || DEFAULT_ROLE
-    const hasSiteIds = Array.isArray(profile.site_id) && profile.site_id.length > 0
     
-    // user rolünü site_personnel'e yükselt
+    // user rolünü site_personnel'e yükselt (site_id'ye dokunma)
     if (role === 'user') {
       await supabase
         .from('profiles')
-        .update({
-          role: DEFAULT_ROLE,
-          site_id: [DEFAULT_SITE_ID],
-        })
+        .update({ role: DEFAULT_ROLE })
         .eq('id', userId)
       return DEFAULT_ROLE
-    }
-
-    // site ataması boşsa varsayılan siteyi ata
-    if (!hasSiteIds) {
-      await supabase
-        .from('profiles')
-        .update({ site_id: [DEFAULT_SITE_ID] })
-        .eq('id', userId)
     }
     
     return role
   }
 
-  // Yeni profil oluştur
+  // Yeni profil oluştur (site_id boş bırak - admin atamalı)
   await supabase
     .from('profiles')
     .insert({
@@ -66,7 +54,7 @@ export async function ensureProfile(
       email: userEmail,
       full_name: userName,
       role: DEFAULT_ROLE,
-      site_id: [DEFAULT_SITE_ID],
+      site_id: null,
       created_at: new Date().toISOString(),
     })
 

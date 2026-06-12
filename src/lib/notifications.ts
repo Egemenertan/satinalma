@@ -1,6 +1,7 @@
-import { createClient } from './supabase/server';
-import EmailService from './email';
+import { createClient } from './supabase/client';
 import { SPECIAL_SITE_ID } from './constants';
+
+// EmailService artık API route üzerinden çağrılıyor (nodemailer client-side'da çalışmaz)
 
 interface NotificationData {
   title: string;
@@ -126,7 +127,7 @@ export class NotificationService {
     }
   }
 
-  // Helper: Send direct email to specific users
+  // Helper: Send direct email to specific users via API route
   private static async sendDirectEmails(
     userEmails: string[],
     template: { subject: string; html: string; text: string }
@@ -134,20 +135,24 @@ export class NotificationService {
     console.log(`📤 sendDirectEmails başlatıldı, ${userEmails.length} alıcı`);
     console.log(`📧 Alıcılar: ${userEmails.join(', ')}`);
     
-    const emailService = new EmailService();
     let successCount = 0;
     let failedCount = 0;
 
     for (const email of userEmails) {
       try {
         console.log(`📨 Email gönderiliyor: ${email}...`);
-        const result = await emailService.sendEmail(email, template);
-        if (result.success) {
+        const response = await fetch('/api/email/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ to: email, ...template })
+        });
+        
+        if (response.ok) {
           successCount++;
           console.log(`✅ Email başarıyla gönderildi: ${email}`);
         } else {
           failedCount++;
-          console.error(`❌ Email gönderilemedi: ${email}`, result.error);
+          console.error(`❌ Email gönderilemedi: ${email}`);
         }
       } catch (error) {
         failedCount++;
@@ -166,10 +171,11 @@ export class NotificationService {
     requestNumber: string,
     requesterName: string,
     siteId?: string,
-    siteName?: string
+    siteName?: string,
+    creatorRole?: string
   ) {
     console.log(`📧 Yeni talep bildirimi gönderiliyor: ${requestNumber}`);
-    console.log(`🔍 Site ID: ${siteId || 'YOK'}, Site Name: ${siteName || 'YOK'}`);
+    console.log(`🔍 Site ID: ${siteId || 'YOK'}, Site Name: ${siteName || 'YOK'}, Creator Role: ${creatorRole || 'YOK'}`);
 
     const pushPayload = {
       title: 'Yeni Satın Alma Talebi',
@@ -200,11 +206,15 @@ export class NotificationService {
     let userEmails = await this.getUserEmailsByRoles(['admin', 'manager', 'supervisor'], siteId);
     console.log(`📧 Admin/Manager/Supervisor emailler: ${userEmails.join(', ') || 'YOK'}`);
 
-    if (siteId) {
+    // Department head talep oluşturduğunda site_manager'a bildirim gönderme
+    // Not: "Ana depoda yok" durumunda notifySiteManagerDepotUnavailable ayrıca çağrılacak
+    if (siteId && creatorRole !== 'department_head') {
       console.log(`🏗️ Site ID: ${siteId}, site_manager emailleri ekleniyor...`);
       const siteManagerEmails = await this.getUserEmailsByRoles(['site_manager'], siteId);
       console.log(`📧 Site manager emailler: ${siteManagerEmails.join(', ') || 'YOK'}`);
       userEmails = [...userEmails, ...siteManagerEmails];
+    } else if (siteId && creatorRole === 'department_head') {
+      console.log(`⚠️ Department head talebi - site_manager bildirimi atlandı (ana depoda yok durumunda ayrıca gönderilecek)`);
     }
 
     // Genel Merkez Ofisi talebi: depo yöneticilerine de e-posta (site filtreli profil olmasa da merkez talebi)
@@ -217,14 +227,11 @@ export class NotificationService {
     userEmails = [...new Set(userEmails)];
     
     if (userEmails.length > 0) {
-      const emailService = new EmailService();
-      const template = emailService.generateNewRequestTemplate(
-        requestTitle,
-        requestNumber,
-        requesterName,
-        siteName,
-        requestId
-      );
+      const template = {
+        subject: `Yeni Satın Alma Talebi: ${requestNumber}`,
+        html: `<p><strong>${requestNumber}</strong> - ${requestTitle}</p><p>Talep eden: ${requesterName}</p><p>Site: ${siteName || 'Belirtilmemiş'}</p>`,
+        text: `Yeni Talep: ${requestNumber} - ${requestTitle}. Talep eden: ${requesterName}. Site: ${siteName || 'Belirtilmemiş'}`
+      };
 
       const emailResult = await this.sendDirectEmails(userEmails, template);
       console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
@@ -298,15 +305,11 @@ export class NotificationService {
       : await this.getUserEmailsByRoles(['admin', 'manager']);
     
     if (userEmails.length > 0) {
-      const emailService = new EmailService();
-      const template = emailService.generateStatusChangeTemplate(
-        requestTitle,
-        requestNumber,
-        oldStatus,
-        newStatus,
-        comment,
-        requestId
-      );
+      const template = {
+        subject: `Talep Durumu Güncellendi: ${requestNumber}`,
+        html: `<p><strong>${requestNumber}</strong> - ${requestTitle}</p><p>Durum: ${oldStatus} → ${newStatus}</p>${comment ? `<p>Yorum: ${comment}</p>` : ''}`,
+        text: `Talep ${requestNumber} durumu ${oldStatus} → ${newStatus} olarak güncellendi.${comment ? ` Yorum: ${comment}` : ''}`
+      };
 
       const emailResult = await this.sendDirectEmails(userEmails, template);
       console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
@@ -359,15 +362,11 @@ export class NotificationService {
       : await this.getUserEmailsByRoles(['admin', 'manager']);
     
     if (userEmails.length > 0) {
-      const emailService = new EmailService();
-      const template = emailService.generateNewOfferTemplate(
-        requestTitle,
-        requestNumber,
-        supplierName,
-        offerAmount,
-        currency,
-        requestId
-      );
+      const template = {
+        subject: `Yeni Teklif: ${requestNumber}`,
+        html: `<p><strong>${requestNumber}</strong> - ${requestTitle}</p><p>Tedarikçi: ${supplierName}</p>${offerAmount ? `<p>Tutar: ${offerAmount} ${currency || 'TRY'}</p>` : ''}`,
+        text: `Yeni Teklif: ${requestNumber} - ${requestTitle}. Tedarikçi: ${supplierName}.${offerAmount ? ` Tutar: ${offerAmount} ${currency || 'TRY'}` : ''}`
+      };
 
       const emailResult = await this.sendDirectEmails(userEmails, template);
       console.log(`✅ Email gönderildi: ${emailResult.success} başarılı, ${emailResult.failed} başarısız`);
