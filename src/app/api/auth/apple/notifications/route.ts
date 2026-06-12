@@ -67,11 +67,13 @@ export async function POST(request: NextRequest) {
         // Find user by Apple ID (stored in auth.users.raw_app_meta_data.provider_id)
         // and deactivate their account
         
-        const { data: users } = await supabase.auth.admin.listUsers()
-        const appleUser = users?.users.find(
-          (u) => u.app_metadata?.provider === 'apple' && 
-                 u.app_metadata?.providers?.includes('apple') &&
-                 u.identities?.some((i) => i.provider === 'apple' && i.id === events.sub)
+        const { data: usersData } = await supabase.auth.admin.listUsers()
+        const usersList = usersData?.users ?? []
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const appleUser = usersList.find((u: any) => 
+          u.app_metadata?.provider === 'apple' && 
+          u.app_metadata?.providers?.includes('apple') &&
+          u.identities?.some((i: any) => i.provider === 'apple' && i.id === events.sub)
         )
 
         if (appleUser) {
