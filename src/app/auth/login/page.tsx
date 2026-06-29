@@ -331,12 +331,22 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen relative grid lg:grid-cols-2 gap-0 bg-white">
+      {/* Sol taraf - Logo */}
+      <div className="hidden lg:flex items-center justify-center p-6">
+        <div className="w-full h-full bg-black rounded-3xl flex items-center justify-center">
+          <img src="/DLX.png" alt="DLX Logo" className="w-64 h-auto" />
+        </div>
+      </div>
+
+      {/* Sağ taraf - Form */}
       <div className="relative z-10 flex items-center justify-center px-8 sm:px-12 lg:px-16 xl:px-24 py-12 bg-white">
         <div className="w-full max-w-md space-y-8">
+          {/* Mobilde logo göster */}
+          <div className="lg:hidden flex justify-center mb-8">
+            <img src="/DLX.png" alt="DLX Logo" className="w-40 h-auto" />
+          </div>
+
           <div className="text-center">
-            <div className="flex justify-center mb-6">
-              <img src="/d.png" alt="Logo" className="h-12 w-auto invert" />
-            </div>
             <h1 className="text-3xl font-bold text-gray-900">Hoş Geldiniz</h1>
             <p className="text-gray-600 mt-3 text-lg">
               E-posta ve şifreniz veya Microsoft hesabınız ile devam edin
@@ -434,15 +444,7 @@ export default function LoginPage() {
                   Giriş yapılıyor...
                 </>
               ) : (
-                <>
-                  <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none">
-                    <path d="M0 0h10.93v10.93H0V0z" fill="#F25022" />
-                    <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00" />
-                    <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF" />
-                    <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900" />
-                  </svg>
-                  Microsoft ile Giriş Yap
-                </>
+                'Microsoft ile Giriş Yap'
               )}
             </Button>
 
@@ -460,12 +462,6 @@ export default function LoginPage() {
               </p>
             )}
           </div>
-        </div>
-      </div>
-
-      <div className="hidden lg:flex items-center justify-center p-8">
-        <div className="relative w-full h-full max-h-[calc(100vh-4rem)] rounded-3xl overflow-hidden">
-          <img src="/dovec.webp" alt="Dovec Group" className="w-full h-full object-cover" />
         </div>
       </div>
     </div>
