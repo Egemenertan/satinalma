@@ -84,8 +84,9 @@ export default function ProductsPage() {
         if (profile) {
           setUserRole(profile.role || '')
           
-          // Eğer warehouse_manager, santiye_depo veya purchasing_officer ise
-          if (profile.role === 'warehouse_manager' || profile.role === 'santiye_depo' || profile.role === 'purchasing_officer') {
+          // warehouse_manager TÜM depolara erişebilir - site_id ne olursa olsun
+          // santiye_depo ve purchasing_officer için site bazlı kısıtlama uygulanır
+          if (profile.role === 'santiye_depo' || profile.role === 'purchasing_officer') {
             // site_id varsa ve boş değilse, ilk site_id'yi al
             if (profile.site_id && profile.site_id.length > 0) {
               const firstSiteId = profile.site_id[0]
@@ -94,6 +95,7 @@ export default function ProductsPage() {
             }
             // site_id yoksa veya boşsa, tüm depoları göster (userSiteId boş kalır)
           }
+          // warehouse_manager için site kısıtlaması yok - tüm depoları görebilir
         }
       }
     }
@@ -132,9 +134,9 @@ export default function ProductsPage() {
         )
         
         // Tüm siteleri göster (IT depo dahil)
-        // Eğer warehouse_manager, santiye_depo veya purchasing_officer ise VE userSiteId varsa sadece kendi sitesini göster
-        // userSiteId yoksa (site_id boş) tüm siteleri göster
-        if ((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
+        // warehouse_manager TÜM depoları görebilir - site_id ne olursa olsun
+        // santiye_depo ve purchasing_officer için site bazlı kısıtlama uygulanır
+        if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
           setSites(sitesWithStock.filter(s => s.site.id === userSiteId))
         } else {
           setSites(sitesWithStock)
@@ -214,8 +216,8 @@ export default function ProductsPage() {
 
   const handleClearFilters = () => {
     clearFilters()
-    // Warehouse manager, purchasing officer ve santiye_depo için site_id'yi koru
-    if ((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
+    // santiye_depo ve purchasing_officer için site_id'yi koru (warehouse_manager tüm depoları görebilir)
+    if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
       setSiteId(userSiteId)
     }
     // Product type'ı da temizle
@@ -270,7 +272,7 @@ export default function ProductsPage() {
         <div>
           <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Stok Yönetimi</h1>
           <p className="text-gray-600 text-base mt-4">
-            {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
+            {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
           </p>
         </div>
         <div className="flex items-center gap-5">
@@ -300,8 +302,9 @@ export default function ProductsPage() {
       />
 
       {/* Site Filters - Elegant Image-based */}
-      {/* Warehouse manager, santiye depo ve purchasing officer kullanıcıları için site seçim butonlarını gizle - SADECE site_id varsa */}
-      {userRole && !((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
+      {/* santiye_depo ve purchasing_officer kullanıcıları için site seçim butonlarını gizle - SADECE site_id varsa */}
+      {/* warehouse_manager tüm depoları görebilir - site seçim butonları görünür */}
+      {userRole && !((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
         <div className="space-y-2.5">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 shrink-0 text-gray-400" />
@@ -514,15 +517,15 @@ export default function ProductsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-lg font-semibold text-gray-900 mb-2">
-                  {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Depo Ürün Kataloğu' : 'Ürün Kataloğu'}
-                  {siteId && !((userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
+                  {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Depo Ürün Kataloğu' : 'Ürün Kataloğu'}
+                  {siteId && !((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
                     <span className="ml-2 text-primary-600">
                       - {sites.find(s => s.site.id === siteId)?.site.name}
                     </span>
                   )}
                 </CardTitle>
                 <p className="text-sm text-gray-500">
-                  {(userRole === 'warehouse_manager' || userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? (
+                  {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? (
                     <>
                       <span className="font-medium">{sites.find(s => s.site.id === siteId)?.site.name || 'Deponuzda'}</span> {totalCount} ürün mevcut
                     </>

@@ -45,5 +45,4 @@ sql/
 # /mobile/
 
 # mobile credentials (sensitive)
-mobile/credentials.json
-mobile/google-services.json
+

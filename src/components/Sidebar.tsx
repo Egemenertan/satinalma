@@ -479,8 +479,8 @@ export default function Sidebar({
               className="flex items-center space-x-2 hover:opacity-80 transition-opacity"
             >
               <img 
-                src="/blackdu.webp" 
-                alt="Logo" 
+                src="/DLX.png" 
+                alt="DLX" 
                 className="h-10 w-auto"
               />
             </button>
@@ -502,9 +502,9 @@ export default function Sidebar({
               className="hover:opacity-80 transition-opacity"
             >
               <img 
-                src="/blackdu.webp" 
-                alt="Logo" 
-                className="h-10 w-10 object-contain"
+                src="/DLX.png" 
+                alt="DLX" 
+                className="h-8 w-auto object-contain"
               />
             </button>
           )}
