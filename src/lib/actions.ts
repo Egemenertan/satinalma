@@ -16,10 +16,22 @@ import {
 
 
 // Güvenlik: Kullanıcı kimlik doğrulaması
+//
+// NOT: getUser() erişim token'ı süresi dolmaya yakınken bir refresh isteği
+// tetikler. Aynı anda başka bir sekme/istek (middleware, header, sidebar vb.)
+// da oturumu yenilemeye çalışıyorsa refresh token rotation nedeniyle bu
+// istek geçici olarak başarısız olabilir. Kullanıcıyı hâlâ geçerli bir
+// oturumu varken işleminin ortasında atmamak için bir kez oturumu tazeleyip
+// tekrar deniyoruz.
 async function getAuthenticatedUser() {
   const supabase = createClient()
-  const { data: { user }, error } = await supabase.auth.getUser()
-  
+  let { data: { user }, error } = await supabase.auth.getUser()
+
+  if (error || !user) {
+    await supabase.auth.getSession()
+    ;({ data: { user }, error } = await supabase.auth.getUser())
+  }
+
   if (error || !user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
@@ -816,14 +828,6 @@ export async function updatePurchaseRequest(data: {
       userId: user.id
     })
     
-    // Önce kullanıcının auth durumunu kontrol et
-    const { data: { user: authUser }, error: authError } = await supabase.auth.getUser()
-    console.log('🔐 Auth durumu:', { 
-      authUser: authUser ? { id: authUser.id, email: authUser.email } : null, 
-      authError,
-      serverUser: { id: user.id, email: user.email }
-    })
-
     const { data: existingRequest, error: requestError } = await supabase
       .from('purchase_requests')
       .select('*')

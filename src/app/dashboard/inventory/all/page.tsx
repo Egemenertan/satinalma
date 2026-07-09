@@ -26,6 +26,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth'
 import { useToast } from '@/components/ui/toast'
 import { useRouter } from 'next/navigation'
 import CreateZimmetModal from '@/components/CreateZimmetModal'
@@ -331,7 +332,7 @@ export default function AllInventoryPage() {
 
   const checkUserRole = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getSessionUser(supabase)
       if (!user) {
         router.push('/auth/login')
         return
@@ -360,7 +361,7 @@ export default function AllInventoryPage() {
     try {
       setLoading(true)
 
-      const { data: { user } } = await supabase.auth.getUser()
+      const user = await getSessionUser(supabase)
       if (!user) return
 
       // User inventory'den aktif zimmetleri al

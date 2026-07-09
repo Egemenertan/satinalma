@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Badge } from '@/components/ui/badge'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth'
 import { ArrowLeft, Building2, Mail, Phone, MapPin, Hash, Plus, X, Save, Package } from 'lucide-react'
 
 // Material interfaces for all_materials table
@@ -114,8 +115,8 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
   // Erişim kontrolü
   useEffect(() => {
     const checkAccess = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const user = await getSessionUser(supabase)
+
       if (!user) {
         router.push('/auth/login')
         return

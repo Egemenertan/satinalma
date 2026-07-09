@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth'
 import SupplierManagement from '@/components/SupplierManagement'
 
 export default function SuppliersPage() {
@@ -13,8 +14,8 @@ export default function SuppliersPage() {
   useEffect(() => {
     const checkAccess = async () => {
       const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const user = await getSessionUser(supabase)
+
       if (!user) {
         router.push('/auth/login')
         return

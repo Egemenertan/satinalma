@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth'
 const supabase = createClient()
 import { useToast } from '@/components/ui/toast'
 import FullScreenImageViewer from '@/components/FullScreenImageViewer'
@@ -145,8 +146,8 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   // Erişim kontrolü
   useEffect(() => {
     const checkAccess = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
+      const user = await getSessionUser(supabase)
+
       if (!user) {
         router.push('/auth/login')
         return
