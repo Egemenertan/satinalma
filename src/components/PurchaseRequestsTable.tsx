@@ -319,8 +319,10 @@ const fetchPurchaseRequests = async (
   
   // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
   // IT depo yöneticileri ise talep kalemlerine göre ayrı kısıtlanır; talep.departmanı ile sınırlanmaz.
+  // purchasing_officer: kendi site/status kapsamı zaten yukarıda ayrı filtreleniyor, departmana göre ayrıca daraltılmaz.
   const userDepartment: string | null =
     effectiveRole !== 'department_head' &&
+    effectiveRole !== 'purchasing_officer' &&
     profile?.department &&
     !isItWarehouseManager &&
     !isItWorkflowElevatedRole(effectiveRole)

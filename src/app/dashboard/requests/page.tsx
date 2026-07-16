@@ -87,8 +87,10 @@ const fetchWeeklyActivity = async (
   // department_head zaten kendi mantığında uyguluyor, tekrar uygulanmaz.
   // IT depo yöneticisi için talebin departman alanı kullanılmaz (malzeme grubu filtresi var).
   // Admin/manager üst görünüm: departmana göre daraltılmaz.
+  // purchasing_officer: kendi site/status kapsamı zaten ayrı filtreleniyor, departmana göre ayrıca daraltılmaz.
   if (
     role !== 'department_head' &&
+    role !== 'purchasing_officer' &&
     department &&
     !(role === 'warehouse_manager' && isProfileDepartmentIt(department)) &&
     !isItWorkflowElevatedRole(role)
@@ -241,6 +243,7 @@ const fetchPageData = async () => {
 
   if (
     profile?.role !== 'department_head' &&
+    profile?.role !== 'purchasing_officer' &&
     profile?.department &&
     !skipDeptFilterItWm &&
     !isItWorkflowElevatedRole(profile.role)
@@ -320,6 +323,7 @@ const fetchPageData = async () => {
       profile?.role === 'warehouse_manager' && isProfileDepartmentIt(profile?.department)
     if (
       profile?.role !== 'department_head' &&
+      profile?.role !== 'purchasing_officer' &&
       profile?.department &&
       !skipDeptMonthly &&
       !isItWorkflowElevatedRole(profile.role)
