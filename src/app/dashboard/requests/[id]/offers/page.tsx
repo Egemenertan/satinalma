@@ -15,6 +15,7 @@ import SiteManagerView from '@/components/offers/SiteManagerView'
 import ProcurementView from '@/components/offers/ProcurementView'
 import DepartmentHeadView from '@/components/offers/DepartmentHeadView'
 import ItWorkflowView from '@/components/offers/ItWorkflowView'
+import RequestActivityTimeline from '@/components/offers/RequestActivityTimeline'
 import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 
 export default function OffersPage() {
@@ -489,6 +490,9 @@ export default function OffersPage() {
               </div>
             </div>
           </div>
+
+          {/* Tüm roller için ortak talep / durum geçmişi */}
+          <RequestActivityTimeline requestId={requestId} refreshKey={request.updated_at} />
 
           {/* Kullanıcı rolüne göre uygun view'i render et */}
           {renderUserView()}

@@ -21,6 +21,7 @@ import {
   IT_STATUS_INCELEMEDE,
   IT_STATUS_ONAYLANDI
 } from '@/lib/it-workflow'
+import { excludeSoftDeletedRequests } from '@/lib/softDeletePurchaseRequest'
 
 // Haftalık/aylık aktivite verisi için fetcher - Gerçek veriler
 const fetchWeeklyActivity = async (
@@ -44,9 +45,11 @@ const fetchWeeklyActivity = async (
   startDate.setHours(0, 0, 0, 0)
   
   // Veritabanından talepleri çek
-  let query = supabase
-    .from('purchase_requests')
-    .select('created_at, id')
+  let query = excludeSoftDeletedRequests(
+    supabase
+      .from('purchase_requests')
+      .select('created_at, id')
+  )
     .gte('created_at', startDate.toISOString())
     .lte('created_at', endDate.toISOString())
   
@@ -190,9 +193,11 @@ const fetchPageData = async () => {
   )
 
   // 4. Stats sorgusu - Veritabanında aggregate fonksiyonlarını kullan
-  let statsQuery = supabase
-    .from('purchase_requests')
-    .select('status, urgency_level, id, site_id', { count: 'exact' })
+  let statsQuery = excludeSoftDeletedRequests(
+    supabase
+      .from('purchase_requests')
+      .select('status, urgency_level, id, site_id', { count: 'exact' })
+  )
   
   // Role bazlı filtreleme
   if (profile?.role === 'site_personnel') {
@@ -282,9 +287,11 @@ const fetchPageData = async () => {
     const monthEnd = new Date(monthStart)
     monthEnd.setMonth(monthEnd.getMonth() + 1)
     
-    let monthQuery = supabase
-      .from('purchase_requests')
-      .select('id', { count: 'exact' })
+    let monthQuery = excludeSoftDeletedRequests(
+      supabase
+        .from('purchase_requests')
+        .select('id', { count: 'exact' })
+    )
       .gte('created_at', monthStart.toISOString())
       .lt('created_at', monthEnd.toISOString())
     
@@ -408,10 +415,11 @@ const fetchPageData = async () => {
     })
   ) {
     try {
-      let itAttnQuery = supabase
-        .from('purchase_requests')
-        .select('id', { count: 'exact', head: true })
-        .eq('it_workflow_applies', true)
+      let itAttnQuery = excludeSoftDeletedRequests(
+        supabase
+          .from('purchase_requests')
+          .select('id', { count: 'exact', head: true })
+      ).eq('it_workflow_applies', true)
 
       if (profile?.role === 'site_manager' && isPazarlamaDepartment(profile?.department)) {
         itAttnQuery = itAttnQuery.eq('status', IT_STATUS_ONAYLANDI)

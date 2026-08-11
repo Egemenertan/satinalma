@@ -20,6 +20,10 @@ import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import {
+  canSoftDeletePurchaseRequest,
+  softDeletePurchaseRequest,
+} from '@/lib/softDeletePurchaseRequest'
+import {
   isProfileDepartmentIt,
   fetchPurchaseRequestIdsVisibleToItWarehouseManager
 } from '@/lib/warehouse-it-material-filter'
@@ -267,6 +271,7 @@ const fetchPurchaseRequests = async (
           email
         )
       `)
+      .is('deleted_at', null)
     
     // 2. Purchase request items tablosunda ara (item_name)
     const { data: itemsData } = await supabase
@@ -337,6 +342,7 @@ const fetchPurchaseRequests = async (
       let tempQuery = supabase
         .from('purchase_requests')
         .select('id')
+        .is('deleted_at', null)
       
       const baseStatuses = ['satın almaya gönderildi', 'sipariş verildi', 'eksik malzemeler talep edildi', 'kısmen teslim alındı', 'teslim alındı', 'iade var', 'iade nedeniyle sipariş', 'ordered']
       
@@ -441,6 +447,7 @@ const fetchPurchaseRequests = async (
     let itCountQuery = supabase
       .from('purchase_requests')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .eq('it_workflow_applies', true)
 
     if (effectiveRole === 'site_manager' && isPazarlamaDepartment(profile?.department)) {
@@ -490,6 +497,7 @@ const fetchPurchaseRequests = async (
       )
     `)
       .eq('it_workflow_applies', true)
+      .is('deleted_at', null)
       .range(fromIt, toIt)
       .order('created_at', { ascending: false })
 
@@ -533,6 +541,7 @@ const fetchPurchaseRequests = async (
   let countQuery = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
+    .is('deleted_at', null)
   
   // Rol bazlı filtreleme (admin/manager/super_admin: site/departmana göre daraltma yok)
   if (!isItWorkflowElevatedRole(effectiveRole)) {
@@ -645,6 +654,7 @@ const fetchPurchaseRequests = async (
         email
       )
     `)
+    .is('deleted_at', null)
     .range(from, to)
     .order('created_at', { ascending: false })
   
@@ -983,6 +993,7 @@ export default function PurchaseRequestsTable({
   // Kullanıcı site bilgisi
   const [userSiteIds, setUserSiteIds] = useState<string[]>([])
   const [viewerDepartment, setViewerDepartment] = useState<string | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // Kullanıcı site bilgisini çek
   useEffect(() => {
@@ -991,6 +1002,7 @@ export default function PurchaseRequestsTable({
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
+          setCurrentUserId(user.id)
           const { data: profile } = await supabase
             .from('profiles')
             .select('site_id, department')
@@ -1677,26 +1689,24 @@ export default function PurchaseRequestsTable({
 
       console.log('✅ Kullanıcı oturumu doğrulandı:', user.id)
 
-      // Sadece talebi sil - CASCADE sayesinde tüm ilişkili veriler otomatik silinir
-      // (purchase_request_items, offers, orders, invoices, order_deliveries vb.)
-      console.log('🎯 Talep satırı siliniyor...')
-      const { error: requestError, count } = await supabase
-        .from('purchase_requests')
-        .delete()
-        .eq('id', requestToDelete.id)
+      console.log('🎯 Talep soft-delete (gizleniyor, veri silinmiyor)...')
+      const result = await softDeletePurchaseRequest(supabase, {
+        requestId: requestToDelete.id,
+        userId: user.id,
+        reason: 'Talep listeden kaldırıldı',
+      })
 
-      if (requestError) {
-        console.error('❌ Talep silme hatası:', requestError)
-        throw new Error(`Talep silinirken hata oluştu: ${requestError.message}`)
+      if (result.ok === false) {
+        throw new Error(result.message)
       }
 
-      console.log('✅ Talep başarıyla silindi. Silinen satır sayısı:', count)
+      console.log('✅ Talep soft-delete tamamlandı')
 
       // Modal'ı hemen kapat
       closeDeleteModal()
       
       // Başarı toast'ı göster
-      showToast('Talep başarıyla kaldırıldı!', 'success')
+      showToast('Talep listeden kaldırıldı', 'success')
 
       // Cache'i agresif şekilde temizle
       invalidatePurchaseRequestsCache()
@@ -1722,7 +1732,7 @@ export default function PurchaseRequestsTable({
       
     } catch (error: any) {
       console.error('❌ Talep silme hatası:', error)
-      showToast(`Talep silinirken hata oluştu: ${error.message}`, 'error')
+      showToast(`Talep kaldırılırken hata oluştu: ${error.message}`, 'error')
       
       // Modal'ı kapat ve state'leri resetle
       closeDeleteModal()
@@ -1732,22 +1742,13 @@ export default function PurchaseRequestsTable({
     }
   }
 
-  // Talep silme yetkisi kontrolü
+  // Soft-delete: yalnızca kendi talebi; "satın almaya gönderildi" hariç
   const canDeleteRequest = (request: PurchaseRequest) => {
-    console.log('🔍 Silme yetkisi kontrolü:', {
-      requestId: request.id,
-      requestStatus: request.status,
-      userRole: userRole,
-      canDelete: userRole === 'purchasing_officer' || request.status === 'pending'
+    return canSoftDeletePurchaseRequest({
+      status: request.status,
+      requestedBy: request.requested_by,
+      currentUserId,
     })
-    
-    // Purchasing officer tüm talepleri silebilir
-    if (userRole === 'purchasing_officer') {
-      return true
-    }
-    
-    // Diğer roller sadece "pending" (beklemede) statusundeki talepleri silebilir
-    return request.status === 'pending'
   }
 
   // Delivery confirmation functions
@@ -3050,7 +3051,7 @@ export default function PurchaseRequestsTable({
               Talebi Kaldır
             </DialogTitle>
             <DialogDescription className="text-gray-500 text-sm mt-2">
-              Bu işlem geri alınamaz. Talep ve tüm ilgili malzemeler kalıcı olarak silinecektir.
+              Talep listeden kaldırılacak (gizlenecek). Veritabanından silinmez; kayıt arşivde kalır.
             </DialogDescription>
           </DialogHeader>
           
@@ -3085,29 +3086,28 @@ export default function PurchaseRequestsTable({
             </div>
           )}
           
-          <DialogFooter className="gap-3 pt-2">
+          <DialogFooter className="flex flex-row gap-3 pt-2 sm:justify-stretch">
             <Button
               variant="outline"
               onClick={closeDeleteModal}
               disabled={isDeleting}
-              className="flex-1 rounded-xl border-gray-200 text-gray-700 hover:bg-gray-50"
+              className="flex-1 rounded-xl border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
             >
               İptal
             </Button>
             <Button
-              variant="destructive"
               onClick={handleDeleteRequest}
               disabled={isDeleting}
-              className="flex-1 rounded-xl border-0"
+              className="flex-1 rounded-xl border-0 bg-red-600 text-white hover:bg-red-700 hover:text-white focus-visible:ring-red-600 disabled:bg-red-400 disabled:text-white"
             >
               {isDeleting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                  Siliniyor...
+                  Kaldırılıyor...
                 </>
               ) : (
                 <>
-                  <Trash2 className="w-4 h-4 mr-2" />
+                  <Trash2 className="w-4 h-4 mr-2 text-white" />
                   Kaldır
                 </>
               )}

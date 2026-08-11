@@ -62,9 +62,16 @@ export function useOfferData(requestId: string) {
           )
         `)
         .eq('id', requestId)
+        .is('deleted_at', null)
         .single()
       
       if (!error && data) {
+        if ((data as { deleted_at?: string | null }).deleted_at) {
+          setError('Bu talep kaldırılmış (gizlenmiş).')
+          setRequest(null)
+          return
+        }
+
         // Items artık data içinde geliyor, ayrı sorguya gerek yok
         const items = data.purchase_request_items || []
 

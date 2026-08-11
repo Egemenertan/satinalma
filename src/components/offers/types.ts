@@ -33,6 +33,7 @@ export interface PurchaseRequest {
   urgency_level: string
   status: string
   created_at: string
+  updated_at?: string
   delivery_date?: string
   site_id?: string
   site_name?: string

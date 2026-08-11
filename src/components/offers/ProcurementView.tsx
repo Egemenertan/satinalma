@@ -18,6 +18,7 @@ import { Database } from '@/lib/supabase'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import AssignSupplierModal from '@/components/AssignSupplierModal'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
+import { softDeletePurchaseRequest } from '@/lib/softDeletePurchaseRequest'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
 import ReturnedMaterialsCard from './ReturnedMaterialsCard'
 
@@ -190,17 +191,20 @@ export default function ProcurementView({
       const isLastItem = request?.purchase_request_items?.length === 1
       
       if (isLastItem) {
-        // Son malzeme - talebi tamamen sil (CASCADE ile ilişkili tüm kayıtlar silinecek)
-        const { error: deleteRequestError } = await supabase
-          .from('purchase_requests')
-          .delete()
-          .eq('id', request.id)
-        
-        if (deleteRequestError) {
-          throw deleteRequestError
+        // Son malzeme — talebi soft-delete (veri DB'de kalır, listeden gizlenir)
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
+
+        const result = await softDeletePurchaseRequest(supabase, {
+          requestId: request.id,
+          userId: user.id,
+          reason: 'Son malzeme kaldırıldığı için talep listeden gizlendi',
+        })
+        if (result.ok === false) {
+          throw new Error(result.message)
         }
         
-        showToast('Son malzeme kaldırıldı. Talep ve tüm ilişkili siparişler silindi.', 'success')
+        showToast('Son malzeme kaldırıldı. Talep listeden gizlendi (veri silinmedi).', 'success')
         
         // Modal'ı kapat
         setIsDeleteItemModalOpen(false)

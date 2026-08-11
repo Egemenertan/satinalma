@@ -276,6 +276,7 @@ export default function EditPurchaseRequestPage() {
             purchase_request_items (*)
           `)
           .eq('id', requestId)
+          .is('deleted_at', null)
           .single()
 
         console.log('📋 Supabase sorgu sonucu:', { requestData, requestError })
@@ -288,6 +289,12 @@ export default function EditPurchaseRequestPage() {
 
         if (!requestData) {
           showToast('Talep bulunamadı', 'error')
+          router.push('/dashboard/requests')
+          return
+        }
+
+        if ((requestData as { deleted_at?: string | null }).deleted_at) {
+          showToast('Bu talep kaldırılmış (gizlenmiş)', 'error')
           router.push('/dashboard/requests')
           return
         }

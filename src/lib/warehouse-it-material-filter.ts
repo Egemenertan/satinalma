@@ -106,10 +106,12 @@ export async function fetchPurchaseRequestIdsVisibleToItWarehouseManager(
     supabase
       .from('purchase_requests')
       .select('id, material_group, material_class, material_item_name')
+      .is('deleted_at', null)
       .not('material_group', 'is', null),
     supabase
       .from('purchase_requests')
       .select('id, material_group, material_class, material_item_name')
+      .is('deleted_at', null)
       .not('material_class', 'is', null)
   ])
 

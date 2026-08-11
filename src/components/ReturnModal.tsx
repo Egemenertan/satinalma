@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { RotateCcw, AlertTriangle, Camera, Upload, X, Image, Scan } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { softDeletePurchaseRequest } from '@/lib/softDeletePurchaseRequest'
 import DocumentScanner from '@/components/DocumentScanner'
 
 interface ReturnModalProps {
@@ -288,16 +289,22 @@ export default function ReturnModal({
           code: newItemError.code
         })
         showToast(`Malzeme item oluşturulamadı: ${newItemError.message}`, 'error')
-        // Yeni talebi sil
-        await supabase.from('purchase_requests').delete().eq('id', newRequest.id)
+        await softDeletePurchaseRequest(supabase, {
+          requestId: newRequest.id,
+          userId: user.id,
+          reason: 'İade yeniden sipariş rollback — kalem oluşturulamadı',
+        })
         return
       }
 
       if (!newItem) {
         console.error('❌ Yeni malzeme item oluşturulamadı - Veri döndürülmedi')
         showToast('Malzeme item oluşturulamadı: Veri döndürülmedi', 'error')
-        // Yeni talebi sil
-        await supabase.from('purchase_requests').delete().eq('id', newRequest.id)
+        await softDeletePurchaseRequest(supabase, {
+          requestId: newRequest.id,
+          userId: user.id,
+          reason: 'İade yeniden sipariş rollback — kalem oluşturulamadı',
+        })
         return
       }
 
