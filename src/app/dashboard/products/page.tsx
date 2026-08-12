@@ -1,11 +1,12 @@
 /**
  * Products Page
  * Ürün Yönetimi Sayfası - Minimal, clean layout
+ * Depo görünürlüğü warehouse_access ile (talep rolleri ayrı)
  */
 
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -14,6 +15,11 @@ import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, File
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct, useProductsInsights } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
+import {
+  fetchMyWarehouseAccessScope,
+  emptyWarehouseAccessScope,
+  type WarehouseAccessScope,
+} from '@/lib/warehouse-access'
 import {
   ProductFilters,
   ProductsTable,
@@ -41,15 +47,13 @@ export default function ProductsPage() {
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [sites, setSites] = useState<SiteStock[]>([])
   const [loadingSites, setLoadingSites] = useState(true)
-  const [userRole, setUserRole] = useState<string>('')
-  const [userSiteId, setUserSiteId] = useState<string>('')
+  const [warehouseAccess, setWarehouseAccess] = useState<WarehouseAccessScope>(emptyWarehouseAccessScope())
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [showBulkActions, setShowBulkActions] = useState(false)
   const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
   const [showZimmetReportModal, setShowZimmetReportModal] = useState(false)
   const supabase = createClient()
-  
-  // Hooks
+
   const {
     searchTerm,
     brandId,
@@ -58,7 +62,7 @@ export default function ProductsPage() {
     statusFilter,
     currentPage,
     pageSize,
-    filters,
+    filters: baseFilters,
     hasActiveFilters,
     setSearchTerm,
     setBrandId,
@@ -68,98 +72,91 @@ export default function ProductsPage() {
     setCurrentPage,
     clearFilters,
   } = useProductFilters()
-  
-  // Kullanıcı bilgilerini ve rolünü al
+
+  const filters = useMemo(() => {
+    if (!warehouseAccess.loaded) return baseFilters
+    if (warehouseAccess.canManageAll) return baseFilters
+    return {
+      ...baseFilters,
+      allowedWarehouseIds: warehouseAccess.warehouseIds,
+    }
+  }, [baseFilters, warehouseAccess])
+
   useEffect(() => {
-    const fetchUserInfo = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, site_id')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile) {
-          setUserRole(profile.role || '')
-          
-          // warehouse_manager TÜM depolara erişebilir - site_id ne olursa olsun
-          // santiye_depo ve purchasing_officer için site bazlı kısıtlama uygulanır
-          if (profile.role === 'santiye_depo' || profile.role === 'purchasing_officer') {
-            // site_id varsa ve boş değilse, ilk site_id'yi al
-            if (profile.site_id && profile.site_id.length > 0) {
-              const firstSiteId = profile.site_id[0]
-              setUserSiteId(firstSiteId)
-              setSiteId(firstSiteId) // Otomatik olarak siteyi filtrele
-            }
-            // site_id yoksa veya boşsa, tüm depoları göster (userSiteId boş kalır)
-          }
-          // warehouse_manager için site kısıtlaması yok - tüm depoları görebilir
-        }
+    const loadAccess = async () => {
+      const scope = await fetchMyWarehouseAccessScope()
+      setWarehouseAccess(scope)
+
+      if (scope.isRestricted && scope.warehouseIds.length > 0) {
+        setSiteId(scope.warehouseIds[0])
       }
     }
-    
-    fetchUserInfo()
-  }, [])
 
-  // Load sites with stock info
+    loadAccess()
+  }, [setSiteId])
+
   useEffect(() => {
+    if (!warehouseAccess.loaded) return
+
     const loadSites = async () => {
       try {
+        setLoadingSites(true)
         const { data: sitesData, error } = await supabase
           .from('sites')
           .select('id, name, image_url')
           .order('name')
-        
+
         if (error) throw error
-        
-        // Her site için stok bilgilerini al
+
+        let visibleSites = sitesData || []
+        if (warehouseAccess.isRestricted) {
+          const allowed = new Set(warehouseAccess.warehouseIds)
+          visibleSites = visibleSites.filter((s) => allowed.has(s.id))
+        }
+
         const sitesWithStock = await Promise.all(
-          (sitesData || []).map(async (site) => {
+          visibleSites.map(async (site) => {
             const { data: stockData } = await supabase
               .from('warehouse_stock')
               .select('quantity')
               .eq('warehouse_id', site.id)
-            
+
             const productCount = stockData?.length || 0
-            const totalQuantity = stockData?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0
-            
+            const totalQuantity =
+              stockData?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0
+
             return {
               site,
               productCount,
-              totalQuantity
+              totalQuantity,
             }
           })
         )
-        
-        // Tüm siteleri göster (IT depo dahil)
-        // warehouse_manager TÜM depoları görebilir - site_id ne olursa olsun
-        // santiye_depo ve purchasing_officer için site bazlı kısıtlama uygulanır
-        if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
-          setSites(sitesWithStock.filter(s => s.site.id === userSiteId))
-        } else {
-          setSites(sitesWithStock)
-        }
+
+        setSites(sitesWithStock)
       } catch (error) {
         console.error('Sites yüklenirken hata:', error)
       } finally {
         setLoadingSites(false)
       }
     }
-    
+
     loadSites()
-  }, [userRole, userSiteId])
+  }, [warehouseAccess, supabase])
 
   const { data: productsData, isLoading } = useProducts(filters, currentPage, pageSize)
 
-  const insightsSiteKey = siteId?.trim() ? siteId : undefined
+  const insightsSiteKey = siteId?.trim()
+    ? siteId
+    : warehouseAccess.isRestricted && warehouseAccess.warehouseIds[0]
+      ? warehouseAccess.warehouseIds[0]
+      : undefined
   const {
     data: productsInsights,
     isLoading: insightsLoading,
     error: insightsError,
   } = useProductsInsights(insightsSiteKey)
-  
+
   const {
     isOpen: isModalOpen,
     selectedProductId,
@@ -169,7 +166,6 @@ export default function ProductsPage() {
     changeTab,
   } = useProductModal()
 
-  // Modal kapatıldığında seçimleri temizle
   const closeModal = () => {
     originalCloseModal()
     setSelectedProducts([])
@@ -183,7 +179,10 @@ export default function ProductsPage() {
   const totalCount = productsData?.totalCount || 0
   const totalPages = productsData?.totalPages || 1
 
-  // Handlers
+  const isRestrictedView = warehouseAccess.isRestricted && warehouseAccess.warehouseIds.length > 0
+  const canManageProducts = warehouseAccess.canManageProducts
+  const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
+
   const handleOpenCreateModal = () => {
     setModalMode('create')
     openModal(null)
@@ -201,8 +200,6 @@ export default function ProductsPage() {
 
   const handleBulkStockOperations = () => {
     if (selectedProducts.length === 0) return
-    
-    // Toplu zimmet modal'ını aç
     setShowBulkZimmetModal(true)
   }
 
@@ -216,36 +213,31 @@ export default function ProductsPage() {
 
   const handleClearFilters = () => {
     clearFilters()
-    // santiye_depo ve purchasing_officer için site_id'yi koru (warehouse_manager tüm depoları görebilir)
-    if ((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) {
-      setSiteId(userSiteId)
+    if (isRestrictedView) {
+      setSiteId(warehouseAccess.warehouseIds[0])
     }
-    // Product type'ı da temizle
     setProductType('')
   }
 
   const handleSaveProduct = async (data: any) => {
     try {
-      // Seri numaralarını ayır
       const { serial_numbers, ...productData } = data
-      
-      // Seri numarası varsa has_serial'ı true yap ve açıklamaya ekle
+
       if (serial_numbers && serial_numbers.trim()) {
         productData.has_serial = true
-        
+
         const serialNumbersList = serial_numbers
           .split(',')
           .map((sn: string) => sn.trim())
           .filter((sn: string) => sn.length > 0)
-        
-        // Seri numaralarını açıklamaya ekle
+
         const serialNumbersText = `\n\n--- Seri Numaraları ---\n${serialNumbersList.join('\n')}`
         productData.description = (productData.description || '') + serialNumbersText
       }
-      
+
       if (modalMode === 'create') {
         await createMutation.mutateAsync(productData)
-        
+
         if (serial_numbers && serial_numbers.trim()) {
           const serialCount = serial_numbers.split(',').filter((s: string) => s.trim()).length
           showToast(`Ürün ve ${serialCount} seri numarası başarıyla oluşturuldu!`, 'success')
@@ -267,20 +259,22 @@ export default function ProductsPage() {
 
   return (
     <div className="space-y-8">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Stok Yönetimi</h1>
+          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
+            Stok Yönetimi
+          </h1>
           <p className="text-gray-600 text-base mt-4">
-            {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Deponuzdaki ürünleri görüntüleyin' : 'Tüm ürünleri görüntüleyin ve yönetin'}
+            {isRestrictedView
+              ? 'Atandığınız depolardaki ürünleri görüntüleyin'
+              : 'Tüm ürünleri görüntüleyin ve yönetin'}
           </p>
         </div>
         <div className="flex items-center gap-5">
           <Badge variant="secondary" className="bg-gray-100 text-gray-700 px-4 py-2">
             {totalCount} Ürün
           </Badge>
-          {/* Yeni Ürün Ekle butonu sadece santiye_depo için gizli */}
-          {userRole && userRole !== 'santiye_depo' && (
+          {warehouseAccess.loaded && canManageProducts && (
             <Button
               onClick={handleOpenCreateModal}
               className="px-8 py-6 rounded-full font-medium text-md bg-gradient-to-r from-gray-900 to-gray-800 text-white hover:from-gray-800 hover:to-gray-700 shadow-lg hover:shadow-xl transition-all duration-200"
@@ -297,14 +291,11 @@ export default function ProductsPage() {
         loading={insightsLoading}
         error={insightsError instanceof Error ? insightsError : undefined}
         warehouseName={
-          insightsSiteKey ? sites.find(s => s.site.id === insightsSiteKey)?.site.name : undefined
+          insightsSiteKey ? sites.find((s) => s.site.id === insightsSiteKey)?.site.name : undefined
         }
       />
 
-      {/* Site Filters - Elegant Image-based */}
-      {/* santiye_depo ve purchasing_officer kullanıcıları için site seçim butonlarını gizle - SADECE site_id varsa */}
-      {/* warehouse_manager tüm depoları görebilir - site seçim butonları görünür */}
-      {userRole && !((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
+      {warehouseAccess.loaded && showDepotSwitcher && (
         <div className="space-y-2.5">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 shrink-0 text-gray-400" />
@@ -315,26 +306,28 @@ export default function ProductsPage() {
             <div className="-mx-1 overflow-x-auto overscroll-x-contain scroll-smooth px-1 pb-2 scrollbar-hide">
               <div className="flex w-max flex-col gap-2.5">
                 <div className="flex gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSiteId('')
-                      setCurrentPage(1)
-                    }}
-                    className={`inline-flex shrink-0 items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors ${
-                      !siteId
-                        ? 'border-gray-900 bg-gray-50 text-gray-900'
-                        : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
-                    }`}
-                  >
-                    <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
-                      <Package className={`h-5 w-5 ${!siteId ? 'text-gray-900' : 'text-gray-500'}`} />
-                    </span>
-                    <span className="min-w-[5.5rem]">
-                      <span className="block text-base font-medium leading-snug">Envanter</span>
-                      <span className="text-sm leading-snug text-gray-500">{totalCount} ürün</span>
-                    </span>
-                  </button>
+                  {warehouseAccess.canManageAll && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSiteId('')
+                        setCurrentPage(1)
+                      }}
+                      className={`inline-flex shrink-0 items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors ${
+                        !siteId
+                          ? 'border-gray-900 bg-gray-50 text-gray-900'
+                          : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
+                      }`}
+                    >
+                      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-gray-200 bg-gray-50">
+                        <Package className={`h-5 w-5 ${!siteId ? 'text-gray-900' : 'text-gray-500'}`} />
+                      </span>
+                      <span className="min-w-[5.5rem]">
+                        <span className="block text-base font-medium leading-snug">Envanter</span>
+                        <span className="text-sm leading-snug text-gray-500">{totalCount} ürün</span>
+                      </span>
+                    </button>
+                  )}
                   <span className="inline-flex shrink-0 items-center rounded-md border border-dashed border-gray-200 px-4 text-sm text-gray-400">
                     Yükleniyor…
                   </span>
@@ -347,7 +340,7 @@ export default function ProductsPage() {
                 | { kind: 'all' }
                 | { kind: 'site'; site: SiteStock['site']; productCount: number; totalQuantity: number }
               const chips: DepotChip[] = [
-                { kind: 'all' },
+                ...(warehouseAccess.canManageAll ? [{ kind: 'all' as const }] : []),
                 ...sites.map((s) => ({
                   kind: 'site' as const,
                   site: s.site,
@@ -390,6 +383,7 @@ export default function ProductsPage() {
                     </button>
                   )
                 }
+
                 const selected = siteId === chip.site.id
                 return (
                   <button
@@ -401,25 +395,18 @@ export default function ProductsPage() {
                     }}
                     className={chipClass(selected, true)}
                   >
-                    {chip.site.image_url ? (
-                      <img
-                        src={chip.site.image_url}
-                        alt=""
-                        className="h-11 w-11 shrink-0 rounded-md object-cover"
-                      />
-                    ) : (
-                      <span
-                        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-md border ${
-                          selected ? 'border-primary-200 bg-white' : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
-                        <Building2 className="h-5 w-5 text-gray-400" />
-                      </span>
-                    )}
+                    <span className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-md border border-gray-200 bg-gray-50">
+                      {chip.site.image_url ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={chip.site.image_url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <Building2 className={`h-5 w-5 ${selected ? 'text-primary-700' : 'text-gray-500'}`} />
+                      )}
+                    </span>
                     <span className="min-w-0">
-                      <span className="block text-base font-medium leading-snug">{chip.site.name}</span>
+                      <span className="block truncate text-base font-medium leading-snug">{chip.site.name}</span>
                       <span className="text-sm leading-snug text-gray-500">
-                        {chip.productCount} ürün · {chip.totalQuantity} adet
+                        {chip.productCount} ürün · {Math.round(chip.totalQuantity)} adet
                       </span>
                     </span>
                   </button>
@@ -429,8 +416,8 @@ export default function ProductsPage() {
               return (
                 <div className="-mx-1 overflow-x-auto overscroll-x-contain scroll-smooth px-1 pb-2 scrollbar-hide">
                   <div className="flex w-max flex-col gap-2.5">
-                    <div className="flex gap-3">{row1.map((c) => renderChip(c))}</div>
-                    {row2.length > 0 ? <div className="flex gap-3">{row2.map((c) => renderChip(c))}</div> : null}
+                    <div className="flex gap-3">{row1.map(renderChip)}</div>
+                    {row2.length > 0 && <div className="flex gap-3">{row2.map(renderChip)}</div>}
                   </div>
                 </div>
               )
@@ -439,14 +426,12 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Product Type Filters */}
       <div className="space-y-2.5">
         <div className="flex items-center gap-2">
           <Boxes className="h-5 w-5 shrink-0 text-gray-400" />
-          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Ürün tipleri</h2>
+          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Ürün Tipi</h2>
         </div>
-
-        <div className="inline-flex flex-wrap gap-1.5 rounded-md border border-gray-200 bg-gray-50/80 p-1">
+        <div className="inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50/80 p-1">
           <button
             type="button"
             onClick={() => {
@@ -459,7 +444,6 @@ export default function ProductsPage() {
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Package className="h-4 w-4 shrink-0 opacity-70" />
             Tümü
           </button>
           <button
@@ -470,27 +454,42 @@ export default function ProductsPage() {
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
               productType === 'demirbas'
-                ? 'bg-white text-primary-700 shadow-sm ring-1 ring-primary-200'
+                ? 'bg-white text-sky-700 shadow-sm ring-1 ring-sky-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
-            <Wrench className="h-4 w-4 shrink-0 opacity-70" />
+            <Package className="h-4 w-4 shrink-0 opacity-70" />
             Demirbaş
           </button>
           <button
             type="button"
             onClick={() => {
-              setProductType('sarf_malzeme')
+              setProductType('sarf')
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              productType === 'sarf_malzeme'
-                ? 'bg-white text-emerald-700 shadow-sm ring-1 ring-emerald-200'
+              productType === 'sarf'
+                ? 'bg-white text-amber-700 shadow-sm ring-1 ring-amber-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             <Boxes className="h-4 w-4 shrink-0 opacity-70" />
-            Sarf malzeme
+            Sarf
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setProductType('yedek_parca')
+              setCurrentPage(1)
+            }}
+            className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+              productType === 'yedek_parca'
+                ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-200'
+                : 'text-gray-600 hover:text-gray-900'
+            }`}
+          >
+            <Wrench className="h-4 w-4 shrink-0 opacity-70" />
+            Yedek Parça
           </button>
           <button
             type="button"
@@ -510,35 +509,40 @@ export default function ProductsPage() {
         </div>
       </div>
 
-      {/* Products Table Card */}
       <Card className="bg-white border border-gray-200 shadow-sm rounded-3xl">
         <CardHeader className="pb-6 pt-8 px-8">
           <div className="flex flex-col gap-6">
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-lg font-semibold text-gray-900 mb-2">
-                  {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? 'Depo Ürün Kataloğu' : 'Ürün Kataloğu'}
-                  {siteId && !((userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId) && (
+                  {isRestrictedView ? 'Depo Ürün Kataloğu' : 'Ürün Kataloğu'}
+                  {siteId && !isRestrictedView && (
                     <span className="ml-2 text-primary-600">
-                      - {sites.find(s => s.site.id === siteId)?.site.name}
+                      - {sites.find((s) => s.site.id === siteId)?.site.name}
                     </span>
                   )}
                 </CardTitle>
                 <p className="text-sm text-gray-500">
-                  {(userRole === 'santiye_depo' || userRole === 'purchasing_officer') && userSiteId ? (
+                  {isRestrictedView ? (
                     <>
-                      <span className="font-medium">{sites.find(s => s.site.id === siteId)?.site.name || 'Deponuzda'}</span> {totalCount} ürün mevcut
+                      <span className="font-medium">
+                        {sites.find((s) => s.site.id === siteId)?.site.name || 'Deponuzda'}
+                      </span>{' '}
+                      {totalCount} ürün mevcut
                     </>
                   ) : siteId ? (
                     <>
-                      <span className="font-medium">{sites.find(s => s.site.id === siteId)?.site.name}</span> deposunda {totalCount} ürün listeleniyor
+                      <span className="font-medium">
+                        {sites.find((s) => s.site.id === siteId)?.site.name}
+                      </span>{' '}
+                      deposunda {totalCount} ürün listeleniyor
                     </>
                   ) : (
                     <>Toplam {totalCount} ürün listeleniyor</>
                   )}
                 </p>
               </div>
-              
+
               <div className="flex flex-wrap items-center gap-2 justify-end">
                 <Button
                   onClick={() => setShowZimmetReportModal(true)}
@@ -551,7 +555,6 @@ export default function ProductsPage() {
               </div>
             </div>
 
-            {/* Filters */}
             <ProductFilters
               searchTerm={searchTerm}
               brandId={brandId}
@@ -566,7 +569,6 @@ export default function ProductsPage() {
         </CardHeader>
 
         <CardContent className="px-8 pb-8">
-          {/* Products Table */}
           <ProductsTable
             products={products}
             isLoading={isLoading}
@@ -576,7 +578,6 @@ export default function ProductsPage() {
             onSelectionChange={handleSelectionChange}
           />
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 mt-10">
               <Button
@@ -615,7 +616,6 @@ export default function ProductsPage() {
         </CardContent>
       </Card>
 
-      {/* Product Modal */}
       <ProductModal
         isOpen={isModalOpen}
         productId={selectedProductId}
@@ -628,16 +628,13 @@ export default function ProductsPage() {
         selectedProductIds={selectedProducts}
       />
 
-      {/* Bottom Action Bar - Toplu İşlemler */}
       {showBulkActions && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-2xl z-50 border-t border-gray-700">
           <div className="max-w-7xl mx-auto px-8 py-6">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <div className="bg-white/10 rounded-full px-4 py-2 backdrop-blur-sm">
-                  <span className="text-sm font-semibold">
-                    {selectedProducts.length} ürün seçildi
-                  </span>
+                  <span className="text-sm font-semibold">{selectedProducts.length} ürün seçildi</span>
                 </div>
                 <Button
                   variant="ghost"
@@ -650,7 +647,7 @@ export default function ProductsPage() {
                   Seçimi Temizle
                 </Button>
               </div>
-              
+
               <div className="flex items-center gap-3">
                 <Button
                   onClick={handleBulkStockOperations}
@@ -665,7 +662,6 @@ export default function ProductsPage() {
         </div>
       )}
 
-      {/* Bulk Zimmet Modal */}
       <BulkZimmetModal
         open={showBulkZimmetModal}
         onOpenChange={setShowBulkZimmetModal}
@@ -679,11 +675,8 @@ export default function ProductsPage() {
         onOpenChange={setShowZimmetReportModal}
         showToast={showToast}
         sourceWarehouseId={siteId || undefined}
-        warehouseLabel={
-          siteId ? sites.find((s) => s.site.id === siteId)?.site.name : undefined
-        }
+        warehouseLabel={siteId ? sites.find((s) => s.site.id === siteId)?.site.name : undefined}
       />
     </div>
   )
 }
-

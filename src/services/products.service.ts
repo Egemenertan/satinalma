@@ -21,6 +21,8 @@ export interface ProductFilters {
   search?: string
   brandId?: string
   siteId?: string
+  /** Kısıtlı depo yetkisi: siteId yokken bu depolardaki ürünlerle sınırla */
+  allowedWarehouseIds?: string[]
   categoryId?: string
   productType?: string
   isActive?: boolean
@@ -42,15 +44,37 @@ function isMainDepotStockRow(stock: { user_id?: string | null }) {
 }
 
 function sumMainDepotQty(
-  stocks:any[]| undefined,
-  warehouseId?: string
+  stocks: any[] | undefined,
+  warehouseId?: string,
+  allowedWarehouseIds?: string[]
 ): number {
+  const allowed =
+    allowedWarehouseIds && allowedWarehouseIds.length > 0
+      ? new Set(allowedWarehouseIds)
+      : null
   return (stocks || [])
-    .filter(
-      (s: any) =>
-        isMainDepotStockRow(s) && (!warehouseId || s.warehouse_id === warehouseId)
-    )
+    .filter((s: any) => {
+      if (!isMainDepotStockRow(s)) return false
+      if (warehouseId) return s.warehouse_id === warehouseId
+      if (allowed) return s.warehouse_id && allowed.has(s.warehouse_id)
+      return true
+    })
     .reduce((sum: number, s: any) => sum + (parseFloat(s.quantity) || 0), 0)
+}
+
+function scopeWarehouseStocks<T extends { warehouse_id?: string | null }>(
+  stocks: T[] | undefined,
+  filters?: ProductFilters
+): T[] {
+  if (!stocks?.length) return []
+  if (filters?.siteId) {
+    return stocks.filter((s) => s.warehouse_id === filters.siteId)
+  }
+  if (filters?.allowedWarehouseIds?.length) {
+    const allowed = new Set(filters.allowedWarehouseIds)
+    return stocks.filter((s) => s.warehouse_id && allowed.has(s.warehouse_id))
+  }
+  return stocks
 }
 
 /** Liste kartı: normalde depo+zimmet toplamı; "Mevcut Olanlar"da yalnızca serbest depo miktarı. */
@@ -59,14 +83,16 @@ function totalStockForProductList(
   userInventorySum: number,
   filters?: ProductFilters
 ) {
-  const warehouseAll = sumMainDepotQty(product.warehouse_stocks, undefined)
-  const warehouseScoped = filters?.siteId
-    ? sumMainDepotQty(product.warehouse_stocks, filters.siteId)
-    : warehouseAll
+  const scopedStocks = scopeWarehouseStocks(product.warehouse_stocks, filters)
+  const warehouseScoped = sumMainDepotQty(
+    scopedStocks,
+    filters?.siteId,
+    filters?.allowedWarehouseIds
+  )
   if (filters?.statusFilter === 'available') {
     return warehouseScoped
   }
-  return warehouseAll + userInventorySum
+  return warehouseScoped + userInventorySum
 }
 
 /**
@@ -168,7 +194,10 @@ export async function fetchProducts(
         *,
         brand:brands(*),
         category:product_categories(*),
-        warehouse_stocks:warehouse_stock(*)
+        warehouse_stocks:warehouse_stock(
+          *,
+          warehouse:sites(id, name)
+        )
       `, { count: 'exact' })
       .in('id', matchingIds)
       .order('created_at', { ascending: false })
@@ -224,6 +253,7 @@ export async function fetchProducts(
 
       return {
         ...product,
+        warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
         total_stock: totalStockForProductList(product, userInventoryStock, filters),
       }
     }))
@@ -312,7 +342,10 @@ export async function fetchProducts(
         *,
         brand:brands(*),
         category:product_categories(*),
-        warehouse_stocks:warehouse_stock(*)
+        warehouse_stocks:warehouse_stock(
+          *,
+          warehouse:sites(id, name)
+        )
       `, { count: 'exact' })
       .in('id', allMatchingIds)
       .order('created_at', { ascending: false })
@@ -361,6 +394,7 @@ export async function fetchProducts(
 
       return {
         ...product,
+        warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
         total_stock: totalStockForProductList(product, userInventoryStock, filters),
       }
     }))
@@ -373,7 +407,7 @@ export async function fetchProducts(
     }
   }
   
-  // Site filtresi varsa (arama olmadan)
+  // Site / izinli depo filtresi varsa (arama olmadan)
   let siteProductIds: string[] | null = null
   if (filters?.siteId) {
     let stockQuery = supabase
@@ -384,6 +418,16 @@ export async function fetchProducts(
     const { data: stockProducts } = await stockQuery
     
     siteProductIds = stockProducts?.map(s => s.product_id) || []
+    if (siteProductIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+  } else if (filters?.allowedWarehouseIds?.length) {
+    const { data: stockProducts } = await supabase
+      .from('warehouse_stock')
+      .select('product_id')
+      .in('warehouse_id', filters.allowedWarehouseIds)
+
+    siteProductIds = [...new Set((stockProducts || []).map((s) => s.product_id))]
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }
@@ -400,6 +444,8 @@ export async function fetchProducts(
 
     if (filters?.siteId) {
       stockQuery = stockQuery.eq('warehouse_id', filters.siteId)
+    } else if (filters?.allowedWarehouseIds?.length) {
+      stockQuery = stockQuery.in('warehouse_id', filters.allowedWarehouseIds)
     }
 
     const { data: stockData } = await stockQuery
@@ -431,7 +477,10 @@ export async function fetchProducts(
       *,
       brand:brands(*),
       category:product_categories(*),
-      warehouse_stocks:warehouse_stock(*)
+      warehouse_stocks:warehouse_stock(
+        *,
+        warehouse:sites(id, name)
+      )
     `, { count: 'exact' })
     .order('created_at', { ascending: false })
 

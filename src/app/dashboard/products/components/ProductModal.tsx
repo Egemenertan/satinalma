@@ -160,16 +160,16 @@ export function ProductModal({
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent
         showCloseButton={false}
-        className="!max-w-[1200px] !max-h-[90vh] h-[90vh] bg-white/95 backdrop-blur-2xl p-0 rounded-3xl w-[90vw] sm:!max-w-[1200px] border-0 shadow-2xl gap-0"
+        className="!max-w-[1200px] !max-h-[90vh] h-[90vh] !bg-white p-0 rounded-3xl w-[90vw] sm:!max-w-[1200px] border border-gray-200 shadow-2xl gap-0"
       >
         {isLoading && mode !== 'create' ? (
           <div className="flex items-center justify-center py-16">
             <Loading size="lg" text="Ürün yükleniyor..." />
           </div>
         ) : (
-          <div className="flex flex-col h-full bg-gradient-to-br from-gray-50/50 to-white/50 rounded-3xl overflow-hidden">
-            {/* Header - Apple Style */}
-            <DialogHeader className="px-8 py-6 border-b border-gray-200/50 backdrop-blur-xl bg-white/40 flex-shrink-0 rounded-t-3xl">
+          <div className="flex flex-col h-full bg-white rounded-3xl overflow-hidden">
+            {/* Header */}
+            <DialogHeader className="px-8 py-6 border-b border-gray-100 bg-white flex-shrink-0 rounded-t-3xl">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <DialogTitle className="text-3xl font-semibold text-gray-900 mb-1 tracking-tight">
@@ -237,17 +237,17 @@ export function ProductModal({
               onValueChange={(value) => onTabChange(value as ProductModalTab)}
               className="flex-1 flex flex-col min-h-0"
             >
-              <TabsList className="w-full justify-start px-8 py-6 bg-gradient-to-b from-white/80 to-white/60 backdrop-blur-xl border-b border-gray-200/50 gap-3 flex-shrink-0">
+              <TabsList className="w-full justify-start px-8 py-6 bg-gray-50 border-b border-gray-100 gap-3 flex-shrink-0">
                 <TabsTrigger 
                   value="info" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:bg-white/70 data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200/60 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px]"
+                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px]"
                 >
                   <Info className="w-5 h-5" />
                   <span>Bilgiler</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="images" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:bg-white/70 data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200/60 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <ImageIcon className="w-5 h-5" />
@@ -255,7 +255,7 @@ export function ProductModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="stock" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:bg-white/70 data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200/60 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <Package className="w-5 h-5" />
@@ -263,7 +263,7 @@ export function ProductModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="movements" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:bg-white/70 data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200/60 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <TrendingUp className="w-5 h-5" />
@@ -271,7 +271,7 @@ export function ProductModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="history" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-lg data-[state=inactive]:bg-white/70 data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200/60 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <History className="w-5 h-5" />
@@ -279,7 +279,7 @@ export function ProductModal({
                 </TabsTrigger>
               </TabsList>
 
-              <div className="flex-1 overflow-y-auto bg-white/30 backdrop-blur-sm min-h-0 rounded-b-3xl">
+              <div className="flex-1 overflow-y-auto bg-white min-h-0 rounded-b-3xl">
                 {/* Ürün Bilgileri Tab */}
                 <TabsContent value="info" className="p-8 space-y-6 m-0">
                   {showForm ? (

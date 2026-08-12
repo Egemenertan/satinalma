@@ -7,7 +7,7 @@ import { getPDFStyles } from './styles'
 const LOGO_PATH = '/d.png'
 
 export type ZimmetAssignmentListRow = {
-  ownerEmail: string
+  imageUrl?: string
   productName: string
   sku: string
   brand: string
@@ -128,7 +128,30 @@ const extraCss = `
     color: #1f2937;
   }
   table.zim-data tr:nth-child(even) td { background: #fafafa; }
-  .zim-num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.zim-data th.zim-th-img,
+  table.zim-data td.zim-td-img {
+    width: 52px;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .zim-prod-img {
+    width: 40px;
+    height: 40px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid #e5e7eb;
+    background: #f3f4f6;
+    display: block;
+    margin: 0 auto;
+  }
+  .zim-prod-img-empty {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    border: 1px dashed #d1d5db;
+    background: #f9fafb;
+    margin: 0 auto;
+  }
   .zim-footnote {
     margin-top: 14px;
     font-size: 8pt;
@@ -191,10 +214,13 @@ const extraCss = `
 
 function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
   return rows
-    .map(
-      (r) => `
+    .map((r) => {
+      const imgCell = r.imageUrl
+        ? `<img src="${esc(r.imageUrl)}" alt="" class="zim-prod-img" />`
+        : `<div class="zim-prod-img-empty"></div>`
+      return `
     <tr>
-      <td>${esc(r.ownerEmail)}</td>
+      <td class="zim-td-img">${imgCell}</td>
       <td>${esc(r.productName)}</td>
       <td>${esc(r.sku)}</td>
       <td>${esc(r.brand)}</td>
@@ -204,7 +230,7 @@ function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
       <td>${esc(r.sourceWarehouse)}</td>
       <td>${esc(r.serialNumber)}</td>
     </tr>`
-    )
+    })
     .join('')
 }
 
@@ -250,7 +276,7 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload): string {
         <table class="zim-data">
           <thead>
             <tr>
-              <th>Sahip e-posta</th>
+              <th class="zim-th-img">Görsel</th>
               <th>Ürün adı</th>
               <th>SKU</th>
               <th>Marka</th>
@@ -327,15 +353,17 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
     [...imgs].map(
       (img) =>
         new Promise<void>((res) => {
-          if (img.complete) res()
+          if (img.complete && img.naturalWidth > 0) res()
           else {
             img.onload = () => res()
             img.onerror = () => res()
+            // Uzak depolama görselleri için ek süre
+            setTimeout(() => res(), 4000)
           }
         })
     )
   )
-  await new Promise((r) => setTimeout(r, 80))
+  await new Promise((r) => setTimeout(r, 120))
 
   iframe.contentWindow?.focus()
   iframe.contentWindow?.print()

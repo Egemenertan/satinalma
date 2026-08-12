@@ -24,6 +24,7 @@ import {
 } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { Checkbox } from '@/components/ui/checkbox'
+import WarehouseAccessModal from '@/components/WarehouseAccessModal'
 
 interface Profile {
   id: string
@@ -52,6 +53,7 @@ export default function AdminPage() {
   const [materialGroupsAll, setMaterialGroupsAll] = useState<string[]>([])
   const [selectedItGroups, setSelectedItGroups] = useState<string[]>([])
   const [savingItRoutes, setSavingItRoutes] = useState(false)
+  const [warehouseAccessUser, setWarehouseAccessUser] = useState<Profile | null>(null)
 
   // Kullanıcının admin olup olmadığını kontrol et
   useEffect(() => {
@@ -433,7 +435,7 @@ export default function AdminPage() {
                       </div>
                     </div>
 
-                    {/* Sağ: Rol ve Şantiye */}
+                    {/* Sağ: Rol, şantiye ve depo yetkisi */}
                     <div className="flex flex-col items-end gap-2 flex-shrink-0">
                       <Badge 
                         variant="outline" 
@@ -447,6 +449,16 @@ export default function AdminPage() {
                           {getSiteNames(profile.site_id)}
                         </span>
                       )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="mt-1 h-8 text-xs"
+                        onClick={() => setWarehouseAccessUser(profile)}
+                      >
+                        <Package className="h-3.5 w-3.5 mr-1.5" />
+                        Depo yetkisi
+                      </Button>
                     </div>
                   </div>
                 </div>
@@ -455,6 +467,20 @@ export default function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      <WarehouseAccessModal
+        isOpen={!!warehouseAccessUser}
+        user={
+          warehouseAccessUser
+            ? {
+                id: warehouseAccessUser.id,
+                full_name: warehouseAccessUser.full_name,
+                email: warehouseAccessUser.email,
+              }
+            : null
+        }
+        onClose={() => setWarehouseAccessUser(null)}
+      />
     </div>
   )
 }

@@ -129,6 +129,7 @@ const INVENTORY_SELECT = `
     sku,
     unit,
     product_type,
+    images,
     brand:brands(name)
   ),
   warehouse:sites!user_inventory_source_warehouse_id_fkey(name)
@@ -289,12 +290,11 @@ export function ZimmetReportModal({
         const wh = r.warehouse
         const whName = Array.isArray(wh) ? wh[0]?.name : wh?.name
         const ptype = PRODUCT_TYPE_TR[p?.product_type] || p?.product_type || ''
+        const images = Array.isArray(p?.images) ? (p.images as string[]) : []
+        const imageUrl =
+          typeof images[0] === 'string' && images[0].trim() ? images[0].trim() : ''
         return {
-          ownerEmail:
-            (r.owner_email as string) ||
-            selectedEmployee.work_email ||
-            selectedEmployee.personal_email ||
-            '',
+          imageUrl,
           productName: p?.name || r.item_name || '',
           sku: p?.sku || '',
           brand: brandName || '',
