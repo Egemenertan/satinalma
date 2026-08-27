@@ -97,9 +97,14 @@ export async function fetchRequestOfferBundle(
     `
     )
     .eq('id', requestId)
+    .is('deleted_at', null)
     .maybeSingle()
 
   if (error || !row) {
+    return null
+  }
+
+  if ((row as { deleted_at?: string | null }).deleted_at) {
     return null
   }
 

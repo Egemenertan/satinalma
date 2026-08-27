@@ -600,6 +600,115 @@ export type Database = {
           updated_at?: string | null
         }
       }
+      quote_comparisons: {
+        Row: {
+          id: string
+          title: string
+          material_name: string | null
+          status: string
+          error_message: string | null
+          comparison_table: Json | null
+          ai_recommendation: Json | null
+          recommended_offer_id: string | null
+          priority_criteria: string | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          title: string
+          material_name?: string | null
+          status?: string
+          error_message?: string | null
+          comparison_table?: Json | null
+          ai_recommendation?: Json | null
+          recommended_offer_id?: string | null
+          priority_criteria?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          title?: string
+          material_name?: string | null
+          status?: string
+          error_message?: string | null
+          comparison_table?: Json | null
+          ai_recommendation?: Json | null
+          recommended_offer_id?: string | null
+          priority_criteria?: string | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_comparisons_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_comparison_offers: {
+        Row: {
+          id: string
+          comparison_id: string
+          supplier_name: string | null
+          file_name: string
+          file_path: string
+          file_size: number | null
+          raw_text: string | null
+          extracted_data: Json | null
+          total_price: number | null
+          currency: string | null
+          ai_score: number | null
+          sort_order: number
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          comparison_id: string
+          supplier_name?: string | null
+          file_name: string
+          file_path: string
+          file_size?: number | null
+          raw_text?: string | null
+          extracted_data?: Json | null
+          total_price?: number | null
+          currency?: string | null
+          ai_score?: number | null
+          sort_order?: number
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          comparison_id?: string
+          supplier_name?: string | null
+          file_name?: string
+          file_path?: string
+          file_size?: number | null
+          raw_text?: string | null
+          extracted_data?: Json | null
+          total_price?: number | null
+          currency?: string | null
+          ai_score?: number | null
+          sort_order?: number
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_comparison_offers_comparison_id_fkey"
+            columns: ["comparison_id"]
+            isOneToOne: false
+            referencedRelation: "quote_comparisons"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

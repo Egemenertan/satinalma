@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   ActivityIndicator,
   Alert,
+  Dimensions,
   Image,
   KeyboardAvoidingView,
   Platform,
@@ -23,6 +24,9 @@ import { supabase } from '../src/lib/supabase'
 import { useAuth } from '../src/providers/AuthProvider'
 
 WebBrowser.maybeCompleteAuthSession()
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window')
+const isWideScreen = SCREEN_WIDTH >= 768
 
 const msLogoStyles = StyleSheet.create({
   wrap: { width: 22, height: 22, flexDirection: 'row', flexWrap: 'wrap', gap: 2 },
@@ -388,71 +392,73 @@ export default function LoginScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
-        keyboardVerticalOffset={0}
-      >
-        <ScrollView
-          style={styles.flex}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
+      <View style={[styles.mainWrapper, isWideScreen && styles.mainWrapperWide]}>
+        {/* Sol taraf - Logo */}
+        <View style={[styles.logoSection, isWideScreen && styles.logoSectionWide]}>
+          <Image
+            source={require('../assets/dlx.png')}
+            style={styles.dlxLogo}
+            resizeMode="contain"
+            accessibilityRole="image"
+            accessibilityLabel={t('auth.logoA11y')}
+          />
+        </View>
+
+        {/* Sağ taraf - Form */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          style={[styles.formSection, isWideScreen && styles.formSectionWide]}
+          keyboardVerticalOffset={0}
         >
-          {/* Logo */}
-          <View style={styles.logoContainer}>
-            <Image
-              source={require('../assets/dld.png')}
-              style={styles.logo}
-              resizeMode="contain"
-              accessibilityRole="image"
-              accessibilityLabel={t('auth.logoA11y')}
-            />
-          </View>
-
-          <View style={styles.hero}>
-            <Text style={styles.h1}>{t('auth.welcome')}</Text>
-            <Text style={styles.lead}>{t('auth.subtitle')}</Text>
-          </View>
-
-          <TextInput
-            style={styles.input}
-            placeholder={t('auth.emailPh')}
-            placeholderTextColor="#9ca3af"
-            autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
-            value={email}
-            onChangeText={setEmail}
-            editable={!busy}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder={t('auth.passwordPh')}
-            placeholderTextColor="#9ca3af"
-            secureTextEntry
-            value={password}
-            onChangeText={setPassword}
-            editable={!busy}
-          />
-
-          <Pressable
-            style={[styles.btnPrimary, busy && styles.btnDisabled]}
-            onPress={onSubmit}
-            disabled={busy}
+          <ScrollView
+            style={styles.flex}
+            contentContainerStyle={styles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
           >
-            {submitting ? (
-              <ActivityIndicator color="#fff" />
-            ) : (
-              <Text style={styles.btnPrimaryText}>{t('auth.loginEmail')}</Text>
-            )}
-          </Pressable>
+            <View style={styles.hero}>
+              <Text style={styles.h1}>{t('auth.welcome')}</Text>
+              <Text style={styles.lead}>{t('auth.subtitle')}</Text>
+            </View>
 
-          <View style={styles.orRow}>
-            <View style={styles.orLine} />
-            <Text style={styles.orText}>{t('auth.or')}</Text>
-            <View style={styles.orLine} />
-          </View>
+            <TextInput
+              style={styles.input}
+              placeholder={t('auth.emailPh')}
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="none"
+              keyboardType="email-address"
+              autoComplete="email"
+              value={email}
+              onChangeText={setEmail}
+              editable={!busy}
+            />
+            <TextInput
+              style={styles.input}
+              placeholder={t('auth.passwordPh')}
+              placeholderTextColor="#9ca3af"
+              secureTextEntry
+              value={password}
+              onChangeText={setPassword}
+              editable={!busy}
+            />
+
+            <Pressable
+              style={[styles.btnPrimary, busy && styles.btnDisabled]}
+              onPress={onSubmit}
+              disabled={busy}
+            >
+              {submitting ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.btnPrimaryText}>{t('auth.loginEmail')}</Text>
+              )}
+            </Pressable>
+
+            <View style={styles.orRow}>
+              <View style={styles.orLine} />
+              <Text style={styles.orText}>{t('auth.or')}</Text>
+              <View style={styles.orLine} />
+            </View>
 
           <Pressable
             style={[styles.btnMicrosoft, busy && styles.btnDisabled]}
@@ -471,38 +477,41 @@ export default function LoginScreen() {
             )}
           </Pressable>
 
-          {/* Apple Sign In - only on iOS */}
-          {Platform.OS === 'ios' && (
-            <Pressable
-              style={[styles.btnApple, busy && styles.btnDisabled]}
-              onPress={signInWithApple}
-              disabled={busy}
-              accessibilityRole="button"
-              accessibilityLabel={t('auth.appleA11y')}
-            >
-              {appleLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="logo-apple" size={20} color="#fff" />
-                  <Text style={styles.btnAppleText}>{t('auth.loginApple')}</Text>
-                </>
-              )}
-            </Pressable>
-          )}
+            {/* Apple Sign In - only on iOS */}
+            {Platform.OS === 'ios' && (
+              <Pressable
+                style={[styles.btnApple, busy && styles.btnDisabled]}
+                onPress={signInWithApple}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={t('auth.appleA11y')}
+              >
+                {appleLoading ? (
+                  <ActivityIndicator color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="logo-apple" size={20} color="#fff" />
+                    <Text style={styles.btnAppleText}>{t('auth.loginApple')}</Text>
+                  </>
+                )}
+              </Pressable>
+            )}
 
-          {/* Register link */}
-          <View style={styles.registerRow}>
-            <Text style={styles.registerText}>{t('auth.noAccount')}</Text>
-            <Pressable onPress={() => router.push('/register')}>
-              <Text style={styles.registerLink}>{t('auth.register')}</Text>
-            </Pressable>
-          </View>
+            {/* Register link - sadece Android'de göster */}
+            {Platform.OS !== 'ios' && (
+              <View style={styles.registerRow}>
+                <Text style={styles.registerText}>{t('auth.noAccount')}</Text>
+                <Pressable onPress={() => router.push('/register')}>
+                  <Text style={styles.registerLink}>{t('auth.register')}</Text>
+                </Pressable>
+              </View>
+            )}
 
-          {/* Bottom padding for safe area */}
-          <View style={{ height: insets.bottom + 16 }} />
-        </ScrollView>
-      </KeyboardAvoidingView>
+            {/* Bottom padding for safe area */}
+            <View style={{ height: insets.bottom + 16 }} />
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </View>
     </View>
   )
 }
@@ -513,20 +522,44 @@ const styles = StyleSheet.create({
     backgroundColor: '#ffffff',
   },
   flex: { flex: 1 },
+  
+  mainWrapper: {
+    flex: 1,
+    flexDirection: 'column',
+  },
+  mainWrapperWide: {
+    flexDirection: 'row',
+  },
+  
+  logoSection: {
+    backgroundColor: '#f8f9fa',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 48,
+  },
+  logoSectionWide: {
+    flex: 1,
+    paddingVertical: 0,
+  },
+  
+  dlxLogo: {
+    width: 200,
+    height: 80,
+  },
+  
+  formSection: {
+    flex: 1,
+  },
+  formSectionWide: {
+    flex: 1,
+    maxWidth: 480,
+  },
+  
   scrollContent: {
     flexGrow: 1,
     justifyContent: 'center',
     paddingHorizontal: 24,
     paddingVertical: 32,
-  },
-  
-  logoContainer: {
-    alignItems: 'center',
-    marginBottom: 32,
-  },
-  logo: {
-    width: 180,
-    height: 62,
   },
   
   hero: { 
@@ -650,6 +683,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 24,
     gap: 6,
+    flexWrap: 'wrap',
+    paddingHorizontal: 16,
   },
   registerText: {
     fontSize: 15,

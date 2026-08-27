@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import OpenAI from 'openai'
+import { toUserFacingAiErrorMessage } from '@/lib/ai/friendlyError'
 
 // OpenAI client - lazy initialization to avoid module level errors
 let openai: OpenAI | null = null
@@ -106,9 +107,8 @@ export async function POST(request: NextRequest) {
     return await generateOpenAIResponse(message, dashboardData, conversationHistory)
 
   } catch (error) {
-    console.error('AI Chat API Error:', error)
     return NextResponse.json(
-      { error: 'İç sunucu hatası: ' + error.message },
+      { error: toUserFacingAiErrorMessage(error, 'ai-chat') },
       { status: 500 }
     )
   }
@@ -332,7 +332,8 @@ async function generateOpenAIResponse(message: string, data: DashboardData, conv
     
     // API key yoksa fallback - streaming response
     if (!aiClient) {
-      const fallbackResponse = `🔑 **API Key Eksik**\n\nOpenAI API key bulunamadı veya geçersiz.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`
+      console.error('[ai-chat] OpenAI istemcisi kullanılamıyor (API key eksik/geçersiz).')
+      const fallbackResponse = `🤖 **DOVEC AI şu anda kullanılamıyor**\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`
       
       const encoder = new TextEncoder()
       const readableStream = new ReadableStream({
@@ -438,10 +439,10 @@ YANIT STİLİ:
           
         } catch (error) {
           console.error('Streaming error:', error)
-          const errorData = JSON.stringify({ 
-            error: error.message,
+          const errorData = JSON.stringify({
+            content: `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, şu anda yanıt oluşturamadım.\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`,
             type: 'error',
-            done: true 
+            done: true
           })
           controller.enqueue(encoder.encode(`data: ${errorData}\n\n`))
         } finally {
@@ -459,23 +460,13 @@ YANIT STİLİ:
     })
 
   } catch (error) {
-    console.error('OpenAI API Error:', error)
-    console.log('API Key exists:', !!process.env.OPENAI_API_KEY)
-    console.log('API Key prefix:', process.env.OPENAI_API_KEY?.substring(0, 10))
-    
-    // Error handling için streaming response
+    // Ham hata (API key, kota, rate limit, kredi vb.) yalnızca sunucu loglarına
+    // yazılır; kullanıcıya asla teknik/kota detayı gösterilmez.
+    toUserFacingAiErrorMessage(error, 'ai-chat')
+
     const encoder = new TextEncoder()
-    let errorMessage = ''
-    
-    // API key yoksa özel fallback
-    if (!process.env.OPENAI_API_KEY) {
-      errorMessage = `🔑 **API Key Eksik**\n\nOpenAI API key environment'ta bulunamadı.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen .env.local dosyasında OPENAI_API_KEY'i kontrol edin.*`
-    } else if (error.code === 'invalid_api_key' || error.status === 401) {
-      errorMessage = `🔑 **Geçersiz API Key**\n\nOpenAI API key geçersiz görünüyor.\n\n**Şu anlık yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen OpenAI API key'inizi kontrol edin.*`
-    } else {
-      errorMessage = `🤖 **DOVEC AI - Bağlantı Sorunu**\n\n**Hata:** ${error.message}\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`
-    }
-    
+    const errorMessage = `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, şu anda yanıt oluşturamadım.\n\n**Basit yanıt:** ${generateSimpleResponse(message, data)}\n\n*Lütfen birkaç dakika sonra tekrar deneyin.*`
+
     const readableStream = new ReadableStream({
       start(controller) {
         const data = JSON.stringify({ 

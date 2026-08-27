@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Redirect, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../src/lib/supabase'
@@ -23,6 +23,12 @@ export default function SetupOrganizationScreen() {
   const { t } = useTranslation()
   const insets = useSafeAreaInsets()
   const { user, profile, refreshProfile } = useAuth()
+
+  // iOS'ta organizasyon oluşturma kapalı (App Store Guideline 3.1.1)
+  // Kullanıcıyı katılma sayfasına yönlendir
+  if (Platform.OS === 'ios') {
+    return <Redirect href="/join-organization" />
+  }
 
   const [orgName, setOrgName] = useState(profile?.company_name ?? '')
   const [address, setAddress] = useState('')

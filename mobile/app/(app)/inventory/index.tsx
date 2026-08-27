@@ -50,6 +50,10 @@ export default function InventoryScreen() {
   } = useQuery({
     queryKey: ['user_inventory', user?.id],
     enabled: Boolean(user?.id),
+    staleTime: 3 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('user_inventory')

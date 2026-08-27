@@ -7,6 +7,7 @@ import {
   IT_STATUS_ONAYLANDI,
 } from './it-workflow'
 import { resolveProfileSiteIds } from './profileSiteIds'
+import { excludeSoftDeletedRequests } from './softDeletePurchaseRequest'
 import {
   fetchPurchaseRequestIdsVisibleToItWarehouseManager,
   isProfileDepartmentIt,
@@ -131,7 +132,7 @@ export async function fetchPurchaseRequestsPage(
       `title.ilike.%${t}%`,
       `description.ilike.%${t}%`,
     ].join(',')
-    const { data: searchRows } = await supabase.from('purchase_requests').select('id').or(searchScope)
+    const { data: searchRows } = await excludeSoftDeletedRequests(supabase.from('purchase_requests').select('id')).or(searchScope)
     const searchIds = [...new Set((searchRows ?? []).map((r) => r.id))]
     const { data: itemRows } = await supabase
       .from('purchase_request_items')
@@ -154,7 +155,7 @@ export async function fetchPurchaseRequestsPage(
   let unorderedRequestIds: string[] | null = null
   if (unorderedOnly && effectiveRole === 'purchasing_officer') {
     try {
-      let tempQuery = supabase.from('purchase_requests').select('id')
+      let tempQuery = excludeSoftDeletedRequests(supabase.from('purchase_requests').select('id'))
       const userSiteIds = resolveProfileSiteIds(profile)
       if (userSiteIds.length > 0) {
         tempQuery = tempQuery.or(
@@ -238,7 +239,9 @@ export async function fetchPurchaseRequestsPage(
     })
   }
 
-  let countQuery = supabase.from('purchase_requests').select('id', { count: 'exact', head: true })
+  let countQuery = excludeSoftDeletedRequests(
+    supabase.from('purchase_requests').select('id', { count: 'exact', head: true })
+  )
 
   countQuery = applyRoleScope(countQuery, effectiveRole, userId, profile)
 
@@ -261,9 +264,11 @@ export async function fetchPurchaseRequestsPage(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  let dataQuery = supabase
-    .from('purchase_requests')
-    .select(selectFields)
+  let dataQuery = excludeSoftDeletedRequests(
+    supabase
+      .from('purchase_requests')
+      .select(selectFields)
+  )
     .range(from, to)
     .order('created_at', { ascending: false })
 
@@ -448,10 +453,11 @@ async function fetchItWorkflowList(
 ): Promise<{ requests: PurchaseRequestListRow[]; totalCount: number }> {
   const { page, pageSize, statusFilter, locationFilter, mergedRequestIdFilter, selectFields } = opts
 
-  let itCountQuery = supabase
-    .from('purchase_requests')
-    .select('id', { count: 'exact', head: true })
-    .eq('it_workflow_applies', true)
+  let itCountQuery = excludeSoftDeletedRequests(
+    supabase
+      .from('purchase_requests')
+      .select('id', { count: 'exact', head: true })
+  ).eq('it_workflow_applies', true)
 
   if (effectiveRole === 'site_manager' && isPazarlamaDepartment(profile.department)) {
     itCountQuery = itCountQuery.in('status', [IT_STATUS_ONAYLANDI, 'satın almaya gönderildi'])
@@ -466,9 +472,11 @@ async function fetchItWorkflowList(
   const from = (page - 1) * pageSize
   const to = from + pageSize - 1
 
-  let itDataQuery = supabase
-    .from('purchase_requests')
-    .select(selectFields)
+  let itDataQuery = excludeSoftDeletedRequests(
+    supabase
+      .from('purchase_requests')
+      .select(selectFields)
+  )
     .eq('it_workflow_applies', true)
     .range(from, to)
     .order('created_at', { ascending: false })

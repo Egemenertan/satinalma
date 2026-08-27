@@ -133,6 +133,9 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
       page === 'suppliers' ||
       page === '/dashboard/suppliers' ||
       page.startsWith('/dashboard/suppliers/') ||
+      page === 'quote-comparison' ||
+      page === '/dashboard/quote-comparison' ||
+      page.startsWith('/dashboard/quote-comparison/') ||
       page === 'reports' ||
       page === '/dashboard/reports'
   }
@@ -199,7 +202,7 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
   }
 
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'inventory', 'products', 'orders', 'suppliers', 'reports'] // Dashboard, requests, zimmet, products, orders, suppliers ve reports
+    return ['dashboard', 'requests', 'inventory', 'products', 'orders', 'suppliers', 'quote-comparison', 'reports'] // Dashboard, requests, zimmet, products, orders, suppliers, AI teklif karşılaştırma ve reports
   }
 
   if (userRole === 'site_personnel') {
@@ -225,9 +228,9 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
 
   // Admin tüm menülere erişebilir (admin menüsü dahil)
   if (userRole === 'admin') {
-    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'admin', 'settings']
+    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'reports', 'admin', 'settings']
   }
 
   // Manager tüm menülere erişebilir (admin menüsü hariç)
-  return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
+  return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'reports', 'settings']
 }

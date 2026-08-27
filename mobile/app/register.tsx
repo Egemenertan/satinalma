@@ -12,7 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native'
-import { useRouter } from 'expo-router'
+import { Redirect, useRouter } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { supabase } from '../src/lib/supabase'
@@ -21,6 +21,11 @@ export default function RegisterScreen() {
   const router = useRouter()
   const { t } = useTranslation()
   const insets = useSafeAreaInsets()
+
+  // iOS'ta kayıt sayfası kapalı (App Store Guideline 3.1.1)
+  if (Platform.OS === 'ios') {
+    return <Redirect href="/login" />
+  }
 
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')

@@ -71,7 +71,8 @@ interface NavItem {
   id?: string
   title: string
   href?: string
-  icon: React.ElementType
+  icon?: React.ElementType
+  logoSrc?: string
   badge?: string
   children?: NavItem[]
 }
@@ -115,6 +116,12 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       title: 'Tedarikçiler',
       href: '/dashboard/suppliers',
       icon: Users
+    },
+    {
+      id: 'quote-comparison',
+      title: 'DLX AI',
+      href: '/dashboard/quote-comparison',
+      logoSrc: '/dlxai.png'
     },
     {
       id: 'orders',
@@ -310,6 +317,23 @@ export default function Sidebar({
     const isExpanded = expandedItems.includes(item.title)
     const active = isActive(item.href)
     const showTooltip = isCollapsed && !isMobileOpen && hoveredItem === item.title
+    const Icon = item.icon
+    const logoActiveClasses = item.logoSrc
+      ? '!bg-transparent hover:!bg-transparent focus-visible:!bg-transparent active:!bg-transparent shadow-none'
+      : active
+        ? 'bg-neutral-950 text-white hover:bg-neutral-900'
+        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50/50'
+
+    const renderLogo = (opts: { collapsed?: boolean; mobile?: boolean }) => (
+      <img
+        src={item.logoSrc}
+        alt={item.title}
+        className={cn(
+          'object-contain',
+          opts.mobile ? 'h-7 w-auto max-w-full' : opts.collapsed ? 'h-4 w-auto' : 'h-5 w-auto'
+        )}
+      />
+    )
 
     if (hasChildren) {
       return (
@@ -319,9 +343,7 @@ export default function Sidebar({
             className={cn(
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
-              active 
-                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
-                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
+              logoActiveClasses,
               "rounded-full"
             )}
             onClick={() => toggleExpanded(item.title)}
@@ -359,18 +381,22 @@ export default function Sidebar({
             variant="ghost"
             className={cn(
               "aspect-square w-full transition-all duration-200 flex flex-col items-center justify-center gap-2 relative p-2",
-              active 
-                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
-                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
-              "rounded-full border",
-              active ? "border-neutral-950" : "border-gray-200"
+              logoActiveClasses,
+              item.logoSrc ? "rounded-none overflow-visible border-0" : "rounded-full border",
+              !item.logoSrc && (active ? "border-neutral-950" : "border-gray-200")
             )}
             onClick={() => {
               setIsMobileOpen(false)
             }}
           >
-            <item.icon className="h-7 w-7" />
-            <span className="text-xs font-medium text-center leading-tight">{item.title}</span>
+            {item.logoSrc ? (
+              renderLogo({ mobile: true })
+            ) : (
+              <>
+                {Icon && <Icon className="h-7 w-7" />}
+                <span className="text-xs font-medium text-center leading-tight">{item.title}</span>
+              </>
+            )}
             {item.badge && (
               <Badge 
                 variant="secondary" 
@@ -391,18 +417,20 @@ export default function Sidebar({
           <Button
             variant="ghost"
             className={cn(
-              "w-full h-10 transition-all duration-200",
+              "w-full h-10 transition-all duration-200 overflow-visible",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
-              active 
-                ? "bg-neutral-950 text-white hover:bg-neutral-900" 
-                : "text-gray-700 hover:text-gray-900 hover:bg-gray-50/50",
-              "rounded-full"
+              logoActiveClasses,
+              item.logoSrc ? "rounded-none" : "rounded-full"
             )}
             onMouseEnter={() => setHoveredItem(item.title)}
             onMouseLeave={() => setHoveredItem(null)}
           >
-            <item.icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
-            {!isCollapsed && (
+            {item.logoSrc ? (
+              renderLogo({ collapsed: isCollapsed })
+            ) : (
+              Icon && <Icon className={cn("h-4 w-4", !isCollapsed && "mr-3")} />
+            )}
+            {!isCollapsed && !item.logoSrc && (
               <>
                 <span className="text-sm">{item.title}</span>
                 {item.badge && (

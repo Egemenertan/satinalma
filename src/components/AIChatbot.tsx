@@ -231,8 +231,8 @@ export default function AIChatbot() {
       setIsThinking(false)
       setStreamingMessageId(null)
       
-      // Hata durumunda AI mesajını güncelle
-      const errorContent = `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, DOVEC AI servislerine şu anda erişemiyorum. \n\n**Hata:** ${error.message}\n\nLütfen birkaç dakika sonra tekrar deneyin veya sorunuz devam ediyorsa sistem yöneticisiyle iletişime geçin.`
+      // Hata durumunda AI mesajını güncelle (teknik hata detayı kullanıcıya asla gösterilmez)
+      const errorContent = `🤖 **Bağlantı Sorunu - Burçin Bey**\n\nÜzgünüm Burçin Bey, DOVEC AI servislerine şu anda erişemiyorum.\n\nLütfen birkaç dakika sonra tekrar deneyin veya sorunuz devam ediyorsa sistem yöneticisiyle iletişime geçin.`
       
       setMessages(prev => prev.map(msg => 
         msg.id === aiMessageId 

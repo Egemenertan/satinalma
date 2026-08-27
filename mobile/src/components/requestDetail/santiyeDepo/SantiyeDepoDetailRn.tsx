@@ -13,6 +13,7 @@ import type { BundleOrderRow, PurchaseRequestItemRow, RequestOfferBundle } from 
 import { supabase } from '../../../lib/supabase'
 import type { ProfileRow } from '../../../lib/purchaseRequestsQuery'
 import { SitePersonnelTrackingRn } from '../SitePersonnelTrackingRn'
+import { RequestActivityTimelineRn } from '../RequestActivityTimelineRn'
 import { DepoMaterialFooterRn } from './DepoMaterialFooterRn'
 import { RequestSupplierDeliverySectionRn } from './RequestSupplierDeliverySectionRn'
 import { ReturnOrderModalRn } from './ReturnOrderModalRn'
@@ -210,6 +211,11 @@ export function SantiyeDepoDetailRn({
           {req.site_name ? ` · ${req.site_name}` : ''}
         </Text>
       </View>
+
+      <RequestActivityTimelineRn
+        requestId={req.id}
+        refreshKey={(req.updated_at as string | null | undefined) ?? null}
+      />
 
       {itBanner ? (
         <View style={requestDetailLayout.itBanner}>

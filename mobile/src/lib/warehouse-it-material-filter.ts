@@ -79,8 +79,8 @@ export async function fetchPurchaseRequestIdsVisibleToItWarehouseManager(supabas
     supabase.from('purchase_request_items').select(selectCols).not('material_group', 'is', null),
     supabase.from('purchase_request_items').select(selectCols).not('material_group_code', 'is', null),
     supabase.from('purchase_request_items').select(selectCols).not('material_class', 'is', null),
-    supabase.from('purchase_requests').select('id, material_group, material_class, material_item_name').not('material_group', 'is', null),
-    supabase.from('purchase_requests').select('id, material_group, material_class, material_item_name').not('material_class', 'is', null),
+    supabase.from('purchase_requests').select('id, material_group, material_class, material_item_name').is('deleted_at', null).not('material_group', 'is', null),
+    supabase.from('purchase_requests').select('id, material_group, material_class, material_item_name').is('deleted_at', null).not('material_class', 'is', null),
   ])
 
   const ids = new Set<string>()

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { BundleOrderRow, PurchaseRequestItemRow } from '../../lib/requestOfferBundle'
 import { readUriForStorageUpload } from '../../lib/readUriForStorageUpload'
+import { softDeletePurchaseRequest } from '../../lib/softDeletePurchaseRequest'
 
 export async function uploadReturnPhotoUris(
   supabase: SupabaseClient,
@@ -102,7 +103,11 @@ async function createAutoReorderRequest(
     .single()
 
   if (newItemError || !newItem) {
-    await supabase.from('purchase_requests').delete().eq('id', (newRequest as { id: string }).id)
+    await softDeletePurchaseRequest(supabase, {
+      requestId: (newRequest as { id: string }).id,
+      userId,
+      reason: 'İade yeniden sipariş rollback — kalem oluşturulamadı',
+    })
     return null
   }
 

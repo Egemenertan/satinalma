@@ -10,6 +10,7 @@ import {
   isProfileDepartmentIt,
   fetchPurchaseRequestIdsVisibleToItWarehouseManager,
 } from './warehouse-it-material-filter'
+import { excludeSoftDeletedRequests } from './softDeletePurchaseRequest'
 
 export type MonthlyDatum = { month: string; count: number }
 export type ActivityDatum = { date: string; count: number }
@@ -51,7 +52,7 @@ async function fetchWeeklyActivity(
   startDate.setDate(startDate.getDate() - (days - 1))
   startDate.setHours(0, 0, 0, 0)
 
-  let query = supabase.from('purchase_requests').select('created_at, id').gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString())
+  let query = excludeSoftDeletedRequests(supabase.from('purchase_requests').select('created_at, id')).gte('created_at', startDate.toISOString()).lte('created_at', endDate.toISOString())
 
   if (role === 'site_personnel') {
     query = query.eq('requested_by', userId)
@@ -138,6 +139,7 @@ async function fetchMonthlyBucket(
   let monthQuery = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
+    .is('deleted_at', null)
     .gte('created_at', monthStart.toISOString())
     .lt('created_at', monthEnd.toISOString())
 
@@ -226,6 +228,7 @@ async function fetchItWorkflowAttentionSnapshot(supabase: SupabaseClient, profil
     let itAttnQuery = supabase
       .from('purchase_requests')
       .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
       .eq('it_workflow_applies', true)
 
     if (profile.role === 'site_manager' && isPazarlamaDepartment(profile.department)) {
@@ -284,7 +287,9 @@ export async function fetchRequestsPageData(
   const profileSiteIds = resolveProfileSiteIds(profile)
   const siteIdParam = profileSiteIds.length > 0 ? profileSiteIds : undefined
 
-  let statsQuery = supabase.from('purchase_requests').select('status, urgency_level, id, site_id', { count: 'exact' })
+  let statsQuery = excludeSoftDeletedRequests(
+    supabase.from('purchase_requests').select('status, urgency_level, id, site_id', { count: 'exact' })
+  )
 
   if (profile.role === 'site_personnel') {
     statsQuery = statsQuery.eq('requested_by', userId)

@@ -1,5 +1,4 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
-import { useFocusEffect } from '@react-navigation/native'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo } from 'react'
 import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native'
@@ -48,6 +47,10 @@ export default function NotificationsScreen() {
   const { data: pageData, refetch: refetchPage, isRefetching: pageRefetching, isPending: pagePending } = useQuery({
     queryKey: ['requests_page_data', user?.id],
     enabled: Boolean(user?.id && profile),
+    staleTime: 3 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       if (!user?.id || !profile) throw new Error('Oturum yok')
       return fetchRequestsPageData(supabase, user.id, profile)
@@ -62,6 +65,10 @@ export default function NotificationsScreen() {
   } = useQuery({
     queryKey: ['inbox_notifications', user?.id],
     enabled: Boolean(user?.id),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       const { data, error } = await supabase
         .from('notifications')
@@ -102,12 +109,8 @@ export default function NotificationsScreen() {
     void refetchInbox()
   }, [refetchPage, refetchInbox])
 
-  useFocusEffect(
-    useCallback(() => {
-      void refetchInbox()
-      void queryClient.invalidateQueries({ queryKey: ['notif_unread_count', user?.id] })
-    }, [refetchInbox, queryClient, user?.id])
-  )
+  // Focus'ta otomatik yenileme kaldırıldı - kullanıcı pull-to-refresh ile yenileyebilir
+  // Bu değişiklik gereksiz network isteklerini ve UI titremesini engeller
 
   const handleInboxPress = useCallback(
     async (row: InboxRow) => {

@@ -397,8 +397,17 @@ export function MaterialDetailModalRn({
                         mode="date"
                         display={Platform.OS === 'ios' ? 'inline' : 'calendar'}
                         minimumDate={startOfToday()}
-                        onChange={(_, date) => {
-                          if (date) setIosDraftDate(date)
+                        onChange={(event, date) => {
+                          if (Platform.OS === 'android') {
+                            if (event.type === 'set' && date) {
+                              const min = startOfToday()
+                              const d = date < min ? min : date
+                              patchDraft((f) => ({ ...f, delivery_date: toYmd(d) }))
+                            }
+                            setDateSheetOpen(false)
+                          } else {
+                            if (date) setIosDraftDate(date)
+                          }
                         }}
                         themeVariant="light"
                         style={[

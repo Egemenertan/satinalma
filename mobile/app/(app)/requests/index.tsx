@@ -1,6 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import MaterialIcons from '@expo/vector-icons/MaterialIcons'
-import { useFocusEffect } from '@react-navigation/native'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { TFunction } from 'i18next'
 import {
@@ -8,6 +7,7 @@ import {
   Alert,
   FlatList,
   Modal,
+  Platform,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -28,6 +28,10 @@ import { fetchPurchaseRequestsPage, type PurchaseRequestListRow } from '../../..
 import { getStatusPresentation, getUrgencyPresentation, REQUEST_STATUS_FILTER_OPTIONS } from '../../../src/lib/requestBadges'
 import { fetchRequestsPageData } from '../../../src/lib/requestsPageData'
 import { supabase } from '../../../src/lib/supabase'
+import {
+  canSoftDeletePurchaseRequest,
+  softDeletePurchaseRequest,
+} from '../../../src/lib/softDeletePurchaseRequest'
 import { useAuth } from '../../../src/providers/AuthProvider'
 import { stats, statsCardSurface, statsFont, statsType } from '../../../src/theme/statsDesignTokens'
 
@@ -211,35 +215,8 @@ export default function RequestsListScreen() {
     void AsyncStorage.setItem(AS_UNORDERED, String(unorderedOnly))
   }, [unorderedOnly, prefsLoaded])
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!prefsLoaded) return
-      let cancelled = false
-      void (async () => {
-        const u = await AsyncStorage.getItem(AS_UNORDERED)
-        if (cancelled) return
-        if (u === 'true') setUnorderedOnly(true)
-      })()
-      return () => {
-        cancelled = true
-      }
-    }, [prefsLoaded])
-  )
-
-  useFocusEffect(
-    useCallback(() => {
-      if (!prefsLoaded) return
-      let cancelled = false
-      void (async () => {
-        const o = await AsyncStorage.getItem(AS_OVERDUE)
-        if (cancelled) return
-        if (o === 'true') setOverdueOnly(true)
-      })()
-      return () => {
-        cancelled = true
-      }
-    }, [prefsLoaded])
-  )
+  // AsyncStorage değerleri sadece mount'ta okunuyor (useEffect ile)
+  // Focus'ta tekrar okumaya gerek yok - state zaten güncel
 
   useEffect(() => {
     if (!prefsLoaded) return
@@ -265,7 +242,13 @@ export default function RequestsListScreen() {
   
   useEffect(() => {
     if (showOrgSetup) {
-      router.replace('/setup-organization')
+      // iOS'ta organizasyon oluşturma yerine katılma sayfasına yönlendir (App Store Guideline 3.1.1)
+      // Android'de mevcut organizasyon oluşturma akışı devam eder
+      if (Platform.OS === 'ios') {
+        router.replace('/join-organization')
+      } else {
+        router.replace('/setup-organization')
+      }
     }
   }, [showOrgSetup, router])
 
@@ -323,8 +306,10 @@ export default function RequestsListScreen() {
   const { data: pageData, refetch: refetchPageData, isFetching: pageDataFetching } = useQuery({
     queryKey: ['requests_page_data', user?.id],
     enabled: Boolean(user?.id && profile) && !showOrgSetup,
-    staleTime: 45_000,
-    gcTime: 6 * 60_000,
+    staleTime: 3 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       if (!user?.id || !profile) throw new Error('Oturum yok')
       return fetchRequestsPageData(supabase, user.id, profile)
@@ -357,8 +342,10 @@ export default function RequestsListScreen() {
   const { data: sitesData } = useQuery({
     queryKey: ['sites', 'all'],
     enabled: Boolean(profile),
-    staleTime: 120_000,
+    staleTime: 10 * 60_000,
     gcTime: 30 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     queryFn: async () => {
       const { data, error } = await supabase.from('sites').select('id, name').order('name')
       if (error) throw new Error(error.message)
@@ -367,12 +354,13 @@ export default function RequestsListScreen() {
   })
 
   const overdueRequestIds = pageData?.overdueRequestIds ?? []
-  const isOverdueRole = ['site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(userRole)
-  const overdueDataReady = !overdueOnly || !isOverdueRole || pageData !== undefined
-  /** Liste AsyncStorage ile bloklanmıyor; tercihler yüklendikçe sorgu anahtarı güncellenir (ek istek olabilir). */
-  // Organizasyon kurulumu gerekiyorsa query'yi çalıştırma
-  const listQueryEnabled = Boolean(user?.id && profile) && overdueDataReady && !showOrgSetup
+  
+  // Liste query'si artık pageData'yı beklemiyor - paralel çalışıyor
+  // overdueOnly aktifse ve pageData henüz gelmediyse, boş liste döner (UX için kabul edilebilir)
+  const listQueryEnabled = Boolean(user?.id && profile) && !showOrgSetup
 
+  // Query key'den overdueRequestIds kaldırıldı - pageData değişimi liste refresh'i tetiklemesin
+  // overdueOnly değiştiğinde yeni query çalışır, bu yeterli
   const listQueryKey = useMemo(
     () => [
       'requests',
@@ -385,7 +373,6 @@ export default function RequestsListScreen() {
       locationFilter,
       unorderedOnly && listView === 'main' && userRole === 'purchasing_officer',
       overdueOnly && listView === 'main',
-      overdueOnly ? overdueRequestIds.join(',') : '',
     ],
     [
       user?.id,
@@ -397,7 +384,6 @@ export default function RequestsListScreen() {
       locationFilter,
       unorderedOnly,
       overdueOnly,
-      overdueRequestIds,
       userRole,
     ]
   )
@@ -410,14 +396,20 @@ export default function RequestsListScreen() {
   } = useQuery({
     queryKey: listQueryKey,
     enabled: listQueryEnabled,
-    staleTime: 25_000,
-    gcTime: 5 * 60_000,
+    staleTime: 2 * 60_000,
+    gcTime: 8 * 60_000,
+    refetchOnWindowFocus: false,
+    refetchOnMount: false,
     placeholderData: (previousData) => previousData,
     queryFn: async () => {
       if (!user?.id || !profile) throw new Error('Oturum yok')
       const unorderedActive = unorderedOnly && listView === 'main' && userRole === 'purchasing_officer'
       const overdueActive =
         overdueOnly && listView === 'main' && ['site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(userRole)
+      
+      // overdueOnly aktif ama henüz pageData gelmediyse, normal liste getir (overdueOnly'yi devre dışı bırak)
+      const effectiveOverdueActive = overdueActive && overdueRequestIds.length > 0
+      
       return fetchPurchaseRequestsPage(supabase, user.id, profile, {
         page,
         pageSize,
@@ -426,8 +418,8 @@ export default function RequestsListScreen() {
         locationFilter,
         searchTerm: search.trim() || undefined,
         unorderedOnly: unorderedActive,
-        overdueOnly: overdueActive,
-        overdueRequestIds,
+        overdueOnly: effectiveOverdueActive,
+        overdueRequestIds: effectiveOverdueActive ? overdueRequestIds : [],
       })
     },
   })
@@ -443,16 +435,8 @@ export default function RequestsListScreen() {
     }
   }, [refetchPageData, refetchList])
 
-  // Sayfa focus aldığında arka planda sessizce verileri yenile
-  useFocusEffect(
-    useCallback(() => {
-      if (listQueryEnabled) {
-        // Arka planda sessizce yenile - RefreshControl gösterme
-        void refetchList()
-        void refetchPageData()
-      }
-    }, [listQueryEnabled, refetchList, refetchPageData])
-  )
+  // Focus'ta otomatik yenileme kaldırıldı - kullanıcı pull-to-refresh ile yenileyebilir
+  // Bu değişiklik gereksiz network isteklerini ve UI titremesini engeller
 
   const handleSiteManagerQuickSend = useCallback(
     async (item: PurchaseRequestListRow) => {
@@ -478,14 +462,15 @@ export default function RequestsListScreen() {
   const handleDeleteRequest = useCallback(
     async (requestId: string) => {
       try {
-        const { error } = await supabase
-          .from('purchase_requests')
-          .delete()
-          .eq('id', requestId)
+        if (!user?.id) throw new Error('Oturum bulunamadı')
+        const result = await softDeletePurchaseRequest(supabase, {
+          requestId,
+          userId: user.id,
+          reason: 'Talep listeden kaldırıldı',
+        })
+        if (result.ok === false) throw new Error(result.message)
 
-        if (error) throw error
-
-        Alert.alert(t('common.ok'), 'Talep başarıyla silindi')
+        Alert.alert(t('common.ok'), 'Talep listeden kaldırıldı')
         await Promise.all([refetchList(), refetchPageData()])
       } catch (e) {
         Alert.alert('Hata', e instanceof Error ? e.message : t('common.unknownError'))
@@ -493,7 +478,7 @@ export default function RequestsListScreen() {
         setOpenKebabId(null)
       }
     },
-    [refetchList, refetchPageData, t]
+    [refetchList, refetchPageData, t, user?.id]
   )
 
   const displayRequests = useMemo(() => {
@@ -533,19 +518,41 @@ export default function RequestsListScreen() {
     setPage(1)
   }
 
-  const renderMonthly = () => {
-    if (!statsFromApi?.monthlyData?.length) return null
+  const monthlyChart = useMemo(() => {
+    const rowH = 160
+    const colGap = 8
+    const labelApprox = 16
+    const maxBarH = rowH - labelApprox - colGap
+
+    // Veri henüz gelmediyse placeholder grafik göster
+    if (!statsFromApi?.monthlyData?.length) {
+      const placeholderMonths = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz']
+      return (
+        <View style={styles.monthlyWrapper}>
+          <View style={styles.monthlyHeaderRow}>
+            <Text style={styles.monthlyTitle}>{t('requestsList.monthlyTitle')}</Text>
+            <Text style={styles.monthlyTotal}>{t('requestsList.monthlyTotal', { count: 0 })}</Text>
+          </View>
+          <View style={styles.monthlyCard}>
+            <View style={styles.monthBarsRow}>
+              {placeholderMonths.map((month, i) => (
+                <View key={`placeholder-${i}`} style={styles.monthColumn}>
+                  <View style={[styles.monthBarPill, { height: 20, backgroundColor: '#333333', opacity: 0.5 }]} />
+                  <Text style={styles.monthLabel} numberOfLines={1}>{month}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+      )
+    }
+
     const maxCount = Math.max(...statsFromApi.monthlyData.map((m) => m.count), 1)
     const monthSum = statsFromApi.monthlyData.reduce((s, m) => s + m.count, 0)
     const maxIdx = statsFromApi.monthlyData.reduce(
       (bestIdx, m, i, arr) => (m.count >= arr[bestIdx].count ? i : bestIdx),
       0
     )
-
-    const rowH = 160
-    const colGap = 8
-    const labelApprox = 16
-    const maxBarH = rowH - labelApprox - colGap
 
     return (
       <View style={styles.monthlyWrapper}>
@@ -572,7 +579,7 @@ export default function RequestsListScreen() {
         </View>
       </View>
     )
-  }
+  }, [statsFromApi?.monthlyData, t])
 
   const listHeader = (
     <View style={styles.headerOuter}>
@@ -597,7 +604,7 @@ export default function RequestsListScreen() {
         <Text style={styles.pageTitle}>{t('requestsList.pageTitle')}</Text>
       </View>
 
-      <View style={styles.statsWrap}>{renderMonthly()}</View>
+      <View style={styles.statsWrap}>{monthlyChart}</View>
 
       {canSeeItWorkflowTabUser ? (
         <View style={styles.tabRow}>
@@ -806,7 +813,7 @@ export default function RequestsListScreen() {
         }
         contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          listLoading ? (
+          listLoading && !listData ? (
             <View>
               <RequestCardSkeleton index={0} />
               <RequestCardSkeleton index={1} />
@@ -894,10 +901,14 @@ export default function RequestsListScreen() {
                         </Pressable>
                         {openKebabId === item.id && (
                           <View style={styles.kebabMenu}>
-                            {item.status === 'satın almaya gönderildi' || item.status === 'sipariş verildi' ? (
+                            {!canSoftDeletePurchaseRequest({
+                              status: item.status,
+                              requestedBy: item.requested_by,
+                              currentUserId: user?.id,
+                            }) ? (
                               <View style={[styles.kebabMenuItem, styles.kebabMenuItemDisabled]}>
                                 <MaterialIcons name="delete" size={18} color="#d1d5db" />
-                                <Text style={styles.kebabMenuItemTextDisabled}>Sil</Text>
+                                <Text style={styles.kebabMenuItemTextDisabled}>Kaldır</Text>
                               </View>
                             ) : (
                               <Pressable
@@ -906,12 +917,12 @@ export default function RequestsListScreen() {
                                   e.stopPropagation()
                                   setOpenKebabId(null)
                                   Alert.alert(
-                                    'Talebi Sil',
-                                    'Bu talebi silmek istediğinizden emin misiniz? Bu işlem geri alınamaz.',
+                                    'Talebi Kaldır',
+                                    'Talep listeden kaldırılacak (gizlenecek). Veritabanından silinmez.',
                                     [
                                       { text: 'İptal', style: 'cancel' },
                                       {
-                                        text: 'Sil',
+                                        text: 'Kaldır',
                                         style: 'destructive',
                                         onPress: () => void handleDeleteRequest(item.id),
                                       },
@@ -920,7 +931,7 @@ export default function RequestsListScreen() {
                                 }}
                               >
                                 <MaterialIcons name="delete" size={18} color={stats.error} />
-                                <Text style={styles.kebabMenuItemText}>Sil</Text>
+                                <Text style={styles.kebabMenuItemText}>Kaldır</Text>
                               </Pressable>
                             )}
                           </View>

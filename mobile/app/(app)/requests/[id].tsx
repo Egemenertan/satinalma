@@ -14,6 +14,7 @@ import {
 } from '../../../src/components/requestDetail/itWorkflow/ItWorkflowActionsRn'
 import { SiteManagerActionsRn } from '../../../src/components/requestDetail/siteManager/SiteManagerActionsRn'
 import { SitePersonnelTrackingRn } from '../../../src/components/requestDetail/SitePersonnelTrackingRn'
+import { RequestActivityTimelineRn } from '../../../src/components/requestDetail/RequestActivityTimelineRn'
 import { allowEditForRequest } from '../../../src/lib/editPermissions'
 import { IT_WORKFLOW_STATUSES } from '../../../src/lib/it-workflow'
 import type { ProfileRow } from '../../../src/lib/purchaseRequestsQuery'
@@ -107,6 +108,9 @@ export default function RequestDetailScreen() {
   } = useQuery({
     queryKey: ['request_offer_bundle', requestId],
     enabled: Boolean(requestId && user?.id && useOfferBundle),
+    staleTime: 2 * 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       if (!requestId) return null
       return fetchRequestOfferBundle(supabase, requestId)
@@ -158,6 +162,9 @@ export default function RequestDetailScreen() {
   const { data: legacyData, isLoading: legacyLoading, error: legacyError } = useQuery({
     queryKey: ['purchase_request', requestId, 'legacy'],
     enabled: Boolean(requestId && user?.id && !useOfferBundle),
+    staleTime: 2 * 60_000,
+    gcTime: 5 * 60_000,
+    refetchOnWindowFocus: false,
     queryFn: async () => {
       const { data: row, error: err } = await supabase
         .from('purchase_requests')
@@ -169,6 +176,7 @@ export default function RequestDetailScreen() {
         `
         )
         .eq('id', requestId as string)
+        .is('deleted_at', null)
         .single()
       if (err) throw err
       return row as RequestDetail
@@ -256,6 +264,10 @@ export default function RequestDetailScreen() {
             {req.site_name ? ` · ${req.site_name}` : ''}
           </Text>
         </View>
+        <RequestActivityTimelineRn
+          requestId={req.id}
+          refreshKey={(req.updated_at as string | null | undefined) ?? null}
+        />
         <RequestSupplierDeliverySectionRn 
           bundle={bundle} 
           onSuccess={() => void refetchBundle()} 
@@ -377,6 +389,11 @@ export default function RequestDetailScreen() {
           {data.site_name ? ` · ${data.site_name}` : ''}
         </Text>
       </View>
+
+      <RequestActivityTimelineRn
+        requestId={data.id}
+        refreshKey={(data.updated_at as string | null | undefined) ?? null}
+      />
 
       <View style={styles.legacyBody}>
         <View style={[styles.badge, legacyEditable ? styles.badgeOk : styles.badgeRo]}>
