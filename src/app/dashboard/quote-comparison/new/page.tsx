@@ -1,17 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
 import { InlineLoading } from '@/components/ui/loading'
 import { createClient } from '@/lib/supabase/client'
 import { UploadDropzone, type QuoteUploadItem } from '@/components/quoteComparison/UploadDropzone'
 import { DlxAiLogo } from '@/components/quoteComparison/DlxAiLogo'
+import {
+  QUOTE_COMPARISON_SITE_LABELS,
+  fetchQuoteComparisonSites,
+  getFallbackQuoteComparisonSites,
+  getQuoteComparisonSiteKey,
+  isQuoteComparisonSiteKey,
+  type QuoteComparisonSite,
+} from '@/lib/quoteComparison/projectSites'
 import { QUOTE_COMPARISON_STORAGE_BUCKET } from '@/types/quoteComparison'
+
+const NONE_SITE_VALUE = '__none__'
 
 const MIN_OFFERS = 2
 
@@ -25,6 +36,32 @@ export default function NewQuoteComparisonPage() {
   const [uploads, setUploads] = useState<QuoteUploadItem[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [progressLabel, setProgressLabel] = useState('')
+  const [sites, setSites] = useState<QuoteComparisonSite[]>(getFallbackQuoteComparisonSites)
+  const [sitesLoading, setSitesLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSites = async () => {
+      try {
+        const data = await fetchQuoteComparisonSites()
+        if (!cancelled) setSites(data)
+      } catch (error) {
+        console.error('Sites could not be loaded:', error)
+        if (!cancelled) {
+          setSites(getFallbackQuoteComparisonSites())
+          showToast('Siteler yüklenemedi, varsayılan liste kullanılıyor', 'error')
+        }
+      } finally {
+        if (!cancelled) setSitesLoading(false)
+      }
+    }
+
+    void loadSites()
+    return () => {
+      cancelled = true
+    }
+  }, [showToast])
 
   const handleSubmit = async () => {
     if (!title.trim()) {
@@ -164,14 +201,32 @@ export default function NewQuoteComparisonPage() {
             <Label htmlFor="qc-project" className="text-sm font-medium text-gray-700">
               Proje Adı <span className="text-gray-400 font-normal">(opsiyonel)</span>
             </Label>
-            <Input
-              id="qc-project"
-              value={projectName}
-              onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Örn. Four Seasons Şantiyesi"
-              disabled={isSubmitting}
-              className="h-11 w-full rounded-xl border-gray-200 placeholder:text-gray-300 focus-visible:border-gray-400 focus-visible:ring-gray-200"
-            />
+            <Select
+              value={getQuoteComparisonSiteKey(projectName) || NONE_SITE_VALUE}
+              onValueChange={(value) => {
+                if (value === NONE_SITE_VALUE || !isQuoteComparisonSiteKey(value)) {
+                  setProjectName('')
+                  return
+                }
+                setProjectName(QUOTE_COMPARISON_SITE_LABELS[value])
+              }}
+              disabled={isSubmitting || sitesLoading}
+            >
+              <SelectTrigger
+                id="qc-project"
+                className="h-11 w-full rounded-xl border-gray-200 bg-white text-sm focus-visible:border-gray-400 focus-visible:ring-gray-200 data-[size=default]:h-11"
+              >
+                <SelectValue placeholder={sitesLoading ? 'Siteler yükleniyor...' : 'Site seçin'} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NONE_SITE_VALUE}>Seçilmedi</SelectItem>
+                {sites.map((site) => (
+                  <SelectItem key={site.id} value={site.key}>
+                    {site.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="qc-material" className="text-sm font-medium text-gray-700">

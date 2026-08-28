@@ -12,7 +12,11 @@
  */
 import ExcelJS from 'exceljs'
 import { getCurrencySymbol } from '@/components/offers/types'
+import { getOfferFileUrl } from '@/components/quoteComparison/OfferHeaderCell'
+import { convertAmountViaEurCross, type EurCrossRates } from '@/lib/fx/convertViaEurRates'
 import { computeLineItemGrandTotal, getLineItemRowStats } from '@/lib/quoteComparison/lineItems'
+import { getOfferVatStatus } from '@/lib/quoteComparison/vat'
+import { computeThumbnailSize, extractJpegImagesFromPdf } from '@/lib/pdf/extractPdfImage'
 import type {
   QuoteComparisonExtractedData,
   QuoteComparisonLineItemRow,
@@ -20,6 +24,14 @@ import type {
   QuoteComparisonRecommendation,
   QuoteComparisonTableRow,
 } from '@/types/quoteComparison'
+
+/**
+ * PDF'ten ürün görseli çıkarıp kalem satırlarına yerleştirme özelliği geçici olarak
+ * kapatıldı (yanlış/istenmeyen görsellerin - logo, CE damgası vb. - sızma riski hâlâ
+ * mevcut). Alt yapı (extractPdfImage.ts, aşağıdaki fetch/yerleştirme kodu) olduğu gibi
+ * duruyor; tekrar açmak için bunu `true` yapmak yeterli.
+ */
+const PRODUCT_IMAGE_EXTRACTION_ENABLED = false
 
 export interface QuoteComparisonXlsxInput {
   title: string
@@ -33,20 +45,59 @@ export interface QuoteComparisonXlsxInput {
   offers: QuoteComparisonOffer[]
 }
 
-const FILL_TITLE = 'FF1F2933'
-const FILL_SECTION = 'FF404040'
-const FILL_HEADER = 'FFD9D9D9'
-const FILL_VENDOR_HEADER = 'FFE7E6E6'
-const FILL_BEST = 'FFE2EFDA'
-const FILL_TOTAL_ROW = 'FFFFF2CC'
-const FILL_ALT_ROW = 'FFF7F7F7'
-const BORDER_COLOR = 'FFBFBFBF'
+// Dashboard'un tasarım diliyle uyumlu, sade bir renk paleti (bkz. tailwind.config.js
+// `primary`/`elegant` renkleri ve src/app/globals.css `--destructive`). Excel export'u
+// kasıtlı olarak yalnızca birkaç renk kullanır: nötr gri tonları (yapı/metin),
+// marka yeşili (en uygun/önerilen vurgusu) ve yumuşak kırmızı (eksik bilgi uyarısı).
+const TEXT_DARK = 'FF0A0A0A' // elegant.black / --foreground
+const TEXT_BODY = 'FF404040' // elegant.gray.700
+const TEXT_MUTED = 'FF737373' // elegant.gray.500
+const TEXT_FAINT = 'FFA3A3A3' // elegant.gray.400
+
+const FILL_TITLE = 'FF0A0A0A' // elegant.black
+const FILL_SECTION = 'FF262626' // elegant.gray.800
+const FILL_HEADER = 'FFE5E5E5' // elegant.gray.200
+const FILL_VENDOR_HEADER = 'FFF5F5F5' // elegant.gray.100
+const FILL_ALT_ROW = 'FFFAFAFA' // elegant.gray.50
+const BORDER_COLOR = 'FFD4D4D4' // elegant.gray.300
+
+// Marka yeşili (primary) - en uygun fiyat / önerilen teklif vurgusu; ayrıca
+// TOPLAM satırı da nihai/ana tutar olduğu için aynı vurgu rengini taşır.
+const FILL_BEST = 'FFD1F5E8' // primary-100
+const TEXT_BEST = 'FF007944' // primary-800 (primary-100 zemin üzerinde okunaklı)
+const FILL_TOTAL_ROW = FILL_BEST
+const TEXT_TOTAL_ROW = TEXT_BEST
+
+// Dashboard'da bilgi/ikincil vurgu için kullanılan yumuşak mavi - TOPLAM (GBP)
+// satırı, ana tutardan türetilmiş "bilgi amaçlı" bir değer olduğu için bu tonu kullanır.
+const FILL_GBP_ROW = 'FFEFF6FF' // blue-50
+const TEXT_GBP_ROW = 'FF1D4ED8' // blue-700
+
+// Ağırbaşlı, profesyonel bir lacivert-gri (slate) - firma adı ve kaynak PDF dosya
+// adı gibi "kimlik" bilgilerini düz siyah/gri metinden ayırmak için kullanılır.
+const TEXT_COMPANY = 'FF1E293B' // slate-800
+const TEXT_FILENAME = 'FF64748B' // slate-500
+const FILL_COMPANY = 'FFFFF2CC' // eskiden TOPLAM satırında kullanılan pastel sarı - firma adı hücresinin zemini
+
+// Yumuşak kırmızı - ticari şartlarda eksik/boş bilgi uyarısı
+const FILL_MISSING = 'FFFEF2F2' // red-50
+const BORDER_MISSING_COLOR = 'FFF87171' // red-400
+const TEXT_CON = 'FFDC2626' // --destructive
 
 const THIN_BORDER: Partial<ExcelJS.Borders> = {
   top: { style: 'thin', color: { argb: BORDER_COLOR } },
   left: { style: 'thin', color: { argb: BORDER_COLOR } },
   bottom: { style: 'thin', color: { argb: BORDER_COLOR } },
   right: { style: 'thin', color: { argb: BORDER_COLOR } },
+}
+
+// Ticari şartlarda bir tedarikçinin hücresi boşsa (örn. ödeme planı, nakliye,
+// teslim süresi belirtilmemişse) hafif kırmızı çerçeveyle fark edilir hale getirir.
+const MISSING_BORDER: Partial<ExcelJS.Borders> = {
+  top: { style: 'thin', color: { argb: BORDER_MISSING_COLOR } },
+  left: { style: 'thin', color: { argb: BORDER_MISSING_COLOR } },
+  bottom: { style: 'thin', color: { argb: BORDER_MISSING_COLOR } },
+  right: { style: 'thin', color: { argb: BORDER_MISSING_COLOR } },
 }
 
 function solidFill(argb: string): ExcelJS.Fill {
@@ -104,15 +155,67 @@ async function loadLogoAsDataUrl(path: string): Promise<string | null> {
     const response = await fetch(path)
     if (!response.ok) return null
     const blob = await response.blob()
-    return await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader()
-      reader.onload = () => resolve(reader.result as string)
-      reader.onerror = () => reject(reader.error)
-      reader.readAsDataURL(blob)
-    })
+    return await bytesToDataUrl(blob)
   } catch {
     return null
   }
+}
+
+function bytesToDataUrl(source: Uint8Array | Blob, mimeType?: string): Promise<string> {
+  // `Uint8Array`'in `buffer` tipi TS'te `ArrayBufferLike` (SharedArrayBuffer'ı da kapsar) olduğu
+  // için `BlobPart` ile doğrudan uyuşmuyor; burada her zaman düz bir `ArrayBuffer`'dan
+  // (pdf-lib/fetch çıktısı) geldiğinden emin olduğumuz için güvenle cast ediyoruz.
+  const blob = source instanceof Blob ? source : new Blob([source as BlobPart], { type: mimeType })
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+interface OfferProductImage {
+  dataUrl: string
+  width: number
+  height: number
+}
+
+/**
+ * Bir teklifin kaynak PDF'ini indirir ve içine gömülü ürün fotoğraflarını (JPEG)
+ * belge sırasıyla çıkarır. Bu sıra, kalem/fiyat matrisindeki satır sırasıyla
+ * eşleştirilerek her görsel kendi ürününün hizasına yerleştirilir (bkz.
+ * exportQuoteComparisonXlsx). PDF'te uygun görsel yoksa, indirme başarısız olursa ya
+ * da görseller desteklenmeyen bir biçimdeyse (JPEG dışı) export'u bozmadan sessizce
+ * boş dizi döner — logo yüklemede olduğu gibi bu özellik "best effort"tur.
+ */
+async function fetchOfferProductImages(offer: QuoteComparisonOffer): Promise<OfferProductImage[]> {
+  try {
+    const url = getOfferFileUrl(offer.file_path)
+    const response = await fetch(url)
+    if (!response.ok) return []
+    const buffer = await response.arrayBuffer()
+    const images = await extractJpegImagesFromPdf(buffer)
+    return await Promise.all(
+      images.map(async (image) => ({
+        dataUrl: await bytesToDataUrl(image.bytes, 'image/jpeg'),
+        width: image.width,
+        height: image.height,
+      }))
+    )
+  } catch {
+    return []
+  }
+}
+
+/** Bir listeden en büyük (piksel alanı) `maxCount` görseli seçer, belgedeki orijinal sırayı korur. */
+function selectLargestImagesInOriginalOrder(images: OfferProductImage[], maxCount: number): OfferProductImage[] {
+  if (images.length <= maxCount) return images
+  return images
+    .map((image, index) => ({ image, index }))
+    .sort((a, b) => b.image.width * b.image.height - a.image.width * a.image.height)
+    .slice(0, maxCount)
+    .sort((a, b) => a.index - b.index)
+    .map((item) => item.image)
 }
 
 function sumColumnWidths(sheet: ExcelJS.Worksheet, colStart: number, colEnd: number): number {
@@ -132,13 +235,40 @@ function estimateWrappedRowHeight(text: string, approxCharsPerLine: number, minL
   return Math.min(400, 18 + (lines - 1) * 14)
 }
 
+async function fetchEurCrossRates(): Promise<{ rates: EurCrossRates; date: string | null } | null> {
+  try {
+    const response = await fetch('/api/fx/latest')
+    if (!response.ok) return null
+    const data = (await response.json()) as { date?: string; rates?: EurCrossRates }
+    if (!data.rates) return null
+    return { rates: data.rates, date: typeof data.date === 'string' ? data.date : null }
+  } catch {
+    return null
+  }
+}
+
+function offerCurrency(offer: QuoteComparisonOffer): string {
+  return (offer.currency || offer.extracted_data?.currency || 'TRY').toUpperCase()
+}
+
+function toGbp(amount: number | null, currency: string, rates: EurCrossRates | null): number | null {
+  if (amount == null || !rates) return null
+  return convertAmountViaEurCross(amount, currency, 'GBP', rates)
+}
+
+function formatFxDate(isoDate: string | null): string | null {
+  if (!isoDate) return null
+  const parsed = new Date(`${isoDate}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return isoDate
+  return parsed.toLocaleDateString('tr-TR')
+}
+
 function termRowsFor(extracted: QuoteComparisonExtractedData | null | undefined) {
   return [
     { label: 'Teklif Tarihi', value: extracted?.quote_date || null },
     { label: 'Ödeme Planı', value: extracted?.payment_terms || null },
     { label: 'Nakliye', value: extracted?.shipping_responsibility || null },
     { label: 'Montaj', value: extracted?.installation_responsibility || null },
-    { label: 'KDV', value: extracted?.vat_status || null },
     { label: 'Teslim Süresi', value: extracted?.delivery_time || null },
     { label: 'Garanti', value: extracted?.warranty || null },
   ]
@@ -153,9 +283,11 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   const n = offers.length
   if (n === 0) throw new Error('Karşılaştırmada teklif bulunamadı')
 
-  const [dovecLogo, dlxLogo] = await Promise.all([
+  const [dovecLogo, dlxLogo, fx, offerImagesList] = await Promise.all([
     loadLogoAsDataUrl('/d-black.png'),
     loadLogoAsDataUrl('/DLX.png'),
+    fetchEurCrossRates(),
+    PRODUCT_IMAGE_EXTRACTION_ENABLED ? Promise.all(offers.map(fetchOfferProductImages)) : Promise.resolve(offers.map(() => [])),
   ])
 
   const workbook = new ExcelJS.Workbook()
@@ -207,7 +339,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   r += 1
 
   setRange(sheet, r, FIRST_COL, lastCol, `Oluşturulma: ${new Date(input.createdAt).toLocaleDateString('tr-TR')}`, {
-    font: { italic: true, size: 9, color: { argb: 'FF737373' } },
+    font: { italic: true, size: 9, color: { argb: TEXT_MUTED } },
     alignment: { horizontal: 'center' },
   })
   r += 1
@@ -227,7 +359,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   }
   // Logolar arasındaki "×" işareti (ortak marka/işbirliği gösterimi)
   setRange(sheet, logoRow, ITEM_START, ITEM_START, '×', {
-    font: { bold: true, size: 13, color: { argb: 'FFA3A3A3' } },
+    font: { bold: true, size: 13, color: { argb: TEXT_FAINT } },
     alignment: { horizontal: 'center', vertical: 'middle' },
   })
   if (dlxLogo) {
@@ -255,13 +387,13 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   r += 1
 
   // ---- Tedarikçi başlık bloğu (firma / yetkili / telefon / e-posta) ------
-  const vendorHeaderFont = { bold: true, size: 12, color: { argb: 'FF1A1A1A' } }
-  setRange(sheet, r, FIRST_COL, LABEL_END, '', { fill: solidFill(FILL_VENDOR_HEADER) })
+  const vendorHeaderFont = { bold: true, size: 12, color: { argb: TEXT_COMPANY } }
+  setRange(sheet, r, FIRST_COL, LABEL_END, '', { fill: solidFill(FILL_COMPANY) })
   for (let i = 0; i < n; i++) {
     const s = vendorStart(i)
     setRange(sheet, r, s, s + 2, offerDisplayName(offers[i]), {
       font: vendorHeaderFont,
-      fill: solidFill(FILL_VENDOR_HEADER),
+      fill: solidFill(FILL_COMPANY),
       alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
       border: THIN_BORDER,
     })
@@ -280,7 +412,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
     for (let i = 0; i < n; i++) {
       const s = vendorStart(i)
       setRange(sheet, r, s, s + 2, contactRow.get(offers[i]) || '', {
-        font: { size: 9, color: { argb: 'FF525252' } },
+        font: { size: 9, color: { argb: 'FF525252' } }, // elegant.gray.600
         alignment: { horizontal: 'center' },
       })
     }
@@ -291,7 +423,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   for (let i = 0; i < n; i++) {
     const s = vendorStart(i)
     setRange(sheet, r, s, s + 2, offers[i].file_name, {
-      font: { size: 8, italic: true, color: { argb: 'FF9CA3AF' } },
+      font: { size: 8, italic: true, color: { argb: TEXT_FILENAME } },
       alignment: { horizontal: 'center' },
     })
   }
@@ -300,25 +432,85 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   // ---- Genel toplam satırı ------------------------------------------------
   const lineItemRows = input.lineItemComparison || []
   const hasLineItems = lineItemRows.length > 0
+  const grandTotals = offers.map((offer) =>
+    hasLineItems ? computeLineItemGrandTotal(lineItemRows, offer.id) : offer.total_price ?? null
+  )
+
+  // PDF'ten çıkarılan görsel sayısı kalem sayısını aşarsa (ör. gözden kaçan bir damga/
+  // logo filtreyi atlattıysa), en büyük N görseli tutup belge sırasını koruyarak
+  // fazlalıkları eleriz — böylece kalemlerle 1:1 eşleşme her zaman korunur.
+  const targetImageCountPerOffer = hasLineItems ? lineItemRows.length : 1
+  const cappedOfferImagesList = offerImagesList.map((images) =>
+    selectLargestImagesInOriginalOrder(images, targetImageCountPerOffer)
+  )
 
   setRange(sheet, r, FIRST_COL, LABEL_END, 'TOPLAM', {
-    font: { bold: true, size: 12 },
+    font: { bold: true, size: 12, color: { argb: TEXT_TOTAL_ROW } },
     fill: solidFill(FILL_TOTAL_ROW),
     border: THIN_BORDER,
   })
   for (let i = 0; i < n; i++) {
     const s = vendorStart(i)
-    const offer = offers[i]
-    const grandTotal = hasLineItems ? computeLineItemGrandTotal(lineItemRows, offer.id) : offer.total_price ?? null
-    setRange(sheet, r, s, s + 2, grandTotal ?? '', {
-      font: { bold: true, size: 13 },
+    setRange(sheet, r, s, s + 2, grandTotals[i] ?? '', {
+      font: { bold: true, size: 13, color: { argb: TEXT_TOTAL_ROW } },
       fill: solidFill(FILL_TOTAL_ROW),
       alignment: { horizontal: 'center' },
       border: THIN_BORDER,
-      numFmt: currencyNumFmt(offer.currency),
+      numFmt: currencyNumFmt(offerCurrency(offers[i])),
     })
   }
   sheet.getRow(r).height = 22
+  r += 1
+
+  // ---- KDV (fiyatın hemen altında; ticari şartlar / notlardan taşındı) ----
+  let vatLineCount = 1
+  setRange(sheet, r, FIRST_COL, LABEL_END, 'KDV', {
+    font: { bold: true, size: 10 },
+    fill: solidFill(FILL_HEADER),
+    border: THIN_BORDER,
+    alignment: { vertical: 'middle', wrapText: true },
+  })
+  for (let i = 0; i < n; i++) {
+    const s = vendorStart(i)
+    const vat = getOfferVatStatus(offers[i]) || ''
+    if (vat) vatLineCount = Math.max(vatLineCount, vat.split('\n').length)
+    setRange(sheet, r, s, s + 2, vat || '—', {
+      font: { bold: true, size: 10 },
+      fill: solidFill(FILL_HEADER),
+      alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
+      border: THIN_BORDER,
+    })
+  }
+  sheet.getRow(r).height = Math.max(22, vatLineCount * 16 + 8)
+  r += 1
+
+  // ---- GBP karşılığı (ECB / Frankfurter çapraz kur) ------------------------
+  const gbpLabelDate = formatFxDate(fx?.date ?? null)
+  setRange(
+    sheet,
+    r,
+    FIRST_COL,
+    LABEL_END,
+    gbpLabelDate ? `TOPLAM (GBP)\nKur: ${gbpLabelDate}` : 'TOPLAM (GBP)',
+    {
+      font: { bold: true, size: 10, color: { argb: TEXT_GBP_ROW } },
+      fill: solidFill(FILL_GBP_ROW),
+      border: THIN_BORDER,
+      alignment: { vertical: 'middle', wrapText: true },
+    }
+  )
+  for (let i = 0; i < n; i++) {
+    const s = vendorStart(i)
+    const gbpTotal = toGbp(grandTotals[i], offerCurrency(offers[i]), fx?.rates ?? null)
+    setRange(sheet, r, s, s + 2, gbpTotal ?? (fx?.rates ? '—' : 'Kur alınamadı'), {
+      font: { bold: true, size: 11, color: { argb: TEXT_GBP_ROW } },
+      fill: solidFill(FILL_GBP_ROW),
+      alignment: { horizontal: 'center', vertical: 'middle' },
+      border: THIN_BORDER,
+      numFmt: currencyNumFmt('GBP'),
+    })
+  }
+  sheet.getRow(r).height = gbpLabelDate ? 28 : 22
   r += 2
 
   // ---- Kolon başlıkları ----------------------------------------------------
@@ -343,11 +535,20 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   r += 1
 
   // ---- Kalem satırları (kalem bazlı fiyat matrisi ya da tek özet satır) ----
+  // Her tedarikçinin PDF'inden çıkarılan ürün görselleri, belge sırasına göre aynı
+  // sıradaki kaleme eşlenir (i. görsel -> i. kalem satırı) ve ilgili kalemin MODEL
+  // hücresinin üstüne, o kalemin tam hizasına yerleştirilir.
+  const ITEM_THUMB_MAX_W = 60
+  const ITEM_THUMB_MAX_H = 42
+  const ITEM_ROW_HEIGHT_WITH_IMAGE = ITEM_THUMB_MAX_H + 28
+
   if (hasLineItems) {
     lineItemRows.forEach((row, idx) => {
       const odd = idx % 2 === 0
       const rowFill = odd ? undefined : solidFill(FILL_ALT_ROW)
       const { bestOfferId, bestUnitPrice } = getLineItemRowStats(row)
+      const rowImages = cappedOfferImagesList.map((imgs) => imgs[idx] || null)
+      const rowHasImage = rowImages.some(Boolean)
 
       setRange(sheet, r, FIRST_COL, FIRST_COL, idx + 1, { border: THIN_BORDER, fill: rowFill, alignment: { horizontal: 'center' } })
       setRange(sheet, r, ITEM_START, ITEM_END, row.itemLabel, { border: THIN_BORDER, fill: rowFill, font: { bold: true } })
@@ -360,12 +561,17 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
         const cell = (row.values || []).find((v) => v.offerId === offer.id)
         const isBest = bestOfferId != null && cell?.offerId === bestOfferId && cell?.unitPrice === bestUnitPrice
         const cellFill = isBest ? solidFill(FILL_BEST) : rowFill
-        setRange(sheet, r, s, s, cell?.model || '', { border: THIN_BORDER, fill: cellFill, font: { size: 9, color: { argb: 'FF525252' } } })
+        setRange(sheet, r, s, s, cell?.model || '', {
+          border: THIN_BORDER,
+          fill: cellFill,
+          font: { size: 9, color: { argb: 'FF525252' } },
+          alignment: rowImages[i] ? { vertical: 'bottom', horizontal: 'center', wrapText: true } : undefined,
+        })
         setRange(sheet, r, s + 1, s + 1, cell?.unitPrice ?? '', {
           border: THIN_BORDER,
           fill: cellFill,
           numFmt: currencyNumFmt(offer.currency),
-          font: isBest ? { bold: true, color: { argb: 'FF1E7A34' } } : undefined,
+          font: isBest ? { bold: true, color: { argb: TEXT_BEST } } : undefined,
         })
         setRange(sheet, r, s + 2, s + 2, cell?.totalPrice ?? '', {
           border: THIN_BORDER,
@@ -373,9 +579,24 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
           numFmt: currencyNumFmt(offer.currency),
         })
       }
+
+      if (rowHasImage) {
+        sheet.getRow(r).height = ITEM_ROW_HEIGHT_WITH_IMAGE
+        for (let i = 0; i < n; i++) {
+          const image = rowImages[i]
+          if (!image) continue
+          const s = vendorStart(i)
+          const { width, height } = computeThumbnailSize(image.width, image.height, ITEM_THUMB_MAX_W, ITEM_THUMB_MAX_H)
+          const imageId = workbook.addImage({ base64: image.dataUrl, extension: 'jpeg' })
+          sheet.addImage(imageId, { tl: { col: s - 1 + 0.25, row: r - 1 + 0.08 }, ext: { width, height } })
+        }
+      }
       r += 1
     })
   } else {
+    const rowImages = cappedOfferImagesList.map((imgs) => imgs[0] || null)
+    const rowHasImage = rowImages.some(Boolean)
+
     setRange(sheet, r, FIRST_COL, FIRST_COL, 1, { border: THIN_BORDER, alignment: { horizontal: 'center' } })
     setRange(sheet, r, ITEM_START, ITEM_END, input.materialName || input.title, { border: THIN_BORDER, font: { bold: true } })
     setRange(sheet, r, QTY_COL, QTY_COL, '', { border: THIN_BORDER })
@@ -387,14 +608,30 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
       const offer = offers[i]
       const isBest = min != null && offer.total_price === min
       const cellFill = isBest ? solidFill(FILL_BEST) : undefined
-      setRange(sheet, r, s, s, '', { border: THIN_BORDER, fill: cellFill })
+      setRange(sheet, r, s, s, '', {
+        border: THIN_BORDER,
+        fill: cellFill,
+        alignment: rowImages[i] ? { vertical: 'bottom' } : undefined,
+      })
       setRange(sheet, r, s + 1, s + 1, offer.total_price ?? '', {
         border: THIN_BORDER,
         fill: cellFill,
         numFmt: currencyNumFmt(offer.currency),
-        font: isBest ? { bold: true, color: { argb: 'FF1E7A34' } } : undefined,
+        font: isBest ? { bold: true, color: { argb: TEXT_BEST } } : undefined,
       })
       setRange(sheet, r, s + 2, s + 2, offer.total_price ?? '', { border: THIN_BORDER, fill: cellFill, numFmt: currencyNumFmt(offer.currency) })
+    }
+
+    if (rowHasImage) {
+      sheet.getRow(r).height = ITEM_ROW_HEIGHT_WITH_IMAGE
+      for (let i = 0; i < n; i++) {
+        const image = rowImages[i]
+        if (!image) continue
+        const s = vendorStart(i)
+        const { width, height } = computeThumbnailSize(image.width, image.height, ITEM_THUMB_MAX_W, ITEM_THUMB_MAX_H)
+        const imageId = workbook.addImage({ base64: image.dataUrl, extension: 'jpeg' })
+        sheet.addImage(imageId, { tl: { col: s - 1 + 0.25, row: r - 1 + 0.08 }, ext: { width, height } })
+      }
     }
     r += 1
   }
@@ -425,10 +662,13 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
       })
       for (let i = 0; i < n; i++) {
         const s = vendorStart(i)
-        setRange(sheet, r, s, s + 2, row.values[i] || '', {
-          border: THIN_BORDER,
-          alignment: { vertical: 'top', wrapText: true },
-          font: { size: 10 },
+        const value = row.values[i]?.trim()
+        const isMissing = !value
+        setRange(sheet, r, s, s + 2, value || '—', {
+          border: isMissing ? MISSING_BORDER : THIN_BORDER,
+          fill: isMissing ? solidFill(FILL_MISSING) : undefined,
+          alignment: { vertical: 'top', horizontal: isMissing ? 'center' : undefined, wrapText: true },
+          font: isMissing ? { size: 10, italic: true, color: { argb: TEXT_FAINT } } : { size: 10 },
         })
       }
       sheet.getRow(r).height = 34
@@ -509,7 +749,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
         lastCol,
         `Önerilen Teklif: ${offerDisplayName(recommendedOffer)}${priceText}`,
         {
-          font: { bold: true, size: 12, color: { argb: 'FF1E7A34' } },
+          font: { bold: true, size: 12, color: { argb: TEXT_BEST } },
           fill: solidFill(FILL_BEST),
           alignment: { horizontal: 'left', vertical: 'middle' },
         }
@@ -529,7 +769,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
 
     if (rec.reasoning?.trim()) {
       setRange(sheet, r, FIRST_COL, lastCol, rec.reasoning.trim(), {
-        font: { size: 10, color: { argb: 'FF404040' } },
+        font: { size: 10, color: { argb: TEXT_BODY } },
         alignment: { vertical: 'top', wrapText: true },
       })
       sheet.getRow(r).height = estimateWrappedRowHeight(rec.reasoning.trim(), fullWidthChars)
@@ -539,11 +779,6 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
 
     const analysisSections = rec.executiveAnalysis || []
     if (analysisSections.length > 0) {
-      setRange(sheet, r, FIRST_COL, lastCol, 'Yönetici Özeti (CEO Bakış Açısıyla)', {
-        font: { bold: true, italic: true, size: 10, color: { argb: 'FF6B7280' } },
-      })
-      r += 1
-
       analysisSections.forEach((section, idx) => {
         const odd = idx % 2 === 0
         const rowFill = odd ? undefined : solidFill(FILL_ALT_ROW)
@@ -574,7 +809,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
 
       if (anyPros) {
         setRange(sheet, r, FIRST_COL, LABEL_END, 'Artılar', {
-          font: { bold: true, size: 10, color: { argb: 'FF1E7A34' } },
+          font: { bold: true, size: 10, color: { argb: TEXT_BEST } },
           fill: solidFill(FILL_HEADER),
           border: THIN_BORDER,
           alignment: { vertical: 'top', wrapText: true },
@@ -587,7 +822,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
           setRange(sheet, r, s, s + 2, pros.map((p) => `• ${p}`).join('\n'), {
             border: THIN_BORDER,
             alignment: { vertical: 'top', wrapText: true },
-            font: { size: 9, color: { argb: 'FF1E7A34' } },
+            font: { size: 9, color: { argb: TEXT_BEST } },
           })
         }
         sheet.getRow(r).height = Math.max(28, maxLines * 14 + 8)
@@ -596,7 +831,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
 
       if (anyCons) {
         setRange(sheet, r, FIRST_COL, LABEL_END, 'Eksiler', {
-          font: { bold: true, size: 10, color: { argb: 'FFB91C1C' } },
+          font: { bold: true, size: 10, color: { argb: TEXT_CON } },
           fill: solidFill(FILL_HEADER),
           border: THIN_BORDER,
           alignment: { vertical: 'top', wrapText: true },
@@ -609,7 +844,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
           setRange(sheet, r, s, s + 2, cons.map((c) => `• ${c}`).join('\n'), {
             border: THIN_BORDER,
             alignment: { vertical: 'top', wrapText: true },
-            font: { size: 9, color: { argb: 'FFB91C1C' } },
+            font: { size: 9, color: { argb: TEXT_CON } },
           })
         }
         sheet.getRow(r).height = Math.max(28, maxLines * 14 + 8)

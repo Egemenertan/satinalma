@@ -1,8 +1,9 @@
 'use client'
 
 import Link from 'next/link'
-import { FileStack, Trash2, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
+import { Trash2, Loader2, CheckCircle2, AlertCircle, Clock } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { getQuoteComparisonSiteLabel } from '@/lib/quoteComparison/projectSites'
 import type { QuoteComparisonStatus } from '@/types/quoteComparison'
 
 interface ComparisonCardData {
@@ -33,25 +34,23 @@ const STATUS_CONFIG: Record<QuoteComparisonStatus, { label: string; className: s
 export function ComparisonCard({ comparison, onDelete, isDeleting }: ComparisonCardProps) {
   const status = STATUS_CONFIG[comparison.status] || STATUS_CONFIG.draft
   const StatusIcon = status.icon
+  const siteLabel = getQuoteComparisonSiteLabel(comparison.project_name)
 
   return (
     <div className="group relative rounded-2xl border border-gray-200/60 bg-white p-5 shadow-sm hover:shadow-md transition-all">
       <Link href={`/dashboard/quote-comparison/${comparison.id}`} className="block">
         <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center flex-shrink-0">
-            <FileStack className="w-5 h-5 text-gray-600" />
-          </div>
+          <span className="inline-flex min-w-0 max-w-[70%] items-center rounded-lg bg-neutral-950 px-2.5 py-1.5 text-[11px] font-semibold leading-tight text-white">
+            <span className="truncate">{siteLabel || 'Belirtilmemiş'}</span>
+          </span>
           <span
-            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium ${status.className}`}
+            className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-medium flex-shrink-0 ${status.className}`}
           >
             <StatusIcon className={`w-3 h-3 ${comparison.status === 'analyzing' ? 'animate-spin' : ''}`} />
             {status.label}
           </span>
         </div>
         <h3 className="text-sm font-semibold text-gray-900 truncate mb-1 pr-6">{comparison.title}</h3>
-        {comparison.project_name && (
-          <p className="text-xs font-medium text-gray-600 truncate">{comparison.project_name}</p>
-        )}
         {comparison.material_name && (
           <p className="text-xs text-gray-500 truncate mb-2">{comparison.material_name}</p>
         )}

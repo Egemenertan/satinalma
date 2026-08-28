@@ -35,7 +35,7 @@ export function OfferHeaderCell({ offer, recommended, showContact = true }: Offe
   return (
     <>
       {recommended && <span className="inline-block text-[11px] font-bold text-[#00c853] mb-1">Önerilen</span>}
-      <div className="text-[14px] font-bold tracking-tight text-neutral-950 leading-snug">{offerDisplayName(offer)}</div>
+      <div className="text-[14px] font-bold tracking-tight text-slate-800 leading-snug">{offerDisplayName(offer)}</div>
       {hasContact && (
         <div className="mt-1.5 space-y-0.5">
           {contactPerson && (
@@ -62,7 +62,7 @@ export function OfferHeaderCell({ offer, recommended, showContact = true }: Offe
         href={getOfferFileUrl(offer.file_path)}
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-neutral-500 hover:text-neutral-800 transition-colors"
+        className="mt-1.5 inline-flex items-center gap-1 text-[12px] font-medium text-slate-500 hover:text-slate-800 transition-colors"
         onClick={(e) => e.stopPropagation()}
       >
         <FileText className="w-3 h-3" />

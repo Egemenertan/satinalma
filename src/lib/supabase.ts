@@ -293,6 +293,7 @@ export type Database = {
           approved_expenses: number | null
           created_at: string | null
           id: string
+          image_url: string | null
           name: string
           total_budget: number | null
           updated_at: string | null
@@ -301,6 +302,7 @@ export type Database = {
           approved_expenses?: number | null
           created_at?: string | null
           id?: string
+          image_url?: string | null
           name: string
           total_budget?: number | null
           updated_at?: string | null
@@ -309,6 +311,7 @@ export type Database = {
           approved_expenses?: number | null
           created_at?: string | null
           id?: string
+          image_url?: string | null
           name?: string
           total_budget?: number | null
           updated_at?: string | null

@@ -7,13 +7,11 @@ import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
-import { RecommendationBanner } from '@/components/quoteComparison/RecommendationBanner'
-import { ComparisonTable } from '@/components/quoteComparison/ComparisonTable'
-import { LineItemPriceTable } from '@/components/quoteComparison/LineItemPriceTable'
-import { CommercialTermsTable } from '@/components/quoteComparison/CommercialTermsTable'
+import { QuoteEvaluationSheet } from '@/components/quoteComparison/QuoteEvaluationSheet'
 import { ReanalyzePanel } from '@/components/quoteComparison/ReanalyzePanel'
 import { DlxAiLogo } from '@/components/quoteComparison/DlxAiLogo'
 import { AnalysisProgressBar } from '@/components/quoteComparison/AnalysisProgressBar'
+import { getQuoteComparisonSiteLabel } from '@/lib/quoteComparison/projectSites'
 import { QUOTE_COMPARISON_STORAGE_BUCKET, type QuoteComparisonWithOffers } from '@/types/quoteComparison'
 
 export default function QuoteComparisonDetailPage() {
@@ -175,8 +173,7 @@ export default function QuoteComparisonDetailPage() {
   }
 
   const canReanalyze = comparison.status === 'completed' || comparison.status === 'failed'
-  const lineItemRows = comparison.line_item_comparison || []
-  const hasLineItems = lineItemRows.length > 0
+  const siteLabel = getQuoteComparisonSiteLabel(comparison.project_name)
 
   return (
     <div className="space-y-6">
@@ -190,8 +187,8 @@ export default function QuoteComparisonDetailPage() {
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{comparison.title}</h1>
-            {comparison.project_name && (
-              <p className="text-sm font-medium text-gray-600 mt-1">{comparison.project_name}</p>
+            {siteLabel && (
+              <p className="text-sm font-medium text-gray-600 mt-1">{siteLabel}</p>
             )}
             {comparison.material_name && <p className="text-sm text-gray-500 mt-0.5">{comparison.material_name}</p>}
             <p className="text-xs text-gray-400 mt-1">
@@ -250,10 +247,16 @@ export default function QuoteComparisonDetailPage() {
         </div>
       )}
 
-      {comparison.status === 'completed' && comparison.ai_recommendation && (
-        <RecommendationBanner
-          recommendation={comparison.ai_recommendation}
+      {comparison.status === 'completed' && (
+        <QuoteEvaluationSheet
+          title={comparison.title}
+          projectName={comparison.project_name}
+          materialName={comparison.material_name}
+          createdAt={comparison.created_at}
           offers={comparison.quote_comparison_offers || []}
+          comparisonTable={comparison.comparison_table}
+          lineItemComparison={comparison.line_item_comparison}
+          recommendation={comparison.ai_recommendation}
           recommendedOfferId={comparison.recommended_offer_id}
         />
       )}
@@ -264,30 +267,6 @@ export default function QuoteComparisonDetailPage() {
           onChange={setPriorityCriteria}
           onSubmit={handleReanalyzeWithPriorities}
           isSubmitting={isRetrying}
-        />
-      )}
-
-      {comparison.status === 'completed' && hasLineItems && (
-        <LineItemPriceTable
-          offers={comparison.quote_comparison_offers || []}
-          rows={lineItemRows}
-          recommendedOfferId={comparison.recommended_offer_id}
-        />
-      )}
-
-      {comparison.status === 'completed' && (
-        <CommercialTermsTable
-          offers={comparison.quote_comparison_offers || []}
-          recommendedOfferId={comparison.recommended_offer_id}
-        />
-      )}
-
-      {comparison.status === 'completed' && (
-        <ComparisonTable
-          offers={comparison.quote_comparison_offers || []}
-          comparisonTable={comparison.comparison_table}
-          recommendedOfferId={comparison.recommended_offer_id}
-          showPriceRow={!hasLineItems}
         />
       )}
     </div>

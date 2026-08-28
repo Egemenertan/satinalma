@@ -1,14 +1,24 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
-import { Plus } from 'lucide-react'
+import { Plus, Search, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Loading } from '@/components/ui/loading'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import { ComparisonCard } from '@/components/quoteComparison/ComparisonCard'
+import { SiteFilterBar } from '@/components/quoteComparison/SiteFilterBar'
 import { QUOTE_COMPARISON_STORAGE_BUCKET, type QuoteComparisonStatus } from '@/types/quoteComparison'
+import {
+  ALL_PROJECTS_KEY,
+  OTHER_PROJECT_KEY,
+  fetchQuoteComparisonSites,
+  getFallbackQuoteComparisonSites,
+  getQuoteComparisonSiteKey,
+  type QuoteComparisonSite,
+} from '@/lib/quoteComparison/projectSites'
 
 interface ComparisonListItem {
   id: string
@@ -25,8 +35,11 @@ interface ComparisonListItem {
 export default function QuoteComparisonListPage() {
   const { showToast } = useToast()
   const [comparisons, setComparisons] = useState<ComparisonListItem[]>([])
+  const [sites, setSites] = useState<QuoteComparisonSite[]>(getFallbackQuoteComparisonSites)
   const [isLoading, setIsLoading] = useState(true)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [selectedSiteKey, setSelectedSiteKey] = useState(ALL_PROJECTS_KEY)
+  const [searchTerm, setSearchTerm] = useState('')
 
   const loadComparisons = useCallback(async (silent = false) => {
     if (!silent) setIsLoading(true)
@@ -71,6 +84,25 @@ export default function QuoteComparisonListPage() {
     loadComparisons()
   }, [loadComparisons])
 
+  useEffect(() => {
+    let cancelled = false
+
+    const loadSites = async () => {
+      try {
+        const data = await fetchQuoteComparisonSites()
+        if (!cancelled) setSites(data)
+      } catch (error) {
+        console.error('Sites could not be loaded:', error)
+        if (!cancelled) setSites(getFallbackQuoteComparisonSites())
+      }
+    }
+
+    void loadSites()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   const hasInProgress = comparisons.some((c) => c.status === 'analyzing' || c.status === 'draft')
 
   useEffect(() => {
@@ -93,6 +125,84 @@ export default function QuoteComparisonListPage() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [hasInProgress, loadComparisons])
+
+  const countsBySiteKey = useMemo(() => {
+    const counts: Record<string, number> = {}
+    let otherCount = 0
+
+    for (const comparison of comparisons) {
+      const key = getQuoteComparisonSiteKey(comparison.project_name)
+      if (key) {
+        counts[key] = (counts[key] || 0) + 1
+      } else {
+        otherCount += 1
+      }
+    }
+
+    return { counts, otherCount }
+  }, [comparisons])
+
+  const filterOptions = useMemo(
+    () =>
+      sites.map((site) => ({
+        key: site.key,
+        label: site.name,
+        count: countsBySiteKey.counts[site.key] || 0,
+        imageUrl: site.imageUrl,
+      })),
+    [sites, countsBySiteKey.counts]
+  )
+
+  const filteredComparisons = useMemo(() => {
+    const query = searchTerm.trim().toLocaleLowerCase('tr')
+
+    return comparisons.filter((comparison) => {
+      if (selectedSiteKey === OTHER_PROJECT_KEY) {
+        if (getQuoteComparisonSiteKey(comparison.project_name)) return false
+      } else if (selectedSiteKey !== ALL_PROJECTS_KEY) {
+        if (getQuoteComparisonSiteKey(comparison.project_name) !== selectedSiteKey) return false
+      }
+
+      if (!query) return true
+
+      const haystack = [
+        comparison.title,
+        comparison.project_name,
+        comparison.material_name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('tr')
+
+      return haystack.includes(query)
+    })
+  }, [comparisons, selectedSiteKey, searchTerm])
+
+  const groupedComparisons = useMemo(() => {
+    const groups: { key: string; label: string; items: ComparisonListItem[] }[] = []
+    const byKey = new Map<string, ComparisonListItem[]>()
+
+    for (const comparison of filteredComparisons) {
+      const siteKey = getQuoteComparisonSiteKey(comparison.project_name) || OTHER_PROJECT_KEY
+      const list = byKey.get(siteKey) || []
+      list.push(comparison)
+      byKey.set(siteKey, list)
+    }
+
+    for (const site of sites) {
+      const items = byKey.get(site.key)
+      if (items && items.length > 0) {
+        groups.push({ key: site.key, label: site.name, items })
+      }
+    }
+
+    const otherItems = byKey.get(OTHER_PROJECT_KEY)
+    if (otherItems && otherItems.length > 0) {
+      groups.push({ key: OTHER_PROJECT_KEY, label: 'Diğer', items: otherItems })
+    }
+
+    return groups
+  }, [filteredComparisons, sites])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Bu karşılaştırmayı silmek istediğinizden emin misiniz? Yüklenen PDF dosyaları da silinecek.')) return
@@ -123,6 +233,19 @@ export default function QuoteComparisonListPage() {
       setDeletingId(null)
     }
   }
+
+  const renderCardGrid = (items: ComparisonListItem[]) => (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {items.map((comparison) => (
+        <ComparisonCard
+          key={comparison.id}
+          comparison={comparison}
+          onDelete={handleDelete}
+          isDeleting={deletingId === comparison.id}
+        />
+      ))}
+    </div>
+  )
 
   return (
     <div className="space-y-6">
@@ -161,16 +284,66 @@ export default function QuoteComparisonListPage() {
           </Button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {comparisons.map((comparison) => (
-            <ComparisonCard
-              key={comparison.id}
-              comparison={comparison}
-              onDelete={handleDelete}
-              isDeleting={deletingId === comparison.id}
+        <>
+          <div className="space-y-4">
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <Input
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Başlık, site veya malzeme ile ara..."
+                className="h-11 w-full rounded-xl border-gray-200 bg-white pl-10 pr-10"
+              />
+              {searchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-700"
+                  aria-label="Aramayı temizle"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <SiteFilterBar
+              options={filterOptions}
+              selectedKey={selectedSiteKey}
+              onChange={setSelectedSiteKey}
+              totalCount={comparisons.length}
+              otherCount={countsBySiteKey.otherCount}
             />
-          ))}
-        </div>
+          </div>
+
+          {filteredComparisons.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 border border-dashed border-gray-200 rounded-2xl bg-white">
+              <p className="text-gray-500 text-sm font-medium">
+                {searchTerm.trim()
+                  ? 'Aramanızla eşleşen karşılaştırma bulunamadı'
+                  : 'Bu siteye ait karşılaştırma yok'}
+              </p>
+              <p className="text-gray-400 text-xs mt-1">
+                {searchTerm.trim()
+                  ? 'Farklı bir kelime deneyin veya filtreyi değiştirin'
+                  : 'Başka bir site seçin veya yeni karşılaştırma oluşturun'}
+              </p>
+            </div>
+          ) : selectedSiteKey === ALL_PROJECTS_KEY ? (
+            <div className="space-y-8">
+              {groupedComparisons.map((group) => (
+                <section key={group.key} className="space-y-3">
+                  <div className="flex items-baseline gap-2">
+                    <h2 className="text-sm font-semibold text-gray-900">{group.label}</h2>
+                    <span className="text-xs text-gray-400 tabular-nums">{group.items.length}</span>
+                  </div>
+                  {renderCardGrid(group.items)}
+                </section>
+              ))}
+            </div>
+          ) : (
+            renderCardGrid(filteredComparisons)
+          )}
+        </>
       )}
     </div>
   )
