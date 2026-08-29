@@ -6,34 +6,60 @@ export interface LineItemRowStats {
   bestUnitPrice: number | null
 }
 
-/** Bir satırdaki en düşük birim fiyatı ve hangi teklife ait olduğunu bulur. */
+/**
+ * Bir satırdaki en düşük birim fiyatı ve hangi teklife ait olduğunu bulur.
+ * Eğer bu satırda tekliflerin fiyatları FARKLI para birimlerindeyse (örn. biri USD,
+ * biri TRY), dönüştürme yapılmadan ham sayıları karşılaştırmak yanıltıcı olur —
+ * bu durumda "en iyi fiyat" belirlenmez (highlight edilmez) ki yanlış bir teklif
+ * ucuzmuş gibi öne çıkmasın.
+ */
 export function getLineItemRowStats(row: QuoteComparisonLineItemRow): LineItemRowStats {
+  const priced = (row.values || []).filter((v) => v.unitPrice != null)
+  if (priced.length === 0) return { bestOfferId: null, bestUnitPrice: null }
+
+  const currencies = new Set(priced.map((v) => v.currency?.toUpperCase()).filter((c): c is string => !!c))
+  if (currencies.size > 1) return { bestOfferId: null, bestUnitPrice: null }
+
   let bestOfferId: string | null = null
   let bestUnitPrice: number | null = null
-
-  for (const value of row.values || []) {
-    if (value.unitPrice == null) continue
-    if (bestUnitPrice === null || value.unitPrice < bestUnitPrice) {
+  for (const value of priced) {
+    if (bestUnitPrice === null || value.unitPrice! < bestUnitPrice) {
       bestUnitPrice = value.unitPrice
       bestOfferId = value.offerId
     }
   }
-
   return { bestOfferId, bestUnitPrice }
 }
 
-/** Her satırda o teklifin toplam tutarını, satırlar üzerinden toplayarak tedarikçi bazlı genel toplamı hesaplar. */
-export function computeLineItemGrandTotal(rows: QuoteComparisonLineItemRow[], offerId: string): number | null {
-  let sum = 0
-  let hasAny = false
+/** Bir teklifin kalem bazlı genel toplamı; kalemler farklı para biriminde olabileceği için para birimine göre gruplanır. */
+export interface LineItemGrandTotal {
+  /** Para birimi koduna göre gruplanmış toplamlar, örn. { USD: 15000, TRY: 460000 }. */
+  totalsByCurrency: Record<string, number>
+  /** Bu tekliftin kalemleri birden fazla farklı para biriminde fiyatlandırılmışsa true. */
+  isMixedCurrency: boolean
+}
+
+/**
+ * Her satırda o teklifin toplam tutarını, PARA BİRİMİNE GÖRE GRUPLAYARAK toplar.
+ * Aynı teklifte bazı kalemler USD, bazıları TRY olabilir; bunları dönüştürmeden
+ * tek bir sayıya toplamak matematiksel olarak hatalı olur — bu yüzden her para
+ * birimi için ayrı bir alt toplam döndürülür. Tek para birimi varsa (yaygın durum)
+ * `totalsByCurrency` tek elemanlı olur ve `isMixedCurrency` false döner.
+ */
+export function computeLineItemGrandTotal(
+  rows: QuoteComparisonLineItemRow[],
+  offerId: string,
+  fallbackCurrency: string
+): LineItemGrandTotal | null {
+  const totals = new Map<string, number>()
   for (const row of rows) {
     const value = (row.values || []).find((v) => v.offerId === offerId)
-    if (value?.totalPrice != null) {
-      sum += value.totalPrice
-      hasAny = true
-    }
+    if (value?.totalPrice == null) continue
+    const currency = (value.currency || fallbackCurrency || 'TRY').toUpperCase()
+    totals.set(currency, (totals.get(currency) || 0) + value.totalPrice)
   }
-  return hasAny ? sum : null
+  if (totals.size === 0) return null
+  return { totalsByCurrency: Object.fromEntries(totals), isMixedCurrency: totals.size > 1 }
 }
 
 /** Her kalemde en ucuz teklifi seçseydik ortaya çıkacak teorik en iyi toplamı hesaplar ("En düşük fiyat" kombinasyonu). */

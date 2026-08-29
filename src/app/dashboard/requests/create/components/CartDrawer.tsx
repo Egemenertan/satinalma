@@ -22,6 +22,8 @@ import type { CartDrawerProps, CartItem } from '../types'
 interface ExtendedCartDrawerProps extends Omit<CartDrawerProps, 'onCheckout'> {
   onSubmit: () => void
   isLoading: boolean
+  submitLabel?: string
+  submitLoadingLabel?: string
 }
 
 export function CartDrawer({
@@ -31,7 +33,9 @@ export function CartDrawer({
   onRemoveItem,
   onEditItem,
   onSubmit,
-  isLoading
+  isLoading,
+  submitLabel = 'Talebi Gönder',
+  submitLoadingLabel = 'Gönderiliyor...'
 }: ExtendedCartDrawerProps) {
 
   return (
@@ -72,13 +76,13 @@ export function CartDrawer({
             <div className="space-y-3 pb-4">
               {items.map((item, index) => (
                 <CartItemCard
-                  key={item.id}
+                  key={`${item.id}-${index}`}
                   item={item}
                   onEdit={() => {
                     onOpenChange(false)
                     setTimeout(() => onEditItem(item, index), 100)
                   }}
-                  onRemove={() => onRemoveItem(item.id)}
+                  onRemove={() => onRemoveItem(item.id, index)}
                 />
               ))}
             </div>
@@ -111,10 +115,10 @@ export function CartDrawer({
                   {isLoading ? (
                     <div className="flex items-center gap-2">
                       <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Gönderiliyor...</span>
+                      <span>{submitLoadingLabel}</span>
                     </div>
                   ) : (
-                    'Talebi Gönder'
+                    submitLabel
                   )}
                 </Button>
               </>

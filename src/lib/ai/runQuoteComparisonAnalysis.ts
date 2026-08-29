@@ -4,6 +4,7 @@ import { createClient as createSupabaseJsClient, type SupabaseClient } from '@su
 import type Anthropic from '@anthropic-ai/sdk'
 import { getAnthropicClient, getAnthropicExtractionModel, getAnthropicModel } from '@/lib/ai/anthropicClient'
 import { toUserFacingAiErrorMessage } from '@/lib/ai/friendlyError'
+import { normalizeCurrencyCode } from '@/lib/quoteComparison/currency'
 import { extractQuoteRawText } from '@/lib/pdf/extractQuoteText'
 import {
   QUOTE_COMPARISON_STORAGE_BUCKET,
@@ -31,7 +32,11 @@ const EXTRACT_OFFER_TOOL: Anthropic.Tool = {
       supplier_email: { type: ['string', 'null'], description: 'Tedarikçi yetkilisinin e-posta adresi' },
       product_name: { type: ['string', 'null'], description: 'Teklif edilen ana ürün/malzemenin adı veya özeti' },
       quantity: { type: ['string', 'null'], description: 'Miktar (birimiyle birlikte, örn: "2 adet")' },
-      unit_price: { type: ['number', 'null'], description: 'Birim fiyat (sayısal, para birimi hariç). Teklif birden fazla farklı fiyatlı kalem içeriyorsa null bırak.' },
+      unit_price: {
+        type: ['number', 'null'],
+        description:
+          'Birim fiyat (sayısal, para birimi hariç). SADECE PDF\'de birim fiyatı gösteren AYRI/GERÇEK bir sütun/değer varsa doldur. Teklif birden fazla farklı fiyatlı kalem içeriyorsa null bırak. PDF\'de miktarın yanında SADECE tek bir fiyat sütunu varsa (birim fiyat için ayrı sütun yoksa, örn. sadece "Tutar/Toplam/KDV Dahil Fiyat" gibi bir sütun varsa), bu alanı null bırak — total_price/miktar bölerek KENDİN bir birim fiyat ÜRETME; PDF\'de yazmayan bir sayıyı var etme.',
+      },
       total_price: {
         type: ['number', 'null'],
         description:
@@ -56,8 +61,21 @@ const EXTRACT_OFFER_TOOL: Anthropic.Tool = {
             quantity: { type: ['string', 'null'], description: 'Bu kalemin miktarı' },
             unit: { type: ['string', 'null'], description: 'Birim (örn: "adet")' },
             model: { type: ['string', 'null'], description: 'Bu kalem için teklif edilen model/tip adı' },
-            unit_price: { type: ['number', 'null'], description: 'Bu kalemin birim fiyatı (sayısal)' },
-            total_price: { type: ['number', 'null'], description: 'Bu kalemin toplam fiyatı (sayısal)' },
+            unit_price: {
+              type: ['number', 'null'],
+              description:
+                'Bu kalemin TEK adedinin fiyatı (sayısal). SADECE PDF\'de bu satır için birim fiyat gösteren AYRI/GERÇEK bir sütun/değer varsa doldur (örn. "Birim Fiyatı" başlıklı sütun). PDF\'de bu kalem için sadece TEK bir fiyat sütunu varsa (örn. "Tutar", "Toplam", "Ara Toplam", "KDV Dahil Fiyat", "KDV Hariç Fiyat" gibi bir başlık altında, ayrı bir birim fiyat sütunu YOKSA), bu alanı null BIRAK — total_price\'ı quantity\'e bölerek KENDİN bir birim fiyat hesaplayıp buraya yazma; PDF\'de fiilen yazmayan bir kolonu/sayıyı var etme.',
+            },
+            total_price: {
+              type: ['number', 'null'],
+              description:
+                'Bu kalemin TOPLAM fiyatı (sayısal). PDF\'de kalemin yanında yazılı olan tutarı OLDUĞU GİBİ al; kendi başına birim fiyatı miktarla çarparak yapay bir toplam ÜRETME. Eğer PDF\'de bu kalem için sadece TEK bir fiyat sütunu varsa (adı "Tutar/Toplam/Fiyat/KDV Dahil Fiyat/KDV Hariç Fiyat" ne olursa olsun) ve bu, o satırın quantity kadarlık tüm miktarı için geçerli tek tutar ise, o değeri direkt ve olduğu gibi buraya yaz.',
+            },
+            currency: {
+              type: ['string', 'null'],
+              description:
+                'BU KALEMİN fiyatının para birimi (TRY, USD, EUR, GBP). PDF\'de sembol ($ € £ ₺) veya yazıyla (dolar, euro/avro, sterlin, TL/lira) belirtilmiş olabilir. ÇOK ÖNEMLİ: Bunu HER SATIR için ayrı ayrı kontrol et — aynı teklifte bir kalem "€" ile, bir başka kalem "TL" ile fiyatlandırılmış olabilir; üstteki genel currency alanıyla aynı olacağını VARSAYMA. Bu kalem için sembol/ifade net değilse null bırak (o zaman genel currency kullanılır).',
+            },
           },
           required: ['name'],
         },
@@ -192,6 +210,11 @@ const COMPARE_OFFERS_TOOL: Anthropic.Tool = {
                   model: { type: ['string', 'null'] },
                   unitPrice: { type: ['number', 'null'] },
                   totalPrice: { type: ['number', 'null'] },
+                  currency: {
+                    type: ['string', 'null'],
+                    description:
+                      'Bu hücrenin para birimi (TRY/USD/EUR/GBP). İlgili tekliften alınan line_items verisindeki currency değeriyle AYNI olmalı; aynı teklifte kalemden kaleme farklı olabilir, teklifin genel para birimiyle karıştırma.',
+                  },
                 },
                 required: ['offerId'],
               },
@@ -306,27 +329,46 @@ async function extractOfferData(
   model: string,
   pdfBase64: string
 ): Promise<QuoteComparisonExtractedData> {
-  const message = await anthropic.messages.create({
-    model,
-    max_tokens: 3072,
-    tools: [EXTRACT_OFFER_TOOL],
-    tool_choice: { type: 'tool', name: EXTRACT_OFFER_TOOL.name },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          {
-            type: 'document',
-            source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 },
-          },
-          {
-            type: 'text',
-            text: "Bu bir tedarikçi teklif/fiyat teklifi (proforma) PDF dokümanıdır. extract_offer tool'unu kullanarak dokümandaki TÜM önemli bilgileri Türkçe olarak çıkar. PDF'de yazan her teknik madde, kapsam, şart ve özelliği specs listesine ekle; diğer tekliflerde olmayabilir diye atlama. Notları tek paragrafa yığma; her şartı ayrı madde yaz. Emin olmadığın alanları null bırak, uydurma bilgi ekleme.",
-          },
-        ],
-      },
-    ],
-  })
+  const extractionInstructions =
+    "Bu bir tedarikçi teklif/fiyat teklifi (proforma) PDF dokümanıdır. extract_offer tool'unu kullanarak dokümandaki TÜM önemli bilgileri Türkçe olarak çıkar. PDF'de yazan her teknik madde, kapsam, şart ve özelliği specs listesine ekle; diğer tekliflerde olmayabilir diye atlama. Notları tek paragrafa yığma; her şartı ayrı madde yaz. Emin olmadığın alanları null bırak, uydurma bilgi ekleme.\n\nFİYAT SÜTUNLARINA ÇOK DİKKAT ET: Kalem/ünite bazlı fiyat tablosunda (line_items) her satırın kaç fiyat sütunu olduğuna bak. Eğer tabloda hem 'Birim Fiyat' hem 'Toplam Fiyat/Tutar' diye AYRI iki sütun varsa, her ikisini de PDF'de yazdığı gibi ayrı ayrı al. Eğer tabloda miktar (adet) sütununun yanında SADECE TEK bir fiyat sütunu varsa (başlığı 'Tutar', 'Toplam', 'Ara Toplam', 'Fiyat', 'KDV Dahil Fiyat', 'KDV Hariç Fiyat' gibi herhangi bir isimle olsun), bu tek değer o satırın TOPLAM tutarıdır: total_price'a yaz, unit_price'ı NULL bırak. Bu durumda unit_price'ı total_price'ı miktara bölerek KENDİN hesaplayıp doldurma — PDF'de yazmayan bir sütunu/sayıyı var etmiş olursun. ASLA bu tek toplam değeri unit_price'a yazıp miktarla çarparak yeni bir toplam üretme; bu ciddi bir hataya (fiyatın adet kadar katlanmasına) yol açar. Kısacası: PDF'de kaç fiyat sütunu görüyorsan çıktıda o kadar alanı doldur, gerisini null bırak — kendi başına çarpma/bölme yaparak eksik sütun üretme.\n\nÇOK SAYIDA KALEM/SAYFA UYARISI: Teklif PDF'i kaç sayfa olursa olsun (5, 10, hatta daha fazla) ve kaç farklı fiyatlı kalem içerirse içersin (20, 50, 100+ kalem), dokümandaki TÜM SAYFALARI incele ve HER TEK kalemi ayrı ayrı line_items dizisine ekle. 'Çeşitli', 'birçok kalem', 'toplam X+ kalem' gibi bir özetle geçme ve kalemleri tek bir genel total_price altında toplama — bu KABUL EDİLEMEZ bir veri kaybıdır. quantity alanına da 'Çeşitli (Toplam 89+ kalem)' gibi özet bir metin yazma; bu alan sadece TEK bir kalemin miktarı için kullanılır. Kalem sayısı ne kadar çok olursa olsun hepsini teker teker çıkar; çıkış tokenı bol, kısaltmaya veya özetlemeye gerek yok.\n\nPARA BİRİMİNE DİKKAT: Kalem bazlı fiyat tablosunda HER SATIRIN kendi para birimini (sembol: $ € £ ₺, veya yazı: dolar/euro/avro/sterlin/TL/lira) ayrı ayrı oku ve o kalemin currency alanına yaz. Bir PDF içinde farklı satırlar farklı para biriminde olabilir (örn. bir kalem euro, bir başka kalem TL ile fiyatlandırılmış) — bunu ASLA tüm doküman için tek bir para birimi varmış gibi genelleme; her satırı kendi başına değerlendir."
+
+  // Not: .stream(...).finalMessage() kullanıyoruz (create() değil). Anthropic SDK,
+  // büyük max_tokens değerlerinde ("10 dakikadan uzun sürebilir" tahmini) non-streaming
+  // isteği reddediyor ve streaming zorunlu kılıyor; biz de tam mesajı bekleyip tek seferde
+  // kullandığımız için stream()'in finalMessage() yardımcısı create() ile birebir aynı
+  // sonucu (tam Message nesnesi) verir, sadece bu hatayı ortadan kaldırır.
+  async function attempt(maxTokens: number): Promise<Anthropic.Message> {
+    const stream = anthropic.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      tools: [EXTRACT_OFFER_TOOL],
+      tool_choice: { type: 'tool', name: EXTRACT_OFFER_TOOL.name },
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document',
+              source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 },
+            },
+            {
+              type: 'text',
+              text: extractionInstructions,
+            },
+          ],
+        },
+      ],
+    })
+    return stream.finalMessage()
+  }
+
+  let message = await attempt(16000)
+  // Çıkış token sınırına çarptıysa (çok kalemli/çok sayfalı teklif), çok daha büyük bir
+  // bütçeyle tekrar dene; aksi halde kalemler yarıda kesilip veri kaybına yol açar.
+  if (message.stop_reason === 'max_tokens') {
+    console.warn('[extractOfferData] max_tokens sınırına ulaşıldı (16000), 32000 ile tekrar deneniyor.')
+    message = await attempt(32000)
+  }
 
   return normalizeExtractedOffer(getToolInput<QuoteComparisonExtractedData>(message, EXTRACT_OFFER_TOOL.name))
 }
@@ -345,6 +387,7 @@ function normalizeLineItems(value: unknown): QuoteComparisonLineItem[] {
         model: item?.model != null && String(item.model).trim() ? String(item.model).trim() : null,
         unit_price: typeof item?.unit_price === 'number' ? item.unit_price : null,
         total_price: typeof item?.total_price === 'number' ? item.total_price : null,
+        currency: normalizeCurrencyCode((item as { currency?: string | null } | null)?.currency),
       }
     })
     .filter((item): item is QuoteComparisonLineItem => item !== null)
@@ -548,11 +591,46 @@ function normalizeItemKey(name: string): string {
 }
 
 /**
+ * Bir teklifin belirli bir model/kod için sadece BİR kez tabloya girmesini garanti
+ * etmek için kullanılan anahtar. AI bazen aynı fiziksel kalemi hem doğru şekilde
+ * (tüm tekliflerle birlikte) hem de tekliflerin kendi adlandırmasıyla tekrar tekrar
+ * (her teklif için ayrı, "yalnız" bir satır olarak) döndürebiliyor. itemLabel farklı
+ * yazıldığı için normalizeItemKey bunu yakalayamaz; model kodu ise genelde tutarlı
+ * kaldığından daha güvenilir bir tekilleştirme anahtarı sağlar.
+ */
+function normalizeModelKey(model: string | null | undefined): string | null {
+  if (!model?.trim()) return null
+  const key = model.trim().toLocaleLowerCase('tr-TR').replace(/[^\p{L}\p{N}]+/gu, '')
+  return key || null
+}
+
+function cellDedupeKey(offerId: string, model: string | null | undefined): string | null {
+  const modelKey = normalizeModelKey(model)
+  return modelKey ? `${offerId}::${modelKey}` : null
+}
+
+/**
  * Farklı tekliflerde farklı adlandırılmış (ör. "ELV-1" ~ "AS-1" ~ "Asansör 1")
  * ama aynı fiziksel kalemi temsil eden satırları tek satırda birleştirir.
  * Önce AI'ın (bağlamı görerek yaptığı) hizalamasını esas alır; AI'ın gözden
  * kaçırdığı kalemleri tekliflerin kendi line_items listesinden tamamlar.
+ *
+ * Ayrıca aynı teklif+model ikilisinin (AI'ın kendi tool çıktısında ya da AI+ham veri
+ * karışımında) birden fazla satırda tekrar etmesini engeller: bir (offerId, model)
+ * çifti bir kez bir satıra yerleştirildikten sonra, aynı çift başka bir satırda tekrar
+ * görünürse o hücre görmezden gelinir. Bu, toplam fiyatların iki katına çıkmasına
+ * sebep olan "aynı kalemin tekrar satırı" sorununu (bkz. duplicate line item bug) önler.
  */
+/**
+ * Bir hücrenin para birimini belirler: önce o kalem için AI/PDF'ten okunan değeri
+ * (varsa) kullanır; net değilse teklifin genel para birimine düşer. Bu sayede aynı
+ * teklifte kalemden kaleme farklı para birimi olsa bile hiçbir hücre para birimsiz
+ * (belirsiz) kalmaz.
+ */
+function resolveCellCurrency(rawCurrency: string | null | undefined, offer: CompareInput): string {
+  return normalizeCurrencyCode(rawCurrency) || normalizeCurrencyCode(offer.extracted.currency) || 'TRY'
+}
+
 function mergeLineItems(
   aiRows: QuoteComparisonLineItemRow[] | undefined,
   offers: CompareInput[]
@@ -562,6 +640,7 @@ function mergeLineItems(
 
   const rows: QuoteComparisonLineItemRow[] = []
   const rowByKey = new Map<string, QuoteComparisonLineItemRow>()
+  const seenCellKeys = new Set<string>()
 
   const ensureRow = (label: string, quantity: string | null, unit: string | null): QuoteComparisonLineItemRow => {
     const key = normalizeItemKey(label)
@@ -576,22 +655,36 @@ function mergeLineItems(
 
   for (const aiRow of aiRows || []) {
     if (!aiRow?.itemLabel?.trim()) continue
-    const row = ensureRow(aiRow.itemLabel.trim(), aiRow.quantity ?? null, aiRow.unit ?? null)
+    const validCells: QuoteComparisonLineItemRow['values'] = []
     for (const cell of aiRow.values || []) {
       const offerId = resolveOfferId(offers, (cell as { offerId?: string }).offerId)
-      if (!offerId || row.values.some((v) => v.offerId === offerId)) continue
-      row.values.push({
+      if (!offerId) continue
+      const dedupeKey = cellDedupeKey(offerId, cell.model)
+      if (dedupeKey && seenCellKeys.has(dedupeKey)) continue
+      const offer = offers.find((o) => o.offerId === offerId)
+      validCells.push({
         offerId,
         model: cell.model ?? null,
         unitPrice: typeof cell.unitPrice === 'number' ? cell.unitPrice : null,
         totalPrice: typeof cell.totalPrice === 'number' ? cell.totalPrice : null,
+        currency: offer ? resolveCellCurrency((cell as { currency?: string | null }).currency, offer) : null,
       })
+    }
+    if (validCells.length === 0) continue
+    const row = ensureRow(aiRow.itemLabel.trim(), aiRow.quantity ?? null, aiRow.unit ?? null)
+    for (const cell of validCells) {
+      if (row.values.some((v) => v.offerId === cell.offerId)) continue
+      row.values.push(cell)
+      const dedupeKey = cellDedupeKey(cell.offerId, cell.model)
+      if (dedupeKey) seenCellKeys.add(dedupeKey)
     }
   }
 
   for (const offer of offersWithItems) {
     for (const item of offer.extracted.line_items || []) {
       if (!item?.name?.trim()) continue
+      const dedupeKey = cellDedupeKey(offer.offerId, item.model)
+      if (dedupeKey && seenCellKeys.has(dedupeKey)) continue
       const row = ensureRow(item.name.trim(), item.quantity ?? null, item.unit ?? null)
       if (row.values.some((v) => v.offerId === offer.offerId)) continue
       row.values.push({
@@ -599,7 +692,9 @@ function mergeLineItems(
         model: item.model ?? null,
         unitPrice: typeof item.unit_price === 'number' ? item.unit_price : null,
         totalPrice: typeof item.total_price === 'number' ? item.total_price : null,
+        currency: resolveCellCurrency(item.currency, offer),
       })
+      if (dedupeKey) seenCellKeys.add(dedupeKey)
     }
   }
 
@@ -637,7 +732,7 @@ compare_offers tool'unu kullan. ALAN SIRASI ÖNEMLİ:
 
 comparisonRows kuralı: Bir teklif PDF'inde geçen her TEKNİK özellik/şart tabloya yazılır. Diğer tekliflerde yoksa o hücre "Belirtilmemiş" olur. Ortak olmayan maddeleri görmezden gelme; silme veya atlama. specs listesindeki her madde satır olsun. Ödeme koşulları, teslimat süresi, garanti, nakliye/montaj, KDV, teklif tarihi için satır ekleme.
 
-lineItemComparison kuralı: Tekliflerden biri veya birkaçı birden fazla kalem/ünite (line_items) içeriyorsa, tekliflerdeki AYNI FİZİKSEL kalemi (farklı adlandırılmış olsa bile: "ELV-1" ~ "AS-1" ~ "Asansör 1") tek satırda hizala. Sırayı, kapasiteyi, kullanım amacını ipucu olarak kullan. Hiçbir teklifte line_items yoksa bu diziyi boş bırak.
+lineItemComparison kuralı: Tekliflerden biri veya birkaçı birden fazla kalem/ünite (line_items) içeriyorsa, tekliflerdeki AYNI FİZİKSEL kalemi (farklı adlandırılmış olsa bile: "ELV-1" ~ "AS-1" ~ "Asansör 1") tek satırda hizala. Sırayı, kapasiteyi, kullanım amacını ipucu olarak kullan. Hiçbir teklifte line_items yoksa bu diziyi boş bırak. ÇOK ÖNEMLİ: Her fiziksel kalem dizide TAM OLARAK BİR satırda yer almalı — o kalemi bir teklifin kendi orijinal adıyla (örn. teklif PDF'indeki ham isimle) AYRICA tekrar bir satır olarak EKLEME. Yani N farklı fiziksel kalem varsa dizide toplam N satır olmalı, N'den fazla OLAMAZ; her satırın values dizisinde o kalemi içeren TÜM tekliflerin hücreleri bulunmalı. Her hücrenin currency'sini de o kalemin (teklifteki line_items verisindeki) kendi para birimiyle doldur — aynı teklifte kalemden kaleme farklı olabileceğini unutma.
 
 ${priorityBlock}
 Teklif verileri (JSON):
@@ -702,18 +797,32 @@ async function compareOffers(
     ...o.extracted,
   }))
 
-  const message = await anthropic.messages.create({
-    model,
-    max_tokens: 10000,
-    tools: [COMPARE_OFFERS_TOOL],
-    tool_choice: { type: 'tool', name: COMPARE_OFFERS_TOOL.name },
-    messages: [
-      {
-        role: 'user',
-        content: buildComparePrompt(materialName, offers.length, priorityCriteria, promptPayload),
-      },
-    ],
-  })
+  // Not: .stream(...).finalMessage() kullanıyoruz (create() değil) — bkz. extractOfferData
+  // içindeki aynı notu; büyük max_tokens (örn. 32000) için Anthropic SDK non-streaming
+  // isteği "10 dakikadan uzun sürebilir" diyerek reddediyor, streaming bu hatayı ortadan kaldırır.
+  async function attempt(maxTokens: number): Promise<Anthropic.Message> {
+    const stream = anthropic.messages.stream({
+      model,
+      max_tokens: maxTokens,
+      tools: [COMPARE_OFFERS_TOOL],
+      tool_choice: { type: 'tool', name: COMPARE_OFFERS_TOOL.name },
+      messages: [
+        {
+          role: 'user',
+          content: buildComparePrompt(materialName, offers.length, priorityCriteria, promptPayload),
+        },
+      ],
+    })
+    return stream.finalMessage()
+  }
+
+  let message = await attempt(16000)
+  // Çok kalemli tekliflerde (örn. 50-100+ kalem) lineItemComparison çıktısı token sınırına
+  // çarpabilir; bu durumda kalemler yarıda kesilmesin diye çok daha büyük bütçeyle tekrar dene.
+  if (message.stop_reason === 'max_tokens') {
+    console.warn('[compareOffers] max_tokens sınırına ulaşıldı (16000), 32000 ile tekrar deneniyor.')
+    message = await attempt(32000)
+  }
 
   const first = getToolInput<CompareResult>(message, COMPARE_OFFERS_TOOL.name)
   let recommendedOfferId = resolveOfferId(offers, first.recommendedOfferId)

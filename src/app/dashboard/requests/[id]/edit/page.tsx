@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,8 +11,15 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
-import { updatePurchaseRequest } from '@/lib/actions'
-import { isPazarlamaDepartment, IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
+import { removePurchaseRequestItem, updatePurchaseRequest } from '@/lib/actions'
+import {
+  isPazarlamaDepartment,
+  IT_STATUS_INCELEMEDE,
+  IT_WORKFLOW_STATUSES
+} from '@/lib/it-workflow'
+import { isPersistedPurchaseRequestItemId, syncPurchaseRequestItemsIncremental } from '@/lib/purchaseRequestItemSync'
+import { RequestMaterialShopping } from '@/app/dashboard/requests/create/RequestMaterialShopping'
+import type { CartItem } from '@/app/dashboard/requests/create/types'
 import { 
   Package, 
   Building2, 
@@ -43,8 +50,27 @@ import {
   Search,
   Loader2,
   TreePine,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react'
+
+type EditSelectedMaterial = {
+  id: string
+  material_class: string
+  material_group: string
+  material_item_name: string
+  material_name: string
+  material_description: string
+  unit: string
+  quantity: string
+  brand: string
+  specifications: string
+  purpose: string
+  delivery_date: string
+  image_urls: string[]
+  uploaded_images: File[]
+  image_preview_urls: string[]
+}
 
 const steps = [
   { id: 1, title: 'Lokasyon Bilgileri', icon: Building2 },
@@ -159,18 +185,6 @@ export default function EditPurchaseRequestPage() {
   const [materialGroups, setMaterialGroups] = useState([])
   const [materialItems, setMaterialItems] = useState([])
   const [currentStep, setCurrentStep] = useState(1)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [searchResults, setSearchResults] = useState<Array<{
-    class: string
-    group: string
-    item_name: string
-    display_text: string
-    score?: number
-    highlightCount?: number
-  }>>([])
-  
-  const [isSearching, setIsSearching] = useState(false)
-  const [showSearchResults, setShowSearchResults] = useState(false)
   const [formData, setFormData] = useState({
     construction_site: '',
     construction_site_id: '',
@@ -182,42 +196,20 @@ export default function EditPurchaseRequestPage() {
   })
   
   // Çoklu malzeme seçimi için state
-  const [selectedMaterials, setSelectedMaterials] = useState<Array<{
-    id: string
-    material_class: string
-    material_group: string
-    material_item_name: string
-    material_name: string
-    material_description: string
-    unit: string
-    quantity: string
-    brand: string
-    specifications: string
-    purpose: string
-    delivery_date: string
-    image_urls: string[]
-    uploaded_images: File[]
-    image_preview_urls: string[]
-  }>>([])
+  const [selectedMaterials, setSelectedMaterials] = useState<EditSelectedMaterial[]>([])
+  const [requestStatus, setRequestStatus] = useState('')
+  const [itWorkflowApplies, setItWorkflowApplies] = useState(false)
   
   const [currentMaterialIndex, setCurrentMaterialIndex] = useState(0)
-  const searchTimeoutRef = useRef<NodeJS.Timeout>()
-  
-  // Yeni malzeme oluşturma modal state'leri
-  const [showCreateMaterialModal, setShowCreateMaterialModal] = useState(false)
-  const [createMaterialData, setCreateMaterialData] = useState({
-    class: '',
-    group: '',
-    item_name: ''
-  })
-  const [isCreatingMaterial, setIsCreatingMaterial] = useState(false)
   
   // User role for role-based edit permissions
   const [userRole, setUserRole] = useState<string>('')
+  const [showExtraShopping, setShowExtraShopping] = useState(false)
   
   // Malzeme silme onayı için state'ler
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false)
   const [materialToDelete, setMaterialToDelete] = useState<number | null>(null)
+  const [removingMaterial, setRemovingMaterial] = useState(false)
 
   // Get user role for role-based permissions
   useEffect(() => {
@@ -240,6 +232,15 @@ export default function EditPurchaseRequestPage() {
     
     getUserRole()
   }, [])
+
+  useEffect(() => {
+    if (initialLoading) return
+    if (typeof window === 'undefined') return
+    const extra = new URLSearchParams(window.location.search).get('extra')
+    if (extra === '1' && itWorkflowApplies && requestStatus === IT_STATUS_INCELEMEDE) {
+      setShowExtraShopping(true)
+    }
+  }, [initialLoading, itWorkflowApplies, requestStatus])
 
   // Cleanup URL objects when component unmounts
   useEffect(() => {
@@ -308,6 +309,8 @@ export default function EditPurchaseRequestPage() {
             .single()
 
           const rd = requestData as { status?: string; it_workflow_applies?: boolean }
+          setRequestStatus(rd.status || '')
+          setItWorkflowApplies(rd.it_workflow_applies === true)
           if (rd.status === 'it_incelemesinde' && rd.it_workflow_applies) {
             const canEditIt =
               editorProf?.role === 'admin' ||
@@ -349,6 +352,8 @@ export default function EditPurchaseRequestPage() {
         // IT Yönetim aşamasında depo işlemi yok; shipments'ta shipped_quantity=0 kayıtları
         // yanlışlıkla tüm kalemleri "depoda yok" sanıp düzenlemeyi engellemesin.
         const rdIt = requestData as { status?: string; it_workflow_applies?: boolean }
+        setRequestStatus(rdIt.status || '')
+        setItWorkflowApplies(rdIt.it_workflow_applies === true)
         const skipDepotUnavailableFilter =
           rdIt.it_workflow_applies === true &&
           rdIt.status != null &&
@@ -404,8 +409,11 @@ export default function EditPurchaseRequestPage() {
           display_name: m.material_item_name || m.material_name || `Malzeme ${materials.indexOf(m) + 1}`
         })))
 
+        const canAddExtraOnLoad =
+          rdIt.status === IT_STATUS_INCELEMEDE && rdIt.it_workflow_applies === true
+
         // Eğer düzenlenebilir malzeme kalmadıysa kullanıcıyı bilgilendir
-        if (materials.length === 0) {
+        if (materials.length === 0 && !canAddExtraOnLoad) {
           showToast('Bu talepteki tüm malzemeler "depoda yok" olarak işaretlenmiş. Düzenlenebilir malzeme bulunamadı.', 'info')
           router.push(`/dashboard/requests/${requestId}/offers`)
           return
@@ -729,7 +737,7 @@ export default function EditPurchaseRequestPage() {
   }
 
   // Malzeme silme onayı
-  const confirmRemoveMaterial = () => {
+  const confirmRemoveMaterial = async () => {
     if (materialToDelete === null) return
     
     // En az 1 malzeme kalmalı
@@ -738,6 +746,22 @@ export default function EditPurchaseRequestPage() {
       setShowDeleteConfirmModal(false)
       setMaterialToDelete(null)
       return
+    }
+
+    const material = selectedMaterials[materialToDelete]
+    if (material && isPersistedPurchaseRequestItemId(material.id) && requestId) {
+      setRemovingMaterial(true)
+      const result = await removePurchaseRequestItem({
+        requestId,
+        itemId: material.id
+      })
+      setRemovingMaterial(false)
+      if (!result.success) {
+        showToast(result.error || 'Malzeme kaldırılamadı', 'error')
+        setShowDeleteConfirmModal(false)
+        setMaterialToDelete(null)
+        return
+      }
     }
 
     const updatedMaterials = selectedMaterials.filter((_, index) => index !== materialToDelete)
@@ -760,6 +784,118 @@ export default function EditPurchaseRequestPage() {
   const cancelRemoveMaterial = () => {
     setShowDeleteConfirmModal(false)
     setMaterialToDelete(null)
+  }
+
+  const canAddExtraMaterials =
+    itWorkflowApplies && requestStatus === IT_STATUS_INCELEMEDE
+
+  const toCartItem = (material: EditSelectedMaterial): CartItem => ({
+    id: material.id,
+    material_class: material.material_class,
+    material_group: material.material_group,
+    material_item_name: material.material_item_name,
+    material_name: material.material_name,
+    material_description: material.material_description,
+    unit: material.unit,
+    quantity: material.quantity,
+    brand: material.brand,
+    specifications: material.specifications,
+    purpose: material.purpose,
+    delivery_date: material.delivery_date,
+    image_urls: material.image_urls,
+    uploaded_images: material.uploaded_images,
+    image_preview_urls: material.image_preview_urls
+  })
+
+  const fromCartItem = (item: CartItem): EditSelectedMaterial => ({
+    id: item.id,
+    material_class: item.material_class,
+    material_group: item.material_group,
+    material_item_name: item.material_item_name,
+    material_name: item.material_name,
+    material_description: item.material_description,
+    unit: item.unit,
+    quantity: item.quantity,
+    brand: item.brand,
+    specifications: item.specifications,
+    purpose: item.purpose,
+    delivery_date: item.delivery_date,
+    image_urls: item.image_urls || [],
+    uploaded_images: item.uploaded_images || [],
+    image_preview_urls: item.image_preview_urls || []
+  })
+
+  const handleExtraCartConfirm = async (cart: CartItem[]) => {
+    const next = cart.map(fromCartItem)
+    setSelectedMaterials(next)
+    setCurrentMaterialIndex(0)
+
+    if (!requestId || !isValidUUID(requestId)) {
+      showToast('Geçersiz talep ID', 'error')
+      return
+    }
+
+    setLoading(true)
+    try {
+      const materialsData = await Promise.all(
+        next.map(async (material) => {
+          const qty = Math.round(parseFloat(material.quantity))
+          let imageUrls = [...(material.image_urls || [])]
+          if (material.uploaded_images && material.uploaded_images.length > 0) {
+            const uploaded = await uploadImagesForMaterial(material.id, material.uploaded_images)
+            imageUrls = [...imageUrls, ...uploaded]
+          }
+          return {
+            id: material.id,
+            material_name: material.material_name.trim(),
+            quantity: qty,
+            unit: material.unit,
+            brand: material.brand,
+            material_class: material.material_class,
+            material_group: material.material_group,
+            material_item_name: material.material_item_name?.trim() || material.material_name.trim(),
+            specifications: material.specifications,
+            purpose: material.purpose,
+            delivery_date: material.delivery_date,
+            image_urls: imageUrls.length > 0 ? imageUrls : undefined
+          }
+        })
+      )
+
+      const result = await updatePurchaseRequest({
+        requestId,
+        materials: materialsData,
+        specifications: formData.specifications
+      })
+
+      if (!result.success) {
+        showToast(`Hata: ${result.error}`, 'error')
+        return
+      }
+
+      showToast(result.message || 'Sepet onaylandı, talep güncellendi.', 'success')
+      setShowExtraShopping(false)
+      router.push(`/dashboard/requests/${requestId}/offers`)
+    } catch (error) {
+      console.error('Ekstra malzeme kaydı hatası:', error)
+      showToast('Sepet kaydedilirken bir hata oluştu.', 'error')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const renderExtraAddButton = () => {
+    if (!canAddExtraMaterials) return null
+    return (
+      <Button
+        type="button"
+        onClick={() => setShowExtraShopping(true)}
+        className="h-10 px-5 rounded-lg bg-black hover:bg-neutral-900 text-white font-medium shadow-none"
+      >
+        <Plus className="w-4 h-4 mr-2" />
+        Ekstra malzeme ekle
+      </Button>
+    )
   }
 
   const isStepValid = (step: number) => {
@@ -904,41 +1040,62 @@ export default function EditPurchaseRequestPage() {
         throw new Error(`Request güncellenemedi: ${updateRequestError.message}`)
       }
 
-      // Mevcut items'ları sil
-      const { error: deleteItemsError } = await supabase
-        .from('purchase_request_items')
-        .delete()
-        .eq('purchase_request_id', requestId)
-
-      if (deleteItemsError) {
-        throw new Error(`Mevcut items silinemedi: ${deleteItemsError.message}`)
-      }
-
-      // Yeni items'ları ekle
-      const itemsData = materialsPrepared.map(({ material, qty, imageUrls }) => ({
-        purchase_request_id: requestId,
+      const mappedMaterials = materialsPrepared.map(({ material, qty, imageUrls }) => ({
+        id: material.id,
         item_name: material.material_name.trim(),
-        description: `${material.brand || ''} ${material.material_name}`.trim(),
         quantity: qty,
-        original_quantity: qty,
         unit: material.unit,
-        unit_price: 0,
-        specifications: material.specifications || null,
-        purpose: material.purpose || null,
-        delivery_date: material.delivery_date || null,
         brand: material.brand || null,
         material_class: material.material_class || null,
         material_group: material.material_group || null,
-        material_item_name: material.material_item_name?.trim() || material.material_name.trim() || null,
+        material_item_name: material.material_item_name?.trim() || material.material_name.trim(),
+        specifications: material.specifications || null,
+        purpose: material.purpose || '',
+        delivery_date: material.delivery_date || null,
         image_urls: imageUrls.length > 0 ? imageUrls : null
       }))
 
-      const { error: insertItemsError } = await supabase
-        .from('purchase_request_items')
-        .insert(itemsData)
+      const useIncrementalSync =
+        currentRequest?.it_workflow_applies === true &&
+        currentRequest.status === IT_STATUS_INCELEMEDE
 
-      if (insertItemsError) {
-        throw new Error(`Yeni items eklenemedi: ${insertItemsError.message}`)
+      if (useIncrementalSync) {
+        await syncPurchaseRequestItemsIncremental(supabase, requestId, mappedMaterials)
+      } else {
+        const { error: deleteItemsError } = await supabase
+          .from('purchase_request_items')
+          .delete()
+          .eq('purchase_request_id', requestId)
+
+        if (deleteItemsError) {
+          throw new Error(`Mevcut items silinemedi: ${deleteItemsError.message}`)
+        }
+
+        const { error: insertItemsError } = await supabase
+          .from('purchase_request_items')
+          .insert(
+            mappedMaterials.map((material) => ({
+              purchase_request_id: requestId,
+              item_name: material.item_name,
+              description: `${material.brand || ''} ${material.item_name}`.trim(),
+              quantity: material.quantity,
+              original_quantity: material.quantity,
+              unit: material.unit,
+              unit_price: 0,
+              specifications: material.specifications,
+              purpose: material.purpose,
+              delivery_date: material.delivery_date,
+              brand: material.brand,
+              material_class: material.material_class,
+              material_group: material.material_group,
+              material_item_name: material.material_item_name,
+              image_urls: material.image_urls
+            }))
+          )
+
+        if (insertItemsError) {
+          throw new Error(`Yeni items eklenemedi: ${insertItemsError.message}`)
+        }
       }
 
       return { success: true, message: 'Talep başarıyla güncellendi!' }
@@ -1100,10 +1257,15 @@ export default function EditPurchaseRequestPage() {
         if (selectedMaterials.length === 0) {
           return (
             <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
-              <CardContent className="p-6 text-center">
+              <CardContent className="p-6 text-center space-y-4">
                 <Package className="w-12 h-12 mx-auto text-gray-400 mb-3" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Henüz malzeme bulunamadı</h3>
-                <p className="text-gray-600 mb-4">Bu talep için malzeme bilgileri yüklenemedi.</p>
+                <p className="text-gray-600 mb-4">
+                  {canAddExtraMaterials
+                    ? 'Ürün kartlarından ekstra malzeme ekleyebilirsiniz.'
+                    : 'Bu talep için malzeme bilgileri yüklenemedi.'}
+                </p>
+                <div className="max-w-md mx-auto">{renderExtraAddButton()}</div>
               </CardContent>
             </Card>
           )
@@ -1114,6 +1276,11 @@ export default function EditPurchaseRequestPage() {
         return (
           <Card className="rounded-xl lg:rounded-2xl bg-white/20 lg:backdrop-blur-lg border-0">
             <CardHeader className="pb-0 lg:pb-0">
+              {canAddExtraMaterials && (
+                <div className="mb-4">
+                  {renderExtraAddButton()}
+                </div>
+              )}
               <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 lg:gap-4">
                
                 
@@ -1503,6 +1670,7 @@ export default function EditPurchaseRequestPage() {
                   <Package className="w-4 h-4" />
                   Güncellenecek Malzemeler ({selectedMaterials.length})
                 </Label>
+                {renderExtraAddButton()}
                 
                 <div className="space-y-3">
                   {selectedMaterials.map((material, index) => (
@@ -1600,6 +1768,21 @@ export default function EditPurchaseRequestPage() {
           </Card>
         )
     }
+  }
+
+  if (showExtraShopping) {
+    return (
+      <RequestMaterialShopping
+        overlay
+        title="Ekstra malzeme ekle"
+        initialCart={selectedMaterials.map(toCartItem)}
+        onConfirm={handleExtraCartConfirm}
+        onCancel={() => setShowExtraShopping(false)}
+        confirmLabel="Sepeti Onayla"
+        confirmLoadingLabel="Onaylanıyor..."
+        isSubmitting={loading}
+      />
+    )
   }
 
   return (
@@ -1754,6 +1937,7 @@ export default function EditPurchaseRequestPage() {
               type="button"
               variant="outline"
               onClick={cancelRemoveMaterial}
+              disabled={removingMaterial}
               className="flex-1"
             >
               İptal
@@ -1761,14 +1945,16 @@ export default function EditPurchaseRequestPage() {
             <Button
               type="button"
               onClick={confirmRemoveMaterial}
+              disabled={removingMaterial}
               className="flex-1 bg-red-600 hover:bg-red-700 text-white"
             >
               <Trash2 className="w-4 h-4 mr-2" />
-              Kaldır
+              {removingMaterial ? 'Kaldırılıyor...' : 'Kaldır'}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
     </div>
   )
 }

@@ -13,8 +13,8 @@
 import ExcelJS from 'exceljs'
 import { getCurrencySymbol } from '@/components/offers/types'
 import { getOfferFileUrl } from '@/components/quoteComparison/OfferHeaderCell'
-import { convertAmountViaEurCross, type EurCrossRates } from '@/lib/fx/convertViaEurRates'
-import { computeLineItemGrandTotal, getLineItemRowStats } from '@/lib/quoteComparison/lineItems'
+import { aggregateCurrencyTotalsViaEurCross, convertAmountViaEurCross, type EurCrossRates } from '@/lib/fx/convertViaEurRates'
+import { computeLineItemGrandTotal, getLineItemRowStats, type LineItemGrandTotal } from '@/lib/quoteComparison/lineItems'
 import { getOfferVatStatus } from '@/lib/quoteComparison/vat'
 import { computeThumbnailSize, extractJpegImagesFromPdf } from '@/lib/pdf/extractPdfImage'
 import type {
@@ -256,6 +256,45 @@ function toGbp(amount: number | null, currency: string, rates: EurCrossRates | n
   return convertAmountViaEurCross(amount, currency, 'GBP', rates)
 }
 
+interface ResolvedGrandTotal {
+  amount: number | null
+  currency: string
+  /** Kalemler birden fazla para biriminde olup çapraz kurla tek bir tutara çevrildiyse açıklama notu. */
+  note: string | null
+}
+
+/**
+ * Bir teklifin kalem bazlı toplamını (para birimine göre gruplanmış) TEK bir tutara
+ * indirir. Kalemler tek para biriminde ise doğrudan o tutar/para birimi döner.
+ * Birden fazla para birimi varsa (örn. bazı kalemler USD, bazıları TRY), teklifin
+ * kendi (birincil) para birimine ECB çapraz kuruyla çevrilip toplanır; bu dönüşüm
+ * hücreye not olarak eklenir ki kullanıcı tutarın nasıl hesaplandığını görebilsin.
+ */
+function resolveGrandTotal(
+  grandTotal: LineItemGrandTotal | null,
+  primaryCurrency: string,
+  rates: EurCrossRates | null
+): ResolvedGrandTotal {
+  if (!grandTotal) return { amount: null, currency: primaryCurrency, note: null }
+  const entries = Object.entries(grandTotal.totalsByCurrency)
+  if (!grandTotal.isMixedCurrency) {
+    const [currency, amount] = entries[0]
+    return { amount, currency, note: null }
+  }
+  const breakdown = entries.map(([c, a]) => `${a.toLocaleString('tr-TR')} ${c}`).join(' + ')
+  if (!rates) {
+    return { amount: null, currency: primaryCurrency, note: `Kalemler farklı para biriminde (${breakdown}); kur alınamadığı için tek tutara çevrilemedi.` }
+  }
+  const { value, incomplete } = aggregateCurrencyTotalsViaEurCross(new Map(entries), primaryCurrency, rates)
+  return {
+    amount: value,
+    currency: primaryCurrency,
+    note: incomplete
+      ? `Kalemler farklı para biriminde (${breakdown}); bazı kurlar alınamadığı için toplam kısmi/yaklaşık.`
+      : `Kalemler farklı para biriminde (${breakdown}); güncel kurla ${primaryCurrency}'ye çevrilip toplanmıştır.`,
+  }
+}
+
 function formatFxDate(isoDate: string | null): string | null {
   if (!isoDate) return null
   const parsed = new Date(`${isoDate}T00:00:00`)
@@ -432,9 +471,12 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   // ---- Genel toplam satırı ------------------------------------------------
   const lineItemRows = input.lineItemComparison || []
   const hasLineItems = lineItemRows.length > 0
-  const grandTotals = offers.map((offer) =>
-    hasLineItems ? computeLineItemGrandTotal(lineItemRows, offer.id) : offer.total_price ?? null
-  )
+  const resolvedGrandTotals: ResolvedGrandTotal[] = offers.map((offer) => {
+    const primaryCurrency = offerCurrency(offer)
+    if (!hasLineItems) return { amount: offer.total_price ?? null, currency: primaryCurrency, note: null }
+    const grandTotal = computeLineItemGrandTotal(lineItemRows, offer.id, primaryCurrency)
+    return resolveGrandTotal(grandTotal, primaryCurrency, fx?.rates ?? null)
+  })
 
   // PDF'ten çıkarılan görsel sayısı kalem sayısını aşarsa (ör. gözden kaçan bir damga/
   // logo filtreyi atlattıysa), en büyük N görseli tutup belge sırasını koruyarak
@@ -451,13 +493,17 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   })
   for (let i = 0; i < n; i++) {
     const s = vendorStart(i)
-    setRange(sheet, r, s, s + 2, grandTotals[i] ?? '', {
+    const resolved = resolvedGrandTotals[i]
+    setRange(sheet, r, s, s + 2, resolved.amount ?? (resolved.note ? 'Kur alınamadı' : ''), {
       font: { bold: true, size: 13, color: { argb: TEXT_TOTAL_ROW } },
       fill: solidFill(FILL_TOTAL_ROW),
       alignment: { horizontal: 'center' },
       border: THIN_BORDER,
-      numFmt: currencyNumFmt(offerCurrency(offers[i])),
+      numFmt: currencyNumFmt(resolved.currency),
     })
+    if (resolved.note) {
+      sheet.getCell(r, s).note = resolved.note
+    }
   }
   sheet.getRow(r).height = 22
   r += 1
@@ -501,7 +547,8 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   )
   for (let i = 0; i < n; i++) {
     const s = vendorStart(i)
-    const gbpTotal = toGbp(grandTotals[i], offerCurrency(offers[i]), fx?.rates ?? null)
+    const resolved = resolvedGrandTotals[i]
+    const gbpTotal = toGbp(resolved.amount, resolved.currency, fx?.rates ?? null)
     setRange(sheet, r, s, s + 2, gbpTotal ?? (fx?.rates ? '—' : 'Kur alınamadı'), {
       font: { bold: true, size: 11, color: { argb: TEXT_GBP_ROW } },
       fill: solidFill(FILL_GBP_ROW),
@@ -567,16 +614,19 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
           font: { size: 9, color: { argb: 'FF525252' } },
           alignment: rowImages[i] ? { vertical: 'bottom', horizontal: 'center', wrapText: true } : undefined,
         })
+        // Bu kalemin para birimi teklifin genel para biriminden farklı olabilir (örn.
+        // bir satır euro, bir başka satır TL) — hücrenin kendi currency'sini kullan.
+        const cellCurrency = cell?.currency || offer.currency
         setRange(sheet, r, s + 1, s + 1, cell?.unitPrice ?? '', {
           border: THIN_BORDER,
           fill: cellFill,
-          numFmt: currencyNumFmt(offer.currency),
+          numFmt: currencyNumFmt(cellCurrency),
           font: isBest ? { bold: true, color: { argb: TEXT_BEST } } : undefined,
         })
         setRange(sheet, r, s + 2, s + 2, cell?.totalPrice ?? '', {
           border: THIN_BORDER,
           fill: cellFill,
-          numFmt: currencyNumFmt(offer.currency),
+          numFmt: currencyNumFmt(cellCurrency),
         })
       }
 

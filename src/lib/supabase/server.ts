@@ -54,11 +54,20 @@ export function createClient() {
 
 // Service role client for bypassing RLS in server actions
 export function createServiceRoleClient() {
+  const client = tryCreateServiceRoleClient()
+  if (!client) {
+    throw new Error('Missing Supabase service role credentials')
+  }
+  return client
+}
+
+/** Service role yoksa null — çağıran oturum client'ına düşebilir */
+export function tryCreateServiceRoleClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 
   if (!supabaseUrl || !serviceRoleKey) {
-    throw new Error('Missing Supabase service role credentials')
+    return null
   }
 
   return createSupabaseClient<Database>(supabaseUrl, serviceRoleKey, {

@@ -82,13 +82,14 @@ export interface CartBottomBarProps {
   onViewCart: () => void
   onCheckout: () => void
   isVisible: boolean
+  flushSidebar?: boolean
 }
 
 export interface CartDrawerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   items: CartItem[]
-  onRemoveItem: (id: string) => void
+  onRemoveItem: (id: string, index?: number) => void
   onEditItem: (item: CartItem, index: number) => void
   onCheckout: () => void
 }

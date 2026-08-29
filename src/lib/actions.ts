@@ -1,6 +1,6 @@
 'use server'
 
-import { createClient, createServiceRoleClient } from './supabase/server'
+import { createClient, tryCreateServiceRoleClient } from './supabase/server'
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { NotificationService } from './notifications'
@@ -12,6 +12,11 @@ import {
   IT_WORKFLOW_STATUSES,
   isPazarlamaDepartment
 } from './it-workflow'
+import {
+  deletePurchaseRequestItemRows,
+  isPersistedPurchaseRequestItemId,
+  syncPurchaseRequestItemsIncremental
+} from './purchaseRequestItemSync'
 
 
 
@@ -922,41 +927,67 @@ export async function updatePurchaseRequest(data: {
       throw new Error(`Request güncellenemedi: ${updateRequestError.message}`)
     }
 
-    // Mevcut items'ları sil
-    const { error: deleteItemsError } = await supabase
-      .from('purchase_request_items')
-      .delete()
-      .eq('purchase_request_id', data.requestId)
+    const extraCount = data.materials.filter((m) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(m.id)).length
+    const useIncrementalSync =
+      existingRequest.it_workflow_applies === true &&
+      existingRequest.status === IT_STATUS_INCELEMEDE
 
-    if (deleteItemsError) {
-      throw new Error(`Mevcut items silinemedi: ${deleteItemsError.message}`)
-    }
-
-    // Yeni items'ları ekle
-    const itemsData = data.materials.map(material => ({
-      purchase_request_id: data.requestId,
+    const mappedMaterials = data.materials.map((material) => ({
+      id: material.id,
       item_name: material.material_name,
-      description: `${material.brand || ''} ${material.material_name}`.trim(),
       quantity: Math.round(material.quantity),
-      original_quantity: Math.round(material.quantity),
       unit: material.unit,
-      unit_price: 0,
-      specifications: material.specifications || null,
-      purpose: material.purpose || null,
-      delivery_date: material.delivery_date || null,
       brand: material.brand || null,
       material_class: material.material_class || null,
       material_group: material.material_group || null,
-      material_item_name: material.material_item_name || null,
+      material_item_name: material.material_item_name || material.material_name,
+      specifications: material.specifications || null,
+      purpose: material.purpose || '',
+      delivery_date: material.delivery_date || null,
       image_urls: material.image_urls || null
     }))
 
-    const { error: insertItemsError } = await supabase
-      .from('purchase_request_items')
-      .insert(itemsData)
+    if (useIncrementalSync) {
+      await syncPurchaseRequestItemsIncremental(
+        tryCreateServiceRoleClient() ?? supabase,
+        data.requestId,
+        mappedMaterials
+      )
+    } else {
+      const { error: deleteItemsError } = await supabase
+        .from('purchase_request_items')
+        .delete()
+        .eq('purchase_request_id', data.requestId)
 
-    if (insertItemsError) {
-      throw new Error(`Yeni items eklenemedi: ${insertItemsError.message}`)
+      if (deleteItemsError) {
+        throw new Error(`Mevcut items silinemedi: ${deleteItemsError.message}`)
+      }
+
+      const { error: insertItemsError } = await supabase
+        .from('purchase_request_items')
+        .insert(
+          mappedMaterials.map((material) => ({
+            purchase_request_id: data.requestId,
+            item_name: material.item_name,
+            description: `${material.brand || ''} ${material.item_name}`.trim(),
+            quantity: material.quantity,
+            original_quantity: material.quantity,
+            unit: material.unit,
+            unit_price: 0,
+            specifications: material.specifications,
+            purpose: material.purpose,
+            delivery_date: material.delivery_date,
+            brand: material.brand,
+            material_class: material.material_class,
+            material_group: material.material_group,
+            material_item_name: material.material_item_name,
+            image_urls: material.image_urls
+          }))
+        )
+
+      if (insertItemsError) {
+        throw new Error(`Yeni items eklenemedi: ${insertItemsError.message}`)
+      }
     }
 
     // Approval history kaydı ekle
@@ -966,7 +997,10 @@ export async function updatePurchaseRequest(data: {
         purchase_request_id: data.requestId,
         action: 'updated',
         performed_by: user.id,
-        comments: `Talep güncellendi (${data.materials.length} adet malzeme)`
+        comments:
+          extraCount > 0
+            ? `Talep güncellendi (${data.materials.length} adet malzeme, ${extraCount} ekstra kalem eklendi)`
+            : `Talep güncellendi (${data.materials.length} adet malzeme)`
       })
 
     console.log('✅ Purchase request başarıyla güncellendi')
@@ -987,6 +1021,85 @@ export async function updatePurchaseRequest(data: {
     }
     
     return { success: false, error: errorMessage }
+  }
+}
+
+export async function removePurchaseRequestItem(data: {
+  requestId: string
+  itemId: string
+}) {
+  try {
+    const user = await getAuthenticatedUser()
+    const supabase = createClient()
+
+    const { data: existingRequest, error: requestError } = await supabase
+      .from('purchase_requests')
+      .select('id, status, requested_by, it_workflow_applies')
+      .eq('id', data.requestId)
+      .single()
+
+    if (requestError || !existingRequest) {
+      throw new Error('Talep bulunamadı')
+    }
+
+    const itReviewStatuses = IT_WORKFLOW_STATUSES as readonly string[]
+    const isItWorkflowEditorContext =
+      existingRequest.it_workflow_applies === true &&
+      existingRequest.status != null &&
+      itReviewStatuses.includes(existingRequest.status) &&
+      (user.role === 'admin' ||
+        user.role === 'manager' ||
+        (user.role === 'department_head' && isPazarlamaDepartment(user.department)))
+
+    const isRequestOwner = existingRequest.requested_by === user.id
+    if (!isRequestOwner && user.role !== 'admin' && !isItWorkflowEditorContext) {
+      throw new Error('Bu talebi düzenleme yetkiniz yok')
+    }
+
+    if (!isPersistedPurchaseRequestItemId(data.itemId)) {
+      return { success: true }
+    }
+
+    const { data: item, error: itemError } = await supabase
+      .from('purchase_request_items')
+      .select('id, purchase_request_id')
+      .eq('id', data.itemId)
+      .eq('purchase_request_id', data.requestId)
+      .maybeSingle()
+
+    if (itemError) {
+      throw new Error(itemError.message)
+    }
+    if (!item) {
+      return { success: true }
+    }
+
+    const { count, error: countError } = await supabase
+      .from('purchase_request_items')
+      .select('id', { count: 'exact', head: true })
+      .eq('purchase_request_id', data.requestId)
+
+    if (countError) {
+      throw new Error(countError.message)
+    }
+    if ((count ?? 0) <= 1) {
+      throw new Error('En az bir malzeme bulunmalıdır')
+    }
+
+    await deletePurchaseRequestItemRows(
+      tryCreateServiceRoleClient() ?? supabase,
+      [data.itemId]
+    )
+
+    revalidatePath('/dashboard/requests')
+    revalidatePath(`/dashboard/requests/${data.requestId}`)
+
+    return { success: true, message: 'Malzeme talepten kaldırıldı' }
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Malzeme kaldırılamadı'
+    }
   }
 }
 

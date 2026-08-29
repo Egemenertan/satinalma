@@ -450,8 +450,13 @@ export default function CreatePurchaseRequestPage() {
     setEditingCartIndex(-1)
   }
 
-  const handleRemoveFromCart = (id: string) => {
-    setCart(prev => prev.filter(item => item.id !== id))
+  const handleRemoveFromCart = (id: string, index?: number) => {
+    setCart((prev) => {
+      if (typeof index === 'number' && index >= 0 && index < prev.length) {
+        return prev.filter((_, i) => i !== index)
+      }
+      return prev.filter((item) => item.id !== id)
+    })
     showToast('Ürün sepetten çıkarıldı', 'info')
   }
 

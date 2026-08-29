@@ -8,12 +8,13 @@ export function CartBottomBar({
   itemCount, 
   onViewCart, 
   onCheckout,
-  isVisible 
+  isVisible,
+  flushSidebar = false
 }: CartBottomBarProps) {
   if (!isVisible || itemCount === 0) return null
 
   return (
-    <div className="fixed bottom-6 left-4 right-4 z-50 lg:left-[296px] lg:right-4 flex justify-center animate-fade-in">
+    <div className={`fixed bottom-6 left-4 right-4 z-50 lg:right-4 flex justify-center animate-fade-in ${flushSidebar ? 'lg:left-4' : 'lg:left-[296px]'}`}>
       <div className="w-full max-w-2xl bg-white/95 backdrop-blur-xl border border-gray-200 rounded-3xl shadow-lg">
         <div className="px-5 py-4">
           <div className="flex items-center justify-between gap-4">

@@ -7,6 +7,7 @@ import {
   computeLineItemGrandTotal,
   getLineItemRowStats,
   lineItemsHaveMixedCurrencies,
+  type LineItemGrandTotal,
 } from '@/lib/quoteComparison/lineItems'
 import { getOfferVatStatus } from '@/lib/quoteComparison/vat'
 import { OfferHeaderCell, offerDisplayName } from '@/components/quoteComparison/OfferHeaderCell'
@@ -42,6 +43,18 @@ const TERM_ROWS: { label: string; get: (offer: QuoteComparisonOffer) => string |
 function formatMoney(value: number | null | undefined, currency: string | null): string {
   if (value == null) return '—'
   return `${getCurrencySymbol(currency || 'TRY')}${value.toLocaleString('tr-TR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
+/**
+ * Bir teklifin kalem bazlı genel toplamını gösterir. Kalemler tek para biriminde ise
+ * tek bir tutar; farklı para birimlerinde ise (örn. bazı kalemler USD, bazıları TRY)
+ * DÖNÜŞTÜRMEDEN tek bir sayıya toplamak yanıltıcı olacağından, her para birimi için
+ * ayrı bir tutar gösterilir (örn. "$15,000.00 + ₺460,000.00").
+ */
+function formatGrandTotal(grandTotal: LineItemGrandTotal | null): string {
+  if (!grandTotal) return '—'
+  const entries = Object.entries(grandTotal.totalsByCurrency)
+  return entries.map(([currency, amount]) => formatMoney(amount, currency)).join(' + ')
 }
 
 function FeatureValue({ value, notes }: { value: string; notes: boolean }) {
@@ -265,16 +278,15 @@ export function QuoteEvaluationSheet({
           <tbody>
             <tr className="border-t-2 border-neutral-300">
               <td className={cn(featureCellClass(false), 'text-[13px] !bg-emerald-50 text-emerald-800')}>TOPLAM</td>
-              {safeOffers.map((offer) => {
-                const total = hasLineItems ? computeLineItemGrandTotal(lineItemRows, offer.id) : offer.total_price
-                return (
-                  <td key={offer.id} className="px-4 py-4 bg-emerald-50/70">
-                    <span className="text-[18px] font-bold tracking-tight text-emerald-800 tabular-nums">
-                      {formatMoney(total, offer.currency)}
-                    </span>
-                  </td>
-                )
-              })}
+              {safeOffers.map((offer) => (
+                <td key={offer.id} className="px-4 py-4 bg-emerald-50/70">
+                  <span className="text-[18px] font-bold tracking-tight text-emerald-800 tabular-nums">
+                    {hasLineItems
+                      ? formatGrandTotal(computeLineItemGrandTotal(lineItemRows, offer.id, offer.currency || 'TRY'))
+                      : formatMoney(offer.total_price, offer.currency)}
+                  </span>
+                </td>
+              ))}
             </tr>
 
             <tr className="border-t border-neutral-200/80">
@@ -311,6 +323,16 @@ export function QuoteEvaluationSheet({
                       const cell = (row.values || []).find((v) => v.offerId === offer.id)
                       const isBest =
                         bestOfferId != null && cell?.offerId === bestOfferId && cell?.unitPrice === bestUnitPrice
+                      // Teklifte ayrı bir birim fiyat sütunu yoksa (yalnızca toplam/tek fiyat varsa)
+                      // unitPrice null gelir; bu durumda kaynakta olmayan bir birim fiyat türetmek
+                      // yerine PDF'de fiilen yazan tek değeri (totalPrice) ana rakam olarak gösteririz.
+                      const hasUnitPrice = cell?.unitPrice != null
+                      const primaryValue = hasUnitPrice ? cell?.unitPrice : cell?.totalPrice
+                      const showTotalNote = hasUnitPrice && cell?.totalPrice != null && cell.totalPrice !== cell.unitPrice
+                      // Bu kalemin para birimi, teklifin genel para biriminden farklı olabilir
+                      // (örn. bir satır euro, bir başka satır TL ile fiyatlandırılmış) — hücrenin
+                      // kendi currency'sini kullan, teklifin genel para birimini varsayma.
+                      const cellCurrency = cell?.currency || offer.currency
                       return (
                         <td
                           key={offer.id}
@@ -326,11 +348,11 @@ export function QuoteEvaluationSheet({
                               isBest ? 'text-emerald-700' : 'text-neutral-900'
                             )}
                           >
-                            {formatMoney(cell?.unitPrice, offer.currency)}
+                            {formatMoney(primaryValue, cellCurrency)}
                           </div>
-                          {cell?.totalPrice != null && cell.totalPrice !== cell.unitPrice && (
+                          {showTotalNote && (
                             <div className="text-[11px] text-neutral-500 mt-0.5 tabular-nums">
-                              Toplam: {formatMoney(cell.totalPrice, offer.currency)}
+                              Toplam: {formatMoney(cell.totalPrice, cellCurrency)}
                             </div>
                           )}
                         </td>

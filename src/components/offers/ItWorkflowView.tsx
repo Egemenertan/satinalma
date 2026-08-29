@@ -389,7 +389,7 @@ export default function ItWorkflowView({
                 IT Yönetim — Pazarlama
               </h3>
               <p className="text-xs sm:text-base text-gray-600 mb-4 sm:mb-6 px-2">
-                Talebi düzenleyebilir, gönderebilir, onaylayabilir veya reddedebilirsiniz.
+                Talebi düzenleyebilir, ekstra malzeme ekleyebilir, gönderebilir, onaylayabilir veya reddedebilirsiniz.
               </p>
               <div className="flex flex-col gap-2 sm:gap-3">
                 <Button

@@ -21,6 +21,12 @@ export interface QuoteComparisonLineItem {
   model: string | null
   unit_price: number | null
   total_price: number | null
+  /**
+   * Bu kalemin fiyatının para birimi (TRY/USD/EUR/GBP). Aynı teklifte kalemden kaleme
+   * farklı olabilir (örn. bir satır "€", bir başkası "TL" ile fiyatlandırılmış) — bu
+   * yüzden teklifin genel `currency` alanından bağımsız, satıra özel tutulur.
+   */
+  currency: string | null
 }
 
 export interface QuoteComparisonExtractedData {
@@ -80,6 +86,8 @@ export interface QuoteComparisonLineItemOfferValue {
   model: string | null
   unitPrice: number | null
   totalPrice: number | null
+  /** Bu hücrenin para birimi (TRY/USD/EUR/GBP) — kalem bazında farklı olabilir. */
+  currency: string | null
 }
 
 /** Tüm tekliflerde aynı kalemi (örn. "Asansör 1") temsil eden birleştirilmiş satır. */

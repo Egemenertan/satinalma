@@ -8,7 +8,10 @@ import {
 } from '@/lib/ai/runQuoteComparisonAnalysis'
 
 export const runtime = 'nodejs'
-export const maxDuration = 180
+// Çok kalemli/çok sayfalı tekliflerde AI çıkışı (max_tokens) büyüdükçe analiz süresi de
+// uzayabiliyor; 180s bazı büyük dokümanlarda yetersiz kalıp fonksiyonu ortasında kesiyordu.
+// 300s hem Hobby hem Pro planında ek konfigürasyon gerektirmeyen güvenli üst sınır.
+export const maxDuration = 300
 
 const ALLOWED_ROLES = ['admin', 'manager', 'purchasing_officer']
 const MAX_PRIORITY_CRITERIA_LENGTH = 2000
