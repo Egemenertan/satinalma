@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
       data: {
         url: '/dashboard',
         type: 'test',
-        badge: '/favicon-16x16.ico',
+        badge: '/favicon-32x32.png',
         sound: 'default'
       }
     });

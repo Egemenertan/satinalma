@@ -4,8 +4,11 @@ import { getCurrencySymbol } from '@/components/offers/types'
 import { cn } from '@/lib/utils'
 import { isNotesFeature, splitReadableItems } from '@/lib/quoteComparison/readableText'
 import {
-  computeLineItemGrandTotal,
+  resolveOfferGrandTotal,
   getLineItemRowStats,
+  getLineItemKalemLabel,
+  getLineItemSharedName,
+  getLineItemVendorDescription,
   lineItemsHaveMixedCurrencies,
   type LineItemGrandTotal,
 } from '@/lib/quoteComparison/lineItems'
@@ -259,7 +262,9 @@ export function QuoteEvaluationSheet({
           <thead>
             <tr>
               <th className="sticky left-0 z-20 w-[168px] min-w-[156px] bg-neutral-200 px-5 py-4 text-left align-bottom">
-                <span className="text-[12px] font-bold text-neutral-800">Kalem</span>
+                <span className="text-[12px] font-bold text-neutral-800">
+                  {lineItemRows.some((row) => row.pozNo) ? 'Poz / Kalem' : 'Kalem'}
+                </span>
               </th>
               {safeOffers.map((offer, colIdx) => (
                 <th
@@ -281,9 +286,9 @@ export function QuoteEvaluationSheet({
               {safeOffers.map((offer) => (
                 <td key={offer.id} className="px-4 py-4 bg-emerald-50/70">
                   <span className="text-[18px] font-bold tracking-tight text-emerald-800 tabular-nums">
-                    {hasLineItems
-                      ? formatGrandTotal(computeLineItemGrandTotal(lineItemRows, offer.id, offer.currency || 'TRY'))
-                      : formatMoney(offer.total_price, offer.currency)}
+                    {formatGrandTotal(
+                      resolveOfferGrandTotal(lineItemRows, offer.id, offer.total_price ?? null, offer.currency || 'TRY')
+                    )}
                   </span>
                 </td>
               ))}
@@ -313,26 +318,26 @@ export function QuoteEvaluationSheet({
                 const odd = idx % 2 === 0
                 const { bestOfferId, bestUnitPrice } = getLineItemRowStats(row)
                 const rowSub = [row.quantity, row.unit].filter(Boolean).join(' ')
+                const kalemLabel = getLineItemKalemLabel(row)
+                const sharedName = getLineItemSharedName(row)
                 return (
                   <tr key={idx} className="border-t border-neutral-200/80">
                     <td className={featureCellClass(odd)}>
-                      {row.itemLabel}
+                      {row.pozNo && (
+                        <div className="text-[11px] font-bold tracking-wide text-neutral-500 mb-0.5">{row.pozNo}</div>
+                      )}
+                      {kalemLabel ? kalemLabel : row.pozNo ? null : row.itemLabel}
                       {rowSub && <div className="text-[11px] font-normal text-neutral-500 mt-0.5">{rowSub}</div>}
                     </td>
                     {safeOffers.map((offer, colIdx) => {
                       const cell = (row.values || []).find((v) => v.offerId === offer.id)
                       const isBest =
                         bestOfferId != null && cell?.offerId === bestOfferId && cell?.unitPrice === bestUnitPrice
-                      // Teklifte ayrı bir birim fiyat sütunu yoksa (yalnızca toplam/tek fiyat varsa)
-                      // unitPrice null gelir; bu durumda kaynakta olmayan bir birim fiyat türetmek
-                      // yerine PDF'de fiilen yazan tek değeri (totalPrice) ana rakam olarak gösteririz.
                       const hasUnitPrice = cell?.unitPrice != null
                       const primaryValue = hasUnitPrice ? cell?.unitPrice : cell?.totalPrice
                       const showTotalNote = hasUnitPrice && cell?.totalPrice != null && cell.totalPrice !== cell.unitPrice
-                      // Bu kalemin para birimi, teklifin genel para biriminden farklı olabilir
-                      // (örn. bir satır euro, bir başka satır TL ile fiyatlandırılmış) — hücrenin
-                      // kendi currency'sini kullan, teklifin genel para birimini varsayma.
                       const cellCurrency = cell?.currency || offer.currency
+                      const vendorDesc = getLineItemVendorDescription(cell, sharedName)
                       return (
                         <td
                           key={offer.id}
@@ -341,7 +346,9 @@ export function QuoteEvaluationSheet({
                             isBest ? 'bg-emerald-50' : valueCellClass(odd, false, colIdx % 2 === 1)
                           )}
                         >
-                          {cell?.model && <div className="text-[11px] text-neutral-500 mb-1 truncate">{cell.model}</div>}
+                          {vendorDesc && (
+                            <div className="text-[11px] text-neutral-500 mb-1 whitespace-pre-line">{vendorDesc}</div>
+                          )}
                           <div
                             className={cn(
                               'text-[15px] font-bold tabular-nums',

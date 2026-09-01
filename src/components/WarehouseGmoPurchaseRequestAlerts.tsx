@@ -136,7 +136,7 @@ export function WarehouseGmoPurchaseRequestAlerts() {
               try {
                 const icon =
                   typeof window !== 'undefined'
-                    ? new URL('/blackdu.webp', window.location.origin).href
+                    ? new URL('/android-chrome-192x192.png', window.location.origin).href
                     : undefined
                 const n = new Notification('Genel Merkez Ofisi — Yeni talep', {
                   body: `${num}: ${titleText}`,

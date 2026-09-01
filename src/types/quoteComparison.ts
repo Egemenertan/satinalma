@@ -19,6 +19,11 @@ export interface QuoteComparisonLineItem {
   quantity: string | null
   unit: string | null
   model: string | null
+  /**
+   * PDF'deki Poz / Poz No sütunu (A1, A2, 01.02 …). Aynı poz farklı tekliflerde
+   * farklı ürün adıyla yazılmış olsa bile karşılaştırma satırını birleştirir.
+   */
+  poz_no: string | null
   unit_price: number | null
   total_price: number | null
   /**
@@ -83,6 +88,8 @@ export interface QuoteComparisonTableRow {
 /** Kalem bazlı fiyat karşılaştırma tablosunda bir teklifin tek bir satırdaki (kalemdeki) değeri. */
 export interface QuoteComparisonLineItemOfferValue {
   offerId: string
+  /** Bu teklifteki ürün adı (poz aynı olsa da adlar farklı olabilir). */
+  itemName: string | null
   model: string | null
   unitPrice: number | null
   totalPrice: number | null
@@ -90,9 +97,11 @@ export interface QuoteComparisonLineItemOfferValue {
   currency: string | null
 }
 
-/** Tüm tekliflerde aynı kalemi (örn. "Asansör 1") temsil eden birleştirilmiş satır. */
+/** Tüm tekliflerde aynı kalemi (örn. poz A1 veya "Asansör 1") temsil eden birleştirilmiş satır. */
 export interface QuoteComparisonLineItemRow {
   itemLabel: string
+  /** Hizalama anahtarı olan poz (A1 vb.); yoksa null. */
+  pozNo: string | null
   quantity: string | null
   unit: string | null
   values: QuoteComparisonLineItemOfferValue[]

@@ -14,7 +14,7 @@ import ExcelJS from 'exceljs'
 import { getCurrencySymbol } from '@/components/offers/types'
 import { getOfferFileUrl } from '@/components/quoteComparison/OfferHeaderCell'
 import { aggregateCurrencyTotalsViaEurCross, convertAmountViaEurCross, type EurCrossRates } from '@/lib/fx/convertViaEurRates'
-import { computeLineItemGrandTotal, getLineItemRowStats, type LineItemGrandTotal } from '@/lib/quoteComparison/lineItems'
+import { resolveOfferGrandTotal, getLineItemRowStats, getLineItemKalemLabel, getLineItemSharedName, getLineItemVendorDescription, type LineItemGrandTotal } from '@/lib/quoteComparison/lineItems'
 import { getOfferVatStatus } from '@/lib/quoteComparison/vat'
 import { computeThumbnailSize, extractJpegImagesFromPdf } from '@/lib/pdf/extractPdfImage'
 import type {
@@ -353,8 +353,8 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
 
   sheet.getColumn(1).width = 2
   sheet.getColumn(FIRST_COL).width = 6
-  sheet.getColumn(ITEM_START).width = 15
-  sheet.getColumn(ITEM_END).width = 15
+  sheet.getColumn(ITEM_START).width = 10
+  sheet.getColumn(ITEM_END).width = 22
   sheet.getColumn(QTY_COL).width = 9
   sheet.getColumn(UNIT_COL).width = 8
   sheet.getColumn(SPACER_COL).width = 2
@@ -473,8 +473,7 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
   const hasLineItems = lineItemRows.length > 0
   const resolvedGrandTotals: ResolvedGrandTotal[] = offers.map((offer) => {
     const primaryCurrency = offerCurrency(offer)
-    if (!hasLineItems) return { amount: offer.total_price ?? null, currency: primaryCurrency, note: null }
-    const grandTotal = computeLineItemGrandTotal(lineItemRows, offer.id, primaryCurrency)
+    const grandTotal = resolveOfferGrandTotal(lineItemRows, offer.id, offer.total_price ?? null, primaryCurrency)
     return resolveGrandTotal(grandTotal, primaryCurrency, fx?.rates ?? null)
   })
 
@@ -569,7 +568,8 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
     border: THIN_BORDER,
   }
   setRange(sheet, r, FIRST_COL, FIRST_COL, 'S.NO', headerStyle)
-  setRange(sheet, r, ITEM_START, ITEM_END, 'KALEM', headerStyle)
+  setRange(sheet, r, ITEM_START, ITEM_START, 'POZ', headerStyle)
+  setRange(sheet, r, ITEM_END, ITEM_END, 'KALEM', headerStyle)
   setRange(sheet, r, QTY_COL, QTY_COL, 'MİKTAR', headerStyle)
   setRange(sheet, r, UNIT_COL, UNIT_COL, 'BİRİM', headerStyle)
   for (let i = 0; i < n; i++) {
@@ -598,7 +598,18 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
       const rowHasImage = rowImages.some(Boolean)
 
       setRange(sheet, r, FIRST_COL, FIRST_COL, idx + 1, { border: THIN_BORDER, fill: rowFill, alignment: { horizontal: 'center' } })
-      setRange(sheet, r, ITEM_START, ITEM_END, row.itemLabel, { border: THIN_BORDER, fill: rowFill, font: { bold: true } })
+      setRange(sheet, r, ITEM_START, ITEM_START, row.pozNo || '', {
+        border: THIN_BORDER,
+        fill: rowFill,
+        font: { bold: true, size: 10 },
+        alignment: { horizontal: 'center', vertical: 'middle' },
+      })
+      setRange(sheet, r, ITEM_END, ITEM_END, getLineItemKalemLabel(row) || (row.pozNo ? '' : row.itemLabel), {
+        border: THIN_BORDER,
+        fill: rowFill,
+        font: { bold: true },
+        alignment: { wrapText: true, vertical: 'middle' },
+      })
       setRange(sheet, r, QTY_COL, QTY_COL, row.quantity || '', { border: THIN_BORDER, fill: rowFill, alignment: { horizontal: 'center' } })
       setRange(sheet, r, UNIT_COL, UNIT_COL, row.unit || '', { border: THIN_BORDER, fill: rowFill, alignment: { horizontal: 'center' } })
 
@@ -608,11 +619,14 @@ export async function exportQuoteComparisonXlsx(input: QuoteComparisonXlsxInput)
         const cell = (row.values || []).find((v) => v.offerId === offer.id)
         const isBest = bestOfferId != null && cell?.offerId === bestOfferId && cell?.unitPrice === bestUnitPrice
         const cellFill = isBest ? solidFill(FILL_BEST) : rowFill
-        setRange(sheet, r, s, s, cell?.model || '', {
+        const sharedName = getLineItemSharedName(row)
+        setRange(sheet, r, s, s, getLineItemVendorDescription(cell, sharedName), {
           border: THIN_BORDER,
           fill: cellFill,
           font: { size: 9, color: { argb: 'FF525252' } },
-          alignment: rowImages[i] ? { vertical: 'bottom', horizontal: 'center', wrapText: true } : undefined,
+          alignment: rowImages[i]
+            ? { vertical: 'bottom', horizontal: 'center', wrapText: true }
+            : { wrapText: true, vertical: 'middle' },
         })
         // Bu kalemin para birimi teklifin genel para biriminden farklı olabilir (örn.
         // bir satır euro, bir başka satır TL) — hücrenin kendi currency'sini kullan.

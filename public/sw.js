@@ -112,8 +112,8 @@ self.addEventListener('push', (event) => {
 
       const options = {
         body: 'Yeni bir talep oluşturuldu!',
-        icon: '/favicon-32x32.ico',
-        badge: '/favicon-16x16.ico',
+        icon: '/android-chrome-192x192.png',
+        badge: '/favicon-32x32.png',
         vibrate: [200, 100, 200, 100, 200],
         silent: false,
         requireInteraction: true,
@@ -127,12 +127,12 @@ self.addEventListener('push', (event) => {
           {
             action: 'explore',
             title: 'Talebi Görüntüle',
-            icon: '/favicon-16x16.ico'
+            icon: '/favicon-32x32.png'
           },
           {
             action: 'close',
             title: 'Kapat',
-            icon: '/favicon-16x16.ico'
+            icon: '/favicon-32x32.png'
           }
         ],
         tag: 'purchase-request',

@@ -92,8 +92,8 @@ export function DesktopNotificationTest() {
         try {
           const notification = new Notification('Masaüstü Test Bildirimi 🖥️', {
             body: 'Bu bildirim masaüstünde görünüyor ve ses çıkarıyor!',
-            icon: '/favicon-32x32.ico',
-            badge: '/favicon-16x16.ico',
+            icon: '/android-chrome-192x192.png',
+            badge: '/favicon-32x32.png',
             tag: 'desktop-test',
             requireInteraction: false,
             silent: false

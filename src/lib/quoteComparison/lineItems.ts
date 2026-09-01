@@ -77,8 +77,59 @@ export function computeBestCombinationTotal(rows: QuoteComparisonLineItemRow[]):
   return hasAny ? sum : null
 }
 
+/**
+ * Bir teklifin nihai "TOPLAM" tutarını belirler. PDF'in kendi üzerinde bastığı genel
+ * toplam (offer.total_price, AI'ın tüm dokümandan çıkardığı tek bir tutar) varsa bu
+ * HER ZAMAN önceliklidir: kalem bazlı tablodan toplayarak hesaplanan tutar, satır
+ * çıkarımı eksik kaldığında (örn. çok sayfalı/çok kalemli PDF'lerde bazı satırlar
+ * atlanmışsa) PDF'nin kendi bastığı toplamdan SAPAR ve arayüzde "üstte X yazıyor,
+ * PDF'de Y yazıyor" tutarsızlığı yaratır. offer.total_price yoksa (PDF'de genel bir
+ * toplam satırı yoksa) kalemler toplanarak hesaplanır.
+ */
+export function resolveOfferGrandTotal(
+  rows: QuoteComparisonLineItemRow[],
+  offerId: string,
+  offerTotalPrice: number | null,
+  offerCurrency: string
+): LineItemGrandTotal | null {
+  if (offerTotalPrice != null) {
+    return { totalsByCurrency: { [(offerCurrency || 'TRY').toUpperCase()]: offerTotalPrice }, isMixedCurrency: false }
+  }
+  return computeLineItemGrandTotal(rows, offerId, offerCurrency)
+}
+
 /** Tekliflerin farklı para birimlerinde olup olmadığını kontrol eder; karışıksa fiyat kıyaslaması yanıltıcı olabilir. */
 export function lineItemsHaveMixedCurrencies(offerCurrencies: (string | null)[]): boolean {
   const distinct = new Set(offerCurrencies.filter((c): c is string => !!c?.trim()).map((c) => c.trim().toUpperCase()))
   return distinct.size > 1
+}
+
+/** Tüm tekliflerde aynı ürün adı varsa onu döner; poz aynı olup adlar farklıysa null. */
+export function getLineItemSharedName(row: QuoteComparisonLineItemRow): string | null {
+  const names = [
+    ...new Set((row.values || []).map((v) => v.itemName?.trim()).filter((name): name is string => !!name)),
+  ]
+  return names.length === 1 ? names[0] : null
+}
+
+/** Satırın sol sütununda gösterilecek kalem adı: ortak ad, yoksa poz dışında etiket. */
+export function getLineItemKalemLabel(row: QuoteComparisonLineItemRow): string {
+  const shared = getLineItemSharedName(row)
+  if (shared) return shared
+  if (row.pozNo) return ''
+  return row.itemLabel
+}
+
+/** Tedarikçi sütununda ürün adı + model. Ortak ad zaten soldaysa tekrarlanmaz. */
+export function getLineItemVendorDescription(
+  cell: QuoteComparisonLineItemRow['values'][number] | undefined,
+  sharedName: string | null
+): string {
+  if (!cell) return ''
+  const parts: string[] = []
+  const itemName = cell.itemName?.trim()
+  if (itemName && itemName !== sharedName) parts.push(itemName)
+  const model = cell.model?.trim()
+  if (model && model !== itemName) parts.push(model)
+  return parts.join('\n')
 }
