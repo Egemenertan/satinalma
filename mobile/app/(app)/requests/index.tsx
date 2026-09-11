@@ -905,6 +905,7 @@ export default function RequestsListScreen() {
                               status: item.status,
                               requestedBy: item.requested_by,
                               currentUserId: user?.id,
+                              userRole,
                             }) ? (
                               <View style={[styles.kebabMenuItem, styles.kebabMenuItemDisabled]}>
                                 <MaterialIcons name="delete" size={18} color="#d1d5db" />

@@ -25,7 +25,8 @@ import {
   Tag,
   UserCog,
   Plus,
-  ClipboardList
+  ClipboardList,
+  BarChart3
 } from 'lucide-react'
 
 // Bekleyen talep sayısını getiren fetcher (rol bazlı)
@@ -140,6 +141,12 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       title: 'Markalar',
       href: '/dashboard/brands',
       icon: Tag
+    },
+    {
+      id: 'reports',
+      title: 'Raporlar',
+      href: '/dashboard/reports',
+      icon: BarChart3
     },
     {
       id: 'admin',

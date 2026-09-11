@@ -1742,12 +1742,13 @@ export default function PurchaseRequestsTable({
     }
   }
 
-  // Soft-delete: yalnızca kendi talebi; "satın almaya gönderildi" hariç
+  // Soft-delete: PO her talebi gizleyebilir; diğerleri yalnızca kendi talebi ("satın almaya gönderildi" hariç)
   const canDeleteRequest = (request: PurchaseRequest) => {
     return canSoftDeletePurchaseRequest({
       status: request.status,
       requestedBy: request.requested_by,
       currentUserId,
+      userRole,
     })
   }
 

@@ -101,3 +101,87 @@ export async function persistItWorkflowItemEdits(
     if (error) throw new Error(error.message)
   }
 }
+
+export type ItWorkflowExtraItemDraft = {
+  tempId: string
+  item_name: string
+  material_class: string
+  material_group: string
+  material_item_name: string
+  quantity: string
+  unit: string
+  purpose: string
+  brand: string
+  specifications: string
+  delivery_date: string
+  description: string
+}
+
+export function emptyExtraItemDraft(opts: {
+  class: string
+  group: string
+  item_name: string
+  purpose?: string
+  delivery_date?: string
+}): ItWorkflowExtraItemDraft {
+  const name = opts.item_name.trim()
+  return {
+    tempId: `extra-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    item_name: name,
+    material_class: opts.class,
+    material_group: opts.group,
+    material_item_name: name,
+    quantity: '',
+    unit: '',
+    purpose: opts.purpose ?? '',
+    brand: '',
+    specifications: '',
+    delivery_date: opts.delivery_date ?? '',
+    description: '',
+  }
+}
+
+export async function insertItWorkflowExtraItems(
+  supabase: SupabaseClient,
+  requestId: string,
+  extras: ItWorkflowExtraItemDraft[]
+): Promise<void> {
+  if (extras.length === 0) return
+
+  const rows = extras.map((e) => {
+    const name = norm(e.item_name)
+    if (!name) {
+      throw new Error('Yeni kalem için ürün adı boş olamaz')
+    }
+
+    const qty = Math.floor(Number(String(e.quantity).replace(',', '.')))
+    if (!Number.isFinite(qty) || qty < 1) {
+      throw new Error(`${name}: miktar en az 1 olmalı`)
+    }
+
+    const unit = norm(e.unit)
+    if (!unit) {
+      throw new Error(`${name}: birim zorunlu`)
+    }
+
+    return {
+      purchase_request_id: requestId,
+      item_name: name,
+      description: normEmpty(e.description) ?? `${norm(e.brand)} ${name}`.trim(),
+      quantity: qty,
+      original_quantity: qty,
+      unit,
+      unit_price: 0,
+      specifications: normEmpty(e.specifications),
+      purpose: norm(e.purpose),
+      delivery_date: norm(e.delivery_date) === '' ? null : norm(e.delivery_date),
+      brand: normEmpty(e.brand),
+      material_class: normEmpty(e.material_class),
+      material_group: normEmpty(e.material_group),
+      material_item_name: normEmpty(e.material_item_name) ?? name,
+    }
+  })
+
+  const { error } = await supabase.from('purchase_request_items').insert(rows)
+  if (error) throw new Error(error.message)
+}

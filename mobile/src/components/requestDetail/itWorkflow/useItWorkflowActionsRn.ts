@@ -3,7 +3,9 @@ import { Alert } from 'react-native'
 import { useQueryClient } from '@tanstack/react-query'
 import { itWorkflowConfirmSendGonderildi } from '../../../features/itWorkflow/itWorkflowDepartmentSend'
 import {
+  insertItWorkflowExtraItems,
   persistItWorkflowItemEdits,
+  type ItWorkflowExtraItemDraft,
   type ItWorkflowItemDraft,
 } from '../../../features/itWorkflow/itWorkflowPersistItemEdits'
 import { siteManagerApproveOrSendToPurchasing } from '../../../features/siteManager/siteManagerRequestActions'
@@ -168,7 +170,7 @@ export function useItWorkflowActionsRn({
   }, [requestId, siteId, onSuccess])
 
   const handleSaveEdits = useCallback(
-    async (drafts: Record<string, ItWorkflowItemDraft>) => {
+    async (drafts: Record<string, ItWorkflowItemDraft>, extras: ItWorkflowExtraItemDraft[] = []) => {
       setSavingEdit(true)
       
       // Optimistic update - UI'yı hemen güncelle
@@ -206,11 +208,8 @@ export function useItWorkflowActionsRn({
       })
       
       try {
-        // En güncel items'ı cache'den al
-        const currentData = queryClient.getQueryData<any>(['request_offer_bundle', requestId])
-        const currentItems = (currentData?.request?.purchase_request_items ?? items) as PurchaseRequestItemRow[]
-        
-        await persistItWorkflowItemEdits(supabase, currentItems, drafts)
+        await persistItWorkflowItemEdits(supabase, items, drafts)
+        await insertItWorkflowExtraItems(supabase, requestId, extras)
         try {
           await supabase.rpc('update_purchase_request_status_manual', { request_id: requestId })
         } catch {
@@ -223,7 +222,10 @@ export function useItWorkflowActionsRn({
         })
         
         setEditOpen(false)
-        Alert.alert('', 'Kalemler güncellendi')
+        Alert.alert(
+          '',
+          extras.length > 0 ? 'Kalemler güncellendi ve ekstra malzemeler eklendi' : 'Kalemler güncellendi'
+        )
         onSuccess()
       } catch (e) {
         await queryClient.invalidateQueries({ 

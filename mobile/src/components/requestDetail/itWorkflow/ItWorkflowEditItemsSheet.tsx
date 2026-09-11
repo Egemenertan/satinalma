@@ -11,9 +11,14 @@ import {
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { SwipeDismissSheet } from '../../island/SwipeDismissSheet'
+import { MaterialSearchBarRn } from '../../create/MaterialSearchBarRn'
+import { CreateMaterialModalRn } from '../../create/CreateMaterialModalRn'
 import type { PurchaseRequestItemRow } from '../../../lib/requestOfferBundle'
+import { supabase } from '../../../lib/supabase'
 import {
   draftsFromItems,
+  emptyExtraItemDraft,
+  type ItWorkflowExtraItemDraft,
   type ItWorkflowItemDraft,
 } from '../../../features/itWorkflow/itWorkflowPersistItemEdits'
 import { stats, statsCardSurface, statsFont, statsType } from '../../../theme/statsDesignTokens'
@@ -23,7 +28,10 @@ type Props = {
   items: PurchaseRequestItemRow[]
   saving: boolean
   onClose: () => void
-  onSave: (drafts: Record<string, ItWorkflowItemDraft>) => Promise<void>
+  onSave: (
+    drafts: Record<string, ItWorkflowItemDraft>,
+    extras: ItWorkflowExtraItemDraft[]
+  ) => Promise<void>
 }
 
 export function ItWorkflowEditItemsSheet({
@@ -37,6 +45,9 @@ export function ItWorkflowEditItemsSheet({
   /** Sunucudan gelen kalemler — ilk render ile senkron (useEffect beklenmez); modal hemen dolu görünür */
   const baseline = useMemo(() => draftsFromItems(items), [items])
   const [drafts, setDrafts] = useState<Record<string, ItWorkflowItemDraft>>({})
+  const [extras, setExtras] = useState<ItWorkflowExtraItemDraft[]>([])
+  const [searchQuery, setSearchQuery] = useState('')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const lineDraft = (lineId: string): ItWorkflowItemDraft | undefined =>
     drafts[lineId] ?? baseline[lineId]
@@ -55,10 +66,39 @@ export function ItWorkflowEditItemsSheet({
   })
 
   useEffect(() => {
-    if (!visible) setDrafts({})
+    if (!visible) {
+      setDrafts({})
+      setExtras([])
+      setSearchQuery('')
+      setCreateOpen(false)
+    }
   }, [visible])
 
+  const addExtraFromCatalog = (opts: { class: string; group: string; item_name: string }) => {
+    const first = items[0]
+    setExtras((prev) => [
+      ...prev,
+      emptyExtraItemDraft({
+        class: opts.class,
+        group: opts.group,
+        item_name: opts.item_name,
+        purpose: first?.purpose ?? '',
+        delivery_date: first?.delivery_date ? String(first.delivery_date).slice(0, 10) : '',
+      }),
+    ])
+    setSearchQuery('')
+  }
+
+  const updateExtra = (tempId: string, patch: Partial<ItWorkflowExtraItemDraft>) => {
+    setExtras((prev) => prev.map((e) => (e.tempId === tempId ? { ...e, ...patch } : e)))
+  }
+
+  const removeExtra = (tempId: string) => {
+    setExtras((prev) => prev.filter((e) => e.tempId !== tempId))
+  }
+
   return (
+    <>
     <SwipeDismissSheet visible={visible} onRequestClose={onClose} title="Sepeti görüntüle / düzenle" maxHeightRatio={0.92}>
       <View style={{ flex: 1 }}>
         <ScrollView
@@ -72,12 +112,73 @@ export function ItWorkflowEditItemsSheet({
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.hint}>
-            Ürün adı ve markayı güncelledikçe kart üstündeki özet de yenilenir. Kaydettiğinizde talep detayında da aynı
-            şekilde görünür.
+            Ürün adı ve markayı güncelledikçe kart üstündeki özet de yenilenir. IT incelemesinde aramadan ekstra malzeme
+            ekleyebilirsiniz.
           </Text>
 
-          {items.length === 0 ? (
-            <Text style={styles.empty}>Bu talepte düzenlenecek kalem yok.</Text>
+          <MaterialSearchBarRn
+            supabase={supabase}
+            value={searchQuery}
+            onChange={setSearchQuery}
+            restrictToStationery={false}
+            allowedCategoryNames={[]}
+            localCreatedMaterials={[]}
+            onResultClick={(r) =>
+              addExtraFromCatalog({ class: r.class, group: r.group, item_name: r.item_name })
+            }
+            onCreateNewClick={() => setCreateOpen(true)}
+            placeholder="Ekstra malzeme ara"
+          />
+
+          {extras.length > 0 ? (
+            <View style={styles.extraWrap}>
+              <Text style={styles.extraTitle}>Yeni eklenecek malzemeler</Text>
+              {extras.map((extra) => (
+                <View key={extra.tempId} style={[statsCardSurface.listItem, styles.card, styles.extraCard]}>
+                  <View style={styles.cardHead}>
+                    <Text style={styles.cardTitle} numberOfLines={2}>
+                      {extra.item_name.trim() || 'Yeni kalem'}
+                    </Text>
+                    <Text style={styles.extraMeta} numberOfLines={1}>
+                      {extra.material_group} → {extra.material_class}
+                    </Text>
+                  </View>
+                  <Text style={styles.label}>Miktar</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={extra.quantity}
+                    onChangeText={(t) => updateExtra(extra.tempId, { quantity: t })}
+                    keyboardType="number-pad"
+                    placeholder="0"
+                    placeholderTextColor={stats.outline}
+                  />
+                  <Text style={styles.label}>Birim</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={extra.unit}
+                    onChangeText={(t) => updateExtra(extra.tempId, { unit: t })}
+                    placeholder="Adet"
+                    placeholderTextColor={stats.outline}
+                  />
+                  <Text style={styles.label}>Kullanım amacı</Text>
+                  <TextInput
+                    style={[styles.input, styles.multiline]}
+                    value={extra.purpose}
+                    onChangeText={(t) => updateExtra(extra.tempId, { purpose: t })}
+                    placeholder="Amaç"
+                    placeholderTextColor={stats.outline}
+                    multiline
+                  />
+                  <Pressable style={styles.removeExtra} onPress={() => removeExtra(extra.tempId)}>
+                    <Text style={styles.removeExtraText}>Bu kalemi çıkar</Text>
+                  </Pressable>
+                </View>
+              ))}
+            </View>
+          ) : null}
+
+          {items.length === 0 && extras.length === 0 ? (
+            <Text style={styles.empty}>Bu talepte düzenlenecek kalem yok. Yukarıdan ekstra malzeme ekleyin.</Text>
           ) : (
             items.map((line) => {
               const d = lineDraft(line.id)
@@ -193,8 +294,8 @@ export function ItWorkflowEditItemsSheet({
             </Pressable>
             <Pressable
               style={[styles.btnOk, saving && styles.btnDisabled]}
-              disabled={saving || items.length === 0}
-              onPress={() => void onSave(mergedForSave())}
+              disabled={saving || (items.length === 0 && extras.length === 0)}
+              onPress={() => void onSave(mergedForSave(), extras)}
             >
               {saving ? (
                 <ActivityIndicator color="#fff" />
@@ -206,6 +307,24 @@ export function ItWorkflowEditItemsSheet({
         </ScrollView>
       </View>
     </SwipeDismissSheet>
+    <CreateMaterialModalRn
+      supabase={supabase}
+      visible={createOpen}
+      onClose={() => setCreateOpen(false)}
+      initialClass=""
+      initialGroup=""
+      initialItemName={searchQuery}
+      restrictToStationery={false}
+      onCreated={(material) => {
+        addExtraFromCatalog({
+          class: material.class,
+          group: material.group,
+          item_name: material.item_name,
+        })
+        setCreateOpen(false)
+      }}
+    />
+    </>
   )
 }
 
@@ -216,6 +335,35 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
   empty: { ...statsType.bodyMd, color: stats.onSurfaceVariant, textAlign: 'center', marginVertical: 24 },
+  extraWrap: { marginBottom: 8 },
+  extraTitle: {
+    ...statsType.labelSm,
+    fontFamily: statsFont.semibold,
+    color: stats.onSurfaceVariant,
+    marginBottom: 10,
+    letterSpacing: 0.4,
+    textTransform: 'uppercase',
+  },
+  extraCard: {
+    borderWidth: 1,
+    borderColor: '#86efac',
+    backgroundColor: '#f0fdf4',
+  },
+  extraMeta: {
+    ...statsType.bodyMd,
+    color: stats.onSurfaceVariant,
+    marginTop: 6,
+  },
+  removeExtra: {
+    alignSelf: 'flex-start',
+    paddingVertical: 6,
+    paddingHorizontal: 2,
+  },
+  removeExtraText: {
+    ...statsType.labelSm,
+    fontFamily: statsFont.semibold,
+    color: '#dc2626',
+  },
   card: {
     padding: 14,
     marginBottom: 12,

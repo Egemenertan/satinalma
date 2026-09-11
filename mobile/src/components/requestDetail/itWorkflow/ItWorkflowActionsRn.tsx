@@ -52,7 +52,8 @@ export function ItWorkflowActionsCardRn({ wf }: { wf: ItWorkflowActionsRnControl
             <View style={styles.cardHeadText}>
               <Text style={styles.title}>IT Yönetim Onayı</Text>
               <Text style={styles.body}>
-                Kalemleri düzenleyebilir, şantiyeye gönderim miktarı girebilir, onaylayabilir veya reddedebilirsiniz.
+                Kalemleri düzenleyebilir, ekstra malzeme ekleyebilir, şantiyeye gönderim miktarı girebilir, onaylayabilir
+                veya reddedebilirsiniz.
               </Text>
             </View>
           </View>
