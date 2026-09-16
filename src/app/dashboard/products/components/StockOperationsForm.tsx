@@ -13,7 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchSites } from '@/services/sites.service'
-import { addStock, removeStock, transferStock, adjustStock } from '@/services/stock.service'
+import { addStock, removeStock, transferStock, adjustStock, fetchStockByProduct } from '@/services/stock.service'
 import { createClient } from '@/lib/supabase/client'
 import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck, Upload, X, FileText, UserPlus, Building2, Package } from 'lucide-react'
 import { validateImageFile } from '@/lib/utils/imageUpload'
@@ -29,10 +29,38 @@ interface StockOperationsFormProps {
   productId: string
   productName: string
   productUnit?: string
+  /** Ürünler sayfasındaki seçili depo */
+  defaultWarehouseId?: string
   onSuccess?: () => void
 }
 
-export function StockOperationsForm({ productId, productName, productUnit, onSuccess }: StockOperationsFormProps) {
+function isFreeWarehouseStock(stock: { user_id?: string | null; warehouse_id?: string | null }) {
+  return (stock.user_id == null || stock.user_id === undefined) && !!stock.warehouse_id
+}
+
+function pickDefaultWarehouse(
+  stocks: { warehouse_id?: string | null; quantity?: number | string; user_id?: string | null }[] | undefined,
+  preferredId?: string
+) {
+  const free = (stocks || []).filter(isFreeWarehouseStock)
+  if (preferredId && free.some((s) => s.warehouse_id === preferredId && Number(s.quantity) > 0)) {
+    return preferredId
+  }
+  const withQty = [...free]
+    .filter((s) => Number(s.quantity) > 0)
+    .sort((a, b) => Number(b.quantity) - Number(a.quantity))
+  if (withQty[0]?.warehouse_id) return withQty[0].warehouse_id
+  if (preferredId) return preferredId
+  return ''
+}
+
+export function StockOperationsForm({
+  productId,
+  productName,
+  productUnit,
+  defaultWarehouseId,
+  onSuccess,
+}: StockOperationsFormProps) {
   const queryClient = useQueryClient()
   const [operationType, setOperationType] = useState<OperationType>('giriş')
   const [formData, setFormData] = useState({
@@ -50,6 +78,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([])
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
   const [uploadError, setUploadError] = useState<string>('')
+  const [warehouseTouched, setWarehouseTouched] = useState(false)
 
   const { data: activeZimmets = [], isLoading: isLoadingActiveZimmets, refetch: refetchActiveZimmets } = useQuery({
     queryKey: ['product-active-zimmets', productId],
@@ -84,6 +113,43 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     queryKey: ['sites'],
     queryFn: fetchSites,
   })
+
+  const { data: productStocks } = useQuery({
+    queryKey: ['product-stock', productId],
+    queryFn: () => fetchStockByProduct(productId),
+    enabled: !!productId,
+  })
+
+  const selectedWarehouseQty = (productStocks || [])
+    .filter(
+      (s) =>
+        isFreeWarehouseStock(s) &&
+        s.warehouse_id === formData.warehouse_id
+    )
+    .reduce((sum, s) => sum + (Number(s.quantity) || 0), 0)
+
+  const existingStockWarehouses = (productStocks || []).filter(
+    (s) => isFreeWarehouseStock(s) && Number(s.quantity) > 0
+  )
+
+  const qtyEntered = parseFloat(formData.quantity)
+  const resultingQty =
+    operationType === 'giriş' && Number.isFinite(qtyEntered)
+      ? selectedWarehouseQty + qtyEntered
+      : operationType === 'çıkış' && Number.isFinite(qtyEntered)
+        ? selectedWarehouseQty - qtyEntered
+        : operationType === 'düzeltme' && Number.isFinite(qtyEntered)
+          ? qtyEntered
+          : null
+
+  const warehouseQtyById = new Map<string, number>()
+  for (const s of productStocks || []) {
+    if (!isFreeWarehouseStock(s) || !s.warehouse_id) continue
+    warehouseQtyById.set(
+      s.warehouse_id,
+      (warehouseQtyById.get(s.warehouse_id) || 0) + (Number(s.quantity) || 0)
+    )
+  }
 
   // Çalışanları çek (employees tablosundan)
   const { data: employees, isLoading: isLoadingEmployees } = useQuery({
@@ -212,6 +278,8 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
       // Cache'i güncelle
       queryClient.invalidateQueries({ queryKey: ['product-stock', productId] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements', productId] })
+      queryClient.invalidateQueries({ queryKey: ['products'] })
+      queryClient.invalidateQueries({ queryKey: ['product', productId] })
       queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
       queryClient.invalidateQueries({ queryKey: ['product-stats'] })
       queryClient.invalidateQueries({ queryKey: ['product-inventory', productId] })
@@ -221,7 +289,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
       // Success mesajı
       alert(`✅ Stok ${operationType} işlemi başarıyla tamamlandı!`)
       
-      // Formu sıfırla
+      setWarehouseTouched(false)
       setFormData({
         warehouse_id: '',
         to_warehouse_id: '',
@@ -298,6 +366,7 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
 
   // İşlem tipi değişince formu temizle
   useEffect(() => {
+    setWarehouseTouched(false)
     setFormData({
       warehouse_id: '',
       to_warehouse_id: '',
@@ -322,6 +391,16 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [operationType])
+
+  useEffect(() => {
+    if (operationType === 'zimmet') return
+    if (warehouseTouched) return
+    const picked = pickDefaultWarehouse(productStocks, defaultWarehouseId)
+    if (!picked) return
+    setFormData((prev) =>
+      prev.warehouse_id === picked ? prev : { ...prev, warehouse_id: picked }
+    )
+  }, [operationType, warehouseTouched, productStocks, defaultWarehouseId])
 
   const operationConfig = {
     giriş: {
@@ -488,7 +567,10 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
           </Label>
           <Select
             value={formData.warehouse_id || 'none'}
-            onValueChange={(value) => handleChange('warehouse_id', value === 'none' ? '' : value)}
+            onValueChange={(value) => {
+              setWarehouseTouched(true)
+              handleChange('warehouse_id', value === 'none' ? '' : value)
+            }}
           >
             <SelectTrigger className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
               <SelectValue placeholder="Depo seçin" />
@@ -501,11 +583,15 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
                       {row.warehouseName} — {row.availableQty.toLocaleString('tr-TR')} zimmetlenebilir
                     </SelectItem>
                   ))
-                : sites?.map((site) => (
-                    <SelectItem key={site.id} value={site.id}>
-                      {site.name}
-                    </SelectItem>
-                  ))}
+                : sites?.map((site) => {
+                    const qty = warehouseQtyById.get(site.id) || 0
+                    return (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name}
+                        {qty > 0 ? ` — ${qty.toLocaleString('tr-TR')} ${productUnit || 'adet'}` : ''}
+                      </SelectItem>
+                    )
+                  })}
             </SelectContent>
           </Select>
           {operationType === 'zimmet' && selectedWarehouseAvailability && (
@@ -522,6 +608,41 @@ export function StockOperationsForm({ productId, productName, productUnit, onSuc
                 {selectedWarehouseAvailability.zimmetQty.toLocaleString('tr-TR')})
               </span>
             </p>
+          )}
+          {operationType !== 'zimmet' && formData.warehouse_id && (
+            <div className="mt-3 rounded-xl bg-gray-50 border border-gray-100 px-3.5 py-3 space-y-1">
+              <p className="text-xs text-gray-600">
+                Bu depoda mevcut stok:{' '}
+                <span className="font-semibold text-gray-900">
+                  {selectedWarehouseQty.toLocaleString('tr-TR')} {productUnit || 'adet'}
+                </span>
+                {resultingQty != null && qtyEntered > 0 && (
+                  <>
+                    {' '}
+                    → işlem sonrası{' '}
+                    <span className="font-semibold text-gray-900">
+                      {resultingQty.toLocaleString('tr-TR')} {productUnit || 'adet'}
+                    </span>
+                  </>
+                )}
+              </p>
+              {operationType === 'giriş' &&
+                selectedWarehouseQty <= 0 &&
+                existingStockWarehouses.length > 0 && (
+                  <p className="text-xs text-amber-700">
+                    Bu depoda stok yok. Mevcut stok{' '}
+                    {existingStockWarehouses
+                      .map((s) => {
+                        const name =
+                          (Array.isArray(s.warehouse) ? s.warehouse[0] : s.warehouse)?.name ||
+                          'Depo'
+                        return `${name} (${Number(s.quantity).toLocaleString('tr-TR')})`
+                      })
+                      .join(', ')}
+                    . Farklı depoya giriş yeni bir depo kartı açar.
+                  </p>
+                )}
+            </div>
           )}
         </div>
 

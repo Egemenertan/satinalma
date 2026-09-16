@@ -1,10 +1,10 @@
 /**
- * Çalışan bazlı depo zimmet envanter listesi — HTML yazdır/PDF (logo + imza blokları).
+ * Çalışan bazlı depo zimmet envanter listesi — HTML → PDF indirme (logo + imza blokları).
  */
 
 import { getPDFStyles } from './styles'
 
-const LOGO_PATH = '/d.png'
+const LOGO_PATH = '/d-black.png'
 
 export type ZimmetAssignmentListRow = {
   imageUrl?: string
@@ -43,6 +43,11 @@ function esc(raw: string): string {
 
 const extraCss = `
 <style>
+  body { background: #fff; }
+  .container {
+    padding: 16px 18px 24px;
+    background: #fff;
+  }
   .zim-assignment-accent {
     border-bottom: 3px solid #00E676;
     margin-bottom: 16px;
@@ -50,15 +55,17 @@ const extraCss = `
   }
   .zim-assignment-header-row {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
   }
   .zim-logo {
     flex-shrink: 0;
-    height: 44px;
+    height: 48px;
     width: auto;
-    filter: brightness(0);
+    max-width: 180px;
+    object-fit: contain;
+    display: block;
   }
   .zim-titles { text-align: right; flex: 1; min-width: 0; }
   .zim-main-title {
@@ -234,16 +241,18 @@ function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
     .join('')
 }
 
-function buildHtml(payload: ZimmetAssignmentListPdfPayload): string {
+function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): string {
   const exportedLine = `${payload.exportedByDisplayName}${
     payload.exportedByEmail ? ` · ${payload.exportedByEmail}` : ''
   }`
+  const origin = typeof window !== 'undefined' ? window.location.origin : ''
   return `
 <!DOCTYPE html>
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${esc(origin)}/" />
   <title>${esc(payload.docTitleSuffix)}</title>
   ${getPDFStyles()}
   ${extraCss}
@@ -252,7 +261,7 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload): string {
   <div class="container">
     <div class="zim-assignment-accent">
       <div class="zim-assignment-header-row">
-        <img src="${LOGO_PATH}" alt="Dovec" class="zim-logo" />
+        <img src="${esc(logoSrc)}" alt="Dovec" class="zim-logo" />
         <div class="zim-titles">
           <div class="zim-main-title">${esc(payload.titleMain)}</div>
           <div class="zim-sub-title">${esc(payload.titleSub)}</div>
@@ -322,50 +331,173 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload): string {
   `.trim()
 }
 
+function sanitizePdfFilename(name: string): string {
+  const cleaned = name
+    .replace(/[/\\?%*:|"<>]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 80)
+  return cleaned.toLowerCase().endsWith('.pdf') ? cleaned : `${cleaned || 'zimmet-raporu'}.pdf`
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => resolve(String(reader.result || ''))
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(blob)
+  })
+}
+
+async function loadLocalAssetAsDataUrl(path: string): Promise<string | null> {
+  try {
+    const url = new URL(path, window.location.origin).href
+    const res = await fetch(url, { cache: 'force-cache' })
+    if (!res.ok) return null
+    return await blobToDataUrl(await res.blob())
+  } catch {
+    return null
+  }
+}
+
+async function inlineImages(root: ParentNode): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  await Promise.all(
+    imgs.map(async (img) => {
+      const src = img.getAttribute('src')
+      if (!src || src.startsWith('data:')) return
+      try {
+        const absolute = new URL(src, window.location.origin).href
+        const res = await fetch(absolute, { mode: 'cors', credentials: 'omit' })
+        if (!res.ok) return
+        img.src = await blobToDataUrl(await res.blob())
+      } catch {
+        // html2canvas orijinal src ile deneyecek
+      }
+    })
+  )
+}
+
+async function waitForImages(root: ParentNode, timeoutMs = 4000): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img'))
+  await Promise.all(
+    imgs.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            resolve()
+            return
+          }
+          const done = () => resolve()
+          img.addEventListener('load', done, { once: true })
+          img.addEventListener('error', done, { once: true })
+          setTimeout(done, timeoutMs)
+        })
+    )
+  )
+}
+
+function triggerPdfDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.rel = 'noopener'
+  link.style.display = 'none'
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1500)
+}
+
+/**
+ * Zimmet listesini tarayıcı yazdır diyaloğu açmadan doğrudan PDF olarak indirir.
+ */
 export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentListPdfPayload): Promise<void> {
-  const htmlContent = buildHtml(payload)
+  const logoSrc =
+    (await loadLocalAssetAsDataUrl(LOGO_PATH)) || `${window.location.origin}${LOGO_PATH}`
+  const htmlContent = buildHtml(payload, logoSrc)
+  const filename = sanitizePdfFilename(payload.docTitleSuffix)
+
   const iframe = document.createElement('iframe')
-  iframe.style.position = 'fixed'
-  iframe.style.top = '-99999px'
-  iframe.style.left = '-99999px'
-  iframe.style.width = '210mm'
-  iframe.style.height = '297mm'
-  iframe.style.border = 'none'
+  iframe.setAttribute('aria-hidden', 'true')
+  Object.assign(iframe.style, {
+    position: 'fixed',
+    left: '-12000px',
+    top: '0',
+    width: '794px',
+    height: '1123px',
+    border: '0',
+    pointerEvents: 'none',
+  })
   document.body.appendChild(iframe)
+
   const doc = iframe.contentDocument || iframe.contentWindow?.document
   if (!doc) {
-    document.body.removeChild(iframe)
-    throw new Error('Iframe document erişilemedi')
+    iframe.remove()
+    throw new Error('PDF belgesi oluşturulamadı')
   }
+
   doc.open()
   doc.write(htmlContent)
   doc.close()
 
-  await Promise.race([
-    new Promise<void>((resolve) => {
-      if (iframe.contentWindow) iframe.contentWindow.onload = () => resolve()
-    }),
-    new Promise<void>((resolve) => setTimeout(resolve, 350)),
-  ])
+  try {
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        iframe.onload = () => resolve()
+      }),
+      new Promise<void>((resolve) => setTimeout(resolve, 400)),
+    ])
 
-  const imgs = iframe.contentDocument?.querySelectorAll('img') ?? []
-  await Promise.all(
-    [...imgs].map(
-      (img) =>
-        new Promise<void>((res) => {
-          if (img.complete && img.naturalWidth > 0) res()
-          else {
-            img.onload = () => res()
-            img.onerror = () => res()
-            // Uzak depolama görselleri için ek süre
-            setTimeout(() => res(), 4000)
-          }
-        })
-    )
-  )
-  await new Promise((r) => setTimeout(r, 120))
+    const root = doc.body
+    await inlineImages(root)
+    await waitForImages(root)
+    await new Promise((r) => setTimeout(r, 80))
 
-  iframe.contentWindow?.focus()
-  iframe.contentWindow?.print()
-  setTimeout(() => document.body.removeChild(iframe), 1000)
+    const contentHeight = Math.max(root.scrollHeight, root.offsetHeight, 1123)
+    iframe.style.height = `${contentHeight}px`
+
+    const { jsPDF } = await import('jspdf')
+    const html2canvas = (await import('html2canvas')).default
+
+    const scale = contentHeight > 9000 ? 1 : 2
+    const canvas = await html2canvas(root, {
+      scale,
+      useCORS: true,
+      backgroundColor: '#ffffff',
+      logging: false,
+      imageTimeout: 8000,
+      windowWidth: 794,
+      width: 794,
+      height: contentHeight,
+      scrollX: 0,
+      scrollY: 0,
+    })
+
+    const imgData = canvas.toDataURL('image/jpeg', 0.92)
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
+    const pageWidth = pdf.internal.pageSize.getWidth()
+    const pageHeight = pdf.internal.pageSize.getHeight()
+    const imgWidth = pageWidth
+    const imgHeight = (canvas.height * imgWidth) / canvas.width
+
+    let heightLeft = imgHeight
+    let position = 0
+    pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
+    heightLeft -= pageHeight
+
+    while (heightLeft > 0.5) {
+      position = heightLeft - imgHeight
+      pdf.addPage()
+      pdf.addImage(imgData, 'JPEG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+    }
+
+    triggerPdfDownload(pdf.output('blob'), filename)
+  } finally {
+    iframe.remove()
+  }
 }
+
+export const downloadZimmetAssignmentListPdf = printZimmetAssignmentListPdf

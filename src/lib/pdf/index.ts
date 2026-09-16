@@ -12,7 +12,7 @@ export type { RequestSubmittedPDFData, RequestMaterialItem } from './requestPdfC
 // Zimmet PDF
 export { generateTeslimPDF, generateSayimPDF } from './zimmetPdfGenerator'
 export type { ZimmetItemData } from './zimmetPdfGenerator'
-export { printZimmetAssignmentListPdf } from './zimmetAssignmentListPdf'
+export { printZimmetAssignmentListPdf, downloadZimmetAssignmentListPdf } from './zimmetAssignmentListPdf'
 export type { ZimmetAssignmentListPdfPayload, ZimmetAssignmentListRow } from './zimmetAssignmentListPdf'
 export { printDepartmentSpendingPdf } from './departmentSpendingPdf'
 export type { DepartmentSpendingPdfPayload } from './departmentSpendingPdf'

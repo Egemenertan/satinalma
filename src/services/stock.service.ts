@@ -228,13 +228,20 @@ export async function updateStockWithMovement(
   const supabase = createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  // Mevcut stok bilgisini al
-  const { data: currentStock } = await supabase
+  // Aynı ürün + aynı depo satırını bul; yoksa yeni satır açılır.
+  // user_id null = depo stoğu (zimmet satırlarıyla karışmasın)
+  const { data: currentStock, error: currentStockError } = await supabase
     .from('warehouse_stock')
-    .select('quantity, condition_breakdown, assigned_breakdown')
+    .select('id, quantity, condition_breakdown, assigned_breakdown')
     .eq('product_id', productId)
     .eq('warehouse_id', warehouseId)
-    .single()
+    .is('user_id', null)
+    .maybeSingle()
+
+  if (currentStockError) {
+    console.error('Stock lookup error:', currentStockError)
+    throw currentStockError
+  }
 
   const previousQuantity = currentStock ? parseFloat(currentStock.quantity.toString()) : 0
   const newQuantity = previousQuantity + quantityChange
@@ -282,21 +289,71 @@ export async function updateStockWithMovement(
     assigned_breakdown: newAssignedBreakdown as any,
   }
 
-  const { data: updatedStock, error: stockError } = await supabase
-    .from('warehouse_stock')
-    .upsert({
-      product_id: productId,
-      warehouse_id: warehouseId,
-      ...stockData,
-    }, {
-      onConflict: 'product_id,warehouse_id',
-    })
-    .select()
-    .single()
+  let updatedStock: WarehouseStock | null = null
 
-  if (stockError) {
-    console.error('Stock update error:', stockError)
-    throw stockError
+  if (currentStock?.id) {
+    const { data, error: stockError } = await supabase
+      .from('warehouse_stock')
+      .update(stockData)
+      .eq('id', currentStock.id)
+      .select()
+      .single()
+
+    if (stockError) {
+      console.error('Stock update error:', stockError)
+      throw stockError
+    }
+    updatedStock = data as WarehouseStock
+  } else {
+    const { data, error: stockError } = await supabase
+      .from('warehouse_stock')
+      .insert({
+        product_id: productId,
+        warehouse_id: warehouseId,
+        user_id: null,
+        ...stockData,
+      })
+      .select()
+      .single()
+
+    if (stockError) {
+      // Benzersiz kısıt (aynı ürün+depo) varsa mevcut satırı güncelle
+      if (stockError.code === '23505') {
+        const { data: existing } = await supabase
+          .from('warehouse_stock')
+          .select('id')
+          .eq('product_id', productId)
+          .eq('warehouse_id', warehouseId)
+          .maybeSingle()
+
+        if (existing?.id) {
+          const { data: recovered, error: recoverError } = await supabase
+            .from('warehouse_stock')
+            .update(stockData)
+            .eq('id', existing.id)
+            .select()
+            .single()
+
+          if (recoverError) {
+            console.error('Stock update error:', recoverError)
+            throw recoverError
+          }
+          updatedStock = recovered as WarehouseStock
+        } else {
+          console.error('Stock insert error:', stockError)
+          throw stockError
+        }
+      } else {
+        console.error('Stock insert error:', stockError)
+        throw stockError
+      }
+    } else {
+      updatedStock = data as WarehouseStock
+    }
+  }
+
+  if (!updatedStock) {
+    throw new Error('Stok kaydı güncellenemedi')
   }
 
   // Hareket kaydı oluştur
@@ -465,7 +522,8 @@ export async function adjustStock(
     .select('quantity')
     .eq('product_id', productId)
     .eq('warehouse_id', warehouseId)
-    .single()
+    .is('user_id', null)
+    .maybeSingle()
 
   const previousQuantity = currentStock ? parseFloat(currentStock.quantity.toString()) : 0
   const difference = newQuantity - previousQuantity

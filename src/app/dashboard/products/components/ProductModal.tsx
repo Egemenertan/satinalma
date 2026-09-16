@@ -39,6 +39,7 @@ interface ProductModalProps {
   onSave?: (data: any) => void
   isSaving?: boolean
   selectedProductIds?: string[]
+  defaultWarehouseId?: string
 }
 
 export function ProductModal({
@@ -51,6 +52,7 @@ export function ProductModal({
   onSave,
   isSaving = false,
   selectedProductIds = [],
+  defaultWarehouseId,
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
   const isBulkOperation = selectedProductIds.length > 1
@@ -315,6 +317,7 @@ export function ProductModal({
                       productId={product.id}
                       productName={product.name}
                       productUnit={product.unit}
+                      defaultWarehouseId={defaultWarehouseId}
                       onSuccess={() => {
                         // Stok güncellendiğinde diğer tabları da yenile
                         onTabChange('stock')

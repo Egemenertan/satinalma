@@ -1,5 +1,5 @@
 /**
- * Depo çıkışlı (source_warehouse_id dolu) zimmet kayıtlarını çalışana göre PDF (yazdır) olarak çıkarır.
+ * Depo çıkışlı (source_warehouse_id dolu) zimmet kayıtlarını çalışana göre PDF olarak indirir.
  */
 
 'use client'
@@ -139,6 +139,42 @@ const PRODUCT_TYPE_TR: Record<string, string> = {
   demirbas: 'Demirbaş',
   sarf_malzeme: 'Sarf Malzeme',
   kontrol_sarf: 'Kontrol Sarf',
+}
+
+function reportSerialKey(raw: string | null | undefined) {
+  return String(raw || '')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b, 'tr'))
+    .join(',')
+    .toLocaleLowerCase('tr')
+}
+
+/** Aynı ürün + aynı depo + aynı seri grubu tek satır, miktarlar toplanır */
+function aggregateInventoryForReport(rows: any[]): any[] {
+  const map = new Map<string, any>()
+  for (const row of rows) {
+    const productKey = row.product_id || String(row.products?.name || row.item_name || '').trim().toLocaleLowerCase('tr')
+    const warehouseKey = row.source_warehouse_id || ''
+    const serialKey = reportSerialKey(row.serial_number)
+    const key = `${productKey}|${warehouseKey}|${serialKey}`
+    const qty = Number(row.quantity ?? 0) || 0
+    const existing = map.get(key)
+    if (!existing) {
+      map.set(key, { ...row, quantity: qty })
+      continue
+    }
+    existing.quantity = Number(existing.quantity) + qty
+    if (!existing.serial_number && row.serial_number) {
+      existing.serial_number = row.serial_number
+    }
+  }
+  return [...map.values()].sort((a, b) => {
+    const an = a.products?.name || a.item_name || ''
+    const bn = b.products?.name || b.item_name || ''
+    return String(an).localeCompare(String(bn), 'tr')
+  })
 }
 
 export function ZimmetReportModal({
@@ -284,7 +320,8 @@ export function ZimmetReportModal({
           `E-posta adayları (owner): ${emailCandidates.join('; ') || '—'}`,
         ].join(' · ')
 
-      const tableRows = matched.map((r: any) => {
+      const aggregated = aggregateInventoryForReport(matched)
+      const tableRows = aggregated.map((r: any) => {
         const p = r.products
         const brandName = Array.isArray(p?.brand) ? p.brand[0]?.name : p?.brand?.name
         const wh = r.warehouse
@@ -314,9 +351,9 @@ export function ZimmetReportModal({
         : ''
       const docTitle = `Zimmet raporu — ${safeName}${whPart}`
 
-      const { printZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
+      const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
 
-      await printZimmetAssignmentListPdf({
+      await downloadZimmetAssignmentListPdf({
         docTitleSuffix: docTitle,
         titleMain: 'ZİMMET ENVANTER RAPORU',
         titleSub:
@@ -330,12 +367,12 @@ export function ZimmetReportModal({
         warehouseScopeLine: warehouseLabel
           ? `Kaynak depo / site filtresi: ${warehouseLabel}`
           : 'Tüm kaynak depolar dahil',
-        rowCountNote: `${matched.length} zimmet kalemi listelenmiştir`,
+        rowCountNote: `${tableRows.length} ürün satırı listelenmiştir (aynı ürün birleştirildi)`,
         filterNoteTechnical: filterNote.slice(0, 4000),
         rows: tableRows,
       })
 
-      showToast(`PDF yazdırıldı (${matched.length} satır). Kaydet seçeneğiyle PDF alabilirsiniz.`, 'success')
+      showToast(`PDF indirildi (${tableRows.length} ürün).`, 'success')
       onOpenChange(false)
     } catch (e) {
       console.error(e)
@@ -463,7 +500,7 @@ export function ZimmetReportModal({
             ) : (
               <>
                 <FileText className="w-4 h-4 mr-2" />
-                PDF al
+                PDF indir
               </>
             )}
           </Button>

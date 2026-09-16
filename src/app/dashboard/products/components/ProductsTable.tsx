@@ -270,6 +270,9 @@ export function ProductsTable({
         const totalStock = getDisplayStock(product)
         const primaryImage = product.images?.[0]
         const isSelected = selectedProducts.includes(product.id)
+        const visibleWarehouseStocks = (product.warehouse_stocks || []).filter(
+          (stock: any) => Number(stock.quantity) > 0
+        )
 
         return (
           <div
@@ -400,19 +403,19 @@ export function ProductsTable({
               {/* Depolar — sadece tüm envanter görünümünde */}
               {!isWarehouseScoped && (
                 <div>
-                  {product.warehouse_stocks && product.warehouse_stocks.length > 0 ? (
+                  {visibleWarehouseStocks.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
-                      {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
-                        <div key={stock.warehouse_id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
+                      {visibleWarehouseStocks.slice(0, 3).map((stock: any) => (
+                        <div key={stock.warehouse_id || stock.id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
                           <span className="text-xs font-medium text-primary-700">{stock.quantity}</span>
                           <span className="text-[10px] text-primary-500 ml-1">
                             {getWarehouseName(stock).slice(0, 8) || 'Depo'}
                           </span>
                         </div>
                       ))}
-                      {product.warehouse_stocks.length > 3 && (
+                      {visibleWarehouseStocks.length > 3 && (
                         <div className="bg-gray-100 rounded-lg px-2 py-1">
-                          <span className="text-xs text-gray-500">+{product.warehouse_stocks.length - 3}</span>
+                          <span className="text-xs text-gray-500">+{visibleWarehouseStocks.length - 3}</span>
                         </div>
                       )}
                     </div>
@@ -525,19 +528,19 @@ export function ProductsTable({
               </div>
 
               {/* Depolar — sadece tüm envanter görünümünde */}
-              {!isWarehouseScoped && product.warehouse_stocks && product.warehouse_stocks.length > 0 && (
+              {!isWarehouseScoped && visibleWarehouseStocks.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
-                  {product.warehouse_stocks.slice(0, 3).map((stock: any) => (
-                    <div key={stock.warehouse_id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
+                  {visibleWarehouseStocks.slice(0, 3).map((stock: any) => (
+                    <div key={stock.warehouse_id || stock.id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">
                       <span className="text-xs font-medium text-primary-700">{stock.quantity}</span>
                       <span className="text-[10px] text-primary-500 ml-1">
                         {getWarehouseName(stock).slice(0, 10) || 'Depo'}
                       </span>
                     </div>
                   ))}
-                  {product.warehouse_stocks.length > 3 && (
+                  {visibleWarehouseStocks.length > 3 && (
                     <div className="bg-gray-100 rounded-lg px-2 py-1">
-                      <span className="text-xs text-gray-500">+{product.warehouse_stocks.length - 3}</span>
+                      <span className="text-xs text-gray-500">+{visibleWarehouseStocks.length - 3}</span>
                     </div>
                   )}
                 </div>

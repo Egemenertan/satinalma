@@ -10,28 +10,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Package, ChevronDown, User, Users, Hash, Building2, ArrowRightLeft, Undo2, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { Button } from '@/components/ui/button'
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog'
-import { Label } from '@/components/ui/label'
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select'
-import {
-  changeZimmetAssignment,
-  fetchEmployeesForZimmet,
-  removeZimmetAssignment,
-  type EmployeeOption,
-} from '@/services/zimmet.service'
+import { groupZimmetsByOwner } from '@/services/zimmet.service'
+import { ZimmetActionDialogs, type ZimmetActionTarget } from '../ZimmetActionDialogs'
 
 interface ProductStockTabProps {
   product: any
@@ -66,6 +46,55 @@ function parseSerialTokens(raw: string | null | undefined): string[] {
     .filter(Boolean)
 }
 
+const ANA_DEPO_NAMES = ['ana depo', 'sanayi depo']
+
+function normalizeWarehouseName(name: string | null | undefined) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function getStockWarehouseName(stock: any): string {
+  const wh = Array.isArray(stock?.warehouse) ? stock.warehouse[0] : stock?.warehouse
+  return wh?.name || ''
+}
+
+function isAnaDepoStock(stock: any) {
+  return ANA_DEPO_NAMES.includes(normalizeWarehouseName(getStockWarehouseName(stock)))
+}
+
+function mergeConditionBreakdown(a: any, b: any) {
+  const merged: Record<string, number> = { ...(a || {}) }
+  for (const [key, value] of Object.entries(b || {})) {
+    merged[key] = (Number(merged[key]) || 0) + (Number(value) || 0)
+  }
+  return merged
+}
+
+/** Aynı depodaki satırları tek karta indir; 0 stoklu boş kartları gösterme */
+function groupWarehouseStocks(stockData: any[] | undefined) {
+  const map = new Map<string, any>()
+  for (const stock of stockData || []) {
+    if (stock?.user_id != null && stock.user_id !== undefined) continue
+    const warehouseId = stock.warehouse_id || stock.id
+    if (!warehouseId) continue
+    const qty = parseFloat(stock.quantity?.toString() || '0') || 0
+    const existing = map.get(warehouseId)
+    if (!existing) {
+      map.set(warehouseId, {
+        ...stock,
+        quantity: qty,
+        condition_breakdown: { ...(stock.condition_breakdown || {}) },
+      })
+    } else {
+      existing.quantity += qty
+      existing.condition_breakdown = mergeConditionBreakdown(
+        existing.condition_breakdown,
+        stock.condition_breakdown
+      )
+    }
+  }
+  return [...map.values()].filter((s) => Number(s.quantity) > 0)
+}
+
 export function ProductStockTab({ product, stockData, totalStock }: ProductStockTabProps) {
   const queryClient = useQueryClient()
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
@@ -73,13 +102,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
   const [loadingInventories, setLoadingInventories] = useState(false)
   const [showUserInventories, setShowUserInventories] = useState(true)
   const [serialsByWarehouseId, setSerialsByWarehouseId] = useState<Record<string, string[]>>({})
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null)
-  const [changeTarget, setChangeTarget] = useState<UserInventory | null>(null)
-  const [removeTarget, setRemoveTarget] = useState<UserInventory | null>(null)
-  const [employees, setEmployees] = useState<EmployeeOption[]>([])
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
-  const [loadingEmployees, setLoadingEmployees] = useState(false)
-  const [actionError, setActionError] = useState<string | null>(null)
+  const [changeTarget, setChangeTarget] = useState<ZimmetActionTarget | null>(null)
+  const [removeTarget, setRemoveTarget] = useState<ZimmetActionTarget | null>(null)
   const supabase = createClient()
 
   useEffect(() => {
@@ -95,6 +119,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
       queryClient.invalidateQueries({ queryKey: ['product-stock', product.id] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements', product.id] })
       queryClient.invalidateQueries({ queryKey: ['product-inventory', product.id] })
+      queryClient.invalidateQueries({ queryKey: ['product-active-zimmets', product.id] })
+      queryClient.invalidateQueries({ queryKey: ['product-zimmet-availability', product.id] })
       queryClient.invalidateQueries({ queryKey: ['products'] })
       queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
     }
@@ -170,67 +196,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
     }
   }
 
-  const handleRemoveZimmet = async () => {
-    if (!product?.id || !removeTarget) return
-
-    try {
-      setActionLoadingId(removeTarget.id)
-      setActionError(null)
-      await removeZimmetAssignment({
-        inventoryId: removeTarget.id,
-        productId: product.id,
-        productName: product.name,
-      })
-      setRemoveTarget(null)
-      await refreshAfterZimmetChange()
-    } catch (e: any) {
-      setActionError(e?.message || 'Zimmet kaldırılamadı')
-    } finally {
-      setActionLoadingId(null)
-    }
-  }
-
-  const openChangeDialog = async (inventory: UserInventory) => {
-    setChangeTarget(inventory)
-    setSelectedEmployeeId('')
-    setActionError(null)
-    setLoadingEmployees(true)
-    try {
-      const list = await fetchEmployeesForZimmet()
-      setEmployees(list)
-    } catch (e: any) {
-      setActionError(e?.message || 'Çalışan listesi yüklenemedi')
-    } finally {
-      setLoadingEmployees(false)
-    }
-  }
-
-  const handleConfirmChange = async () => {
-    if (!changeTarget || !selectedEmployeeId) return
-    const emp = employees.find((e) => e.id === selectedEmployeeId)
-    if (!emp) return
-
-    try {
-      setActionLoadingId(changeTarget.id)
-      setActionError(null)
-      await changeZimmetAssignment({
-        inventoryId: changeTarget.id,
-        newEmployee: emp,
-      })
-      setChangeTarget(null)
-      await refreshAfterZimmetChange()
-    } catch (e: any) {
-      setActionError(e?.message || 'Zimmet değiştirilemedi')
-    } finally {
-      setActionLoadingId(null)
-    }
-  }
-
-  const displayInventoryName = (inventory: UserInventory) =>
-    inventory.owner_name || inventory.user?.full_name || 'İsimsiz'
-  const displayInventoryEmail = (inventory: UserInventory) =>
-    inventory.owner_email || inventory.user?.email || ''
-
   const toggleStockExpand = (stockId: string) => {
     setExpandedStockIds((prev) => {
       const newSet = new Set(prev)
@@ -243,12 +208,14 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
     })
   }
 
-  const totalUserInventory = userInventories.reduce((sum, inv) => sum + parseFloat(inv.quantity.toString()), 0)
-
-  // Sadece ana depo stoklarını göster (user_id: null olanlar)
-  const warehouseStocks = (stockData || []).filter((s: any) => 
-    s.user_id === null || s.user_id === undefined
+  const groupedUserInventories = groupZimmetsByOwner(userInventories)
+  const totalUserInventory = groupedUserInventories.reduce(
+    (sum, inv) => sum + parseFloat(inv.quantity.toString()),
+    0
   )
+
+  // Sadece ana depo stoklarını göster (user_id: null olanlar) — aynı depo tek kart
+  const warehouseStocks = groupWarehouseStocks(stockData)
 
   if ((!warehouseStocks || warehouseStocks.length === 0) && userInventories.length === 0 && !loadingInventories) {
     return (
@@ -261,8 +228,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
     )
   }
 
-  const anaDepo = warehouseStocks.find(s => s.warehouse?.name === 'Ana Depo')
-  const muvakkatDepolar = warehouseStocks.filter(s => s.warehouse?.name !== 'Ana Depo')
+  const anaDepo = warehouseStocks.find((s) => isAnaDepoStock(s))
+  const muvakkatDepolar = warehouseStocks.filter((s) => !isAnaDepoStock(s))
   
   // Ana depo toplam stoku (sadece user_id: null olanlar)
   const totalWarehouseStock = warehouseStocks.reduce(
@@ -276,7 +243,9 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
 
   const zimmetsForWarehouse = (warehouseId: string | null | undefined) => {
     if (!warehouseId) return []
-    return userInventories.filter((inv) => inv.source_warehouse_id === warehouseId)
+    return groupZimmetsByOwner(
+      userInventories.filter((inv) => inv.source_warehouse_id === warehouseId)
+    )
   }
 
   const serialsForWarehouse = (warehouseId: string | null | undefined) => {
@@ -319,7 +288,9 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           <div className="p-6 border-b border-gray-200">
             <div className="flex items-center justify-between">
               <div>
-                <h3 className="text-base font-semibold text-gray-900">Ana Depo</h3>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {getStockWarehouseName(anaDepo) || 'Ana Depo'}
+                </h3>
                 <p className="text-gray-500 text-xs mt-1">Merkez Deposu</p>
               </div>
               <div className="text-right">
@@ -342,6 +313,24 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                     </span>
                   ))}
                 </div>
+              </div>
+            )}
+            {zimmetsForWarehouse(anaDepo.warehouse_id).length > 0 && (
+              <div className="mt-4 flex flex-wrap gap-1.5">
+                {zimmetsForWarehouse(anaDepo.warehouse_id).map((inv) => (
+                  <span
+                    key={inv.id}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-xs text-emerald-900"
+                  >
+                    <User className="h-3 w-3 shrink-0" />
+                    <span className="font-medium truncate max-w-[10rem]">
+                      {inv.owner_name || inv.user?.full_name || 'Zimmetli'}
+                    </span>
+                    <span className="text-emerald-700/80">
+                      · {parseFloat(inv.quantity.toString()).toLocaleString('tr-TR')}
+                    </span>
+                  </span>
+                ))}
               </div>
             )}
           </div>
@@ -512,7 +501,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                           const displayName =
                             inv.owner_name || inv.user?.full_name || 'İsimsiz'
                           const displayEmail = inv.owner_email || inv.user?.email || ''
-                          const busy = actionLoadingId === inv.id
+                          const busy = changeTarget?.id === inv.id || removeTarget?.id === inv.id
 
                           return (
                             <div
@@ -550,7 +539,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   disabled={busy}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    openChangeDialog(inv)
+                                    setChangeTarget(inv)
                                   }}
                                 >
                                   {busy ? (
@@ -568,7 +557,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   disabled={busy}
                                   onClick={(e) => {
                                     e.stopPropagation()
-                                    setActionError(null)
                                     setRemoveTarget(inv)
                                   }}
                                 >
@@ -601,12 +589,6 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
           <div className="h-px flex-1 bg-gray-200" />
         </div>
 
-        {actionError && (
-          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-            {actionError}
-          </div>
-        )}
-
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
           <button
             type="button"
@@ -622,9 +604,9 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                 <p className="text-xs text-gray-500 mt-1">
                   {loadingInventories
                     ? 'Yükleniyor…'
-                    : userInventories.length === 0
+                    : groupedUserInventories.length === 0
                       ? 'Aktif zimmet yok'
-                      : `${userInventories.length} aktif zimmet kaydı`}
+                      : `${groupedUserInventories.length} zimmetli kişi`}
                 </p>
               </div>
             </div>
@@ -643,7 +625,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
 
           {showUserInventories && (
             <div className="border-t border-gray-100">
-              {userInventories.length === 0 ? (
+              {groupedUserInventories.length === 0 ? (
                 <p className="px-5 py-8 text-center text-sm text-gray-500">
                   Bu ürün için aktif zimmet kaydı yok.
                 </p>
@@ -660,7 +642,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {userInventories.map((inventory) => {
+                      {groupedUserInventories.map((inventory) => {
                         const displayName =
                           inventory.owner_name || inventory.user?.full_name || 'İsimsiz'
                         const displayEmail =
@@ -668,7 +650,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                         const warehouseName =
                           inventory.source_warehouse?.name ||
                           (inventory.source_warehouse_id ? 'Depo' : 'Kaynak yok')
-                        const busy = actionLoadingId === inventory.id
+                        const busy = changeTarget?.id === inventory.id || removeTarget?.id === inventory.id
 
                         return (
                           <tr key={inventory.id} className="hover:bg-gray-50/80 transition-colors">
@@ -725,7 +707,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   size="sm"
                                   className="h-8 rounded-xl text-xs border-gray-200 bg-white text-gray-800 hover:bg-gray-50"
                                   disabled={busy}
-                                  onClick={() => openChangeDialog(inventory)}
+                                  onClick={() => setChangeTarget(inventory)}
                                 >
                                   {busy ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -740,10 +722,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   size="sm"
                                   className="h-8 rounded-xl text-xs border-red-200 bg-white text-red-700 hover:bg-red-50"
                                   disabled={busy}
-                                  onClick={() => {
-                                    setActionError(null)
-                                    setRemoveTarget(inventory)
-                                  }}
+                                  onClick={() => setRemoveTarget(inventory)}
                                 >
                                   {busy ? (
                                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -766,186 +745,15 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
         </div>
       </div>
 
-      <Dialog
-        open={!!changeTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setChangeTarget(null)
-            setActionError(null)
-          }
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          overlayClassName="z-[200] bg-black/60"
-          className="sm:max-w-md !bg-white !rounded-3xl border border-gray-200 shadow-2xl p-0 gap-0 overflow-hidden z-[210]"
-        >
-          <div className="bg-white">
-            <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100 text-left">
-              <DialogTitle className="text-xl font-semibold text-gray-900 tracking-tight">
-                Zimmeti değiştir
-              </DialogTitle>
-              <DialogDescription className="text-sm text-gray-500 mt-1.5">
-                {changeTarget
-                  ? `${displayInventoryName(changeTarget)} yerine yeni çalışan seçin. Depo stoğu aynı kalır.`
-                  : ''}
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="px-6 py-5 space-y-4 bg-white">
-              {changeTarget && (
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
-                    Mevcut zimmetli
-                  </p>
-                  <p className="text-sm font-semibold text-gray-900 mt-1">
-                    {displayInventoryName(changeTarget)}
-                  </p>
-                  {displayInventoryEmail(changeTarget) && (
-                    <p className="text-xs text-gray-500">{displayInventoryEmail(changeTarget)}</p>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Yeni zimmetli
-                </Label>
-                {loadingEmployees ? (
-                  <div className="flex items-center gap-2 text-sm text-gray-500 py-3">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    Çalışanlar yükleniyor…
-                  </div>
-                ) : (
-                  <Select value={selectedEmployeeId} onValueChange={setSelectedEmployeeId}>
-                    <SelectTrigger className="w-full h-11 rounded-xl border-gray-200 bg-white">
-                      <SelectValue placeholder="Çalışan seçin" />
-                    </SelectTrigger>
-                    <SelectContent className="max-h-64 !bg-white border border-gray-200 rounded-2xl shadow-xl z-[220]">
-                      {employees.map((emp) => (
-                        <SelectItem key={emp.id} value={emp.id} className="rounded-xl">
-                          {(emp.first_name || 'İsimsiz') +
-                            (emp.work_email ? ` · ${emp.work_email}` : '')}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                )}
-              </div>
-
-              {actionError && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {actionError}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className="px-6 py-4 border-t border-gray-100 bg-gray-50/90 sm:justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setChangeTarget(null)}
-                className="rounded-full px-5 border-gray-200 bg-white"
-              >
-                İptal
-              </Button>
-              <Button
-                type="button"
-                disabled={!selectedEmployeeId || !!actionLoadingId}
-                onClick={handleConfirmChange}
-                className="rounded-full px-6 bg-gray-900 text-white hover:bg-gray-800"
-              >
-                {actionLoadingId ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Kaydediliyor
-                  </>
-                ) : (
-                  'Zimmeti aktar'
-                )}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={!!removeTarget}
-        onOpenChange={(open) => {
-          if (!open) {
-            setRemoveTarget(null)
-            setActionError(null)
-          }
-        }}
-      >
-        <DialogContent
-          showCloseButton={false}
-          overlayClassName="z-[200] bg-black/60"
-          className="sm:max-w-md !bg-white !rounded-3xl border border-gray-200 shadow-2xl p-0 gap-0 overflow-hidden z-[210]"
-        >
-          <div className="bg-white">
-            <DialogHeader className="px-6 pt-6 pb-4 border-b border-gray-100 text-left">
-              <DialogTitle className="text-xl font-semibold text-gray-900 tracking-tight">
-                Zimmeti kaldır
-              </DialogTitle>
-              <DialogDescription className="text-sm text-gray-500 mt-1.5">
-                Sorumluluk kaydı kapanır. Ürün depoda kalmaya devam eder.
-              </DialogDescription>
-            </DialogHeader>
-
-            <div className="px-6 py-5 space-y-4 bg-white">
-              {removeTarget && (
-                <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-sm font-semibold text-gray-900">
-                    {displayInventoryName(removeTarget)}
-                  </p>
-                  {displayInventoryEmail(removeTarget) && (
-                    <p className="text-xs text-gray-500">{displayInventoryEmail(removeTarget)}</p>
-                  )}
-                  <p className="text-xs text-gray-600 mt-2">
-                    {removeTarget.source_warehouse?.name || 'Depo'} ·{' '}
-                    {parseFloat(removeTarget.quantity.toString()).toLocaleString('tr-TR')}{' '}
-                    {product?.unit || 'adet'}
-                  </p>
-                </div>
-              )}
-
-              {actionError && (
-                <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  {actionError}
-                </div>
-              )}
-            </div>
-
-            <DialogFooter className="px-6 py-4 border-t border-gray-100 bg-gray-50/90 sm:justify-end gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setRemoveTarget(null)}
-                className="rounded-full px-5 border-gray-200 bg-white"
-              >
-                Vazgeç
-              </Button>
-              <Button
-                type="button"
-                disabled={!!actionLoadingId}
-                onClick={handleRemoveZimmet}
-                className="rounded-full px-6 bg-red-600 text-white hover:bg-red-700"
-              >
-                {actionLoadingId ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                    Kaldırılıyor
-                  </>
-                ) : (
-                  'Zimmeti kaldır'
-                )}
-              </Button>
-            </DialogFooter>
-          </div>
-        </DialogContent>
-      </Dialog>
-
+      <ZimmetActionDialogs
+        productId={product.id}
+        productUnit={product?.unit || 'adet'}
+        changeTarget={changeTarget}
+        removeTarget={removeTarget}
+        onCloseChange={() => setChangeTarget(null)}
+        onCloseRemove={() => setRemoveTarget(null)}
+        onSuccess={refreshAfterZimmetChange}
+      />
 
       {/* Stok Dağılımı Özeti */}
       <div className="bg-gray-50 rounded-2xl p-5 border border-gray-200">

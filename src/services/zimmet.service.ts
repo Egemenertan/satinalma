@@ -22,6 +22,68 @@ export type ActiveZimmetRow = {
   source_warehouse?: { id: string; name: string } | null
 }
 
+export type GroupedZimmetRow<T extends { id: string; quantity: number }> = T & {
+  ids: string[]
+}
+
+function zimmetOwnerKey(row: {
+  owner_email?: string | null
+  owner_name?: string | null
+  user?: { email?: string | null; full_name?: string | null } | null
+  source_warehouse_id?: string | null
+}) {
+  const email = (row.owner_email || row.user?.email || '').trim().toLowerCase()
+  const name = (row.owner_name || row.user?.full_name || '').trim().toLowerCase()
+  return `${email || name || 'unknown'}|${row.source_warehouse_id || ''}`
+}
+
+function mergeSerials(...raw: Array<string | null | undefined>) {
+  const set = new Set<string>()
+  for (const value of raw) {
+    for (const token of String(value || '').split(',')) {
+      const t = token.trim()
+      if (t) set.add(t)
+    }
+  }
+  return [...set].sort((a, b) => a.localeCompare(b, 'tr')).join(', ') || null
+}
+
+/** Aynı kişi + aynı depo zimmetlerini tek satırda topla */
+export function groupZimmetsByOwner<
+  T extends {
+    id: string
+    quantity: number
+    serial_number?: string | null
+    assigned_date?: string
+    owner_email?: string | null
+    owner_name?: string | null
+    user?: { email?: string | null; full_name?: string | null } | null
+    source_warehouse_id?: string | null
+  },
+>(rows: T[]): GroupedZimmetRow<T>[] {
+  const map = new Map<string, GroupedZimmetRow<T>>()
+  for (const row of rows) {
+    const key = zimmetOwnerKey(row)
+    const existing = map.get(key)
+    const qty = Number(row.quantity) || 0
+    if (!existing) {
+      map.set(key, { ...row, quantity: qty, ids: [row.id] })
+      continue
+    }
+    existing.quantity = Number(existing.quantity) + qty
+    if (!existing.ids.includes(row.id)) existing.ids.push(row.id)
+    existing.serial_number = mergeSerials(existing.serial_number, row.serial_number)
+    if (row.assigned_date && (!existing.assigned_date || row.assigned_date > existing.assigned_date)) {
+      existing.assigned_date = row.assigned_date
+    }
+  }
+  return [...map.values()]
+}
+
+function uniqueInventoryIds(inventoryId: string, extra?: string[]) {
+  return [...new Set([inventoryId, ...(extra || [])].filter(Boolean))]
+}
+
 async function getActorId() {
   const supabase = createClient()
   const {
@@ -30,128 +92,248 @@ async function getActorId() {
   return user?.id ?? null
 }
 
-/** Zimmeti kaldır: sadece sorumluluk kaydını kapatır (depo stoğu aynı kalır) */
-export async function removeZimmetAssignment(params: {
-  inventoryId: string
-  productId: string
-  productName?: string
+const QTY_EPS = 1e-9
+
+function resolveActionQuantity(requested: number | undefined, currentQty: number) {
+  const current = Number(currentQty) || 0
+  if (!(current > 0)) throw new Error('Bu zimmette işlem yapılacak adet yok')
+
+  const actionQty = requested == null ? current : Number(requested)
+  if (!Number.isFinite(actionQty) || actionQty <= 0) {
+    throw new Error('Geçerli bir adet girin')
+  }
+  if (actionQty > current + QTY_EPS) {
+    throw new Error(`En fazla ${current} adet işlem yapılabilir`)
+  }
+
+  const isFull = actionQty >= current - QTY_EPS
+  return {
+    actionQty: isFull ? current : actionQty,
+    remaining: isFull ? 0 : current - actionQty,
+    isFull,
+  }
+}
+
+function formatQty(qty: number) {
+  return Number(qty).toLocaleString('tr-TR')
+}
+
+async function closeOrReduceInventoryRow(params: {
+  inv: {
+    id: string
+    product_id: string | null
+    quantity: number
+    notes: string | null
+    owner_name: string | null
+    owner_email: string | null
+    source_warehouse_id: string | null
+    serial_number: string | null
+  }
+  actionQty: number
+  actorId: string | null
+  noteFull: string
+  notePartial: string
+  movementFull: string
+  movementPartial: string
 }) {
   const supabase = createClient()
-  const actorId = await getActorId()
+  const current = Number(params.inv.quantity) || 0
+  const { actionQty, remaining, isFull } = resolveActionQuantity(params.actionQty, current)
+  const now = new Date().toISOString()
 
-  const { data: inv, error: invErr } = await supabase
-    .from('user_inventory')
-    .select(
-      'id, product_id, quantity, status, owner_name, owner_email, source_warehouse_id, serial_number, notes'
-    )
-    .eq('id', params.inventoryId)
-    .single()
+  if (isFull) {
+    const { error: updErr } = await supabase
+      .from('user_inventory')
+      .update({
+        status: 'returned',
+        return_date: now,
+        returned_quantity: actionQty,
+        notes: [params.inv.notes, params.noteFull].filter(Boolean).join(' | '),
+        updated_at: now,
+      })
+      .eq('id', params.inv.id)
 
-  if (invErr || !inv) throw new Error(invErr?.message || 'Zimmet kaydı bulunamadı')
-  if (inv.status !== 'active') throw new Error('Bu zimmet zaten aktif değil')
+    if (updErr) throw new Error('Zimmet kapatılamadı: ' + updErr.message)
+  } else {
+    const { error: updErr } = await supabase
+      .from('user_inventory')
+      .update({
+        quantity: remaining,
+        notes: [params.inv.notes, params.notePartial].filter(Boolean).join(' | '),
+        updated_at: now,
+      })
+      .eq('id', params.inv.id)
 
-  const qty = Number(inv.quantity) || 0
+    if (updErr) throw new Error('Zimmet güncellenemedi: ' + updErr.message)
+  }
 
-  const { error: updErr } = await supabase
-    .from('user_inventory')
-    .update({
-      status: 'returned',
-      return_date: new Date().toISOString(),
-      returned_quantity: qty,
-      notes: [inv.notes, 'Zimmet kaldırıldı (stok depoda kaldı)'].filter(Boolean).join(' | '),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', inv.id)
-
-  if (updErr) throw new Error('Zimmet kapatılamadı: ' + updErr.message)
-
-  if (inv.source_warehouse_id) {
+  if (params.inv.source_warehouse_id && params.inv.product_id) {
     await supabase.from('stock_movements').insert({
-      product_id: inv.product_id,
-      warehouse_id: inv.source_warehouse_id,
+      product_id: params.inv.product_id,
+      warehouse_id: params.inv.source_warehouse_id,
       movement_type: 'düzeltme',
-      quantity: qty,
-      reason: `Zimmet kaldırıldı: ${inv.owner_name || inv.owner_email || 'kullanıcı'} (depo stoğu değişmedi)`,
-      created_by: actorId,
-      serial_number: inv.serial_number,
+      quantity: actionQty,
+      reason: isFull ? params.movementFull : params.movementPartial,
+      created_by: params.actorId,
+      serial_number: isFull ? params.inv.serial_number : null,
     })
   }
 
-  return { ok: true }
+  return { actionQty, remaining, isFull }
+}
+
+/** Zimmeti kaldır: sadece sorumluluk kaydını kapatır (depo stoğu aynı kalır) */
+export async function removeZimmetAssignment(params: {
+  inventoryId: string
+  inventoryIds?: string[]
+  productId: string
+  productName?: string
+  /** Belirtilmezse üzerindeki tüm adet kalkar */
+  quantity?: number
+}) {
+  const supabase = createClient()
+  const actorId = await getActorId()
+  const ids = uniqueInventoryIds(params.inventoryId, params.inventoryIds)
+
+  const { data: rows, error: invErr } = await supabase
+    .from('user_inventory')
+    .select(
+      'id, product_id, quantity, status, owner_name, owner_email, source_warehouse_id, serial_number, notes, assigned_date'
+    )
+    .in('id', ids)
+    .eq('status', 'active')
+    .order('assigned_date', { ascending: true })
+
+  if (invErr) throw new Error(invErr.message)
+  if (!rows?.length) throw new Error('Zimmet kaydı bulunamadı')
+
+  const totalQty = rows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0)
+  const { actionQty } = resolveActionQuantity(params.quantity, totalQty)
+  const ownerLabel = rows[0].owner_name || rows[0].owner_email || 'kullanıcı'
+
+  let left = actionQty
+  for (const inv of rows) {
+    if (left <= 0) break
+    const take = Math.min(Number(inv.quantity) || 0, left)
+    if (!(take > 0)) continue
+    await closeOrReduceInventoryRow({
+      inv,
+      actionQty: take,
+      actorId,
+      noteFull: 'Zimmet kaldırıldı (stok depoda kaldı)',
+      notePartial: `Kısmi zimmet kaldırma: ${formatQty(take)} adet`,
+      movementFull: `Zimmet kaldırıldı: ${ownerLabel} (depo stoğu değişmedi)`,
+      movementPartial: `Zimmet kısmen kaldırıldı: ${ownerLabel} (${formatQty(take)} adet) (depo stoğu değişmedi)`,
+    })
+    left -= take
+  }
+
+  return { ok: true, remaining: Math.max(0, totalQty - actionQty) }
 }
 
 /** Zimmeti değiştir: eski kaydı kapat, yeni kişiye aç (depo stoğu aynı) */
 export async function changeZimmetAssignment(params: {
   inventoryId: string
+  inventoryIds?: string[]
   newEmployee: EmployeeOption
+  /** Belirtilmezse üzerindeki tüm adet aktarılır */
+  quantity?: number
 }) {
   const supabase = createClient()
   const actorId = await getActorId()
+  const ids = uniqueInventoryIds(params.inventoryId, params.inventoryIds)
 
-  const { data: inv, error: invErr } = await supabase
+  const { data: rows, error: invErr } = await supabase
     .from('user_inventory')
     .select('*')
-    .eq('id', params.inventoryId)
-    .single()
+    .in('id', ids)
+    .eq('status', 'active')
+    .order('assigned_date', { ascending: true })
 
-  if (invErr || !inv) throw new Error(invErr?.message || 'Zimmet kaydı bulunamadı')
-  if (inv.status !== 'active') throw new Error('Bu zimmet zaten aktif değil')
+  if (invErr) throw new Error(invErr.message)
+  if (!rows?.length) throw new Error('Zimmet kaydı bulunamadı')
 
-  const oldName = inv.owner_name || 'eski zimmetli'
-  const oldEmail = inv.owner_email || ''
+  const totalQty = rows.reduce((sum, row) => sum + (Number(row.quantity) || 0), 0)
+  const { actionQty } = resolveActionQuantity(params.quantity, totalQty)
+
+  const template = rows[0]
+  const oldName = template.owner_name || 'eski zimmetli'
+  const oldEmail = template.owner_email || ''
   const newName = (params.newEmployee.first_name || '').trim() || 'Çalışan'
   const newEmail = (params.newEmployee.work_email || '').trim() || null
-  const qty = Number(inv.quantity) || 0
+  const now = new Date().toISOString()
 
-  const { error: closeErr } = await supabase
-    .from('user_inventory')
-    .update({
-      status: 'returned',
-      return_date: new Date().toISOString(),
-      returned_quantity: qty,
-      notes: [
-        inv.notes,
-        `Zimmet değiştirildi → ${newName}${newEmail ? ` <${newEmail}>` : ''}`,
-      ]
-        .filter(Boolean)
-        .join(' | '),
-      updated_at: new Date().toISOString(),
+  let left = actionQty
+  for (const inv of rows) {
+    if (left <= 0) break
+    const take = Math.min(Number(inv.quantity) || 0, left)
+    if (!(take > 0)) continue
+    await closeOrReduceInventoryRow({
+      inv,
+      actionQty: take,
+      actorId,
+      noteFull: `Zimmet değiştirildi → ${newName}${newEmail ? ` <${newEmail}>` : ''}`,
+      notePartial: `Kısmi zimmet aktarımı: ${formatQty(take)} adet → ${newName}`,
+      movementFull: `Zimmet değişikliği: ${oldName} → ${newName} (depo stoğu değişmedi)`,
+      movementPartial: `Zimmet kısmen aktarıldı: ${oldName} → ${newName} (${formatQty(take)} adet) (depo stoğu değişmedi)`,
     })
-    .eq('id', inv.id)
-
-  if (closeErr) throw new Error('Eski zimmet kapatılamadı: ' + closeErr.message)
-
-  const { error: insertErr } = await supabase.from('user_inventory').insert({
-    product_id: inv.product_id,
-    item_name: inv.item_name,
-    quantity: qty,
-    unit: inv.unit || 'adet',
-    assigned_date: new Date().toISOString(),
-    assigned_by: actorId,
-    status: 'active',
-    notes: `Zimmet değişikliği: ${oldName}${oldEmail ? ` <${oldEmail}>` : ''} → ${newName}`,
-    category: inv.category,
-    consumed_quantity: 0,
-    owner_name: newName,
-    owner_email: newEmail,
-    source_warehouse_id: inv.source_warehouse_id,
-    serial_number: inv.serial_number,
-  })
-
-  if (insertErr) throw new Error('Yeni zimmet oluşturulamadı: ' + insertErr.message)
-
-  if (inv.source_warehouse_id) {
-    await supabase.from('stock_movements').insert({
-      product_id: inv.product_id,
-      warehouse_id: inv.source_warehouse_id,
-      movement_type: 'düzeltme',
-      quantity: qty,
-      reason: `Zimmet değişikliği: ${oldName} → ${newName} (depo stoğu değişmedi)`,
-      created_by: actorId,
-    })
+    left -= take
   }
 
-  return { ok: true }
+  const serialNorm = rows.length === 1 ? rows[0].serial_number : mergeSerials(...rows.map((r) => r.serial_number))
+  const ownerEmailNorm = (newEmail || '').toLowerCase()
+
+  const { data: newOwnerRows } = await supabase
+    .from('user_inventory')
+    .select('id, quantity, notes, serial_number, owner_email')
+    .eq('product_id', template.product_id)
+    .eq('source_warehouse_id', template.source_warehouse_id)
+    .eq('status', 'active')
+
+  const existingForNewOwner = (newOwnerRows || []).find((row) => {
+    const rowEmail = (row.owner_email || '').trim().toLowerCase()
+    if (ownerEmailNorm) return rowEmail === ownerEmailNorm
+    return !rowEmail
+  })
+
+  if (existingForNewOwner) {
+    const { error: mergeErr } = await supabase
+      .from('user_inventory')
+      .update({
+        quantity: Number(existingForNewOwner.quantity) + actionQty,
+        notes: [
+          existingForNewOwner.notes,
+          `Zimmet aktarımı: ${oldName}${oldEmail ? ` <${oldEmail}>` : ''} → ${newName} (${formatQty(actionQty)} adet)`,
+        ]
+          .filter(Boolean)
+          .join(' | '),
+        updated_at: now,
+      })
+      .eq('id', existingForNewOwner.id)
+
+    if (mergeErr) throw new Error('Yeni zimmet güncellenemedi: ' + mergeErr.message)
+  } else {
+    const { error: insertErr } = await supabase.from('user_inventory').insert({
+      product_id: template.product_id,
+      item_name: template.item_name,
+      quantity: actionQty,
+      unit: template.unit || 'adet',
+      assigned_date: now,
+      assigned_by: actorId,
+      status: 'active',
+      notes: `Zimmet değişikliği: ${oldName}${oldEmail ? ` <${oldEmail}>` : ''} → ${newName}`,
+      category: template.category,
+      consumed_quantity: 0,
+      owner_name: newName,
+      owner_email: newEmail,
+      source_warehouse_id: template.source_warehouse_id,
+      serial_number: serialNorm,
+    })
+
+    if (insertErr) throw new Error('Yeni zimmet oluşturulamadı: ' + insertErr.message)
+  }
+
+  return { ok: true, remaining: Math.max(0, totalQty - actionQty) }
 }
 
 /** Depoda zimmet: stok düşülmez, sadece sorumluluk yazılır */
@@ -208,24 +390,62 @@ export async function assignZimmetInWarehouse(params: {
 
   const ownerName = (params.employee.first_name || '').trim() || 'Çalışan'
   const ownerEmail = (params.employee.work_email || '').trim() || null
+  const serialNorm = params.serialNumber?.trim() || null
+  const ownerEmailNorm = (ownerEmail || '').toLowerCase()
 
-  const { error: invErr } = await supabase.from('user_inventory').insert({
-    product_id: params.productId,
-    item_name: params.productName,
-    quantity: qty,
-    unit: params.productUnit || 'adet',
-    assigned_date: new Date().toISOString(),
-    assigned_by: actorId,
-    status: 'active',
-    notes: params.reason || 'Ürün detayından zimmet (depoda kaldı)',
-    consumed_quantity: 0,
-    owner_name: ownerName,
-    owner_email: ownerEmail,
-    source_warehouse_id: params.warehouseId,
-    serial_number: params.serialNumber || null,
+  const { data: ownerRows, error: ownerRowsErr } = await supabase
+    .from('user_inventory')
+    .select('id, quantity, notes, serial_number, owner_email')
+    .eq('product_id', params.productId)
+    .eq('source_warehouse_id', params.warehouseId)
+    .eq('status', 'active')
+
+  if (ownerRowsErr) throw new Error(ownerRowsErr.message)
+
+  const existingForOwner = (ownerRows || []).find((row) => {
+    const rowEmail = (row.owner_email || '').trim().toLowerCase()
+    if (ownerEmailNorm) {
+      if (rowEmail !== ownerEmailNorm) return false
+    } else if (rowEmail) {
+      return false
+    }
+    const rowSerial = (row.serial_number || '').trim()
+    const newSerial = serialNorm || ''
+    return rowSerial === newSerial
   })
 
-  if (invErr) throw new Error('Zimmet kaydı oluşturulamadı: ' + invErr.message)
+  if (existingForOwner) {
+    const { error: updErr } = await supabase
+      .from('user_inventory')
+      .update({
+        quantity: Number(existingForOwner.quantity) + qty,
+        notes: [existingForOwner.notes, params.reason || 'Zimmet eklendi']
+          .filter(Boolean)
+          .join(' | '),
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', existingForOwner.id)
+
+    if (updErr) throw new Error('Zimmet güncellenemedi: ' + updErr.message)
+  } else {
+    const { error: invErr } = await supabase.from('user_inventory').insert({
+      product_id: params.productId,
+      item_name: params.productName,
+      quantity: qty,
+      unit: params.productUnit || 'adet',
+      assigned_date: new Date().toISOString(),
+      assigned_by: actorId,
+      status: 'active',
+      notes: params.reason || 'Ürün detayından zimmet (depoda kaldı)',
+      consumed_quantity: 0,
+      owner_name: ownerName,
+      owner_email: ownerEmail,
+      source_warehouse_id: params.warehouseId,
+      serial_number: serialNorm,
+    })
+
+    if (invErr) throw new Error('Zimmet kaydı oluşturulamadı: ' + invErr.message)
+  }
 
   await supabase.from('stock_movements').insert({
     product_id: params.productId,

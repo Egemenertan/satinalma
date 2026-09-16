@@ -626,6 +626,7 @@ export default function ProductsPage() {
         onSave={handleSaveProduct}
         isSaving={isSaving}
         selectedProductIds={selectedProducts}
+        defaultWarehouseId={siteId || undefined}
       />
 
       {showBulkActions && (
