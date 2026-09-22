@@ -22,6 +22,7 @@ export interface PurchaseRequestItem {
   delivery_date?: string  // Her malzeme için ayrı teslimat tarihi
   original_quantity?: number  // İlk talep edilen miktar - hiç değişmez
   image_urls?: string[]  // Malzeme görselleri
+  contract_item_id?: string | null
 }
 
 export interface PurchaseRequest {
@@ -34,6 +35,7 @@ export interface PurchaseRequest {
   status: string
   created_at: string
   updated_at?: string
+  requested_by?: string
   delivery_date?: string
   site_id?: string
   site_name?: string

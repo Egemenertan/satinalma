@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
 import { createMultiMaterialPurchaseRequest } from '@/lib/actions'
+import { fetchActiveContractsForMaterials } from '@/services/contracts.service'
+import { normalizeMaterialName, type ActiveContractOption } from '@/lib/contracts'
 import { 
   ArrowLeft, 
   Loader2,
@@ -156,6 +158,7 @@ export default function CreatePurchaseRequestPage() {
   // Search state
   const [searchQuery, setSearchQuery] = useState('')
   const [localCreatedMaterials, setLocalCreatedMaterials] = useState<Array<{ class: string; group: string; item_name: string }>>([])
+  const [activeContracts, setActiveContracts] = useState<ActiveContractOption[]>([])
   
   // Create Material Modal
   const [showCreateMaterialModal, setShowCreateMaterialModal] = useState(false)
@@ -169,6 +172,9 @@ export default function CreatePurchaseRequestPage() {
   useEffect(() => {
     fetchUserAndSites()
     fetchCategories()
+    fetchActiveContractsForMaterials()
+      .then(setActiveContracts)
+      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
   }, [])
 
   // Fetch sub-categories when category changes
@@ -599,7 +605,8 @@ export default function CreatePurchaseRequestPage() {
             purpose: material.purpose,
             delivery_date: material.delivery_date,
             image_urls: imageUrls,
-            product_id: material.product_id
+            product_id: material.product_id,
+            contract_item_id: material.contract_item_id
           }
         })
       )
@@ -832,6 +839,9 @@ export default function CreatePurchaseRequestPage() {
                 key={item.id}
                 item={item}
                 isInCart={isItemInCart(item.name)}
+                hasContract={activeContracts.some((option) =>
+                  normalizeMaterialName(option.material_item) === normalizeMaterialName(item.name)
+                )}
                 onClick={() => handleMaterialClick(item)}
               />
             ))}
@@ -874,6 +884,10 @@ export default function CreatePurchaseRequestPage() {
         onAddToCart={handleAddToCart}
         editItem={editingCartItem}
         onUpdateItem={handleUpdateCartItem}
+        contractOptions={activeContracts.filter((option) =>
+          normalizeMaterialName(option.material_item) ===
+          normalizeMaterialName(selectedMaterial?.name || editingCartItem?.material_item_name || '')
+        )}
       />
 
       {/* Create Material Modal */}

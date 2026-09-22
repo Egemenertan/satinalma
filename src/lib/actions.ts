@@ -587,6 +587,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     delivery_date?: string   // Her malzeme için ayrı teslimat tarihi
     image_urls?: string[]
     product_id?: string      // Products tablosundan seçilen ürün ID'si
+    contract_item_id?: string
   }>
   purpose?: string         // Genel amaç (artık kullanılmıyor - geriye uyumluluk için)
   site_id?: string
@@ -704,7 +705,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       material_class: material.material_class || null,
       material_group: material.material_group || null,
       image_urls: material.image_urls || null, // Her malzeme için ayrı resimler
-      product_id: material.product_id || null // Products tablosundan seçilen ürün ID'si
+      product_id: material.product_id || null, // Products tablosundan seçilen ürün ID'si
+      contract_item_id: material.contract_item_id || null
     }))
     
     console.log('💾 Purchase request items data hazırlandı:', itemsData)

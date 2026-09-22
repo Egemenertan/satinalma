@@ -1688,7 +1688,11 @@ DOVEC GROUP
                             
                             {/* Tedarikçi Durumu Badge */}
                             <div className="text-right">
-                              {materialSupplier.isRegistered ? (
+                              {item.contract_item_id ? (
+                                <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200">
+                                  Sözleşmeli
+                                </Badge>
+                              ) : materialSupplier.isRegistered ? (
                                 <Badge className="bg-green-100 text-green-700 border-green-200">
                                   ✓ {materialSupplier.suppliers.length} Tedarikçi
                                 </Badge>
@@ -1701,7 +1705,11 @@ DOVEC GROUP
                           </div>
                         </div>
 
-                        {materialSupplier.isRegistered && materialSupplier.suppliers.length > 0 ? (
+                        {item.contract_item_id ? (
+                          <div className="rounded-xl bg-elegant-gray-50 p-4 text-sm text-elegant-gray-600">
+                            Bu kalem toplu alım sözleşmesine bağlı. Sipariş oluşturmanıza gerek yok; irsaliye yüklenince miktar düşer.
+                          </div>
+                        ) : materialSupplier.isRegistered && materialSupplier.suppliers.length > 0 ? (
                           <div className="space-y-3">
                             <h5 className="text-sm font-medium text-gray-700">Sipariş Takibi:</h5>
                             

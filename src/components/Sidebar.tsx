@@ -119,6 +119,12 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
       icon: Users
     },
     {
+      id: 'contracts',
+      title: 'Sözleşmeler',
+      href: '/dashboard/contracts',
+      icon: FileText
+    },
+    {
       id: 'quote-comparison',
       title: 'DLX AI',
       href: '/dashboard/quote-comparison',

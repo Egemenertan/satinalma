@@ -33,6 +33,7 @@ import { tr } from 'date-fns/locale'
 import { useToast } from '@/components/ui/toast'
 import type { MaterialDetailModalProps, CartItem } from '../types'
 import { createEmptyCartItem } from '../types'
+import { formatContractMoney, formatContractQty } from '@/lib/contracts'
 
 const MAX_FILE_SIZE_MB = 10
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
@@ -71,13 +72,15 @@ export function MaterialDetailModal({
   materialGroup,
   onAddToCart,
   editItem,
-  onUpdateItem
+  onUpdateItem,
+  contractOptions = []
 }: MaterialDetailModalProps) {
   const { showToast } = useToast()
   const isEditing = !!editItem
   const [showCalendar, setShowCalendar] = useState(false)
   const [showCustomUnit, setShowCustomUnit] = useState(false)
   const [customUnitValue, setCustomUnitValue] = useState('')
+  const [selectedContractId, setSelectedContractId] = useState<string>('')
   
   const [formData, setFormData] = useState<Partial<CartItem>>({
     quantity: '',
@@ -119,7 +122,15 @@ export function MaterialDetailModal({
         image_preview_urls: []
       })
     }
-  }, [editItem, open])
+
+    if (editItem?.contract_item_id) {
+      setSelectedContractId(editItem.contract_item_id)
+    } else if (contractOptions.length === 1) {
+      setSelectedContractId(contractOptions[0].contract_item_id)
+    } else {
+      setSelectedContractId('')
+    }
+  }, [editItem, open, contractOptions])
 
   const handleUnitSelect = (value: string) => {
     if (value === 'other') {
@@ -230,11 +241,29 @@ export function MaterialDetailModal({
     return formData.quantity && formData.unit && formData.delivery_date && formData.purpose
   }
 
+  const selectedContract = contractOptions.find((option) => option.contract_item_id === selectedContractId)
+
+  const applyContractFields = (base: CartItem): CartItem => ({
+    ...base,
+    contract_item_id: selectedContract?.contract_item_id,
+    contract_supplier_name: selectedContract?.supplier_name,
+    contract_unit_price: selectedContract?.unit_price,
+    contract_currency: selectedContract?.currency,
+    contract_remaining_quantity: selectedContract?.remaining_quantity,
+    contract_end_date: selectedContract?.end_date,
+    unit: selectedContract?.unit || base.unit,
+  })
+
   const handleSubmit = () => {
     if (!isFormValid() || !item) return
 
+    if (contractOptions.length > 1 && !selectedContractId) {
+      showToast('Bu malzeme için bir sözleşme seçin', 'error')
+      return
+    }
+
     if (isEditing && editItem && onUpdateItem) {
-      const updatedItem: CartItem = {
+      const updatedItem: CartItem = applyContractFields({
         ...editItem,
         quantity: formData.quantity || '',
         unit: formData.unit || '',
@@ -244,11 +273,11 @@ export function MaterialDetailModal({
         specifications: formData.specifications || '',
         uploaded_images: formData.uploaded_images || [],
         image_preview_urls: formData.image_preview_urls || []
-      }
+      })
       onUpdateItem(updatedItem)
     } else {
       const newCartItem = createEmptyCartItem(item, materialClass, materialGroup)
-      const cartItem: CartItem = {
+      const cartItem = applyContractFields({
         ...newCartItem,
         quantity: formData.quantity || '',
         unit: formData.unit || '',
@@ -258,7 +287,7 @@ export function MaterialDetailModal({
         specifications: formData.specifications || '',
         uploaded_images: formData.uploaded_images || [],
         image_preview_urls: formData.image_preview_urls || []
-      }
+      })
       onAddToCart(cartItem)
     }
 
@@ -358,6 +387,55 @@ export function MaterialDetailModal({
 
         {/* Form Content */}
         <div className="px-6 pb-6 space-y-6">
+          {contractOptions.length > 0 && (
+            <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 space-y-3">
+              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+                Toplu alım sözleşmesi
+              </p>
+              {contractOptions.length === 1 ? (
+                <p className="text-sm text-gray-800">
+                  {contractOptions[0].supplier_name} · kalan {formatContractQty(contractOptions[0].remaining_quantity, contractOptions[0].unit)} · {formatContractMoney(contractOptions[0].unit_price, contractOptions[0].currency)}/{contractOptions[0].unit}
+                </p>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-xs text-gray-600">Birden fazla sözleşme var, birini seçin.</p>
+                  {contractOptions.map((option) => (
+                    <label
+                      key={option.contract_item_id}
+                      className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm ${
+                        selectedContractId === option.contract_item_id
+                          ? 'border-emerald-400 bg-white'
+                          : 'border-transparent bg-white/70'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="contract-option"
+                        className="mt-1"
+                        checked={selectedContractId === option.contract_item_id}
+                        onChange={() => {
+                          setSelectedContractId(option.contract_item_id)
+                          setFormData((prev) => ({ ...prev, unit: option.unit }))
+                        }}
+                      />
+                      <span>
+                        <span className="font-medium text-gray-900">{option.supplier_name}</span>
+                        <span className="block text-xs text-gray-600">
+                          kalan {formatContractQty(option.remaining_quantity, option.unit)} · {formatContractMoney(option.unit_price, option.currency)}/{option.unit}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              )}
+              {selectedContract && Number(formData.quantity) > selectedContract.remaining_quantity && (
+                <p className="text-xs text-amber-700">
+                  Talep miktarı sözleşme kalanını aşıyor. İrsaliye anında kalan yetersizse işlem reddedilir.
+                </p>
+              )}
+            </div>
+          )}
+
           {/* Miktar Seçici - Apple Style */}
           <div className="bg-gray-50 rounded-2xl p-4">
             <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 block">

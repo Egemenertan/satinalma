@@ -4,7 +4,7 @@ import { Package, Plus, Check, ShoppingCart } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import type { MaterialCardProps } from '../types'
 
-export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
+export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialCardProps) {
   return (
     <button
       type="button"
@@ -37,6 +37,14 @@ export function MaterialCard({ item, isInCart, onClick }: MaterialCardProps) {
             ${isInCart ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}
           `} />
         </div>
+
+        {hasContract && (
+          <div className="absolute top-3 left-3">
+            <Badge className="bg-emerald-50 text-emerald-700 border-emerald-200 text-[10px]">
+              Sözleşme
+            </Badge>
+          </div>
+        )}
 
         {/* In Cart Badge */}
         {isInCart && (

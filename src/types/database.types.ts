@@ -1187,6 +1187,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at: string | null
+          contract_item_id: string | null
         }
         Insert: {
           brand?: string | null
@@ -1214,6 +1215,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at?: string | null
+          contract_item_id?: string | null
         }
         Update: {
           brand?: string | null
@@ -1241,6 +1243,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string | null
+          contract_item_id?: string | null
         }
         Relationships: [
           {
@@ -2409,6 +2412,16 @@ export type Database = {
           p_order_id: string
           p_quality_check?: boolean
           p_received_by: string
+        }
+        Returns: Json
+      }
+      confirm_contract_delivery: {
+        Args: {
+          p_contract_item_id: string
+          p_purchase_request_item_id: string
+          p_delivered_quantity: number
+          p_waybill_photos: string[]
+          p_notes?: string
         }
         Returns: Json
       }

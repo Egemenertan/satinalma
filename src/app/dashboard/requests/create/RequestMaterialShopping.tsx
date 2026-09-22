@@ -17,6 +17,8 @@ import {
   CartDrawer
 } from './components'
 import type { CartItem, MaterialCategory, MaterialGroup, MaterialItem, ModalState } from './types'
+import { fetchActiveContractsForMaterials } from '@/services/contracts.service'
+import { normalizeMaterialName, type ActiveContractOption } from '@/lib/contracts'
 
 const HYGIENE_DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 const HYGIENE_DEFAULT_CATEGORY = 'Hijyen ve Temizlik' as const
@@ -93,6 +95,7 @@ export function RequestMaterialShopping({
   const [localCreatedMaterials, setLocalCreatedMaterials] = useState<
     Array<{ class: string; group: string; item_name: string }>
   >([])
+  const [activeContracts, setActiveContracts] = useState<ActiveContractOption[]>([])
   const [showCreateMaterialModal, setShowCreateMaterialModal] = useState(false)
   const [createMaterialData, setCreateMaterialData] = useState({
     class: '',
@@ -103,6 +106,9 @@ export function RequestMaterialShopping({
   useEffect(() => {
     void fetchUserFlags()
     void fetchCategories()
+    fetchActiveContractsForMaterials()
+      .then(setActiveContracts)
+      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
   }, [])
 
   useEffect(() => {
@@ -498,6 +504,9 @@ export function RequestMaterialShopping({
                 key={item.id}
                 item={item}
                 isInCart={isItemInCart(item.name)}
+                hasContract={activeContracts.some((option) =>
+                  normalizeMaterialName(option.material_item) === normalizeMaterialName(item.name)
+                )}
                 onClick={() => handleMaterialClick(item)}
               />
             ))}
@@ -540,6 +549,10 @@ export function RequestMaterialShopping({
         onAddToCart={handleAddToCart}
         editItem={editingCartItem}
         onUpdateItem={handleUpdateCartItem}
+        contractOptions={activeContracts.filter((option) =>
+          normalizeMaterialName(option.material_item) ===
+          normalizeMaterialName(selectedMaterial?.name || editingCartItem?.material_item_name || '')
+        )}
       />
 
       <CreateMaterialModal

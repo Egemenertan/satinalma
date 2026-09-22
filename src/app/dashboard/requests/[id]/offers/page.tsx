@@ -1,12 +1,17 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { ArrowLeft, AlertCircle } from 'lucide-react'
 import { useToast } from '@/components/ui/toast'
 import { useOfferData } from '@/components/offers/hooks/useOfferData'
+import { RequestContractBindingsList } from '@/components/contracts/ContractSummaryCard'
+import { ContractWaybillModal } from '@/components/contracts/ContractWaybillModal'
+import { fetchRequestContractBindings } from '@/services/contracts.service'
+import type { RequestContractBinding } from '@/lib/contracts'
+import { createClient } from '@/lib/supabase/client'
 import { getUrgencyColor, getStatusColor } from '@/components/offers/types'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import SantiyeDepoView from '@/components/offers/SantiyeDepoView'
@@ -26,6 +31,9 @@ export default function OffersPage() {
 
   // Local state for procurement view
   const [localOrderTracking, setLocalOrderTracking] = useState<{[key: string]: any}>({})
+  const [contractBindings, setContractBindings] = useState<RequestContractBinding[]>([])
+  const [waybillBinding, setWaybillBinding] = useState<RequestContractBinding | null>(null)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // Fetch all data using custom hook
   const {
@@ -41,6 +49,28 @@ export default function OffersPage() {
     error,
     refreshData
   } = useOfferData(requestId)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(({ data }) => setCurrentUserId(data.user?.id || null))
+  }, [])
+
+  const contractItemIds = useMemo(
+    () => (request?.purchase_request_items || [])
+      .map((item: { id: string; contract_item_id?: string | null }) => item.id)
+      .filter(Boolean),
+    [request?.purchase_request_items]
+  )
+
+  useEffect(() => {
+    if (contractItemIds.length === 0) {
+      setContractBindings([])
+      return
+    }
+    fetchRequestContractBindings(contractItemIds)
+      .then(setContractBindings)
+      .catch((error) => console.error('Sözleşme bilgisi yüklenemedi:', error))
+  }, [contractItemIds, request?.updated_at])
 
   // Retry function for error recovery
   const handleRetry = () => {
@@ -491,8 +521,31 @@ export default function OffersPage() {
             </div>
           </div>
 
+          {contractBindings.length > 0 && (
+            <RequestContractBindingsList
+              bindings={contractBindings}
+              showOrderHint={['purchasing_officer', 'admin', 'manager'].includes(userRole)}
+              canUploadWaybill={
+                currentUserId === request.requested_by ||
+                ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici', 'warehouse_manager', 'department_head'].includes(userRole)
+              }
+              onUploadWaybill={setWaybillBinding}
+            />
+          )}
+
           {/* Tüm roller için ortak talep / durum geçmişi */}
           <RequestActivityTimeline requestId={requestId} refreshKey={request.updated_at} />
+
+          <ContractWaybillModal
+            open={!!waybillBinding}
+            onOpenChange={(open) => !open && setWaybillBinding(null)}
+            binding={waybillBinding}
+            showToast={showToast}
+            onSuccess={() => {
+              refreshData()
+              fetchRequestContractBindings(contractItemIds).then(setContractBindings)
+            }}
+          />
 
           {/* Kullanıcı rolüne göre uygun view'i render et */}
           {renderUserView()}

@@ -37,6 +37,14 @@ export const invalidateSuppliersCache = () => {
   mutate('suppliers_stats', undefined, { revalidate: true })
 }
 
+export const invalidateContractsCache = () => {
+  mutate(
+    (key) => typeof key === 'string' && key.startsWith('supplier_contracts'),
+    undefined,
+    { revalidate: true }
+  )
+}
+
 // Sadece stats cache'ini temizle
 export const invalidateStatsCache = () => {
   mutate('purchase_requests_stats', undefined, { revalidate: true })
@@ -76,6 +84,10 @@ export const refreshSitesData = () => {
 
 export const refreshSuppliersData = () => {
   invalidateSuppliersCache()
+}
+
+export const refreshContractsData = () => {
+  invalidateContractsCache()
 }
 
 // Global cache invalidation - tüm sayfalardaki cache'leri temizle

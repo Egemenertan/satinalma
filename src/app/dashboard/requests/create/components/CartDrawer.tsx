@@ -179,6 +179,14 @@ function CartItemCard({ item, onEdit, onRemove }: CartItemCardProps) {
           
           <div className="flex items-center gap-3 text-sm text-gray-500">
             <span className="font-medium text-black">{item.quantity} {item.unit}</span>
+            {item.contract_supplier_name && (
+              <>
+                <span className="text-gray-300">•</span>
+                <span className="text-emerald-700">
+                  {item.contract_supplier_name} sözleşmesi
+                </span>
+              </>
+            )}
             {item.delivery_date && (
               <>
                 <span className="text-gray-300">•</span>

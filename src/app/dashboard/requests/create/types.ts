@@ -36,6 +36,12 @@ export interface CartItem {
   uploaded_images: File[]
   image_preview_urls: string[]
   product_id?: string
+  contract_item_id?: string
+  contract_supplier_name?: string
+  contract_unit_price?: number
+  contract_currency?: string
+  contract_remaining_quantity?: number
+  contract_end_date?: string | null
 }
 
 export interface Site {
@@ -64,6 +70,7 @@ export interface MaterialCardProps {
   item: MaterialItem
   isInCart: boolean
   onClick: () => void
+  hasContract?: boolean
 }
 
 export interface MaterialDetailModalProps {
@@ -75,6 +82,7 @@ export interface MaterialDetailModalProps {
   onAddToCart: (cartItem: CartItem) => void
   editItem?: CartItem | null
   onUpdateItem?: (cartItem: CartItem) => void
+  contractOptions?: import('@/lib/contracts').ActiveContractOption[]
 }
 
 export interface CartBottomBarProps {

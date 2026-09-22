@@ -58,7 +58,8 @@ export function useOfferData(requestId: string) {
             specifications, brand, original_quantity, 
             image_urls, purpose, delivery_date, product_id,
             material_group, material_group_code,
-            material_class, material_item_name
+            material_class, material_item_name,
+            contract_item_id
           )
         `)
         .eq('id', requestId)

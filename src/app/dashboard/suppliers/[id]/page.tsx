@@ -2,11 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
@@ -15,21 +14,12 @@ import { getSessionUser } from '@/lib/auth'
 const supabase = createClient()
 import { useToast } from '@/components/ui/toast'
 import FullScreenImageViewer from '@/components/FullScreenImageViewer'
+import { SupplierContractsPanel } from '@/components/contracts/SupplierContractsPanel'
 import { 
-  Building,
-  Phone,
-  Mail,
-  MapPin,
   Star,
   Calendar,
   FileText,
-  TrendingUp,
-  TrendingDown,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
   Package,
-  Target,
   ArrowLeft,
   Image,
   Eye,
@@ -405,23 +395,27 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
     return Array.from({ length: 5 }, (_, i) => (
       <Star 
         key={i} 
-        className={`w-4 h-4 ${i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} 
+        className={`w-3.5 h-3.5 ${i < rating ? 'fill-elegant-black text-elegant-black' : 'text-elegant-gray-300'}`} 
       />
     ))
   }
 
   const getStatusBadge = (isApproved: boolean) => {
-    return isApproved ? (
-      <Badge className="bg-green-100 text-green-800 border-green-200">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Onaylı
-      </Badge>
-    ) : (
-      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
-        <AlertTriangle className="w-3 h-3 mr-1" />
-        Beklemede
-      </Badge>
+    return (
+      <span className="rounded-full border border-elegant-gray-200 bg-elegant-gray-50 px-2.5 py-1 text-[11px] font-medium text-elegant-gray-700">
+        {isApproved ? 'Onaylı' : 'Beklemede'}
+      </span>
     )
+  }
+
+  const orderStatusLabel = (order: Order) => {
+    const deliveryStatus = order.delivery_summary?.delivery_status
+    if (deliveryStatus === 'completed') return 'Teslim alındı'
+    if (order.status === 'completed') return 'Tamamlandı'
+    if (order.status === 'delivered') return 'Teslim edildi'
+    if (order.status === 'approved') return 'Onaylandı'
+    if (order.status === 'rejected') return 'Reddedildi'
+    return 'Beklemede'
   }
 
   const handleViewDeliveryPhotos = (photos: string[], index = 0) => {
@@ -612,298 +606,215 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
   if (loading || !hasAccess) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-600"></div>
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-elegant-gray-200 border-t-elegant-black" />
       </div>
     )
   }
 
   if (!supplier) {
     return (
-      <div className="p-6">
-        <div className="text-center py-12">
-          <AlertTriangle className="w-12 h-12 text-yellow-500 mx-auto mb-4" />
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">Tedarikçi Bulunamadı</h2>
-          <p className="text-gray-600 mb-4">İstediğiniz tedarikçi bilgilerine ulaşılamadı.</p>
-          <Button onClick={() => router.back()}>Geri Dön</Button>
-        </div>
+      <div className="rounded-xl border border-elegant-gray-200 bg-white p-10 text-center shadow-sm">
+        <h2 className="text-xl font-semibold tracking-tight text-elegant-black">Tedarikçi bulunamadı</h2>
+        <p className="mt-2 text-sm text-elegant-gray-600">İstediğiniz kayda ulaşılamadı.</p>
+        <Button onClick={() => router.back()} className="mt-5 rounded-2xl bg-black text-white hover:bg-gray-900">
+          Geri dön
+        </Button>
       </div>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            <div className="flex items-center gap-4">
-              <Button 
-                variant="ghost" 
-                size="sm"
-                onClick={() => router.back()}
-                className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
-              >
-                <ArrowLeft className="w-4 h-4" />
-                Geri Dön
-              </Button>
-            </div>
+    <div className="space-y-8 pb-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <button
+            type="button"
+            onClick={() => router.back()}
+            className="mb-3 inline-flex items-center gap-1.5 text-sm text-elegant-gray-500 transition hover:text-elegant-black"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Tedarikçiler
+          </button>
+          <h1 className="text-2xl font-bold tracking-tight text-elegant-black md:text-3xl">
+            {supplier.name}
+          </h1>
+          <p className="mt-1 text-sm text-elegant-gray-600">
+            İletişim, malzemeler, sözleşmeler ve sipariş geçmişi
+          </p>
+        </div>
+        <Button
+          onClick={() => router.push(`/dashboard/suppliers/${params.id}/edit`)}
+          className="shrink-0 rounded-2xl bg-black text-white hover:bg-gray-900"
+        >
+          Düzenle
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">İletişim</p>
+          <p className="mt-3 text-sm font-medium text-elegant-black break-all">{supplier.email || '—'}</p>
+          <p className="mt-1 text-sm text-elegant-gray-600">{supplier.phone || '—'}</p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Adres</p>
+          <p className="mt-3 text-sm font-medium leading-relaxed text-elegant-black">
+            {supplier.address || '—'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Vergi / vade</p>
+          <p className="mt-3 text-lg font-bold tracking-tight text-elegant-black">{supplier.tax_number || '—'}</p>
+          <p className="mt-1 text-xs text-elegant-gray-500">{supplier.payment_terms || 0} gün ödeme vadesi</p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <div className="mb-3 flex items-start justify-between gap-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Durum</p>
+            {getStatusBadge(supplier.is_approved)}
           </div>
+          <div className="flex items-center gap-1">{getRatingStars(supplier.rating)}</div>
+          <p className="mt-2 text-xs text-elegant-gray-500">{supplier.rating || 0}/5 değerlendirme</p>
         </div>
       </div>
 
-      {/* Main Content */}
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Supplier Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900 mb-2">{supplier.name}</h1>
-          <p className="text-gray-600">Tedarikçi Detayları ve İşlem Geçmişi</p>
-        </div>
+      <div className="rounded-xl border border-elegant-gray-200 bg-white shadow-sm">
+        <Tabs defaultValue="contracts" className="w-full">
+          <div className="border-b border-elegant-gray-200 p-3">
+            <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-elegant-gray-50 p-1">
+              <TabsTrigger
+                value="contracts"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+              >
+                Sözleşmeler
+              </TabsTrigger>
+              <TabsTrigger
+                value="orders"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+              >
+                Siparişler
+              </TabsTrigger>
+              <TabsTrigger
+                value="materials"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+              >
+                Malzemeler
+              </TabsTrigger>
+            </TabsList>
+          </div>
 
-        {/* Top Cards - Temel Bilgiler ve Durum */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Temel Bilgiler */}
-          <Card className="bg-white shadow-sm border-0">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
-                <Building className="w-5 h-5 text-gray-400" />
-                Temel Bilgiler
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <Mail className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Email</span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900">{supplier.email}</span>
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <Phone className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Telefon</span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900">{supplier.phone}</span>
-                </div>
-                <div className="flex justify-between items-start py-2 border-b border-gray-100 last:border-b-0">
-                  <div className="flex items-center gap-3">
-                    <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                    <span className="text-sm text-gray-600">Adres</span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900 text-right max-w-xs">{supplier.address}</span>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <div className="flex items-center gap-3">
-                    <FileText className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm text-gray-600">Vergi No</span>
-                  </div>
-                  <span className="text-sm font-medium text-gray-900">{supplier.tax_number}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Durum ve Değerlendirme */}
-          <Card className="bg-white shadow-sm border-0">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-lg font-medium text-gray-900 flex items-center gap-2">
-                <Target className="w-5 h-5 text-gray-400" />
-                Durum ve Değerlendirme
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 gap-4">
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">Onay Durumu</span>
-                  {getStatusBadge(supplier.is_approved)}
-                </div>
-                <div className="flex justify-between items-center py-2 border-b border-gray-100">
-                  <span className="text-sm text-gray-600">Değerlendirme</span>
-                  <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1">
-                      {getRatingStars(supplier.rating)}
-                    </div>
-                    <span className="text-sm font-medium text-gray-900">({supplier.rating}/5)</span>
-                  </div>
-                </div>
-                <div className="flex justify-between items-center py-2">
-                  <span className="text-sm text-gray-600">Ödeme Vadesi</span>
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-gray-400" />
-                    <span className="text-sm font-medium text-gray-900">{supplier.payment_terms} gün</span>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Modern Tabs */}
-        <Card className="bg-white shadow-sm border-0">
-          <Tabs defaultValue="orders" className="w-full">
-            <div className="border-b border-gray-200">
-              <TabsList className="w-full bg-transparent h-auto p-0 rounded-none">
-                <TabsTrigger 
-                  value="orders" 
-                  className="flex-1 px-6 py-4 text-sm font-medium text-gray-600 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none"
-                >
-                  Siparişler
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="materials" 
-                  className="flex-1 px-6 py-4 text-sm font-medium text-gray-600 data-[state=active]:text-blue-600 data-[state=active]:border-b-2 data-[state=active]:border-blue-600 data-[state=active]:bg-transparent rounded-none"
-                >
-                  Malzemeler
-                </TabsTrigger>
-              </TabsList>
-            </div>
-
-                <TabsContent value="materials" className="p-6">
+                <TabsContent value="materials" className="p-4 sm:p-6">
                   <div className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold">
-                        Tedarik Edilen Malzemeler 
-                        <span className="text-sm text-gray-500 ml-2">({materials.length} adet)</span>
-                      </h3>
-                      <Button onClick={() => router.push(`/dashboard/suppliers/${params.id}/edit`)}>
-                        <Package className="w-4 h-4 mr-2" />
-                        Malzeme Ekle
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <h3 className="text-base font-semibold text-elegant-black">Tedarik edilen malzemeler</h3>
+                        <p className="text-sm text-elegant-gray-500">{materials.length} kayıt</p>
+                      </div>
+                      <Button
+                        onClick={() => router.push(`/dashboard/suppliers/${params.id}/edit`)}
+                        variant="outline"
+                        className="rounded-2xl border-elegant-gray-200"
+                      >
+                        <Package className="mr-2 h-4 w-4" />
+                        Malzeme ekle
                       </Button>
                     </div>
-                    
-                    
+
                     {materials.length === 0 ? (
-                      <div className="text-center py-8 text-gray-500">
-                        <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                        <p>Henüz malzeme eklenmemiş</p>
+                      <div className="rounded-xl bg-elegant-gray-50 py-12 text-center">
+                        <p className="text-sm text-elegant-gray-500">Henüz malzeme eklenmemiş</p>
                       </div>
                     ) : (
-                      <div className="grid gap-4">
+                      <div className="grid gap-3">
                         {materials.map((material) => (
-                          <Card key={material.id} className="bg-white border-0 shadow-sm hover:shadow-md transition-shadow">
-                            <CardContent className="p-4">
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <h4 className="font-medium text-gray-900 mb-2">
-                                    {material.material_item}
-                                  </h4>
-                                  <div className="text-sm text-gray-600 mb-2">
-                                    <span className="inline-flex items-center gap-1">
-                                      <Package className="w-3 h-3" />
-                                      {material.material_class} → {material.material_group}
+                          <div key={material.id} className="rounded-xl border border-elegant-gray-200 bg-white p-4">
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <h4 className="font-medium text-elegant-black">{material.material_item}</h4>
+                                <p className="mt-1 text-sm text-elegant-gray-500">
+                                  {material.material_class} · {material.material_group}
+                                </p>
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {material.is_preferred && (
+                                    <span className="rounded-full bg-elegant-gray-50 px-2.5 py-1 text-[11px] font-medium text-elegant-gray-700">Tercihli</span>
+                                  )}
+                                  {material.delivery_time_days && (
+                                    <span className="rounded-full bg-elegant-gray-50 px-2.5 py-1 text-[11px] font-medium text-elegant-gray-700">
+                                      {material.delivery_time_days} gün
                                     </span>
-                                  </div>
-                                  
-                                  <div className="flex flex-wrap gap-2 mt-3">
-                                    {material.is_preferred && (
-                                      <Badge className="bg-yellow-100 text-yellow-800 border-yellow-200 text-xs">
-                                        <Star className="w-3 h-3 mr-1" />
-                                        Tercihli
-                                      </Badge>
-                                    )}
-                                    {material.delivery_time_days && (
-                                      <Badge variant="outline" className="text-xs">
-                                        <Calendar className="w-3 h-3 mr-1" />
-                                        {material.delivery_time_days} gün
-                                      </Badge>
-                                    )}
-                                    {material.currency && (
-                                      <Badge variant="outline" className="text-xs">
-                                        {material.currency}
-                                      </Badge>
-                                    )}
-                                  </div>
-                                  
-                                  {material.notes && (
-                                    <div className="text-xs text-gray-500 mt-2 bg-gray-50 p-2 rounded">
-                                      {material.notes}
-                                    </div>
                                   )}
                                 </div>
-                                
-                                {(material.price_range_min || material.price_range_max) && (
-                                  <div className="text-right ml-4">
-                                    <div className="text-sm font-medium text-gray-900">
-                                      {material.price_range_min && material.price_range_max ? (
-                                        `${material.price_range_min.toLocaleString('tr-TR')} - ${material.price_range_max.toLocaleString('tr-TR')} ${material.currency || 'TRY'}`
-                                      ) : material.price_range_min ? (
-                                        `${material.price_range_min.toLocaleString('tr-TR')}+ ${material.currency || 'TRY'}`
-                                      ) : (
-                                        `${material.price_range_max?.toLocaleString('tr-TR')} ${material.currency || 'TRY'}`
-                                      )}
-                                    </div>
-                                    <div className="text-xs text-gray-500">Fiyat Aralığı</div>
-                                  </div>
+                                {material.notes && (
+                                  <p className="mt-2 text-xs text-elegant-gray-500">{material.notes}</p>
                                 )}
                               </div>
-                            </CardContent>
-                          </Card>
+                              {(material.price_range_min || material.price_range_max) && (
+                                <div className="text-right">
+                                  <p className="text-sm font-semibold text-elegant-black">
+                                    {material.price_range_min && material.price_range_max
+                                      ? `${material.price_range_min.toLocaleString('tr-TR')} – ${material.price_range_max.toLocaleString('tr-TR')}`
+                                      : material.price_range_min
+                                        ? `${material.price_range_min.toLocaleString('tr-TR')}+`
+                                        : material.price_range_max?.toLocaleString('tr-TR')}
+                                    {' '}{material.currency || 'TRY'}
+                                  </p>
+                                  <p className="text-[11px] uppercase tracking-wide text-elegant-gray-500">Fiyat aralığı</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ))}
                       </div>
                     )}
                   </div>
                 </TabsContent>
 
-            <TabsContent value="orders" className="p-6">
-              <div className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900">Sipariş Geçmişi</h3>
-                    <p className="text-sm text-gray-600 mt-1">Bu tedarikçi ile yapılmış tüm siparişler</p>
-                  </div>
+            <TabsContent value="contracts" className="p-4 sm:p-6">
+              <SupplierContractsPanel
+                supplierId={params.id}
+                supplierName={supplier.name}
+                showToast={showToast}
+              />
+            </TabsContent>
+
+            <TabsContent value="orders" className="p-4 sm:p-6">
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-semibold text-elegant-black">Sipariş geçmişi</h3>
+                  <p className="mt-1 text-sm text-elegant-gray-500">Bu tedarikçi ile yapılmış siparişler</p>
                 </div>
                 
                 {loadingOrders ? (
                   <div className="flex items-center justify-center py-12">
-                    <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent"></div>
+                    <div className="h-8 w-8 animate-spin rounded-full border-2 border-elegant-gray-200 border-t-elegant-black" />
                   </div>
                 ) : orders.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Package className="w-12 h-12 mx-auto mb-4 text-gray-400" />
-                    <h4 className="text-lg font-medium text-gray-900 mb-2">Henüz sipariş bulunmuyor</h4>
-                    <p className="text-gray-600">Bu tedarikçi ile henüz sipariş oluşturulmamış.</p>
+                  <div className="rounded-xl bg-elegant-gray-50 py-12 text-center">
+                    <h4 className="text-base font-medium text-elegant-black">Henüz sipariş yok</h4>
+                    <p className="mt-1 text-sm text-elegant-gray-500">Bu tedarikçi ile sipariş oluşturulmamış.</p>
                   </div>
                 ) : (
                   <div className="space-y-6">
                     {orders.map((order) => (
-                      <Card key={order.id} className="bg-white border border-gray-200 hover:shadow-lg transition-all duration-300 rounded-xl overflow-hidden">
+                      <Card key={order.id} className="overflow-hidden rounded-xl border border-elegant-gray-200 bg-white shadow-sm">
                         <CardContent className="p-0">
                           {/* Sipariş Başlığı ve Ana Bilgiler */}
-                          <div className="p-6 border-b border-gray-100">
-                            <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
-                              <div className="flex-1 min-w-0">
-                                <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+                          <div className="border-b border-elegant-gray-200 p-6">
+                            <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
+                              <div className="min-w-0 flex-1">
+                                <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                                   <div className="flex-1">
-                                    <h4 className="text-lg font-semibold text-gray-900 mb-2 leading-tight">
+                                    <h4 className="mb-2 text-lg font-semibold leading-tight text-elegant-black">
                                       {order.purchase_requests?.[0]?.title || `Sipariş #${order.id.slice(0, 8)}`}
                                     </h4>
-                                    <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600">
+                                    <div className="flex flex-wrap items-center gap-3 text-sm text-elegant-gray-600">
                                       <span className="flex items-center gap-1.5">
                                         <FileText className="w-4 h-4" />
                                         Talep No: <span className="font-medium">{order.purchase_requests?.[0]?.request_number || '-'}</span>
                                       </span>
-                                      {(() => {
-                                        const deliveryStatus = order.delivery_summary?.delivery_status as string | undefined
-                                        if (deliveryStatus === 'completed') {
-                                          return (
-                                            <Badge className="bg-emerald-100 text-emerald-800 border-emerald-200">Tamamı Teslim Alındı</Badge>
-                                          )
-                                        }
-                                        const badgeClass =
-                                          order.status === 'completed' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                                          order.status === 'delivered' ? 'bg-emerald-100 text-emerald-800 border-emerald-200' :
-                                          order.status === 'approved' ? 'bg-blue-100 text-blue-800 border-blue-200' :
-                                          order.status === 'rejected' ? 'bg-red-100 text-red-800 border-red-200' :
-                                          'bg-amber-100 text-amber-800 border-amber-200'
-                                        const label =
-                                          order.status === 'completed' ? 'Tamamlandı' :
-                                          order.status === 'delivered' ? 'Teslim Edildi' :
-                                          order.status === 'approved' ? 'Onaylandı' :
-                                          order.status === 'rejected' ? 'Reddedildi' :
-                                          'Beklemede'
-                                        return <Badge className={badgeClass}>{label}</Badge>
-                                      })()}
+                                      <span className="rounded-full border border-elegant-gray-200 bg-elegant-gray-50 px-2.5 py-1 text-[11px] font-medium text-elegant-gray-700">
+                                        {orderStatusLabel(order)}
+                                      </span>
                                     </div>
                                   </div>
                                   
@@ -916,13 +827,13 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     if (totalInvoiceAmount > 0) {
                                       return (
                                         <div className="text-right">
-                                          <div className="text-xl font-bold text-emerald-700">
+                                          <div className="text-xl font-bold tracking-tight text-elegant-black">
                                             {new Intl.NumberFormat('tr-TR', { 
                                               style: 'currency', 
                                               currency: order.invoices![0].currency || 'TRY'
                                             }).format(totalInvoiceAmount)}
                                           </div>
-                                          <div className="text-xs text-gray-500 mt-1">Toplam Fatura</div>
+                                          <div className="mt-1 text-xs text-elegant-gray-500">Toplam fatura</div>
                                         </div>
                                       )
                                     }
@@ -931,13 +842,13 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                 </div>
 
                                 {/* Tarih Bilgileri */}
-                                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 mb-4">
+                                <div className="mb-4 flex flex-wrap items-center gap-4 text-sm text-elegant-gray-600">
                                   <div className="flex items-center gap-2">
-                                    <Calendar className="w-4 h-4 text-gray-400" />
+                                    <Calendar className="h-4 w-4 text-elegant-gray-400" />
                                     <span>Oluşturulma: <span className="font-medium">{new Date(order.created_at).toLocaleDateString('tr-TR')}</span></span>
                                   </div>
                                   <div className="flex items-center gap-2">
-                                    <Package className="w-4 h-4 text-gray-400" />
+                                    <Package className="h-4 w-4 text-elegant-gray-400" />
                                     <span>Teslimat: <span className="font-medium">{new Date(order.delivery_date).toLocaleDateString('tr-TR')}</span></span>
                                   </div>
                                 </div>
@@ -945,12 +856,11 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                 {/* İrsaliye Durumu */}
                                 {order.delivery_image_urls && order.delivery_image_urls.length > 0 && (
                                   <div className="mb-3">
-                                    <Badge className="bg-green-100 text-green-800 border-green-200">
-                                      <CheckCircle className="w-3 h-3 mr-1" />
-                                      İrsaliye Teslim Alındı
-                                    </Badge>
+                                    <span className="inline-flex items-center rounded-full border border-elegant-gray-200 bg-elegant-gray-50 px-2.5 py-1 text-[11px] font-medium text-elegant-gray-700">
+                                      İrsaliye teslim alındı
+                                    </span>
                                     {order.delivered_at && (
-                                      <span className="text-xs text-gray-500 ml-2">
+                                      <span className="ml-2 text-xs text-elegant-gray-500">
                                         {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
                                           day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
                                         })}
@@ -963,18 +873,18 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                 {order.delivery_image_urls && order.delivery_image_urls.length > 0 && (
                                   <div className="mb-4">
                                     <div className="flex items-center gap-2 mb-2">
-                                      <Image className="w-4 h-4 text-blue-600" />
-                                      <span className="text-sm font-medium text-gray-900">İrsaliye Belgeleri</span>
-                                      <Badge variant="outline" className="text-xs">
+                                      <Image className="w-4 h-4 text-elegant-gray-500" />
+                                      <span className="text-sm font-medium text-elegant-black">İrsaliye belgeleri</span>
+                                      <span className="rounded-full bg-elegant-gray-50 px-2 py-0.5 text-[11px] font-medium text-elegant-gray-600">
                                         {order.delivery_image_urls.length} adet
-                                      </Badge>
+                                      </span>
                                     </div>
                                     <div className="flex gap-2 overflow-x-auto pb-2">
                                       {order.delivery_image_urls.slice(0, 4).map((photo, index) => (
                                         <button
                                           key={index}
                                           onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, index)}
-                                          className="flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 border-blue-200 hover:border-blue-400 transition-all duration-200 group bg-white"
+                                          className="group h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg border border-elegant-gray-200 bg-white transition hover:border-elegant-black"
                                         >
                                           <img
                                             src={photo}
@@ -986,7 +896,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                       {order.delivery_image_urls.length > 4 && (
                                         <button
                                           onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, 4)}
-                                          className="flex-shrink-0 w-16 h-16 rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200 transition-colors duration-200"
+                                          className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg border border-elegant-gray-200 bg-elegant-gray-50 text-xs text-elegant-gray-600 transition hover:bg-elegant-gray-100"
                                         >
                                           <div className="text-center">
                                             <div className="font-semibold">+{order.delivery_image_urls.length - 4}</div>
@@ -1003,7 +913,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     {order.invoices && order.invoices.length > 0 ? (
                                       <Button 
                                         onClick={() => handleOpenInvoiceModal(order.id)}
-                                        className="bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg shadow-sm"
+                                        className="rounded-2xl bg-black text-white hover:bg-gray-900"
                                         size="sm"
                                       >
                                         <Receipt className="w-4 h-4 mr-2" />
@@ -1012,7 +922,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     ) : (
                                       <Button 
                                         onClick={() => handleOpenInvoiceModal(order.id)}
-                                        className="bg-gray-900 hover:bg-gray-800 text-white rounded-lg shadow-sm"
+                                        className="rounded-2xl bg-black text-white hover:bg-gray-900"
                                         size="sm"
                                       >
                                         <Receipt className="w-4 h-4 mr-2" />
@@ -1024,12 +934,13 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     <Button
                                       onClick={() => generatePDFReport(order)}
                                       disabled={generatingPDF === order.id}
-                                      className="bg-slate-800 hover:bg-slate-700 text-white disabled:bg-slate-400 disabled:cursor-not-allowed transition-colors rounded-lg shadow-sm"
+                                      variant="outline"
+                                      className="rounded-2xl border-elegant-gray-200"
                                       size="sm"
                                     >
                                       {generatingPDF === order.id ? (
                                         <>
-                                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                          <div className="mr-2 h-4 w-4 animate-spin rounded-full border-2 border-elegant-gray-200 border-t-elegant-black"></div>
                                           Oluşturuluyor...
                                         </>
                                       ) : (
@@ -1051,7 +962,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                       variant="outline"
                                       size="sm"
                                       onClick={() => toggleCardExpansion(order.id)}
-                                      className="text-gray-600 hover:text-gray-800 border-gray-300"
+                                      className="rounded-2xl border-elegant-gray-200 text-elegant-gray-600 hover:text-elegant-black"
                                     >
                                       <Eye className="w-4 h-4 mr-2" />
                                       {expandedCards.has(order.id) ? 'Gizle' : 'Detayları Gör'}
@@ -1073,21 +984,21 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                             (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0) ||
                             (order.invoices && order.invoices.length > 0)
                           ) && expandedCards.has(order.id) && (
-                            <div className="p-6 bg-gray-50/50 border-t border-gray-100 animate-in slide-in-from-top-2 duration-200">
-                              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            <div className="animate-in slide-in-from-top-2 border-t border-elegant-gray-200 bg-elegant-gray-50/60 p-6 duration-200">
+                              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                                 {/* İrsaliye Fotoğrafları */}
                                 {((order.delivery_image_urls && order.delivery_image_urls.length > 0) || 
                                   (order.delivery_receipt_photos && order.delivery_receipt_photos.length > 0)) && (
-                                  <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm">
-                                    <div className="flex items-center gap-3 mb-4">
-                                      <div className="p-2 bg-gray-100 rounded-lg">
-                                        <Image className="w-4 h-4 text-gray-600" />
+                                  <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+                                    <div className="mb-4 flex items-center gap-3">
+                                      <div className="rounded-lg bg-elegant-gray-50 p-2">
+                                        <Image className="h-4 w-4 text-elegant-gray-600" />
                                       </div>
                                       <div>
-                                        <span className="text-sm font-semibold text-gray-900">İrsaliye Belgeleri</span>
-                                        <Badge variant="outline" className="ml-2 text-xs">
+                                        <span className="text-sm font-semibold text-elegant-black">İrsaliye belgeleri</span>
+                                        <span className="ml-2 text-xs text-elegant-gray-500">
                                           {(order.delivery_image_urls?.length || 0) + (order.delivery_receipt_photos?.length || 0)} fotoğraf
-                                        </Badge>
+                                        </span>
                                       </div>
                                     </div>
                                     
@@ -1097,7 +1008,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                         <button
                                           key={`delivery-${index}`}
                                           onClick={() => handleViewDeliveryPhotos(order.delivery_image_urls!, index)}
-                                          className="aspect-square rounded-lg overflow-hidden border-2 border-blue-200 hover:border-blue-300 transition-all duration-200 group bg-white"
+                                          className="group aspect-square overflow-hidden rounded-lg border border-elegant-gray-200 bg-white transition hover:border-elegant-black"
                                         >
                                           <img
                                             src={photo}
@@ -1112,7 +1023,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                         <button
                                           key={`receipt-${index}`}
                                           onClick={() => handleViewDeliveryPhotos(order.delivery_receipt_photos!, index)}
-                                          className="aspect-square rounded-lg overflow-hidden border-2 border-gray-200 hover:border-gray-300 transition-all duration-200 group bg-white"
+                                          className="group aspect-square overflow-hidden rounded-lg border border-elegant-gray-200 bg-white transition hover:border-elegant-black"
                                         >
                                           <img
                                             src={photo}
@@ -1129,7 +1040,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                             const allPhotos = [...(order.delivery_image_urls || []), ...(order.delivery_receipt_photos || [])]
                                             handleViewDeliveryPhotos(allPhotos, 6)
                                           }}
-                                          className="aspect-square rounded-lg border-2 border-gray-200 bg-gray-100 flex items-center justify-center text-xs text-gray-600 hover:bg-gray-200 transition-colors duration-200"
+                                          className="flex aspect-square items-center justify-center rounded-lg border border-elegant-gray-200 bg-elegant-gray-50 text-xs text-elegant-gray-600 transition hover:bg-elegant-gray-100"
                                         >
                                           <div className="text-center">
                                             <div className="font-semibold">+{((order.delivery_image_urls?.length || 0) + (order.delivery_receipt_photos?.length || 0)) - 6}</div>
@@ -1140,7 +1051,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     </div>
                                     
                                     {order.delivered_at && (
-                                      <div className="text-xs text-gray-500 mt-4 p-3 bg-gray-50 rounded-lg">
+                                      <div className="mt-4 rounded-lg bg-elegant-gray-50 p-3 text-xs text-elegant-gray-500">
                                         <span className="font-medium">Teslim alındı:</span> {new Date(order.delivered_at).toLocaleDateString('tr-TR', {
                                           day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
                                         })}
@@ -1151,27 +1062,25 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
                                 {/* Fatura Fotoğrafları */}
                                 {order.invoices && order.invoices.length > 0 && (
-                                  <div className="bg-white rounded-xl border border-emerald-200 p-5 shadow-sm">
-                                    <div className="flex items-center gap-3 mb-4">
-                                      <div className="p-2 bg-emerald-100 rounded-lg">
-                                        <Receipt className="w-4 h-4 text-emerald-600" />
+                                  <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+                                    <div className="mb-4 flex items-center gap-3">
+                                      <div className="rounded-lg bg-elegant-gray-50 p-2">
+                                        <Receipt className="h-4 w-4 text-elegant-gray-600" />
                                       </div>
                                       <div>
-                                        <span className="text-sm font-semibold text-emerald-900">Fatura Belgeleri</span>
-                                        <Badge variant="outline" className="ml-2 text-xs border-emerald-200 text-emerald-700">
-                                          {order.invoices.length} fatura
-                                        </Badge>
+                                        <span className="text-sm font-semibold text-elegant-black">Fatura belgeleri</span>
+                                        <span className="ml-2 text-xs text-elegant-gray-500">{order.invoices.length} fatura</span>
                                       </div>
                                     </div>
                                     
                                     <div className="space-y-4">
                                       {order.invoices.map((invoice, index) => (
-                                        <div key={invoice.id} className="border border-emerald-200 rounded-lg p-4 bg-emerald-50/50">
-                                          <div className="flex items-center justify-between mb-3">
-                                            <span className="text-sm font-semibold text-emerald-800">
+                                        <div key={invoice.id} className="rounded-lg border border-elegant-gray-200 bg-elegant-gray-50 p-4">
+                                          <div className="mb-3 flex items-center justify-between">
+                                            <span className="text-sm font-semibold text-elegant-black">
                                               Fatura #{index + 1}
                                             </span>
-                                            <span className="text-sm font-bold text-emerald-800">
+                                            <span className="text-sm font-bold text-elegant-black">
                                               {new Intl.NumberFormat('tr-TR', { 
                                                 style: 'currency', 
                                                 currency: invoice.currency || 'TRY'
@@ -1185,20 +1094,20 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                                 <button
                                                   key={photoIndex}
                                                   onClick={() => handleViewDeliveryPhotos(invoice.invoice_photos, photoIndex)}
-                                                  className="aspect-square rounded-lg overflow-hidden border-2 border-emerald-200 hover:border-emerald-300 transition-all duration-200 bg-white"
+                                                  className="aspect-square overflow-hidden rounded-lg border border-elegant-gray-200 bg-white"
                                                 >
                                                   <img src={photo} alt={`Fatura ${photoIndex + 1}`} className="w-full h-full object-cover" />
                                                 </button>
                                               ))}
                                               {invoice.invoice_photos.length > 3 && (
-                                                <div className="aspect-square bg-emerald-100 rounded-lg border-2 border-emerald-200 flex items-center justify-center text-xs text-emerald-600 font-medium">
+                                                <div className="flex aspect-square items-center justify-center rounded-lg border border-elegant-gray-200 bg-elegant-gray-50 text-xs font-medium text-elegant-gray-600">
                                                   +{invoice.invoice_photos.length - 3}
                                                 </div>
                                               )}
                                             </div>
                                           )}
                                           
-                                          <div className="text-xs text-emerald-600 font-medium">
+                                          <div className="text-xs font-medium text-elegant-gray-500">
                                             {new Date(invoice.created_at).toLocaleDateString('tr-TR', {
                                               day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
                                             })}
@@ -1219,7 +1128,6 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
               </div>
             </TabsContent>
           </Tabs>
-        </Card>
       </div>
 
       {/* Full Screen Image Viewer */}
@@ -1233,29 +1141,46 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
       {/* Invoice Modal */}
       <Dialog open={isInvoiceModalOpen} onOpenChange={setIsInvoiceModalOpen}>
-        <DialogContent className="max-w-md bg-white">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Receipt className="w-5 h-5" />
-              Fatura Ekle
-            </DialogTitle>
-          </DialogHeader>
-          
-          <div className="space-y-4">
-            {/* Tutar Input */}
-            <div className="space-y-2">
-              <Label htmlFor="amount">Fatura Tutarı</Label>
+        <DialogContent
+          showCloseButton={false}
+          overlayClassName="bg-black/40 backdrop-blur-[2px]"
+          className="left-0 top-0 flex h-[100dvh] max-h-[100dvh] w-full max-w-none translate-x-0 translate-y-0 flex-col gap-0 overflow-hidden rounded-none border-0 p-0 shadow-none sm:left-[50%] sm:top-[50%] sm:h-auto sm:max-h-[90vh] sm:max-w-md sm:translate-x-[-50%] sm:translate-y-[-50%] sm:rounded-[28px] sm:border sm:border-elegant-gray-200 sm:shadow-2xl"
+        >
+          <div className="shrink-0 border-b border-elegant-gray-200 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
+            <div className="flex items-start justify-between gap-3">
+              <DialogHeader className="space-y-1 text-left">
+                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">Sipariş</p>
+                <DialogTitle className="text-xl font-semibold tracking-tight text-elegant-black">
+                  Fatura ekle
+                </DialogTitle>
+              </DialogHeader>
+              <button
+                type="button"
+                onClick={handleCloseInvoiceModal}
+                className="rounded-full px-3 py-1.5 text-sm font-medium text-elegant-gray-600 hover:bg-elegant-gray-50"
+              >
+                Kapat
+              </button>
+            </div>
+          </div>
+
+          <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
+            <div>
+              <Label htmlFor="amount" className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                Fatura tutarı
+              </Label>
               <div className="flex gap-2">
                 <Input
                   id="amount"
                   type="number"
+                  inputMode="decimal"
                   placeholder="0.00"
                   value={invoiceAmount}
                   onChange={(e) => setInvoiceAmount(e.target.value)}
-                  className="flex-1"
+                  className="h-12 flex-1 rounded-xl border-elegant-gray-200 bg-elegant-gray-50 text-base shadow-none focus-visible:ring-1 focus-visible:ring-elegant-black sm:text-sm"
                 />
                 <Select value={invoiceCurrency} onValueChange={setInvoiceCurrency}>
-                  <SelectTrigger className="w-20">
+                  <SelectTrigger className="h-12 w-[92px] rounded-xl border-elegant-gray-200 bg-elegant-gray-50 shadow-none focus:ring-1 focus:ring-elegant-black">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent className="bg-white">
@@ -1268,27 +1193,29 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
               </div>
             </div>
 
-            {/* Fotoğraf Yükleme */}
-            <div className="space-y-2">
-              <Label>Fatura Fotoğrafları</Label>
+            <div>
+              <Label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                Fatura fotoğrafları
+              </Label>
               <div className="flex gap-2">
                 <Button
                   type="button"
                   variant="outline"
-                  className="flex-1"
+                  className="h-12 flex-1 rounded-2xl border-elegant-gray-200"
                   onClick={() => document.getElementById('invoice-file-input')?.click()}
                   disabled={isUploadingInvoice}
                 >
-                  <Upload className="w-4 h-4 mr-2" />
-                  Dosya Seç
+                  <Upload className="mr-2 h-4 w-4" />
+                  Dosya seç
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
+                  className="h-12 w-12 rounded-2xl border-elegant-gray-200 p-0"
                   onClick={handleCameraCapture}
                   disabled={isUploadingInvoice}
                 >
-                  <Camera className="w-4 h-4" />
+                  <Camera className="h-4 w-4" />
                 </Button>
               </div>
               
@@ -1302,37 +1229,40 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
               />
             </div>
 
-            {/* Yüklenen Fotoğrafları Göster */}
             {invoicePhotos.length > 0 && (
-              <div className="space-y-2">
-                <Label>Yüklenen Fotoğraflar ({invoicePhotos.length})</Label>
+              <div>
+                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                  Yüklenenler ({invoicePhotos.length})
+                </p>
                 <div className="grid grid-cols-3 gap-2">
                   {invoicePhotos.map((photo, index) => (
                     <div key={index} className="relative">
                       <img
                         src={photo}
                         alt={`Fatura ${index + 1}`}
-                        className="w-full h-20 object-cover rounded border"
+                        className="h-20 w-full rounded-xl border border-elegant-gray-200 object-cover"
                       />
                       <button
+                        type="button"
                         onClick={() => removePhoto(index)}
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                        className="absolute -right-1 -top-1 flex h-6 w-6 items-center justify-center rounded-full bg-black text-white"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="h-3 w-3" />
                       </button>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+          </div>
 
-            {/* Butonlar */}
-            <div className="flex gap-2 pt-4">
+          <div className="shrink-0 border-t border-elegant-gray-200 bg-white px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5">
+            <div className="flex flex-col-reverse gap-2 sm:flex-row">
               <Button
                 type="button"
                 variant="outline"
                 onClick={handleCloseInvoiceModal}
-                className="flex-1"
+                className="h-12 flex-1 rounded-2xl border-elegant-gray-200"
               >
                 İptal
               </Button>
@@ -1340,9 +1270,9 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                 type="button"
                 onClick={handleSubmitInvoice}
                 disabled={isUploadingInvoice || !invoiceAmount || invoicePhotos.length === 0}
-                className="flex-1 bg-black hover:bg-black text-white"
+                className="h-12 flex-1 rounded-2xl bg-black text-white hover:bg-gray-900"
               >
-                {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura Ekle'}
+                {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura ekle'}
               </Button>
             </div>
           </div>

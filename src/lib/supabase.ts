@@ -236,6 +236,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at: string | null
+          contract_item_id: string | null
         }
         Insert: {
           brand?: string | null
@@ -261,6 +262,7 @@ export type Database = {
           unit: string
           unit_price: number
           updated_at?: string | null
+          contract_item_id?: string | null
         }
         Update: {
           brand?: string | null
@@ -286,6 +288,7 @@ export type Database = {
           unit?: string
           unit_price?: number
           updated_at?: string | null
+          contract_item_id?: string | null
         }
       }
       sites: {
@@ -369,6 +372,126 @@ export type Database = {
           tax_number?: string | null
           total_orders?: number | null
           updated_at?: string | null
+        }
+      }
+      supplier_contracts: {
+        Row: {
+          id: string
+          supplier_id: string
+          title: string | null
+          contract_no: string | null
+          start_date: string | null
+          end_date: string | null
+          notes: string | null
+          document_urls: string[]
+          status: 'active' | 'cancelled'
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          supplier_id: string
+          title?: string | null
+          contract_no?: string | null
+          start_date?: string | null
+          end_date?: string | null
+          notes?: string | null
+          document_urls?: string[]
+          status?: 'active' | 'cancelled'
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          supplier_id?: string
+          title?: string | null
+          contract_no?: string | null
+          start_date?: string | null
+          end_date?: string | null
+          notes?: string | null
+          document_urls?: string[]
+          status?: 'active' | 'cancelled'
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      supplier_contract_items: {
+        Row: {
+          id: string
+          contract_id: string
+          material_class: string | null
+          material_group: string | null
+          material_item: string
+          unit: string
+          unit_price: number
+          currency: string
+          contracted_quantity: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          contract_id: string
+          material_class?: string | null
+          material_group?: string | null
+          material_item: string
+          unit: string
+          unit_price?: number
+          currency?: string
+          contracted_quantity: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          contract_id?: string
+          material_class?: string | null
+          material_group?: string | null
+          material_item?: string
+          unit?: string
+          unit_price?: number
+          currency?: string
+          contracted_quantity?: number
+          created_at?: string
+          updated_at?: string
+        }
+      }
+      supplier_contract_deliveries: {
+        Row: {
+          id: string
+          contract_item_id: string
+          purchase_request_id: string
+          purchase_request_item_id: string
+          delivered_quantity: number
+          waybill_photos: string[]
+          notes: string | null
+          uploaded_by: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          contract_item_id: string
+          purchase_request_id: string
+          purchase_request_item_id: string
+          delivered_quantity: number
+          waybill_photos?: string[]
+          notes?: string | null
+          uploaded_by?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          contract_item_id?: string
+          purchase_request_id?: string
+          purchase_request_item_id?: string
+          delivered_quantity?: number
+          waybill_photos?: string[]
+          notes?: string | null
+          uploaded_by?: string | null
+          created_at?: string
         }
       }
       offers: {
