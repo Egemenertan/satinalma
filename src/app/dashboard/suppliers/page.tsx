@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getSessionUser } from '@/lib/auth'
+import { Skeleton } from '@/components/ui/skeleton'
 import SupplierManagement from '@/components/SupplierManagement'
 
 export default function SuppliersPage() {
@@ -49,8 +50,14 @@ export default function SuppliersPage() {
 
   if (isChecking) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-gray-600">Yükleniyor...</div>
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-56 rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-[112px] rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-[420px] rounded-xl" />
       </div>
     )
   }
@@ -59,11 +66,7 @@ export default function SuppliersPage() {
     return null
   }
 
-  return (
-    <div className="space-y-8">
-      <SupplierManagement />
-    </div>
-  )
+  return <SupplierManagement />
 }
 
 

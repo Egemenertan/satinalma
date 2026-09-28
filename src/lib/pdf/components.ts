@@ -29,21 +29,45 @@ const formatNumber = (num: number, decimals: number = 2): string => {
   })
 }
 
+const formatShortDocumentNumber = (value?: string | null): string => {
+  const trimmed = value?.trim()
+  if (!trimmed) return ''
+  return trimmed.length > 7 ? trimmed.slice(-7) : trimmed
+}
+
+const escapeHtml = (value: string): string =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+
 /**
  * Header Component - With Logo Only
  */
-export const buildHeader = (request: PDFRequestData): string => `
+export const buildHeader = (request: PDFRequestData, orders: PDFOrderData[] = []): string => {
+  const orderNumbers = orders
+    .map((order) => formatShortDocumentNumber(order.order_number))
+    .filter(Boolean)
+
+  return `
   <div class="header">
     <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
       <img src="/d.png" alt="Logo" style="height: 40px; width: auto; filter: brightness(0);" />
       <div style="text-align: right;">
         <div style="font-size: 11pt; color: #333; font-weight: 600;">
-          ${request.title}
+          ${escapeHtml(request.title)}
         </div>
+        ${orderNumbers.length > 0 ? `
+          <div style="font-size: 9pt; color: #111; font-weight: 600; margin-top: 4px;">
+            Sipariş No: ${orderNumbers.map((number) => escapeHtml(number)).join(', ')}
+          </div>
+        ` : ''}
       </div>
     </div>
   </div>
 `
+}
 
 /**
  * Request Info Component
@@ -123,6 +147,7 @@ export const buildOrders = (orders: PDFOrderData[]): string => {
       <table class="orders-table">
         <thead>
           <tr>
+            <th>Sipariş No</th>
             <th>Tedarikçi</th>
             <th>Malzeme</th>
             <th>Miktar</th>
@@ -132,9 +157,13 @@ export const buildOrders = (orders: PDFOrderData[]): string => {
         <tbody>
           ${orders.map(order => `
             <tr>
-              <td>${order.supplier_name}</td>
-              <td>${order.item_name}</td>
-              <td>${order.quantity} ${order.unit || 'adet'}</td>
+              <td>
+                <div style="font-weight: 600;">${escapeHtml(formatShortDocumentNumber(order.order_number) || '—')}</div>
+                ${order.order_number ? `<div style="font-size: 8pt; color: #666;">${escapeHtml(order.order_number)}</div>` : ''}
+              </td>
+              <td>${escapeHtml(order.supplier_name)}</td>
+              <td>${escapeHtml(order.item_name)}</td>
+              <td>${order.quantity} ${escapeHtml(order.unit || 'adet')}</td>
               <td>${formatDate(order.created_at)}</td>
             </tr>
           `).join('')}

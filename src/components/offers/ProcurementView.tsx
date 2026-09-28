@@ -1707,7 +1707,7 @@ DOVEC GROUP
 
                         {item.contract_item_id ? (
                           <div className="rounded-xl bg-elegant-gray-50 p-4 text-sm text-elegant-gray-600">
-                            Bu kalem toplu alım sözleşmesine bağlı. Sipariş oluşturmanıza gerek yok; irsaliye yüklenince miktar düşer.
+                            Bu kalem toplu alım sözleşmesine bağlı. Sipariş sözleşmede beklemede görünür; miktar irsaliye yüklenince düşer.
                           </div>
                         ) : materialSupplier.isRegistered && materialSupplier.suppliers.length > 0 ? (
                           <div className="space-y-3">

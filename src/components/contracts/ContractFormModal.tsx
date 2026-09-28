@@ -57,6 +57,8 @@ export function ContractFormModal({
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [notes, setNotes] = useState('')
+  const [budgetAmount, setBudgetAmount] = useState('')
+  const [budgetCurrency, setBudgetCurrency] = useState('TRY')
   const [items, setItems] = useState<LineItem[]>([emptyLine()])
   const [classes, setClasses] = useState<string[]>([])
   const [groupsByIndex, setGroupsByIndex] = useState<Record<number, string[]>>({})
@@ -87,6 +89,8 @@ export function ContractFormModal({
     setStartDate('')
     setEndDate('')
     setNotes('')
+    setBudgetAmount('')
+    setBudgetCurrency('TRY')
     setItems([emptyLine()])
     setGroupsByIndex({})
     setMaterialsByIndex({})
@@ -133,6 +137,11 @@ export function ContractFormModal({
       showToast('Sözleşme bitiş tarihi gerekli', 'error')
       return
     }
+    const budget = Number(budgetAmount)
+    if (!Number.isFinite(budget) || budget <= 0) {
+      showToast('Sözleşme bütçesi gerekli', 'error')
+      return
+    }
 
     setSaving(true)
     try {
@@ -143,6 +152,8 @@ export function ContractFormModal({
         start_date: startDate,
         end_date: endDate,
         notes,
+        budget_amount: budget,
+        budget_currency: budgetCurrency,
         items: validItems,
       })
       showToast('Sözleşme kaydedildi', 'success')
@@ -225,7 +236,35 @@ export function ContractFormModal({
                 <label className={labelClass}>Bitiş</label>
                 <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className={fieldClass} />
               </div>
+              <div>
+                <label className={labelClass}>Bütçe</label>
+                <Input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={budgetAmount}
+                  onChange={(e) => setBudgetAmount(e.target.value)}
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Bütçe para birimi</label>
+                <Select value={budgetCurrency} onValueChange={setBudgetCurrency}>
+                  <SelectTrigger className={fieldClass}><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TRY">TRY</SelectItem>
+                    <SelectItem value="USD">USD</SelectItem>
+                    <SelectItem value="EUR">EUR</SelectItem>
+                    <SelectItem value="GBP">GBP</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            <p className="text-xs text-elegant-gray-500">
+              Kesilen faturalar bu bütçe üzerinden izlenir. Miktar, irsaliye yüklenince düşer.
+            </p>
           </section>
 
           <section className="mt-8 space-y-3">

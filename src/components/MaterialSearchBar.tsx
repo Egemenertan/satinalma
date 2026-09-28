@@ -51,8 +51,8 @@ export function MaterialSearchBar({
   const searchTimeoutRef = useRef<NodeJS.Timeout>()
   const supabase = createClient()
 
-  const normalizeCategoryName = (text: string): string =>
-    text
+  const normalizeCategoryName = (text: string | null | undefined): string =>
+    String(text ?? '')
       .toLocaleLowerCase('tr-TR')
       .trim()
       .replace(/ğ/g, 'g')
@@ -134,7 +134,9 @@ export function MaterialSearchBar({
         .select('class, group, item_name, created_at')
         .or(searchConditions)
 
-      if (categoryNames.length === 0 && restrictToStationery) {
+      if (categoryNames.length > 0) {
+        searchQuery = searchQuery.in('class', categoryNames)
+      } else if (categoryNames.length === 0 && restrictToStationery) {
         // Geriye dönük fallback (ofis kullanıcıları)
         searchQuery = searchQuery.in('class', [
           'Kırtasiye Malzemeleri',
@@ -151,7 +153,7 @@ export function MaterialSearchBar({
       
       const { data, error } = await searchQuery
         .order('created_at', { ascending: false, nullsFirst: false })
-        .limit(1000) // Yeni eklenen kayıtların düşmemesi için geniş havuz
+        .limit(80)
 
       if (!error && data) {
         const filteredData = categoryNames.length > 0

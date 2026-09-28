@@ -809,6 +809,7 @@ export type Database = {
           document_urls: string[] | null
           id: string
           is_delivered: boolean | null
+          order_number: string
           is_return_reorder: boolean | null
           material_item_id: string | null
           purchase_request_id: string
@@ -839,6 +840,7 @@ export type Database = {
           is_delivered?: boolean | null
           is_return_reorder?: boolean | null
           material_item_id?: string | null
+          order_number?: string
           purchase_request_id: string
           quantity?: number | null
           received_by?: string | null
@@ -867,6 +869,7 @@ export type Database = {
           is_delivered?: boolean | null
           is_return_reorder?: boolean | null
           material_item_id?: string | null
+          order_number?: string
           purchase_request_id?: string
           quantity?: number | null
           received_by?: string | null

@@ -47,6 +47,7 @@ export interface PDFRequestData {
 
 export interface PDFOrderData {
   id: string
+  order_number?: string
   supplier_name: string
   item_name: string
   quantity: number

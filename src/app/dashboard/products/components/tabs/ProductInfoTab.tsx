@@ -5,8 +5,34 @@
 
 'use client'
 
+import { useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { useToast } from '@/components/ui/toast'
 import { TrendingUp, Receipt, Hash } from 'lucide-react'
+import { useUpdateProduct } from '../../hooks'
+
+const PRODUCT_UNITS = [
+  { value: 'adet', label: 'Adet' },
+  { value: 'kg', label: 'Kilogram' },
+  { value: 'lt', label: 'Litre' },
+  { value: 'm', label: 'Metre' },
+  { value: 'm2', label: 'Metrekare' },
+  { value: 'm3', label: 'Metreküp' },
+  { value: 'paket', label: 'Paket' },
+  { value: 'kutu', label: 'Kutu' },
+] as const
+
+function resolveUnitValue(unit: string | null | undefined) {
+  if (!unit) return ''
+  const normalized = unit.trim().toLocaleLowerCase('tr-TR')
+  const match = PRODUCT_UNITS.find(
+    (item) =>
+      item.value.toLocaleLowerCase('tr-TR') === normalized ||
+      item.label.toLocaleLowerCase('tr-TR') === normalized
+  )
+  return match?.value ?? unit.trim()
+}
 
 interface ProductInfoTabProps {
   product: any
@@ -18,6 +44,41 @@ interface ProductInfoTabProps {
 }
 
 export function ProductInfoTab({ product, movementsData, serialNumbers }: ProductInfoTabProps) {
+  const { showToast } = useToast()
+  const updateMutation = useUpdateProduct()
+  const [unit, setUnit] = useState(() => resolveUnitValue(product?.unit))
+
+  useEffect(() => {
+    setUnit(resolveUnitValue(product?.unit))
+  }, [product?.id, product?.unit])
+
+  const unitOptions = useMemo(() => {
+    const options: Array<{ value: string; label: string }> = PRODUCT_UNITS.map((item) => ({
+      value: item.value,
+      label: item.label,
+    }))
+    if (unit && !options.some((item) => item.value === unit)) {
+      options.unshift({ value: unit, label: unit })
+    }
+    return options
+  }, [unit])
+
+  const handleUnitChange = async (nextUnit: string) => {
+    if (!product?.id || nextUnit === unit) return
+    const previous = unit
+    setUnit(nextUnit)
+    try {
+      await updateMutation.mutateAsync({
+        id: product.id,
+        updates: { unit: nextUnit },
+      })
+      showToast('Birim güncellendi', 'success')
+    } catch {
+      setUnit(previous)
+      showToast('Birim güncellenemedi', 'error')
+    }
+  }
+
   return (
     <>
       {/* Ürün Bilgi Kartları */}
@@ -44,7 +105,22 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim</label>
-          <p className="text-lg font-semibold text-gray-900 mt-2">{product.unit || '-'}</p>
+          <Select
+            value={unit || undefined}
+            onValueChange={handleUnitChange}
+            disabled={updateMutation.isPending || !product?.id}
+          >
+            <SelectTrigger className="mt-2 h-11 w-full border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl text-base font-semibold text-gray-900">
+              <SelectValue placeholder="Birim seçin" />
+            </SelectTrigger>
+            <SelectContent className="z-[80] rounded-2xl">
+              {unitOptions.map((item) => (
+                <SelectItem key={item.value} value={item.value}>
+                  {item.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim Fiyat</label>

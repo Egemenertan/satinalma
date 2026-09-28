@@ -385,6 +385,8 @@ export type Database = {
           notes: string | null
           document_urls: string[]
           status: 'active' | 'cancelled'
+          budget_amount: number | null
+          budget_currency: string
           created_by: string | null
           created_at: string
           updated_at: string
@@ -399,6 +401,8 @@ export type Database = {
           notes?: string | null
           document_urls?: string[]
           status?: 'active' | 'cancelled'
+          budget_amount?: number | null
+          budget_currency?: string
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -413,6 +417,8 @@ export type Database = {
           notes?: string | null
           document_urls?: string[]
           status?: 'active' | 'cancelled'
+          budget_amount?: number | null
+          budget_currency?: string
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -469,6 +475,8 @@ export type Database = {
           waybill_photos: string[]
           notes: string | null
           uploaded_by: string | null
+          order_id: string | null
+          order_delivery_id: string | null
           created_at: string
         }
         Insert: {
@@ -480,6 +488,8 @@ export type Database = {
           waybill_photos?: string[]
           notes?: string | null
           uploaded_by?: string | null
+          order_id?: string | null
+          order_delivery_id?: string | null
           created_at?: string
         }
         Update: {
@@ -491,6 +501,8 @@ export type Database = {
           waybill_photos?: string[]
           notes?: string | null
           uploaded_by?: string | null
+          order_id?: string | null
+          order_delivery_id?: string | null
           created_at?: string
         }
       }
@@ -553,6 +565,59 @@ export type Database = {
           updated_at?: string | null
         }
       }
+      invoices: {
+        Row: {
+          id: string
+          order_id: string
+          amount: number
+          currency: string | null
+          discount: number | null
+          grand_total: number | null
+          invoice_group_id: string | null
+          invoice_photos: string[] | null
+          is_master: boolean | null
+          notes: string | null
+          parent_invoice_id: string | null
+          subtotal: number | null
+          tax: number | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id?: string
+          order_id: string
+          amount: number
+          currency?: string | null
+          discount?: number | null
+          grand_total?: number | null
+          invoice_group_id?: string | null
+          invoice_photos?: string[] | null
+          is_master?: boolean | null
+          notes?: string | null
+          parent_invoice_id?: string | null
+          subtotal?: number | null
+          tax?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          order_id?: string
+          amount?: number
+          currency?: string | null
+          discount?: number | null
+          grand_total?: number | null
+          invoice_group_id?: string | null
+          invoice_photos?: string[] | null
+          is_master?: boolean | null
+          notes?: string | null
+          parent_invoice_id?: string | null
+          subtotal?: number | null
+          tax?: number | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+      }
       order_deliveries: {
         Row: {
           id: string
@@ -609,6 +674,7 @@ export type Database = {
           document_urls: string[] | null
           id: string
           is_delivered: boolean | null
+          order_number: string | null
           material_item_id: string | null
           purchase_request_id: string
           quantity: number | null
@@ -632,6 +698,7 @@ export type Database = {
           document_urls?: string[] | null
           id?: string
           is_delivered?: boolean | null
+          order_number?: string | null
           material_item_id?: string | null
           purchase_request_id: string
           quantity?: number | null
@@ -655,6 +722,7 @@ export type Database = {
           document_urls?: string[] | null
           id?: string
           is_delivered?: boolean | null
+          order_number?: string | null
           material_item_id?: string | null
           purchase_request_id?: string
           quantity?: number | null

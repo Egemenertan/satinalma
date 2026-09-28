@@ -4,6 +4,7 @@ import { useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
+import { ContractBudgetSummary } from '@/components/contracts/ContractBudgetSummary'
 import { ContractFormModal } from '@/components/contracts/ContractFormModal'
 import { ContractSummaryCard } from '@/components/contracts/ContractSummaryCard'
 import { fetchContractOverviews } from '@/services/contracts.service'
@@ -35,7 +36,7 @@ export function SupplierContractsPanel({
         <div>
           <h3 className="text-base font-semibold text-elegant-black">Toplu alım sözleşmeleri</h3>
           <p className="mt-1 text-sm text-elegant-gray-500">
-            Malzeme, birim fiyat ve miktarı önceden yükleyin. Kalan yalnızca irsaliye ile düşer.
+            Sipariş beklemede görünür. Adet irsaliye ile düşer, fatura sözleşme bütçesine yazılır.
           </p>
         </div>
         <Button
@@ -60,6 +61,11 @@ export function SupplierContractsPanel({
         <div className="space-y-4">
           {contracts.map((contract) => (
             <div key={contract.id} className="space-y-3">
+              <ContractBudgetSummary
+                contract={contract}
+                showToast={showToast}
+                onBudgetSaved={() => mutate()}
+              />
               {contract.items.map((item) => (
                 <ContractSummaryCard key={item.id} contract={contract} item={item} />
               ))}

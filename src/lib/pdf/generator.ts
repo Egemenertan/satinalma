@@ -22,7 +22,7 @@ const generatePDFHTML = (data: PDFData): string => {
 </head>
 <body>
   <div class="container">
-    ${buildHeader(data.request)}
+    ${buildHeader(data.request, data.orders)}
     ${buildRequestInfo(data.request)}
     ${buildKeyPeopleTimeline(data.timeline)}
     ${buildOrders(data.orders)}
@@ -167,6 +167,7 @@ export const transformToPDFData = (apiData: any): PDFData => {
   // Extract orders
   const orders: PDFOrderData[] = (apiData.orders || []).map((order: any) => ({
     id: order.id,
+    order_number: order.order_number || '',
     supplier_name: order.suppliers?.name || 'Tedarikçi',
     item_name: order.purchase_request_items?.item_name || 'Malzeme',
     quantity: order.quantity || 0,

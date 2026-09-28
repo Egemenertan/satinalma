@@ -1,6 +1,7 @@
 // Order Types
 export interface OrderData {
   id: string
+  order_number?: string | null
   purchase_request_id: string
   supplier_id: string
   delivery_date: string

@@ -57,10 +57,17 @@ export function ContractSummaryCard({
         </span>
       </div>
 
-      <div className={`mt-4 grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'}`}>
+      <div className={`mt-4 grid gap-3 ${compact ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-3'}`}>
         <Stat label="Birim fiyat" value={formatContractMoney(item.unit_price, item.currency)} />
         <Stat label="Sözleşmeli" value={formatContractQty(item.contracted_quantity, item.unit)} />
-        <Stat label="Teslim (irsaliye)" value={formatContractQty(item.delivered_quantity, item.unit)} />
+        <Stat
+          label="Beklemede"
+          value={formatContractQty(
+            item.pending_order_quantity > 0 ? item.pending_order_quantity : item.pending_request_quantity,
+            item.unit
+          )}
+        />
+        <Stat label="Teslim" value={formatContractQty(item.delivered_quantity, item.unit)} />
         <Stat label="Kalan" value={formatContractQty(item.remaining_quantity, item.unit)} />
       </div>
 
@@ -78,10 +85,7 @@ export function ContractSummaryCard({
       </div>
 
       <p className="mt-3 text-xs text-elegant-gray-500">
-        Bitiş: {formatContractDate(contract.end_date)}
-        {item.pending_request_quantity > 0
-          ? ` · İrsaliye bekleyen talepler: ${formatContractQty(item.pending_request_quantity, item.unit)}`
-          : ''}
+        Bitiş: {formatContractDate(contract.end_date)}. Miktar yalnızca irsaliye yüklenince düşer.
       </p>
 
       {(deliveredForRequest != null || remainingForRequest != null) && (
@@ -93,7 +97,7 @@ export function ContractSummaryCard({
 
       {showOrderHint && (
         <p className="mt-3 rounded-lg bg-elegant-gray-50 px-3 py-2 text-xs text-elegant-gray-600">
-          Bu kalem sözleşmeye bağlı. Sipariş oluşturmanıza gerek yok; irsaliye yüklenince miktar düşer.
+          Bu kalem sözleşmeye bağlı. Sipariş beklemede görünür; miktar irsaliye yüklenince düşer. Fatura, sözleşme bütçesine yazılır.
         </p>
       )}
 

@@ -5,6 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Receipt, FileText, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getCurrencySymbol } from '@/components/offers/types'
+import { formatShortDocumentNumber } from '../../utils'
 import { useInvoiceGroups, useInvoiceGroupOrders } from '../../hooks'
 import { Loading } from '@/components/ui/loading'
 
@@ -230,6 +231,9 @@ export function InvoiceGroupView({
                   <div className="flex items-center justify-between">
                     {/* Sipariş Bilgileri */}
                     <div className="flex-1">
+                      <div className="font-mono text-[11px] font-semibold text-gray-900" title={order.order_number || undefined}>
+                        Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
+                      </div>
                       <div className="font-medium text-gray-900">
                         {order.purchase_request_items?.item_name || 'Malzeme belirtilmemiş'}
                       </div>

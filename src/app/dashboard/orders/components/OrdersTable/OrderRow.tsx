@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InlineLoading } from '@/components/ui/loading'
 import { getCurrencySymbol } from '@/components/offers/types'
-import { getOrderStatusBadgeClass, getOrderStatusText } from '../../utils'
+import { formatShortDocumentNumber, getOrderStatusBadgeClass, getOrderStatusText } from '../../utils'
 import type { OrderData } from '../../types'
 
 interface OrderRowProps {
@@ -54,7 +54,13 @@ export function OrderRow({
       
       {/* Tedarikçi */}
       <div className="min-w-0">
-        <div className="font-medium text-gray-900 text-sm break-words leading-tight">
+        <div
+          className="font-mono text-[11px] font-semibold text-gray-900 leading-tight"
+          title={order.order_number || undefined}
+        >
+          Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
+        </div>
+        <div className="font-medium text-gray-900 text-sm break-words leading-tight mt-1">
           {order.suppliers?.name || 'Tedarikçi belirtilmemiş'}
         </div>
         {order.suppliers?.contact_person && (

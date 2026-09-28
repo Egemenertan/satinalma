@@ -74,7 +74,7 @@ export default function ContractsPage() {
             Toplu Alım Sözleşmeleri
           </h1>
           <p className="mt-4 text-base text-gray-600">
-            Tedarikçi sözleşmeleri, birim fiyatlar ve irsaliye ile düşen kalan miktarlar
+            Bütçe, bekleyen siparişler ve irsaliye ile düşen miktarlar
           </p>
         </div>
         <Button asChild className="rounded-2xl bg-black text-white hover:bg-gray-900">
@@ -197,7 +197,16 @@ function ContractOverviewCard({ contract }: { contract: ContractOverview }) {
             )
           })}
         </div>
-        <p className="mt-3 text-xs text-elegant-gray-500">Bitiş: {formatContractDate(contract.end_date)}</p>
+        <p className="mt-3 text-xs text-elegant-gray-500">
+          Bitiş: {formatContractDate(contract.end_date)}
+          {contract.budget_amount != null
+            ? ` · Bütçe ${formatContractMoney(contract.budget_amount, contract.budget_currency)} · fatura ${formatContractMoney(
+                contract.invoiced_amounts.find((row) => row.currency === contract.budget_currency)?.amount || 0,
+                contract.budget_currency
+              )}`
+            : ''}
+          {contract.pending_orders.length > 0 ? ` · ${contract.pending_orders.length} sipariş beklemede` : ''}
+        </p>
       </div>
     </Link>
   )

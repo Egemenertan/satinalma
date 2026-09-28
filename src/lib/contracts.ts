@@ -10,6 +10,8 @@ export interface SupplierContract {
   notes: string | null
   document_urls: string[]
   status: ContractStatus
+  budget_amount: number | null
+  budget_currency: string
   created_by: string | null
   created_at: string
   updated_at: string
@@ -41,10 +43,27 @@ export interface SupplierContractDelivery {
   created_at: string
 }
 
+export interface ContractMoneyTotal {
+  currency: string
+  amount: number
+}
+
+export interface ContractPendingOrder {
+  order_id: string
+  order_number: string
+  contract_item_id: string
+  material_name: string
+  unit: string
+  ordered_quantity: number
+  delivered_quantity: number
+  pending_quantity: number
+}
+
 export interface ContractItemOverview extends SupplierContractItem {
   delivered_quantity: number
   remaining_quantity: number
   pending_request_quantity: number
+  pending_order_quantity: number
   usage_ratio: number
 }
 
@@ -54,6 +73,8 @@ export interface ContractOverview extends SupplierContract {
   total_contracted: number
   total_delivered: number
   total_remaining: number
+  invoiced_amounts: ContractMoneyTotal[]
+  pending_orders: ContractPendingOrder[]
   is_expired: boolean
   is_expiring_soon: boolean
   is_nearly_used: boolean
@@ -102,6 +123,8 @@ export interface CreateContractInput {
   start_date?: string
   end_date?: string
   notes?: string
+  budget_amount: number
+  budget_currency: string
   items: CreateContractItemInput[]
 }
 
@@ -124,8 +147,9 @@ export const CONTRACT_UNITS = [
   'Torba',
 ] as const
 
-export function normalizeMaterialName(value: string): string {
-  return value.trim().toLocaleLowerCase('tr-TR')
+export function normalizeMaterialName(value: string | null | undefined): string {
+  if (value == null) return ''
+  return String(value).trim().toLocaleLowerCase('tr-TR')
 }
 
 export function isContractCurrentlyActive(contract: Pick<SupplierContract, 'status' | 'start_date' | 'end_date'>): boolean {

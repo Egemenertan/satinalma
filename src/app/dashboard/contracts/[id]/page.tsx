@@ -5,6 +5,7 @@ import Link from 'next/link'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
+import { ContractBudgetSummary } from '@/components/contracts/ContractBudgetSummary'
 import { ContractSummaryCard } from '@/components/contracts/ContractSummaryCard'
 import { formatContractDate, formatContractQty } from '@/lib/contracts'
 import { cancelSupplierContract, fetchContractOverviewById, fetchLinkedRequests } from '@/services/contracts.service'
@@ -81,6 +82,12 @@ export default function ContractDetailPage({ params }: { params: { id: string } 
         )}
       </div>
 
+      <ContractBudgetSummary
+        contract={contract}
+        showToast={showToast}
+        onBudgetSaved={() => mutate()}
+      />
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {contract.items.map((item) => (
           <ContractSummaryCard key={item.id} contract={contract} item={item} />
@@ -90,7 +97,7 @@ export default function ContractDetailPage({ params }: { params: { id: string } 
       <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
         <h2 className="text-lg font-semibold text-elegant-black">Bağlı talepler</h2>
         <p className="mt-1 text-sm text-elegant-gray-600">
-          Miktar yalnızca irsaliye yüklendiğinde düşer. Sipariş oluşturulmaz.
+          Sipariş verilince beklemede görünür. Miktar irsaliye yüklenince düşer. Fatura, sözleşme bütçesine yazılır.
         </p>
         <div className="mt-4 space-y-3">
           {(linked || []).length === 0 ? (

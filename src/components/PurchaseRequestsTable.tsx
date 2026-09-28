@@ -1180,7 +1180,7 @@ export default function PurchaseRequestsTable({
   
   // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${JSON.stringify(overdueRequestIds)}`,
+    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${overdueOnlyFilter ? JSON.stringify(overdueRequestIds) : ''}`,
     () => fetchPurchaseRequests(
     `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}`,
       userRole,

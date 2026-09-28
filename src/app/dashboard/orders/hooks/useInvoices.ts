@@ -126,6 +126,7 @@ export function useInvoiceGroupOrders(searchTerm: string = '') {
         .from('orders')
         .select(`
           id,
+          order_number,
           purchase_request_id,
           supplier_id,
           delivery_date,
@@ -216,13 +217,17 @@ export function useInvoiceGroupOrders(searchTerm: string = '') {
           const brand = order.purchase_request_items?.brand?.toLowerCase() || ''
           const siteName = order.purchase_requests?.sites?.name?.toLowerCase() || ''
           const siteNameAlt = order.purchase_requests?.site_name?.toLowerCase() || ''
+          const orderNumber = order.order_number?.toLowerCase() || ''
+          const requestNumber = order.purchase_requests?.request_number?.toLowerCase() || ''
           
           return (
             supplierName.includes(search) ||
             itemName.includes(search) ||
             brand.includes(search) ||
             siteName.includes(search) ||
-            siteNameAlt.includes(search)
+            siteNameAlt.includes(search) ||
+            orderNumber.includes(search) ||
+            requestNumber.includes(search)
           )
         })
       }

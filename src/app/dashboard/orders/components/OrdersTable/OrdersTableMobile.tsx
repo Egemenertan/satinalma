@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InlineLoading } from '@/components/ui/loading'
 import { getCurrencySymbol } from '@/components/offers/types'
-import { getOrderStatusBadgeClass, getOrderStatusText, sortGroupedOrders } from '../../utils'
+import { formatShortDocumentNumber, getOrderStatusBadgeClass, getOrderStatusText, sortGroupedOrders } from '../../utils'
 import type { GroupedOrder, OrderData } from '../../types'
 
 interface OrdersTableMobileProps {
@@ -137,7 +137,13 @@ export function OrdersTableMobile({
                 {/* Tedarikçi & Durum */}
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <div className="font-semibold text-gray-900 text-sm">
+                    <div
+                      className="font-mono text-[11px] font-semibold text-gray-900"
+                      title={order.order_number || undefined}
+                    >
+                      Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
+                    </div>
+                    <div className="font-semibold text-gray-900 text-sm mt-1">
                       {order.suppliers?.name || 'Tedarikçi belirtilmemiş'}
                     </div>
                     {order.suppliers?.contact_person && (

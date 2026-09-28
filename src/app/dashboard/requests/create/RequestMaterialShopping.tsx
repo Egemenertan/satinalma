@@ -20,11 +20,12 @@ import type { CartItem, MaterialCategory, MaterialGroup, MaterialItem, ModalStat
 import { fetchActiveContractsForMaterials } from '@/services/contracts.service'
 import { normalizeMaterialName, type ActiveContractOption } from '@/lib/contracts'
 
+const MATERIAL_GRID_LIMIT = 100
 const HYGIENE_DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 const HYGIENE_DEFAULT_CATEGORY = 'Hijyen ve Temizlik' as const
 
-const normalizeCategoryName = (value: string): string =>
-  value
+const normalizeCategoryName = (value: string | null | undefined): string =>
+  String(value ?? '')
     .toLocaleLowerCase('tr-TR')
     .trim()
     .replace(/ğ/g, 'g')
@@ -82,6 +83,7 @@ export function RequestMaterialShopping({
   const [subCategories, setSubCategories] = useState<MaterialGroup[]>([])
   const [selectedSubCategory, setSelectedSubCategory] = useState('')
   const [materials, setMaterials] = useState<MaterialItem[]>([])
+  const [materialsTruncated, setMaterialsTruncated] = useState(false)
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(true)
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false)
 
@@ -106,26 +108,40 @@ export function RequestMaterialShopping({
   useEffect(() => {
     void fetchUserFlags()
     void fetchCategories()
-    fetchActiveContractsForMaterials()
-      .then(setActiveContracts)
-      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
   }, [])
 
   useEffect(() => {
-    if (selectedCategory) {
-      void fetchSubCategories(selectedCategory)
-      setSelectedSubCategory('')
-      setMaterials([])
+    const names = materials.map((item) => item.name).filter(Boolean)
+    if (names.length === 0) {
+      setActiveContracts([])
+      return
     }
+
+    let cancelled = false
+    fetchActiveContractsForMaterials(names)
+      .then((options) => {
+        if (!cancelled) setActiveContracts(options)
+      })
+      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
+
+    return () => {
+      cancelled = true
+    }
+  }, [materials])
+
+  useEffect(() => {
+    if (!selectedCategory) return
+    void fetchSubCategories(selectedCategory)
   }, [selectedCategory])
 
   useEffect(() => {
-    if (selectedCategory && selectedSubCategory) {
+    if (!selectedCategory) return
+    if (selectedSubCategory) {
       void fetchMaterials(selectedCategory, selectedSubCategory)
-    } else if (selectedCategory && !selectedSubCategory && subCategories.length > 0) {
+    } else {
       void fetchAllMaterialsForCategory(selectedCategory)
     }
-  }, [selectedSubCategory, selectedCategory, subCategories])
+  }, [selectedCategory, selectedSubCategory])
 
   const fetchUserFlags = async () => {
     try {
@@ -178,7 +194,7 @@ export function RequestMaterialShopping({
     try {
       const { data, error } = await supabase.from('material_categories').select('*').order('name')
       if (!error && data) {
-        setCategories(data)
+        setCategories(data.filter((category) => Boolean(category.name)))
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
@@ -218,16 +234,20 @@ export function RequestMaterialShopping({
         .eq('class', categoryName)
         .eq('group', groupName)
         .order('item_name')
+        .limit(MATERIAL_GRID_LIMIT + 1)
 
       if (!error && data) {
-        setMaterials(
-          data.map((item) => ({
+        const items = data
+          .filter((item) => Boolean(item.item_name))
+          .map((item) => ({
             id: item.id,
-            name: item.item_name,
-            class: item.class,
-            group: item.group
+            name: item.item_name as string,
+            class: item.class ?? undefined,
+            group: item.group ?? undefined
           }))
-        )
+        const truncated = items.length > MATERIAL_GRID_LIMIT
+        setMaterialsTruncated(truncated)
+        setMaterials(truncated ? items.slice(0, MATERIAL_GRID_LIMIT) : items)
       }
     } catch (error) {
       console.error('Error fetching materials:', error)
@@ -247,13 +267,16 @@ export function RequestMaterialShopping({
         .limit(50)
 
       if (!error && data) {
+        setMaterialsTruncated(false)
         setMaterials(
-          data.map((item) => ({
-            id: item.id,
-            name: item.item_name,
-            class: item.class,
-            group: item.group
-          }))
+          data
+            .filter((item) => Boolean(item.item_name))
+            .map((item) => ({
+              id: item.id,
+              name: item.item_name as string,
+              class: item.class ?? undefined,
+              group: item.group ?? undefined
+            }))
         )
       }
     } catch (error) {
@@ -445,7 +468,10 @@ export function RequestMaterialShopping({
         <CategoryTabs
           categories={filteredCategories}
           selectedCategory={selectedCategory}
-          onCategorySelect={setSelectedCategory}
+          onCategorySelect={(categoryName) => {
+            setSelectedSubCategory('')
+            setSelectedCategory(categoryName)
+          }}
           subCategories={subCategories}
           selectedSubCategory={selectedSubCategory}
           onSubCategorySelect={setSelectedSubCategory}
@@ -511,6 +537,11 @@ export function RequestMaterialShopping({
               />
             ))}
           </div>
+        )}
+        {materialsTruncated && !isMaterialsLoading && (
+          <p className="mt-4 text-center text-sm text-gray-500">
+            Bu grupta daha fazla ürün var. Aradığınız malzemeyi üstteki arama ile bulun.
+          </p>
         )}
       </div>
 

@@ -2,7 +2,9 @@ import { createClient } from '@/lib/supabase/client'
 import {
   type ActiveContractOption,
   type ContractItemOverview,
+  type ContractMoneyTotal,
   type ContractOverview,
+  type ContractPendingOrder,
   type CreateContractInput,
   type RequestContractBinding,
   type SupplierContractDelivery,
@@ -24,6 +26,8 @@ type RawContract = {
   notes: string | null
   document_urls: string[] | null
   status: 'active' | 'cancelled'
+  budget_amount: number | null
+  budget_currency: string | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -55,55 +59,83 @@ function toNumber(value: unknown): number {
   return Number.isFinite(n) ? n : 0
 }
 
-function buildOverview(
-  contracts: RawContract[],
-  deliveredByItem: Map<string, number>,
+type ContractActivity = {
+  deliveredByItem: Map<string, number>
   pendingByItem: Map<string, number>
-): ContractOverview[] {
+  deliveredByRequestItem: Map<string, number>
+  pendingOrderQtyByItem: Map<string, number>
+  pendingOrders: Array<ContractPendingOrder & { contract_id: string }>
+  invoicedByContract: Map<string, ContractMoneyTotal[]>
+}
+
+function buildOverview(contracts: RawContract[], activity: ContractActivity): ContractOverview[] {
   return contracts.map((contract) => {
     const supplier = unwrapSupplier(contract.supplier)
     const items: ContractItemOverview[] = (contract.items || []).map((item) => {
-      const delivered = deliveredByItem.get(item.id) || 0
+      const delivered = activity.deliveredByItem.get(item.id) || 0
       const contracted = toNumber(item.contracted_quantity)
       const remaining = Math.max(0, contracted - delivered)
+      const orderPending = activity.pendingOrderQtyByItem.get(item.id) || 0
       return {
         ...item,
         unit_price: toNumber(item.unit_price),
         contracted_quantity: contracted,
         delivered_quantity: delivered,
         remaining_quantity: remaining,
-        pending_request_quantity: pendingByItem.get(item.id) || 0,
+        pending_request_quantity: activity.pendingByItem.get(item.id) || 0,
+        pending_order_quantity: orderPending,
         usage_ratio: contracted > 0 ? delivered / contracted : 0,
       }
     })
 
     const totalContracted = items.reduce((sum, item) => sum + item.contracted_quantity, 0)
     const totalDelivered = items.reduce((sum, item) => sum + item.delivered_quantity, 0)
+    const budget = contract.budget_amount == null ? null : toNumber(contract.budget_amount)
+    const invoiced = activity.invoicedByContract.get(contract.id) || []
+    const budgetCurrency = contract.budget_currency || 'TRY'
+    const invoicedInBudget = invoiced.find((row) => row.currency === budgetCurrency)?.amount || 0
+    const budgetRatio = budget && budget > 0 ? invoicedInBudget / budget : 0
+    const quantityRatio = totalContracted > 0 ? totalDelivered / totalContracted : 0
 
     return {
       ...contract,
+      budget_amount: budget,
+      budget_currency: budgetCurrency,
       document_urls: contract.document_urls || [],
       supplier_name: supplier?.name || 'Tedarikçi',
       items,
       total_contracted: totalContracted,
       total_delivered: totalDelivered,
       total_remaining: Math.max(0, totalContracted - totalDelivered),
+      invoiced_amounts: invoiced,
+      pending_orders: activity.pendingOrders.filter((order) => order.contract_id === contract.id),
       is_expired: contract.status === 'cancelled' || isContractExpired(contract.end_date),
       is_expiring_soon: isContractExpiringSoon(contract.end_date),
-      is_nearly_used: totalContracted > 0 && totalDelivered / totalContracted >= 0.8,
+      is_nearly_used: quantityRatio >= 0.8 || budgetRatio >= 0.8,
     }
   })
 }
 
-async function loadDeliveryMaps(itemIds: string[]) {
-  const supabase = createClient()
-  const deliveredByItem = new Map<string, number>()
-  const pendingByItem = new Map<string, number>()
-  const deliveredByRequestItem = new Map<string, number>()
-
-  if (itemIds.length === 0) {
-    return { deliveredByItem, pendingByItem, deliveredByRequestItem }
+function emptyActivity(): ContractActivity {
+  return {
+    deliveredByItem: new Map(),
+    pendingByItem: new Map(),
+    deliveredByRequestItem: new Map(),
+    pendingOrderQtyByItem: new Map(),
+    pendingOrders: [],
+    invoicedByContract: new Map(),
   }
+}
+
+async function loadContractActivity(
+  items: Array<{ id: string; contract_id: string }>
+): Promise<ContractActivity> {
+  const activity = emptyActivity()
+  const itemIds = items.map((item) => item.id)
+  if (itemIds.length === 0) return activity
+
+  const contractIdByItem = new Map(items.map((item) => [item.id, item.contract_id]))
+  const supabase = createClient()
 
   const { data: deliveries, error: deliveryError } = await supabase
     .from('supplier_contract_deliveries')
@@ -113,37 +145,124 @@ async function loadDeliveryMaps(itemIds: string[]) {
   if (deliveryError) throw deliveryError
 
   for (const row of deliveries || []) {
-    deliveredByItem.set(
+    activity.deliveredByItem.set(
       row.contract_item_id,
-      (deliveredByItem.get(row.contract_item_id) || 0) + toNumber(row.delivered_quantity)
+      (activity.deliveredByItem.get(row.contract_item_id) || 0) + toNumber(row.delivered_quantity)
     )
-    deliveredByRequestItem.set(
+    activity.deliveredByRequestItem.set(
       row.purchase_request_item_id,
-      (deliveredByRequestItem.get(row.purchase_request_item_id) || 0) + toNumber(row.delivered_quantity)
+      (activity.deliveredByRequestItem.get(row.purchase_request_item_id) || 0) + toNumber(row.delivered_quantity)
     )
   }
 
   const { data: requestItems, error: requestError } = await supabase
     .from('purchase_request_items')
-    .select('id, contract_item_id, quantity, original_quantity')
+    .select('id, contract_item_id, item_name, unit, quantity, original_quantity')
     .in('contract_item_id', itemIds)
 
   if (requestError) throw requestError
 
+  const requestItemById = new Map((requestItems || []).map((row) => [row.id, row]))
+
   for (const row of requestItems || []) {
     if (!row.contract_item_id) continue
     const requested = toNumber(row.original_quantity ?? row.quantity)
-    const delivered = deliveredByRequestItem.get(row.id) || 0
+    const delivered = activity.deliveredByRequestItem.get(row.id) || 0
     const pending = Math.max(0, requested - delivered)
     if (pending > 0) {
-      pendingByItem.set(
+      activity.pendingByItem.set(
         row.contract_item_id,
-        (pendingByItem.get(row.contract_item_id) || 0) + pending
+        (activity.pendingByItem.get(row.contract_item_id) || 0) + pending
       )
     }
   }
 
-  return { deliveredByItem, pendingByItem, deliveredByRequestItem }
+  const requestItemIds = (requestItems || []).map((row) => row.id)
+  if (requestItemIds.length === 0) return activity
+
+  const { data: orders, error: ordersError } = await supabase
+    .from('orders')
+    .select('id, order_number, quantity, material_item_id, created_at')
+    .in('material_item_id', requestItemIds)
+
+  if (ordersError) throw ordersError
+
+  const orderIds = (orders || []).map((order) => order.id)
+  const deliveredByOrder = new Map<string, number>()
+
+  if (orderIds.length > 0) {
+    const { data: orderDeliveries, error: orderDeliveryError } = await supabase
+      .from('order_deliveries')
+      .select('order_id, delivered_quantity')
+      .in('order_id', orderIds)
+
+    if (orderDeliveryError) throw orderDeliveryError
+
+    for (const row of orderDeliveries || []) {
+      deliveredByOrder.set(
+        row.order_id,
+        (deliveredByOrder.get(row.order_id) || 0) + toNumber(row.delivered_quantity)
+      )
+    }
+
+    const { data: invoices, error: invoiceError } = await supabase
+      .from('invoices')
+      .select('order_id, amount, currency')
+      .in('order_id', orderIds)
+
+    if (invoiceError) throw invoiceError
+
+    for (const invoice of invoices || []) {
+      const order = (orders || []).find((row) => row.id === invoice.order_id)
+      const requestItem = order?.material_item_id ? requestItemById.get(order.material_item_id) : undefined
+      const contractItemId = requestItem?.contract_item_id
+      if (!contractItemId) continue
+      const contractId = contractIdByItem.get(contractItemId)
+      if (!contractId) continue
+
+      const currency = invoice.currency || 'TRY'
+      const totals = activity.invoicedByContract.get(contractId) || []
+      const existing = totals.find((row) => row.currency === currency)
+      if (existing) {
+        existing.amount += toNumber(invoice.amount)
+      } else {
+        totals.push({ currency, amount: toNumber(invoice.amount) })
+      }
+      activity.invoicedByContract.set(contractId, totals)
+    }
+  }
+
+  for (const order of orders || []) {
+    if (!order.material_item_id) continue
+    const requestItem = requestItemById.get(order.material_item_id)
+    const contractItemId = requestItem?.contract_item_id
+    if (!contractItemId) continue
+    const contractId = contractIdByItem.get(contractItemId)
+    if (!contractId) continue
+
+    const ordered = toNumber(order.quantity)
+    const delivered = deliveredByOrder.get(order.id) || 0
+    const pending = Math.max(0, ordered - delivered)
+    if (pending <= 0) continue
+
+    activity.pendingOrderQtyByItem.set(
+      contractItemId,
+      (activity.pendingOrderQtyByItem.get(contractItemId) || 0) + pending
+    )
+    activity.pendingOrders.push({
+      order_id: order.id,
+      order_number: order.order_number || 'Sipariş',
+      contract_item_id: contractItemId,
+      contract_id: contractId,
+      material_name: requestItem?.item_name || 'Malzeme',
+      unit: requestItem?.unit || '',
+      ordered_quantity: ordered,
+      delivered_quantity: delivered,
+      pending_quantity: pending,
+    })
+  }
+
+  return activity
 }
 
 export async function fetchContractOverviews(supplierId?: string): Promise<ContractOverview[]> {
@@ -165,9 +284,12 @@ export async function fetchContractOverviews(supplierId?: string): Promise<Contr
   if (error) throw error
 
   const contracts = (data || []) as RawContract[]
-  const itemIds = contracts.flatMap((contract) => (contract.items || []).map((item) => item.id))
-  const maps = await loadDeliveryMaps(itemIds)
-  return buildOverview(contracts, maps.deliveredByItem, maps.pendingByItem)
+  const activity = await loadContractActivity(
+    contracts.flatMap((contract) =>
+      (contract.items || []).map((item) => ({ id: item.id, contract_id: item.contract_id }))
+    )
+  )
+  return buildOverview(contracts, activity)
 }
 
 export async function fetchContractOverviewById(contractId: string): Promise<ContractOverview | null> {
@@ -186,41 +308,112 @@ export async function fetchContractOverviewById(contractId: string): Promise<Con
   if (!data) return null
 
   const contract = data as RawContract
-  const itemIds = (contract.items || []).map((item) => item.id)
-  const maps = await loadDeliveryMaps(itemIds)
-  return buildOverview([contract], maps.deliveredByItem, maps.pendingByItem)[0] || null
+  const activity = await loadContractActivity(
+    (contract.items || []).map((item) => ({ id: item.id, contract_id: item.contract_id }))
+  )
+  return buildOverview([contract], activity)[0] || null
 }
 
+type ActiveContractItemRow = RawItem & {
+  contract:
+    | {
+        id: string
+        supplier_id: string
+        title: string | null
+        start_date: string | null
+        end_date: string | null
+        status: 'active' | 'cancelled'
+        supplier?: RawContract['supplier']
+      }
+    | Array<{
+        id: string
+        supplier_id: string
+        title: string | null
+        start_date: string | null
+        end_date: string | null
+        status: 'active' | 'cancelled'
+        supplier?: RawContract['supplier']
+      }>
+    | null
+}
+
+/**
+ * Görünen malzemeler için aktif sözleşme seçenekleri.
+ * Tüm sözleşmeleri, teslimatları ve talep kalemlerini çekmez; yalnızca eşleşen kalemlerin kalan miktarını hesaplar.
+ */
 export async function fetchActiveContractsForMaterials(materialNames?: string[]): Promise<ActiveContractOption[]> {
-  const names = (materialNames || []).map(normalizeMaterialName).filter(Boolean)
+  const rawNames = [...new Set((materialNames || []).map((name) => String(name).trim()).filter(Boolean))]
+  const wanted = new Set(rawNames.map(normalizeMaterialName))
+  if (wanted.size === 0) return []
 
-  const overviews = await fetchContractOverviews()
-  const options: ActiveContractOption[] = []
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('supplier_contract_items')
+    .select(`
+      id,
+      contract_id,
+      material_class,
+      material_group,
+      material_item,
+      unit,
+      unit_price,
+      currency,
+      contracted_quantity,
+      created_at,
+      updated_at,
+      contract:supplier_contracts!inner (
+        id,
+        supplier_id,
+        title,
+        start_date,
+        end_date,
+        status,
+        supplier:suppliers ( id, name )
+      )
+    `)
+    .in('material_item', rawNames)
+    .eq('contract.status', 'active')
 
-  for (const contract of overviews) {
-    if (!isContractCurrentlyActive(contract)) continue
-    for (const item of contract.items) {
-      if (names.length > 0 && !names.includes(normalizeMaterialName(item.material_item))) continue
-      options.push({
-        contract_item_id: item.id,
-        contract_id: contract.id,
-        supplier_id: contract.supplier_id,
-        supplier_name: contract.supplier_name,
-        material_item: item.material_item,
-        material_class: item.material_class,
-        material_group: item.material_group,
-        unit: item.unit,
-        unit_price: item.unit_price,
-        currency: item.currency,
-        contracted_quantity: item.contracted_quantity,
-        remaining_quantity: item.remaining_quantity,
-        end_date: contract.end_date,
-        title: contract.title,
-      })
+  if (error) throw error
+
+  const matched = ((data || []) as ActiveContractItemRow[])
+    .map((row) => {
+      const contract = Array.isArray(row.contract) ? row.contract[0] : row.contract
+      return { row, contract }
+    })
+    .filter(({ row, contract }) => {
+      if (!contract || !row.material_item) return false
+      if (!wanted.has(normalizeMaterialName(row.material_item))) return false
+      return isContractCurrentlyActive(contract)
+    })
+
+  if (matched.length === 0) return []
+
+  const activity = await loadContractActivity(
+    matched.map(({ row }) => ({ id: row.id, contract_id: row.contract_id }))
+  )
+
+  return matched.map(({ row, contract }) => {
+    const supplier = unwrapSupplier(contract?.supplier)
+    const contracted = toNumber(row.contracted_quantity)
+    const delivered = activity.deliveredByItem.get(row.id) || 0
+    return {
+      contract_item_id: row.id,
+      contract_id: row.contract_id,
+      supplier_id: contract?.supplier_id || '',
+      supplier_name: supplier?.name || 'Tedarikçi',
+      material_item: row.material_item,
+      material_class: row.material_class,
+      material_group: row.material_group,
+      unit: row.unit,
+      unit_price: toNumber(row.unit_price),
+      currency: row.currency,
+      contracted_quantity: contracted,
+      remaining_quantity: Math.max(0, contracted - delivered),
+      end_date: contract?.end_date || null,
+      title: contract?.title || null,
     }
-  }
-
-  return options
+  })
 }
 
 export async function fetchRequestContractBindings(
@@ -243,7 +436,7 @@ export async function fetchRequestContractBindings(
   )
   const { data: contractItems, error: itemError } = await supabase
     .from('supplier_contract_items')
-    .select('contract_id')
+    .select('id, contract_id')
     .in('id', contractItemIds)
 
   if (itemError) throw itemError
@@ -259,13 +452,15 @@ export async function fetchRequestContractBindings(
     }
   }
 
-  const maps = await loadDeliveryMaps(contractItemIds)
+  const activity = await loadContractActivity(
+    (contractItems || []).map((row) => ({ id: row.id, contract_id: row.contract_id }))
+  )
 
   return items.flatMap((row) => {
     if (!row.contract_item_id) return []
     const found = overviewByItem.get(row.contract_item_id)
     if (!found) return []
-    const deliveredForRequest = maps.deliveredByRequestItem.get(row.id) || 0
+    const deliveredForRequest = activity.deliveredByRequestItem.get(row.id) || 0
     const requested = toNumber(row.original_quantity ?? row.quantity)
     return [{
       request_item_id: row.id,
@@ -338,6 +533,8 @@ export async function createSupplierContract(input: CreateContractInput): Promis
       start_date: input.start_date || null,
       end_date: input.end_date || null,
       notes: input.notes?.trim() || null,
+      budget_amount: input.budget_amount,
+      budget_currency: input.budget_currency || 'TRY',
       status: 'active',
       created_by: user?.id || null,
     })
@@ -368,6 +565,25 @@ export async function createSupplierContract(input: CreateContractInput): Promis
 
   invalidateContractsCache()
   return contract.id
+}
+
+export async function updateContractBudget(
+  contractId: string,
+  budgetAmount: number,
+  budgetCurrency: string
+): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('supplier_contracts')
+    .update({
+      budget_amount: budgetAmount,
+      budget_currency: budgetCurrency || 'TRY',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', contractId)
+
+  if (error) throw error
+  invalidateContractsCache()
 }
 
 export async function cancelSupplierContract(contractId: string): Promise<void> {

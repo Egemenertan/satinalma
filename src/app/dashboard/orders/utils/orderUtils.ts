@@ -6,6 +6,16 @@
 import type { OrderData, GroupedOrder } from '../types'
 
 /**
+ * Talep ve sipariş numaralarının listede görünen kısa hali.
+ * Tam numaranın son 7 karakteri: örn. ORD-20260928-AB12CD-3246 → CD-3246
+ */
+export function formatShortDocumentNumber(value?: string | null): string {
+  const trimmed = value?.trim()
+  if (!trimmed) return ''
+  return trimmed.length > 7 ? trimmed.slice(-7) : trimmed
+}
+
+/**
  * Siparişleri talep bazında gruplandır
  * @param orders - Sipariş listesi
  * @returns Talep ID'sine göre gruplandırılmış siparişler

@@ -1,638 +1,548 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Skeleton } from '@/components/ui/skeleton'
 import { createClient } from '@/lib/supabase/client'
-import { useToast } from '@/components/ui/toast'
 import { invalidateSuppliersCache } from '@/lib/cache'
-
-import { 
-  Plus,
-  Building,
-  Phone,
-  Mail,
-  MapPin,
-  Star,
-  Calendar,
-  FileText,
-  TrendingUp,
-  TrendingDown,
-  Edit2,
-  Eye,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Search,
-  BarChart3,
-  Users,
-  Package,
-  Clock,
-  Target
-} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { Building2, ChevronRight, Pencil, Plus, Search, X } from 'lucide-react'
 
 interface Supplier {
   id: string
   name: string
-  code: string
-  contact_person?: string
-  email?: string
-  phone?: string
-  address?: string
-  tax_number?: string
-  payment_terms: number
-  rating: number
-  is_approved: boolean
-  contract_start_date?: string
-  contract_end_date?: string
-  notes?: string
-  created_at: string
-  updated_at: string
+  code: string | null
+  contact_person: string | null
+  email: string | null
+  phone: string | null
+  address: string | null
+  tax_number: string | null
+  payment_terms: number | null
+  rating: number | null
+  is_approved: boolean | null
 }
 
-interface SupplierPerformance {
-  supplier_id: string
-  total_orders: number
-  total_amount: number
-  on_time_deliveries: number
-  quality_issues: number
-  average_delivery_time: number
-}
+type StatusFilter = 'all' | 'approved' | 'pending'
 
-// Suppliers fetcher fonksiyonu
-const fetchSuppliers = async (searchTerm?: string) => {
+const fetchSuppliers = async (): Promise<Supplier[]> => {
   const supabase = createClient()
-  
-  const { data: { user } } = await supabase.auth.getUser()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
   if (!user) throw new Error('Kullanıcı oturumu bulunamadı')
-  
-  let query = supabase
+
+  const { data, error } = await supabase
     .from('suppliers')
-    .select('*')
-
-  if (searchTerm) {
-    query = query.or(`
-      name.ilike.%${searchTerm}%,
-      code.ilike.%${searchTerm}%,
-      contact_person.ilike.%${searchTerm}%
-    `)
-  }
-
-  const { data, error } = await query.order('name')
+    .select(
+      'id, name, code, contact_person, email, phone, address, tax_number, payment_terms, rating, is_approved'
+    )
+    .order('name')
 
   if (error) throw error
   return data || []
 }
 
+function fold(value: string) {
+  return value
+    .toLocaleLowerCase('tr-TR')
+    .replace(/ı/g, 'i')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+}
+
+function digits(value: string) {
+  return value.replace(/\D/g, '')
+}
+
+function supplierMatches(supplier: Supplier, query: string) {
+  const q = fold(query.trim())
+  if (!q) return true
+
+  const haystack = [
+    supplier.name,
+    supplier.code,
+    supplier.contact_person,
+    supplier.email,
+    supplier.phone,
+    supplier.tax_number,
+    supplier.address,
+  ]
+    .filter(Boolean)
+    .map((part) => fold(String(part)))
+    .join(' ')
+
+  if (haystack.includes(q)) return true
+
+  const queryDigits = digits(query)
+  if (queryDigits.length < 3) return false
+
+  const phoneDigits = digits(`${supplier.phone || ''}${supplier.tax_number || ''}`)
+  return phoneDigits.includes(queryDigits)
+}
+
+function formatRating(rating: number | null) {
+  if (rating == null) return '—'
+  const value = Number(rating)
+  if (!Number.isFinite(value) || value <= 0) return '—'
+  return value.toFixed(1)
+}
+
+function contactSummary(supplier: Supplier, query: string) {
+  const foldedQuery = fold(query.trim())
+  const queryDigits = digits(query)
+
+  if (supplier.phone && foldedQuery) {
+    const phoneHit =
+      fold(supplier.phone).includes(foldedQuery) ||
+      (queryDigits.length >= 3 && digits(supplier.phone).includes(queryDigits))
+    if (phoneHit) return supplier.phone
+  }
+
+  if (supplier.email && foldedQuery && fold(supplier.email).includes(foldedQuery)) {
+    return supplier.email
+  }
+
+  return supplier.email || supplier.phone || 'İletişim yok'
+}
+
+function initials(name: string) {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0).toLocaleUpperCase('tr-TR'))
+    .join('')
+}
+
+function StatusPill({ approved }: { approved: boolean }) {
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold tracking-wide',
+        approved
+          ? 'bg-primary/15 text-elegant-black'
+          : 'bg-elegant-gray-100 text-elegant-gray-600'
+      )}
+    >
+      <span
+        className={cn('h-1.5 w-1.5 rounded-full', approved ? 'bg-primary' : 'bg-elegant-gray-400')}
+        aria-hidden
+      />
+      {approved ? 'Onaylı' : 'Beklemede'}
+    </span>
+  )
+}
+
+function StatCard({
+  label,
+  value,
+  hint,
+  active,
+  onClick,
+}: {
+  label: string
+  value: number
+  hint: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'rounded-xl border bg-white p-5 text-left shadow-sm transition-colors',
+        active
+          ? 'border-elegant-black'
+          : 'border-elegant-gray-200 hover:border-elegant-gray-300'
+      )}
+    >
+      <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+        {label}
+      </span>
+      <div className="mt-2 text-3xl font-bold tracking-tight text-elegant-black tabular-nums">{value}</div>
+      <p className="mt-1 text-xs text-elegant-gray-500">{hint}</p>
+    </button>
+  )
+}
+
 export default function SupplierManagement() {
   const router = useRouter()
-  const { showToast } = useToast()
-  const supabase = createClient()
-  const [showEditDialog, setShowEditDialog] = useState(false)
-  const [filters, setFilters] = useState({
-    search: ''
+  const searchRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+  const [status, setStatus] = useState<StatusFilter>('all')
+
+  const {
+    data: suppliers = [],
+    error,
+    isLoading,
+    mutate,
+  } = useSWR('suppliers_list', fetchSuppliers, {
+    revalidateOnFocus: false,
+    revalidateOnReconnect: true,
+    dedupingInterval: 60_000,
+    errorRetryCount: 3,
   })
 
-  // SWR cache key'ini search filter'ına göre oluştur
-  const cacheKey = filters.search ? `suppliers_list_${filters.search}` : 'suppliers_list'
-
-  // SWR ile cache'li suppliers verisi
-  const { data: suppliers, error: suppliersError, isLoading: loading, mutate: mutateSuppliers } = useSWR(
-    cacheKey,
-    () => fetchSuppliers(filters.search),
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 60000, // 1 dakika cache
-      errorRetryCount: 3,
-      fallbackData: []
-    }
-  )
-
-  // Real-time updates için subscription
   useEffect(() => {
+    const supabase = createClient()
     const subscription = supabase
       .channel('suppliers_updates')
-      .on('postgres_changes', 
-        { 
-          event: '*', 
-          schema: 'public', 
-          table: 'suppliers' 
-        }, 
-        () => {
-          console.log('📡 Suppliers update triggered')
-          invalidateSuppliersCache()
-          mutateSuppliers() // Bu specific component için de mutate
-        }
-      )
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'suppliers' }, () => {
+        invalidateSuppliersCache()
+        mutate()
+      })
       .subscribe()
 
     return () => {
       subscription.unsubscribe()
     }
-  }, [])
+  }, [mutate])
 
-  const getRatingStars = (rating: number) => {
-    return Array.from({ length: 5 }, (_, i) => (
-      <Star 
-        key={i} 
-        className={`w-4 h-4 ${i < rating ? 'fill-yellow-400 text-yellow-400' : 'text-gray-300'}`} 
-      />
-    ))
-  }
-
-  const getStatusBadge = (isApproved: boolean) => {
-    return isApproved ? (
-      <Badge className="bg-green-100 text-green-800 border-green-200">
-        <CheckCircle className="w-3 h-3 mr-1" />
-        Onaylı
-      </Badge>
-    ) : (
-      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-yellow-200">
-        <Clock className="w-3 h-3 mr-1" />
-        Beklemede
-      </Badge>
-    )
-  }
-
-  const AddSupplierDialog = () => {
-    const [formData, setFormData] = useState({
-      name: '',
-      code: '',
-      contact_person: '',
-      email: '',
-      phone: '',
-      address: '',
-      tax_number: '',
-      payment_terms: '30',
-      rating: '0',
-      is_approved: true
-    })
-
-    const handleSubmit = async (e: React.FormEvent) => {
-      e.preventDefault()
-      
-      // Validation
-      if (!formData.name.trim()) {
-        showToast('Tedarikçi adı zorunludur', 'error')
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== '/' || event.metaKey || event.ctrlKey || event.altKey) return
+      const target = event.target as HTMLElement | null
+      if (
+        target &&
+        (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)
+      ) {
         return
       }
-      
-      try {
-        console.log('📝 Submitting supplier data:', formData)
-        const supplierData = {
-          name: formData.name,
-          code: formData.code || null,
-          contact_person: formData.contact_person || null,
-          email: formData.email || null,
-          phone: formData.phone || null,
-          address: formData.address || null,
-          tax_number: formData.tax_number || null,
-          payment_terms: parseInt(formData.payment_terms) || 30,
-          rating: parseFloat(formData.rating) || 0.0,
-          is_approved: formData.is_approved || true
-          // contract dates ve notes tabloda yok, kaldırdık
-        }
-
-        console.log('💾 Inserting supplier data to Supabase:', supplierData)
-        const { data, error } = await supabase
-          .from('suppliers')
-          .insert([supplierData])
-          .select()
-
-        if (error) throw error
-
-        console.log('✅ Supplier inserted successfully:', data)
-        showToast('Tedarikçi başarıyla eklendi!', 'success')
-        router.push('/dashboard/suppliers')
-        setFormData({
-          name: '',
-          code: '',
-          contact_person: '',
-          email: '',
-          phone: '',
-          address: '',
-          tax_number: '',
-          payment_terms: '30',
-          rating: '0',
-          is_approved: true
-        })
-        invalidateSuppliersCache()
-        mutateSuppliers()
-      } catch (error: any) {
-        console.error('Tedarikçi ekleme hatası:', error)
-        console.error('Error details:', {
-          message: error?.message,
-          code: error?.code,
-          details: error?.details,
-          hint: error?.hint
-        })
-        const errorMessage = error?.message || 'Tedarikçi eklenirken bir hata oluştu.'
-        showToast(errorMessage, 'error')
-      }
+      event.preventDefault()
+      searchRef.current?.focus()
     }
 
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  const counts = useMemo(() => {
+    const approved = suppliers.filter((supplier) => supplier.is_approved).length
+    return {
+      total: suppliers.length,
+      approved,
+      pending: suppliers.length - approved,
+    }
+  }, [suppliers])
+
+  const visibleSuppliers = useMemo(() => {
+    return suppliers
+      .filter((supplier) => {
+        if (status === 'approved') return Boolean(supplier.is_approved)
+        if (status === 'pending') return !supplier.is_approved
+        return true
+      })
+      .filter((supplier) => supplierMatches(supplier, query))
+      .sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+  }, [suppliers, query, status])
+
+  const hasQuery = query.trim().length > 0
+  const filtersActive = hasQuery || status !== 'all'
+
+  const clearFilters = () => {
+    setQuery('')
+    setStatus('all')
+    searchRef.current?.focus()
+  }
+
+  if (isLoading && suppliers.length === 0) {
     return (
-      <Button 
-        className="bg-black hover:bg-gray-800 text-white px-6 py-6 rounded-md text-lg font-light" 
-        onClick={() => router.push('/dashboard/suppliers/create')}
-      >
-        
-        Yeni Tedarikçi
-      </Button>
+      <div className="space-y-6">
+        <Skeleton className="h-10 w-56 rounded-lg" />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, index) => (
+            <Skeleton key={index} className="h-[112px] rounded-xl" />
+          ))}
+        </div>
+        <Skeleton className="h-[420px] rounded-xl" />
+      </div>
     )
   }
 
-  const SupplierDetailDialog = ({ supplier }: { supplier: Supplier }) => {
-    const [showDetail, setShowDetail] = useState(false)
-
+  if (error) {
     return (
-      <Dialog open={showDetail} onOpenChange={setShowDetail}>
-        <DialogTrigger asChild>
-          <Button variant="ghost" size="sm">
-            <Eye className="w-4 h-4" />
-          </Button>
-        </DialogTrigger>
-        
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Building className="w-5 h-5 text-blue-600" />
-              {supplier.name}
-            </DialogTitle>
-          </DialogHeader>
-
-          <Tabs defaultValue="info" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="info">Genel Bilgiler</TabsTrigger>
-              <TabsTrigger value="performance">Performans</TabsTrigger>
-              <TabsTrigger value="orders">Siparişler</TabsTrigger>
-            </TabsList>
-
-            <TabsContent value="info" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">İletişim Bilgileri</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-gray-400" />
-                      <span>{supplier.contact_person || 'Belirtilmemiş'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Mail className="w-4 h-4 text-gray-400" />
-                      <span>{supplier.email || 'Belirtilmemiş'}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Phone className="w-4 h-4 text-gray-400" />
-                      <span>{supplier.phone || 'Belirtilmemiş'}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <MapPin className="w-4 h-4 text-gray-400 mt-0.5" />
-                      <span className="text-sm">{supplier.address || 'Belirtilmemiş'}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Ticari Bilgiler</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-3">
-                    <div>
-                      <div className="text-sm text-gray-600">Tedarikçi Kodu</div>
-                      <div className="font-medium">{supplier.code}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">Vergi Numarası</div>
-                      <div className="font-medium">{supplier.tax_number || 'Belirtilmemiş'}</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">Ödeme Vadesi</div>
-                      <div className="font-medium">{supplier.payment_terms} gün</div>
-                    </div>
-                    <div>
-                      <div className="text-sm text-gray-600">Durum</div>
-                      <div className="mt-1">{getStatusBadge(supplier.is_approved)}</div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Değerlendirme</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-2">
-                      {getRatingStars(supplier.rating)}
-                      <span className="font-medium">{supplier.rating}/5</span>
-                    </div>
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className="bg-yellow-400 h-2 rounded-full" 
-                        style={{ width: `${(supplier.rating / 5) * 100}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                  {supplier.notes && (
-                    <div className="mt-4">
-                      <div className="text-sm text-gray-600 mb-2">Notlar:</div>
-                      <div className="text-sm bg-gray-50 p-3 rounded-lg">{supplier.notes}</div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-
-              {(supplier.contract_start_date || supplier.contract_end_date) && (
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-sm">Sözleşme Bilgileri</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div>
-                        <div className="text-sm text-gray-600">Başlangıç Tarihi</div>
-                        <div className="font-medium">
-                          {supplier.contract_start_date 
-                            ? new Date(supplier.contract_start_date).toLocaleDateString('tr-TR')
-                            : 'Belirtilmemiş'
-                          }
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-gray-600">Bitiş Tarihi</div>
-                        <div className="font-medium">
-                          {supplier.contract_end_date 
-                            ? new Date(supplier.contract_end_date).toLocaleDateString('tr-TR')
-                            : 'Belirtilmemiş'
-                          }
-                        </div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
-            </TabsContent>
-
-            <TabsContent value="performance" className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Package className="w-4 h-4 text-blue-600" />
-                      <div>
-                        <div className="text-2xl font-normal">24</div>
-                        <div className="text-sm text-gray-600">Toplam Sipariş</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2">
-                      <CheckCircle className="w-4 h-4 text-green-600" />
-                      <div>
-                        <div className="text-2xl font-normal text-green-600">92%</div>
-                        <div className="text-sm text-gray-600">Zamanında Teslimat</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="flex items-center gap-2">
-                      <Target className="w-4 h-4 text-orange-600" />
-                      <div>
-                        <div className="text-2xl font-normal text-orange-600">2</div>
-                        <div className="text-sm text-gray-600">Kalite Sorunu</div>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Performans Geçmişi</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <TrendingUp className="w-4 h-4 text-green-600" />
-                        <span className="text-sm font-medium">Ortalama Teslimat Süresi</span>
-                      </div>
-                      <span className="text-green-600 font-normal">12 gün</span>
-                    </div>
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
-                      <div className="flex items-center gap-3">
-                        <BarChart3 className="w-4 h-4 text-blue-600" />
-                        <span className="text-sm font-medium">Toplam Sipariş Tutarı</span>
-                      </div>
-                      <span className="text-blue-600 font-normal">£45,230</span>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            <TabsContent value="orders" className="space-y-4">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-sm">Son Siparişler</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-8 text-gray-500">
-                    <Package className="w-8 h-8 mx-auto mb-2 text-gray-400" />
-                    <p>Sipariş geçmişi burada görüntülenecek</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-          </Tabs>
-        </DialogContent>
-      </Dialog>
-    )
-  }
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-10 text-center">
+        <p className="font-medium text-red-800">Tedarikçiler yüklenemedi</p>
+        <p className="mt-1 text-sm text-red-700/80">{error.message}</p>
+        <Button
+          type="button"
+          variant="outline"
+                className="mt-5 rounded-xl border-elegant-gray-300 bg-white hover:bg-elegant-gray-50 hover:text-elegant-black"
+          onClick={() => mutate()}
+        >
+          Tekrar dene
+        </Button>
       </div>
     )
   }
 
   return (
-    <div className="space-y-4">
-      {/* Başlık ve Filtreler */}
-      <div className="flex items-center justify-between">
+    <div className="space-y-6">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-2xl font-normal text-gray-900">Tedarikçi Yönetimi</h2>
-          <p className="text-gray-600">Tedarikçi bilgilerini ve performansını yönetin</p>
+          <h1 className="text-2xl font-bold tracking-tight text-elegant-black md:text-3xl">Tedarikçiler</h1>
+          <p className="mt-1 text-sm text-elegant-gray-600">
+            Kayıtlı iş ortaklarını arayın, durumuna göre süzün ve yönetin
+          </p>
         </div>
-        <AddSupplierDialog />
+        <Button
+          type="button"
+          onClick={() => router.push('/dashboard/suppliers/create')}
+          className="h-11 shrink-0 rounded-xl bg-elegant-black px-5 text-white hover:bg-elegant-gray-800"
+        >
+          <Plus className="h-4 w-4" />
+          Yeni tedarikçi
+        </Button>
       </div>
 
-
-      {/* Arama Çubuğu */}
-      <div className="flex items-center gap-4 mb-6">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Tedarikçi ara..."
-            value={filters.search}
-            onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-            className="pl-10 h-12 text-base"
-          />
-        </div>
-        {filters.search && (
-          <Button 
-            variant="outline" 
-            onClick={() => setFilters(prev => ({ ...prev, search: '' }))}
-            className="h-12"
-          >
-            Temizle
-          </Button>
-        )}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard
+          label="Toplam"
+          value={counts.total}
+          hint="Kayıtlı tedarikçi"
+          active={status === 'all'}
+          onClick={() => setStatus('all')}
+        />
+        <StatCard
+          label="Onaylı"
+          value={counts.approved}
+          hint="Siparişe açık"
+          active={status === 'approved'}
+          onClick={() => setStatus('approved')}
+        />
+        <StatCard
+          label="Beklemede"
+          value={counts.pending}
+          hint="Onay bekleyen"
+          active={status === 'pending'}
+          onClick={() => setStatus('pending')}
+        />
       </div>
 
-      {/* Tedarikçiler Listesi */}
-      <div className="bg-white">
-        <div className="px-1 py-4">
-          {suppliers.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <div className="p-4 bg-gray-100 rounded-2xl w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                <Building className="w-8 h-8 text-gray-400" />
-              </div>
-              <h3 className="text-lg font-medium text-gray-900 mb-2">Tedarikçi bulunamadı</h3>
-              <p className="text-gray-600">Yeni tedarikçi eklemek için yukarıdaki butonu kullanın.</p>
+      <section className="overflow-hidden rounded-xl border border-elegant-gray-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-4 border-b border-elegant-gray-100 px-5 py-5 sm:px-6">
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight text-elegant-black">Tedarikçi listesi</h2>
+              <p className="mt-0.5 text-sm text-elegant-gray-500">
+                {visibleSuppliers.length === suppliers.length
+                  ? `${suppliers.length} tedarikçi`
+                  : `${visibleSuppliers.length} sonuç · ${suppliers.length} kayıt`}
+              </p>
             </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <div className="border border-gray-200 rounded-2xl overflow-hidden bg-white shadow-sm">
-                <Table>
-                  <TableHeader>
-                    <TableRow className="bg-gradient-to-r from-gray-50 to-gray-100 border-0 hover:bg-gray-100">
-                      <TableHead className="py-4 text-gray-700 font-semibold">Tedarikçi</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">İletişim</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">Puan</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">Ödeme Vadesi</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">Durum</TableHead>
-                      <TableHead className="py-4 text-gray-700 font-semibold">
-                        İşlemler
-                        <div className="text-xs text-gray-500 font-normal mt-1">
-                          💡 Malzeme seçimi için satıra tıklayın
+          </div>
+
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+            <div className="relative min-w-0 flex-1">
+              <Search
+                className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-elegant-gray-400"
+                aria-hidden
+              />
+              <input
+                ref={searchRef}
+                type="text"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Escape') {
+                    setQuery('')
+                    event.currentTarget.blur()
+                  }
+                }}
+                placeholder="Ad, kod, yetkili, e-posta veya telefon"
+                aria-label="Tedarikçi ara"
+                className="h-11 w-full rounded-xl border border-elegant-gray-200 bg-elegant-gray-50 pl-10 pr-10 text-sm text-elegant-black outline-none transition-colors placeholder:text-elegant-gray-400 focus:border-elegant-gray-400 focus:bg-white focus:ring-2 focus:ring-primary/40"
+              />
+              {hasQuery && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('')
+                    searchRef.current?.focus()
+                  }}
+                  className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full text-elegant-gray-500 hover:bg-elegant-gray-100 hover:text-elegant-black"
+                  aria-label="Aramayı temizle"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div
+              className="flex shrink-0 rounded-xl border border-elegant-gray-200 bg-elegant-gray-50 p-1"
+              role="tablist"
+              aria-label="Durum filtresi"
+            >
+              {(
+                [
+                  ['all', 'Tümü'],
+                  ['approved', 'Onaylı'],
+                  ['pending', 'Beklemede'],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="tab"
+                  aria-selected={status === value}
+                  onClick={() => setStatus(value)}
+                  className={cn(
+                    'rounded-lg px-3.5 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors',
+                    status === value
+                      ? 'bg-white text-elegant-black shadow-sm'
+                      : 'text-elegant-gray-500 hover:text-elegant-black'
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {visibleSuppliers.length === 0 ? (
+          <div className="flex flex-col items-center px-6 py-16 text-center">
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-elegant-gray-100">
+              <Building2 className="h-6 w-6 text-elegant-gray-400" />
+            </div>
+            <h3 className="mt-4 text-base font-semibold text-elegant-black">
+              {filtersActive ? 'Eşleşen tedarikçi yok' : 'Henüz tedarikçi yok'}
+            </h3>
+            <p className="mt-1 max-w-sm text-sm text-elegant-gray-500">
+              {filtersActive
+                ? 'Farklı bir kelime deneyin veya filtreyi kaldırın.'
+                : 'İlk kaydı eklediğinizde liste burada görünür.'}
+            </p>
+            {filtersActive ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mt-5 rounded-xl border-elegant-gray-300 bg-white hover:bg-elegant-gray-50 hover:text-elegant-black"
+                onClick={clearFilters}
+              >
+                Filtreleri temizle
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                className="mt-5 rounded-xl bg-elegant-black text-white hover:bg-elegant-gray-800"
+                onClick={() => router.push('/dashboard/suppliers/create')}
+              >
+                <Plus className="h-4 w-4" />
+                Yeni tedarikçi
+              </Button>
+            )}
+          </div>
+        ) : (
+          <>
+            <ul className="divide-y divide-elegant-gray-100 lg:hidden">
+              {visibleSuppliers.map((supplier) => (
+                <li key={supplier.id}>
+                  <button
+                    type="button"
+                    onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                    className="flex w-full items-start gap-3 px-5 py-4 text-left transition-colors hover:bg-elegant-gray-50"
+                  >
+                    <span className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-elegant-gray-100 text-xs font-semibold text-elegant-gray-700">
+                      {initials(supplier.name)}
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="flex items-start justify-between gap-2">
+                        <span className="truncate text-sm font-semibold text-elegant-black">{supplier.name}</span>
+                        <StatusPill approved={Boolean(supplier.is_approved)} />
+                      </span>
+                      <span className="mt-1 block truncate text-sm text-elegant-gray-500">
+                        {supplier.contact_person && contactSummary(supplier, query) !== 'İletişim yok'
+                          ? `${supplier.contact_person} · ${contactSummary(supplier, query)}`
+                          : supplier.contact_person || contactSummary(supplier, query)}
+                      </span>
+                      <span className="mt-1 block text-xs text-elegant-gray-400">
+                        {supplier.code ? `${supplier.code} · ` : ''}
+                        {supplier.payment_terms != null ? `${supplier.payment_terms} gün vade` : 'Vade belirtilmemiş'}
+                      </span>
+                    </span>
+                    <ChevronRight className="mt-2 h-4 w-4 shrink-0 text-elegant-gray-300" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+
+            <div className="hidden overflow-x-auto lg:block">
+              <table className="w-full min-w-[760px] text-left">
+                <thead>
+                  <tr className="border-b border-elegant-gray-100 text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                    <th className="px-6 py-3 font-bold">Tedarikçi</th>
+                    <th className="px-4 py-3 font-bold">İletişim</th>
+                    <th className="px-4 py-3 font-bold">Vade</th>
+                    <th className="px-4 py-3 font-bold">Puan</th>
+                    <th className="px-4 py-3 font-bold">Durum</th>
+                    <th className="px-4 py-3 text-right font-bold">
+                      <span className="sr-only">İşlem</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleSuppliers.map((supplier) => (
+                    <tr
+                      key={supplier.id}
+                      onClick={() => router.push(`/dashboard/suppliers/${supplier.id}`)}
+                      className="cursor-pointer border-b border-elegant-gray-100 last:border-0 transition-colors hover:bg-elegant-gray-50"
+                    >
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-elegant-gray-100 text-xs font-semibold text-elegant-gray-700">
+                            {initials(supplier.name)}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold text-elegant-black">{supplier.name}</div>
+                            <div className="truncate text-xs text-elegant-gray-500">
+                              {supplier.code || 'Kod yok'}
+                            </div>
+                          </div>
                         </div>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {suppliers.map((supplier, index) => (
-                      <TableRow 
-                        key={supplier.id}
-                        className={`border-0 hover:bg-blue-50/50 transition-colors duration-200 cursor-pointer ${
-                          index % 2 === 0 ? 'bg-white' : 'bg-gray-50/30'
-                        }`}
-                        onClick={() => {
-                          console.log('Tedarikçiye tıklandı:', supplier)
-                          router.push(`/dashboard/suppliers/${supplier.id}`)
-                        }}
-                      >
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-3">
-                            <div className="p-2 bg-green-100 rounded-2xl">
-                              <Building className="w-4 h-4 text-green-600" />
-                            </div>
-                            <div>
-                              <div className="font-semibold text-gray-800">{supplier.name}</div>
-                              <div className="text-sm text-gray-600">{supplier.code}</div>
-                              {supplier.contact_person && (
-                                <div className="text-sm text-gray-500">{supplier.contact_person}</div>
-                              )}
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell className="py-4">
-                          <div className="space-y-2">
-                            {supplier.email && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <div className="p-1 bg-blue-100 rounded-2xl">
-                                  <Mail className="w-3 h-3 text-blue-600" />
-                                </div>
-                                <span className="text-gray-700">{supplier.email}</span>
-                              </div>
-                            )}
-                            {supplier.phone && (
-                              <div className="flex items-center gap-2 text-sm">
-                                <div className="p-1 bg-green-100 rounded-2xl">
-                                  <Phone className="w-3 h-3 text-green-600" />
-                                </div>
-                                <span className="text-gray-700">{supplier.phone}</span>
-                              </div>
-                            )}
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-yellow-100 rounded-2xl">
-                              <Star className="w-3 h-3 text-yellow-600" />
-                            </div>
-                            <div className="flex items-center gap-1">
-                              {getRatingStars(supplier.rating)}
-                              <span className="text-sm font-medium text-gray-800">{supplier.rating}/5</span>
-                            </div>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 bg-purple-100 rounded-2xl">
-                              <Calendar className="w-3 h-3 text-purple-600" />
-                            </div>
-                            <span className="font-medium text-gray-800">{supplier.payment_terms} gün</span>
-                          </div>
-                        </TableCell>
-                        
-                        <TableCell className="py-4">
-                          {getStatusBadge(supplier.is_approved)}
-                        </TableCell>
-                        
-                        <TableCell className="py-4">
-                          <div className="flex items-center gap-1">
-                            <SupplierDetailDialog supplier={supplier} />
-                            <Button variant="ghost" size="sm" className="h-8 w-8 p-0 rounded-2xl hover:bg-green-100 hover:text-green-600">
-                              <Edit2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <div className="truncate text-sm text-elegant-black">
+                          {supplier.contact_person || '—'}
+                        </div>
+                        <div className="truncate text-xs text-elegant-gray-500">
+                          {contactSummary(supplier, query)}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3.5 text-sm tabular-nums text-elegant-black">
+                        {supplier.payment_terms != null ? `${supplier.payment_terms} gün` : '—'}
+                      </td>
+                      <td className="px-4 py-3.5 text-sm tabular-nums text-elegant-black">
+                        {formatRating(supplier.rating)}
+                      </td>
+                      <td className="px-4 py-3.5">
+                        <StatusPill approved={Boolean(supplier.is_approved)} />
+                      </td>
+                      <td className="px-4 py-3.5 text-right">
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            router.push(`/dashboard/suppliers/${supplier.id}/edit`)
+                          }}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-elegant-gray-500 transition-colors hover:bg-elegant-gray-100 hover:text-elegant-black"
+                          aria-label={`${supplier.name} kaydını düzenle`}
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          )}
-        </div>
-      </div>
+          </>
+        )}
+      </section>
     </div>
   )
 }
-
-

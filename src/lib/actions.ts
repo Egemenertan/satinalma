@@ -693,7 +693,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     const itemsData = data.materials.map(material => ({
       purchase_request_id: purchaseRequest.id,
       item_name: material.material_name,
-      description: `${material.brand || ''} ${material.material_name}`.trim(),
+      description: `${material.brand || ''} ${material.material_name || ''}`.trim(),
       quantity: Math.round(material.quantity), // Veritabanı integer beklediği için yuvarla
       original_quantity: Math.round(material.quantity), // İlk talep edilen miktar - ASLA değişmez
       unit: material.unit,

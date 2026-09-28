@@ -185,16 +185,19 @@ export const CATEGORY_IMAGES: Record<string, string> = {
     'https://images.unsplash.com/photo-1558655146-d09347e92766?w=800&q=80'
 }
 
-function normalizeImageKey(value: string): string {
-  return value
+function normalizeImageKey(value: string | null | undefined): string {
+  if (value == null) return ''
+  return String(value)
     .toLocaleLowerCase('tr-TR')
     .trim()
     .replace(/\s+/g, ' ')
 }
 
 /** DB’deki sınıf adı küçük farklarla gelse bile ofis kategorisi görselini bulur */
-export function getCategoryImage(className: string): string | undefined {
-  const trimmed = className.trim()
+export function getCategoryImage(className: string | null | undefined): string | undefined {
+  if (className == null || className === '') return undefined
+  const trimmed = String(className).trim()
+  if (!trimmed) return undefined
   if (CATEGORY_IMAGES[trimmed]) return CATEGORY_IMAGES[trimmed]
 
   const norm = normalizeImageKey(trimmed)
@@ -230,8 +233,10 @@ export const GROUP_IMAGES: Record<string, string> = {
   'Genel Temizlik': 'https://images.unsplash.com/photo-1585421514738-01798e348b17?w=800&q=80'
 }
 
-export function getGroupImage(groupName: string): string | undefined {
-  const trimmed = groupName.trim()
+export function getGroupImage(groupName: string | null | undefined): string | undefined {
+  if (groupName == null || groupName === '') return undefined
+  const trimmed = String(groupName).trim()
+  if (!trimmed) return undefined
   if (GROUP_IMAGES[trimmed]) return GROUP_IMAGES[trimmed]
 
   const norm = normalizeImageKey(trimmed)
@@ -245,7 +250,8 @@ export function getGroupImage(groupName: string): string | undefined {
   return undefined
 }
 
-export function getIconForClass(className: string): string {
+export function getIconForClass(className: string | null | undefined): string {
+  if (!className) return 'Package'
   const lower = className.toLowerCase()
   const entries = Object.entries(ICON_MAP).sort((a, b) => b[0].length - a[0].length)
   for (const [key, icon] of entries) {
@@ -256,7 +262,8 @@ export function getIconForClass(className: string): string {
   return 'Package'
 }
 
-export function getColorForClass(className: string): string {
+export function getColorForClass(className: string | null | undefined): string {
+  if (!className) return '#6b7280'
   const lower = className.toLowerCase()
   const entries = Object.entries(COLOR_MAP).sort((a, b) => b[0].length - a[0].length)
   for (const [key, color] of entries) {

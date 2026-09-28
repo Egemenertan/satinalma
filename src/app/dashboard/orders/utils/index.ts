@@ -15,6 +15,7 @@ export {
 } from './invoiceCalculations'
 
 export {
+  formatShortDocumentNumber,
   groupOrdersByRequest,
   sortGroupedOrders,
   getOrderStatusBadgeClass,

@@ -154,6 +154,7 @@ export async function GET(request: NextRequest) {
       .from('orders')
       .select(`
         id,
+        order_number,
         amount,
         currency,
         quantity,

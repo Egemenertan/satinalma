@@ -155,6 +155,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
           id,
           created_at,
           quantity,
+          order_number,
           purchase_request_id,
           suppliers!orders_supplier_id_fkey (name),
           purchase_requests!orders_purchase_request_id_fkey (title, request_number, site_id),
@@ -195,6 +196,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
         .filter((order: any) => {
           const fields = [
             order.suppliers?.name,
+            order.order_number,
             order.purchase_requests?.title,
             order.purchase_requests?.request_number,
             order.purchase_request_items?.item_name,
@@ -299,6 +301,7 @@ export async function fetchOrders(filters: OrderFilters): Promise<OrdersResponse
     .from('orders')
     .select(`
       id,
+      order_number,
       purchase_request_id,
       supplier_id,
       delivery_date,

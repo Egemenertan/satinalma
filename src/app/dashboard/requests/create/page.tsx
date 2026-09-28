@@ -36,11 +36,13 @@ import type {
   ModalState
 } from './types'
 
+const MATERIAL_GRID_LIMIT = 100
+
 const HYGIENE_DEFAULT_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' as const
 const HYGIENE_DEFAULT_CATEGORY = 'Hijyen ve Temizlik' as const
 
-const normalizeCategoryName = (value: string): string =>
-  value
+const normalizeCategoryName = (value: string | null | undefined): string =>
+  String(value ?? '')
     .toLocaleLowerCase('tr-TR')
     .trim()
     .replace(/ğ/g, 'g')
@@ -59,17 +61,17 @@ const OFFICE_CATEGORY_KEYWORDS = [
   'reklam'
 ] as const
 
-const isOfficeCategory = (categoryName: string): boolean => {
+const isOfficeCategory = (categoryName: string | null | undefined): boolean => {
   const normalized = normalizeCategoryName(categoryName)
   return OFFICE_CATEGORY_KEYWORDS.some((keyword) => normalized.includes(keyword))
 }
 
-const normalizeSiteDisplayKey = (name: string): string =>
-  name.trim().toLocaleLowerCase('tr-TR')
+const normalizeSiteDisplayKey = (name: string | null | undefined): string =>
+  String(name ?? '').trim().toLocaleLowerCase('tr-TR')
 
 /** Tire/nokta vb. ayıraçları boşluğa çevirir (D-Point, D.Point …) */
-const normalizeSiteNameLoose = (name: string): string =>
-  name
+const normalizeSiteNameLoose = (name: string | null | undefined): string =>
+  String(name ?? '')
     .trim()
     .toLocaleLowerCase('tr-TR')
     .replace(/[._]+/g, ' ')
@@ -143,6 +145,7 @@ export default function CreatePurchaseRequestPage() {
   const [subCategories, setSubCategories] = useState<MaterialGroup[]>([])
   const [selectedSubCategory, setSelectedSubCategory] = useState('')
   const [materials, setMaterials] = useState<MaterialItem[]>([])
+  const [materialsTruncated, setMaterialsTruncated] = useState(false)
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(true)
   const [isMaterialsLoading, setIsMaterialsLoading] = useState(false)
   
@@ -168,33 +171,45 @@ export default function CreatePurchaseRequestPage() {
     item_name: ''
   })
 
-  // Fetch initial data
+  // Fetch initial data. Sözleşmeler tüm katalog için değil, ekrandaki ürünler için yüklenir.
   useEffect(() => {
     fetchUserAndSites()
     fetchCategories()
-    fetchActiveContractsForMaterials()
-      .then(setActiveContracts)
-      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
   }, [])
 
-  // Fetch sub-categories when category changes
   useEffect(() => {
-    if (selectedCategory) {
-      fetchSubCategories(selectedCategory)
-      setSelectedSubCategory('')
-      setMaterials([])
+    const names = materials.map((item) => item.name).filter(Boolean)
+    if (names.length === 0) {
+      setActiveContracts([])
+      return
     }
+
+    let cancelled = false
+    fetchActiveContractsForMaterials(names)
+      .then((options) => {
+        if (!cancelled) setActiveContracts(options)
+      })
+      .catch((error) => console.error('Sözleşmeler yüklenemedi:', error))
+
+    return () => {
+      cancelled = true
+    }
+  }, [materials])
+
+  // Alt gruplar ve ürün önizlemesi birlikte başlar; ürün listesi grup sorgusunu beklemez.
+  useEffect(() => {
+    if (!selectedCategory) return
+    fetchSubCategories(selectedCategory)
   }, [selectedCategory])
 
-  // Fetch materials when sub-category changes
   useEffect(() => {
-    if (selectedCategory && selectedSubCategory) {
+    if (!selectedCategory) return
+    if (selectedSubCategory) {
       fetchMaterials(selectedCategory, selectedSubCategory)
-    } else if (selectedCategory && !selectedSubCategory && subCategories.length > 0) {
-      // Fetch all materials for the category
+    } else {
       fetchAllMaterialsForCategory(selectedCategory)
     }
-  }, [selectedSubCategory, selectedCategory, subCategories])
+  }, [selectedCategory, selectedSubCategory])
 
   const fetchUserAndSites = async () => {
     try {
@@ -273,7 +288,7 @@ export default function CreatePurchaseRequestPage() {
               }
             }
 
-            picked.sort((a, b) => a.name.localeCompare(b.name, 'tr'))
+            picked.sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr'))
 
             const { data: dPointPublic } = supabase.storage
               .from('satinalma')
@@ -333,7 +348,7 @@ export default function CreatePurchaseRequestPage() {
         .order('name')
 
       if (!error && data) {
-        setCategories(data)
+        setCategories(data.filter((category) => Boolean(category.name)))
       }
     } catch (error) {
       console.error('Error fetching categories:', error)
@@ -372,15 +387,20 @@ export default function CreatePurchaseRequestPage() {
         .eq('class', categoryName)
         .eq('group', groupName)
         .order('item_name')
+        .limit(MATERIAL_GRID_LIMIT + 1)
 
       if (!error && data) {
-        const items: MaterialItem[] = data.map(item => ({
-          id: item.id,
-          name: item.item_name,
-          class: item.class,
-          group: item.group
-        }))
-        setMaterials(items)
+        const items: MaterialItem[] = data
+          .filter((item) => Boolean(item.item_name))
+          .map((item) => ({
+            id: item.id,
+            name: item.item_name as string,
+            class: item.class ?? undefined,
+            group: item.group ?? undefined
+          }))
+        const truncated = items.length > MATERIAL_GRID_LIMIT
+        setMaterialsTruncated(truncated)
+        setMaterials(truncated ? items.slice(0, MATERIAL_GRID_LIMIT) : items)
       }
     } catch (error) {
       console.error('Error fetching materials:', error)
@@ -400,12 +420,15 @@ export default function CreatePurchaseRequestPage() {
         .limit(50)
 
       if (!error && data) {
-        const items: MaterialItem[] = data.map(item => ({
-          id: item.id,
-          name: item.item_name,
-          class: item.class,
-          group: item.group
-        }))
+        const items: MaterialItem[] = data
+          .filter((item) => Boolean(item.item_name))
+          .map((item) => ({
+            id: item.id,
+            name: item.item_name as string,
+            class: item.class ?? undefined,
+            group: item.group ?? undefined
+          }))
+        setMaterialsTruncated(false)
         setMaterials(items)
       }
     } catch (error) {
@@ -785,7 +808,10 @@ export default function CreatePurchaseRequestPage() {
         <CategoryTabs
           categories={filteredCategories}
           selectedCategory={selectedCategory}
-          onCategorySelect={setSelectedCategory}
+          onCategorySelect={(categoryName) => {
+            setSelectedSubCategory('')
+            setSelectedCategory(categoryName)
+          }}
           subCategories={subCategories}
           selectedSubCategory={selectedSubCategory}
           onSubCategorySelect={setSelectedSubCategory}
@@ -846,6 +872,11 @@ export default function CreatePurchaseRequestPage() {
               />
             ))}
           </div>
+        )}
+        {materialsTruncated && !isMaterialsLoading && (
+          <p className="mt-4 text-center text-sm text-gray-500">
+            Bu grupta daha fazla ürün var. Aradığınız malzemeyi üstteki arama ile bulun.
+          </p>
         )}
       </div>
 
