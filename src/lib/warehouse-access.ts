@@ -17,6 +17,8 @@ export type WarehouseAccessScope = {
   canManageProducts: boolean
   /** Erişilebilir depo id'leri; canManageAll ise boş olabilir (hepsi) */
   warehouseIds: string[]
+  /** Stok işlemi yapılabilen depolar (access_level = manage) */
+  manageWarehouseIds: string[]
   /** Tek/çoklu depo ile sınırlı kullanıcı */
   isRestricted: boolean
   loaded: boolean
@@ -26,6 +28,7 @@ export const emptyWarehouseAccessScope = (): WarehouseAccessScope => ({
   canManageAll: false,
   canManageProducts: false,
   warehouseIds: [],
+  manageWarehouseIds: [],
   isRestricted: true,
   loaded: false,
 })
@@ -66,6 +69,7 @@ export async function fetchMyWarehouseAccessScope(): Promise<WarehouseAccessScop
         canManageAll: true,
         canManageProducts: true,
         warehouseIds: [],
+        manageWarehouseIds: [],
         isRestricted: false,
         loaded: true,
       }
@@ -86,10 +90,20 @@ export async function fetchMyWarehouseAccessScope(): Promise<WarehouseAccessScop
     )
   )
 
+  const manageWarehouseIds = Array.from(
+    new Set(
+      accessRows
+        .filter((r) => r.access_level === 'manage')
+        .map((r) => r.warehouse_id)
+        .filter((id): id is string => typeof id === 'string' && id.length > 0)
+    )
+  )
+
   return {
     canManageAll: manageAll,
     canManageProducts: manageAll,
     warehouseIds: manageAll ? [] : warehouseIds,
+    manageWarehouseIds: manageAll ? [] : manageWarehouseIds,
     isRestricted: !manageAll,
     loaded: true,
   }
