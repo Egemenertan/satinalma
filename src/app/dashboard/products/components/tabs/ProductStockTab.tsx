@@ -17,6 +17,8 @@ interface ProductStockTabProps {
   product: any
   stockData: any[]
   totalStock: number
+  /** İnceleme: zimmet değiştirme ve kaldırma kapalı */
+  readOnly?: boolean
 }
 
 interface UserInventory {
@@ -95,7 +97,7 @@ function groupWarehouseStocks(stockData: any[] | undefined) {
   return [...map.values()].filter((s) => Number(s.quantity) > 0)
 }
 
-export function ProductStockTab({ product, stockData, totalStock }: ProductStockTabProps) {
+export function ProductStockTab({ product, stockData, totalStock, readOnly = false }: ProductStockTabProps) {
   const queryClient = useQueryClient()
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
   const [userInventories, setUserInventories] = useState<UserInventory[]>([])
@@ -531,6 +533,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   {parseFloat(inv.quantity.toString()).toLocaleString('tr-TR')}{' '}
                                   {product?.unit || ''}
                                 </span>
+                                {!readOnly && (
+                                <>
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -567,6 +571,8 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                   )}
                                   Kaldır
                                 </Button>
+                                </>
+                                )}
                               </div>
                             </div>
                           )
@@ -638,7 +644,9 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                         <th className="px-4 py-3 font-medium">Zimmetli</th>
                         <th className="px-4 py-3 font-medium">Miktar</th>
                         <th className="px-4 py-3 font-medium">Tarih</th>
-                        <th className="px-4 py-3 font-medium text-right">İşlem</th>
+                        {!readOnly && (
+                          <th className="px-4 py-3 font-medium text-right">İşlem</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -699,6 +707,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                 year: 'numeric',
                               })}
                             </td>
+                            {!readOnly && (
                             <td className="px-4 py-3.5 align-middle">
                               <div className="flex items-center justify-end gap-2">
                                 <Button
@@ -733,6 +742,7 @@ export function ProductStockTab({ product, stockData, totalStock }: ProductStock
                                 </Button>
                               </div>
                             </td>
+                            )}
                           </tr>
                         )
                       })}

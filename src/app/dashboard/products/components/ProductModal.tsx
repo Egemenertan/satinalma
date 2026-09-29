@@ -40,6 +40,8 @@ interface ProductModalProps {
   isSaving?: boolean
   selectedProductIds?: string[]
   defaultWarehouseId?: string
+  /** Stok işlemi, geçmiş ve zimmet değiştirme. Kapalıysa yalnızca inceleme. */
+  canOperateStock?: boolean
 }
 
 export function ProductModal({
@@ -53,6 +55,7 @@ export function ProductModal({
   isSaving = false,
   selectedProductIds = [],
   defaultWarehouseId,
+  canOperateStock = true,
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
   const isBulkOperation = selectedProductIds.length > 1
@@ -154,6 +157,11 @@ export function ProductModal({
 
   const stockStatus = getStockStatus()
   const StockIcon = stockStatus.icon
+  const inspectionOnly = !canOperateStock
+  const visibleTab =
+    inspectionOnly && (activeTab === 'movements' || activeTab === 'history')
+      ? 'stock'
+      : activeTab
 
   // Edit veya create modunda form göster
   const showForm = mode === 'edit' || mode === 'create'
@@ -235,7 +243,7 @@ export function ProductModal({
 
             {/* Tabs */}
             <Tabs
-              value={activeTab}
+              value={visibleTab}
               onValueChange={(value) => onTabChange(value as ProductModalTab)}
               className="flex-1 flex flex-col min-h-0"
             >
@@ -263,22 +271,26 @@ export function ProductModal({
                   <Package className="w-5 h-5" />
                   <span>Stok Durumu</span>
                 </TabsTrigger>
-                <TabsTrigger 
-                  value="movements" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
-                  disabled={showForm}
-                >
-                  <TrendingUp className="w-5 h-5" />
-                  <span>Stok İşlemleri</span>
-                </TabsTrigger>
-                <TabsTrigger 
-                  value="history" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
-                  disabled={showForm}
-                >
-                  <History className="w-5 h-5" />
-                  <span>Geçmiş</span>
-                </TabsTrigger>
+                {!inspectionOnly && (
+                  <TabsTrigger 
+                    value="movements" 
+                    className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                    disabled={showForm}
+                  >
+                    <TrendingUp className="w-5 h-5" />
+                    <span>Stok İşlemleri</span>
+                  </TabsTrigger>
+                )}
+                {!inspectionOnly && (
+                  <TabsTrigger 
+                    value="history" 
+                    className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                    disabled={showForm}
+                  >
+                    <History className="w-5 h-5" />
+                    <span>Geçmiş</span>
+                  </TabsTrigger>
+                )}
               </TabsList>
 
               <div className="flex-1 overflow-y-auto bg-white min-h-0 rounded-b-3xl">
@@ -306,11 +318,13 @@ export function ProductModal({
                   <ProductStockTab 
                     product={product} 
                     stockData={stockData || []} 
-                    totalStock={totalStock} 
+                    totalStock={totalStock}
+                    readOnly={inspectionOnly}
                   />
                 </TabsContent>
 
                 {/* Stok İşlemleri Tab */}
+                {!inspectionOnly && (
                 <TabsContent value="movements" className="p-8 m-0">
                   {product ? (
                     <StockOperationsForm
@@ -332,11 +346,14 @@ export function ProductModal({
                     </div>
                   )}
                 </TabsContent>
+                )}
 
                 {/* Geçmiş Tab */}
+                {!inspectionOnly && (
                 <TabsContent value="history" className="p-8 m-0">
                   <ProductHistoryTab product={product} movementsData={movementsData} inventoryData={inventoryData} />
                 </TabsContent>
+                )}
               </div>
             </Tabs>
           </div>

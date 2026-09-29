@@ -41,6 +41,10 @@ function normEmail(v: string | null | undefined) {
   return (v || '').trim().toLowerCase()
 }
 
+function normPersonName(v: string | null | undefined) {
+  return (v || '').trim().replace(/\s+/g, ' ')
+}
+
 /** @dovecgroup ↔ @dovecgroup.com typo varyantları */
 function expandDovecEmailDomainVariants(email: string): string[] {
   const n = normEmail(email)
@@ -80,6 +84,10 @@ function buildOwnerEmailOrIlikeClause(emails: string[]): string {
       return `owner_email.ilike."${escaped}"`
     })
     .join(',')
+}
+
+function escapeIlikeExact(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')
 }
 
 /** employees.work_email / personal_email / isimden türetilen e-posta ile profiles.id */
@@ -243,10 +251,12 @@ export function ZimmetReportModal({
     try {
       const client = createClient()
       const emailCandidates = buildReportEmailCandidates(selectedEmployee)
+      const emailSet = new Set(emailCandidates)
+      const ownerName = normPersonName(selectedEmployee.first_name)
       const profileId = await resolveProfileIdForEmployee(selectedEmployee)
 
-      if (emailCandidates.length === 0 && !profileId) {
-        showToast('Bu çalışan için e-posta veya profil eşlemesi yok; rapor alınamıyor.', 'error')
+      if (emailCandidates.length === 0 && !profileId && !ownerName) {
+        showToast('Bu çalışan için e-posta, isim veya profil eşlemesi yok; rapor alınamıyor.', 'error')
         return
       }
 
@@ -286,6 +296,28 @@ export function ZimmetReportModal({
         for (const r of d2 || []) byId.set((r as { id: string }).id, r as Record<string, unknown>)
       }
 
+      if (ownerName) {
+        let q3 = client
+          .from('user_inventory')
+          .select(INVENTORY_SELECT)
+          .eq('status', 'active')
+          .not('source_warehouse_id', 'is', null)
+          .ilike('owner_name', escapeIlikeExact(ownerName))
+
+        if (sourceWarehouseId) {
+          q3 = q3.eq('source_warehouse_id', sourceWarehouseId)
+        }
+
+        const { data: d3, error: e3 } = await q3.order('assigned_date', { ascending: false }).limit(5000)
+        if (e3) throw e3
+        for (const r of d3 || []) {
+          const row = r as { id: string; owner_email?: string | null }
+          const rowEmail = normEmail(row.owner_email)
+          if (rowEmail && !emailSet.has(rowEmail)) continue
+          byId.set(row.id, r as Record<string, unknown>)
+        }
+      }
+
       const matched = [...byId.values()] as any[]
 
       if (matched.length === 0) {
@@ -315,9 +347,10 @@ export function ZimmetReportModal({
 
       const filterNote =
         [
-          'user_inventory: status=aktif; source_warehouse_id dolu; owner_email eşlemesi VEYA kullanıcı profili (profiles.id=user_id)',
+          'user_inventory: status=aktif; source_warehouse_id dolu; owner_email eşlemesi VEYA owner_name eşlemesi (e-posta boşsa) VEYA kullanıcı profili (profiles.id=user_id)',
           profileId ? `profiles.id: ${profileId}` : 'profiles.id: eşlenmedi',
           `E-posta adayları (owner): ${emailCandidates.join('; ') || '—'}`,
+          ownerName ? `İsim: ${ownerName}` : 'İsim: —',
         ].join(' · ')
 
       const aggregated = aggregateInventoryForReport(matched)
@@ -391,7 +424,7 @@ export function ZimmetReportModal({
             Zimmet Raporu (PDF)
           </DialogTitle>
           <p className="text-sm text-gray-500 pt-1">
-            Seçilen çalışanın e-postalarına göre{' '}
+            Seçilen çalışanın e-postası veya adı ile{' '}
             <span className="font-medium text-gray-700">user_inventory</span> (aktif, kaynak depolu) filtrelenir.
             {warehouseLabel ? (
               <>

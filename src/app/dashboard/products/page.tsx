@@ -181,6 +181,9 @@ export default function ProductsPage() {
 
   const isRestrictedView = warehouseAccess.isRestricted && warehouseAccess.warehouseIds.length > 0
   const canManageProducts = warehouseAccess.canManageProducts
+  const canOperateStock =
+    warehouseAccess.canManageAll ||
+    (!!siteId && warehouseAccess.manageWarehouseIds.includes(siteId))
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
 
   const handleOpenCreateModal = () => {
@@ -575,7 +578,7 @@ export default function ProductsPage() {
             onProductClick={handleOpenViewModal}
             selectedSiteId={siteId}
             selectedProducts={selectedProducts}
-            onSelectionChange={handleSelectionChange}
+            onSelectionChange={canOperateStock ? handleSelectionChange : undefined}
           />
 
           {totalPages > 1 && (
@@ -627,9 +630,10 @@ export default function ProductsPage() {
         isSaving={isSaving}
         selectedProductIds={selectedProducts}
         defaultWarehouseId={siteId || undefined}
+        canOperateStock={canOperateStock}
       />
 
-      {showBulkActions && (
+      {canOperateStock && showBulkActions && (
         <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-2xl z-50 border-t border-gray-700">
           <div className="max-w-7xl mx-auto px-8 py-6">
             <div className="flex items-center justify-between">
