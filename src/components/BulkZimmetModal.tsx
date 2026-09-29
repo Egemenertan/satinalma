@@ -16,7 +16,7 @@ import {
   Loader2
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
+import { assignZimmetInWarehouse } from '@/services/zimmet.service'
 import {
   Select,
   SelectContent,
@@ -214,83 +214,19 @@ export default function BulkZimmetModal({
     try {
       setLoading(true)
 
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Kullanıcı bulunamadı')
-
       const selectedEmployee = employees.find(e => e.id === selectedEmployeeId)
       if (!selectedEmployee) throw new Error('Seçilen çalışan bulunamadı')
 
       for (const detail of productDetails) {
-        const { data: stockRecord, error: stockError } = await supabase
-          .from('warehouse_stock')
-          .select('id, quantity, condition_breakdown')
-          .eq('product_id', detail.id)
-          .eq('warehouse_id', detail.warehouseId)
-          .single()
-
-        if (stockError || !stockRecord) {
-          throw new Error(`${detail.name} için stok kaydı bulunamadı`)
-        }
-
-        const breakdown = (stockRecord.condition_breakdown as Record<string, number>) || {}
-        let remainingToDeduct = detail.quantity
-        const conditionOrder = ['yeni', 'kullanılmış', 'hek', 'arızalı']
-        
-        for (const condition of conditionOrder) {
-          if (remainingToDeduct <= 0) break
-          const conditionQty = breakdown[condition] || 0
-          if (conditionQty > 0) {
-            const deductAmount = Math.min(conditionQty, remainingToDeduct)
-            breakdown[condition] = conditionQty - deductAmount
-            remainingToDeduct -= deductAmount
-          }
-        }
-
-        const newQuantity = parseFloat(stockRecord.quantity.toString()) - detail.quantity
-
-        const { error: updateError } = await supabase
-          .from('warehouse_stock')
-          .update({ 
-            quantity: newQuantity,
-            condition_breakdown: breakdown,
-            last_updated: new Date().toISOString(),
-            updated_by: user.id
-          })
-          .eq('id', stockRecord.id)
-
-        if (updateError) throw new Error(`${detail.name} için stok güncellenemedi`)
-
-        const ownerDisplayName = (selectedEmployee.first_name || '').trim()
-        const { error: inventoryError } = await supabase
-          .from('user_inventory')
-          .insert({
-            product_id: detail.id,
-            item_name: detail.name,
-            quantity: detail.quantity,
-            unit: detail.unit,
-            assigned_date: new Date().toISOString(),
-            assigned_by: user.id,
-            status: 'active',
-            notes: 'Toplu zimmet işlemi',
-            category: null,
-            consumed_quantity: 0,
-            owner_name: ownerDisplayName || null,
-            owner_email: buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName) || null,
-            source_warehouse_id: detail.warehouseId
-          })
-
-        if (inventoryError) throw new Error(`${detail.name} için zimmet kaydı oluşturulamadı`)
-
-        await supabase
-          .from('stock_movements')
-          .insert({
-            product_id: detail.id,
-            warehouse_id: detail.warehouseId,
-            movement_type: 'çıkış',
-            quantity: detail.quantity,
-            reason: `Toplu Zimmet: ${selectedEmployee.first_name}`,
-            created_by: user.id
-          })
+        await assignZimmetInWarehouse({
+          productId: detail.id,
+          productName: detail.name,
+          productUnit: detail.unit,
+          warehouseId: detail.warehouseId,
+          quantity: detail.quantity,
+          employee: selectedEmployee,
+          reason: 'Toplu zimmet işlemi (stok depoda kaldı)',
+        })
       }
 
       showToast(`${productDetails.length} ürün ${selectedEmployee.first_name} adına zimmetlendi`, 'success')

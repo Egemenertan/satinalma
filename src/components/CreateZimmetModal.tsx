@@ -342,82 +342,9 @@ export default function CreateZimmetModal({
       const ownerDisplayName = selectedUser.full_name?.trim() ?? ''
       const ownerEmailCanonical = buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName)
 
-      // Her ürün için zimmet oluştur
+      // Zimmet sorumluluk kaydıdır; depo miktarı düşülmez.
       for (const detail of productDetails) {
-        // 1. Ana depodan stoğu düş
-        let query = supabase
-          .from('warehouse_stock')
-          .select('id, quantity')
-          .eq('product_id', detail.id)
-          .is('user_id', null)
-
-        // warehouse_id null olabilir, ona göre filtrele
-        if (detail.warehouseId) {
-          query = query.eq('warehouse_id', detail.warehouseId)
-        } else {
-          query = query.is('warehouse_id', null)
-        }
-
-        const { data: stockRecord, error: stockError } = await query
-          .select('id, quantity, condition_breakdown')
-          .single()
-
-        if (stockError || !stockRecord) {
-          console.error('Stok kaydı bulunamadı:', stockError)
-          throw new Error(`${detail.name} için stok kaydı bulunamadı`)
-        }
-
-        // Condition breakdown'ı güncelle
-        const conditionBreakdown = (stockRecord.condition_breakdown as any) || {}
-        const stockTypeKey = detail.stockType === 'new' ? 'yeni' : 'kullanılmış'
-        
-        console.log(`📦 ${detail.name} - Mevcut breakdown:`, conditionBreakdown)
-        console.log(`📦 Mevcut toplam quantity: ${stockRecord.quantity}`)
-        console.log(`📦 Seçilen stok tipi: ${stockTypeKey}, Miktar: ${detail.quantity}`)
-        
-        // Seçilen durumdaki miktarı kontrol et ve düş
-        const currentConditionQty = conditionBreakdown[stockTypeKey] 
-          ? parseFloat(conditionBreakdown[stockTypeKey].toString()) 
-          : 0
-        
-        if (currentConditionQty < detail.quantity) {
-          throw new Error(
-            `${detail.name} için yeterli "${stockTypeKey}" stok yok! ` +
-            `Mevcut: ${currentConditionQty} ${detail.unit}, İstenen: ${detail.quantity} ${detail.unit}`
-          )
-        }
-        
-        // Miktarı düş
-        conditionBreakdown[stockTypeKey] = Math.max(0, currentConditionQty - detail.quantity)
-        
-        // Yeni toplam quantity'yi breakdown'dan hesapla
-        const newQuantity = Object.values(conditionBreakdown).reduce(
-          (sum: number, val: any) => sum + (parseFloat(val?.toString() || '0') || 0),
-          0
-        )
-        
-        console.log(`📦 Yeni breakdown:`, conditionBreakdown)
-        console.log(`📦 Yeni toplam quantity (breakdown'dan hesaplandı): ${newQuantity}`)
-        console.log(`📦 Breakdown toplamı: ${Object.entries(conditionBreakdown).map(([k,v]) => `${k}:${v}`).join(', ')}`)
-
-        const { error: updateError } = await supabase
-          .from('warehouse_stock')
-          .update({
-            quantity: newQuantity,
-            condition_breakdown: conditionBreakdown,
-            last_updated: new Date().toISOString(),
-            updated_by: user.id
-          })
-          .eq('id', stockRecord.id)
-
-        if (updateError) {
-          console.error('Stok güncellenemedi:', updateError)
-          throw new Error(`${detail.name} için stok güncellenemedi`)
-        }
-
-        console.log(`✅ ${detail.name} - Ana depodan ${detail.quantity} ${detail.unit} düşüldü (${stockTypeKey}: ${currentConditionQty} → ${conditionBreakdown[stockTypeKey]})`)
-
-        // 2. User inventory kaydı oluştur veya güncelle
+        // User inventory kaydı oluştur veya güncelle
         // Önce bu kullanıcı için aynı ürün var mı kontrol et
         const { data: existingInventory } = await supabase
           .from('user_inventory')
@@ -461,7 +388,7 @@ export default function CreateZimmetModal({
               assigned_by: user.id,
               status: 'active',
               category: detail.category,
-              notes: `Manuel zimmet - ${detail.stockType === 'new' ? 'Yeni' : 'Kullanılmış'} - Depo: ${detail.warehouseId || 'Genel'}`,
+              notes: `Manuel zimmet (stok depoda kaldı) - ${detail.stockType === 'new' ? 'Yeni' : 'Kullanılmış'} - Depo: ${detail.warehouseId || 'Genel'}`,
               owner_name: ownerDisplayName || null,
               owner_email: ownerEmailCanonical || null,
               source_warehouse_id: detail.warehouseId || null,

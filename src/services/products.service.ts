@@ -38,7 +38,7 @@ export interface ProductWithDetails extends Omit<Product, 'category'> {
   warehouse_stocks?: WarehouseStock[]
 }
 
-/** Ana depo satırı: user_id boş — zimmet verildiğinde miktar buradan düşülür. */
+/** Ana depo satırı: user_id boş. Zimmet sorumluluktur, bu satırın miktarını düşürmez. */
 function isMainDepotStockRow(stock: { user_id?: string | null }) {
   return stock.user_id == null || stock.user_id === undefined
 }
@@ -77,10 +77,50 @@ function scopeWarehouseStocks<T extends { warehouse_id?: string | null }>(
   return stocks
 }
 
-/** Liste kartı: normalde depo+zimmet toplamı; "Mevcut Olanlar"da yalnızca serbest depo miktarı. */
+/**
+ * Depoda hâlâ duran zimmet, stok satırına yazılmışsa tekrar eklenmez.
+ * Eski kayıtlarda miktar sıfırlandıysa, o deponun zimmet adedi stoğa dahil edilir.
+ */
+function zimmetQtyMissingFromDepot(
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
+  stocks: any[] | undefined,
+  filters?: ProductFilters
+): number {
+  const stockByWarehouse = new Map<string, number>()
+  for (const stock of scopeWarehouseStocks(stocks, filters)) {
+    if (!isMainDepotStockRow(stock) || !stock.warehouse_id) continue
+    stockByWarehouse.set(
+      stock.warehouse_id,
+      (stockByWarehouse.get(stock.warehouse_id) || 0) + (parseFloat(stock.quantity) || 0)
+    )
+  }
+
+  let extra = 0
+  for (const inv of inventories || []) {
+    const qty = parseFloat(String(inv.quantity ?? 0)) || 0
+    if (!(qty > 0)) continue
+    const warehouseId = inv.source_warehouse_id || null
+    if (filters?.siteId && warehouseId !== filters.siteId) continue
+    if (
+      !filters?.siteId &&
+      filters?.allowedWarehouseIds?.length &&
+      (!warehouseId || !filters.allowedWarehouseIds.includes(warehouseId))
+    ) {
+      continue
+    }
+    if (!warehouseId) {
+      extra += qty
+      continue
+    }
+    if ((stockByWarehouse.get(warehouseId) || 0) <= 0) extra += qty
+  }
+  return extra
+}
+
+/** Liste kartı: depodaki fiziksel miktar. Zimmet, stoktan düşülmüş eski kayıtlarda buna eklenir. */
 function totalStockForProductList(
   product: any,
-  userInventorySum: number,
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
   filters?: ProductFilters
 ) {
   const scopedStocks = scopeWarehouseStocks(product.warehouse_stocks, filters)
@@ -92,7 +132,7 @@ function totalStockForProductList(
   if (filters?.statusFilter === 'available') {
     return warehouseScoped
   }
-  return warehouseScoped + userInventorySum
+  return warehouseScoped + zimmetQtyMissingFromDepot(inventories, product.warehouse_stocks, filters)
 }
 
 /**
@@ -242,19 +282,14 @@ export async function fetchProducts(
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
       const { data: inventories } = await supabase
         .from('user_inventory')
-        .select('quantity')
+        .select('quantity, source_warehouse_id')
         .eq('product_id', product.id)
         .eq('status', 'active')
-
-      const userInventoryStock = (inventories || []).reduce(
-        (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
-        0
-      )
 
       return {
         ...product,
         warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
-        total_stock: totalStockForProductList(product, userInventoryStock, filters),
+        total_stock: totalStockForProductList(product, inventories, filters),
       }
     }))
 
@@ -383,19 +418,14 @@ export async function fetchProducts(
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
       const { data: inventories } = await supabase
         .from('user_inventory')
-        .select('quantity')
+        .select('quantity, source_warehouse_id')
         .eq('product_id', product.id)
         .eq('status', 'active')
-
-      const userInventoryStock = (inventories || []).reduce(
-        (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
-        0
-      )
 
       return {
         ...product,
         warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
-        total_stock: totalStockForProductList(product, userInventoryStock, filters),
+        total_stock: totalStockForProductList(product, inventories, filters),
       }
     }))
     
@@ -433,7 +463,7 @@ export async function fetchProducts(
     }
   }
   
-  // "Mevcut Olanlar": depoda serbest kalan (user_id null, quantity > 0); zimmet zaten depo satırından düşülüyor
+  // "Mevcut Olanlar": depoda fiziksel miktarı olan ürünler (zimmet depodan düşülmez)
   let availableProductIds: string[] | null = null
   if (filters?.statusFilter === 'available') {
     let stockQuery = supabase
@@ -528,34 +558,16 @@ export async function fetchProducts(
     throw error
   }
 
-  // Calculate total stock for each product
-  // Toplam = Depo Stokları (user_id: null) + Kullanıcı Zimmetleri (user_inventory)
+  // Fiziksel stok depo satırındadır. Zimmet yalnızca stoktan düşülmüş eski kayıtlarda eklenir.
   const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
-    const warehouseStock = (product.warehouse_stocks || [])
-      .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
-      .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
-
     const supabaseClient = createClient()
     const { data: inventories } = await supabaseClient
       .from('user_inventory')
-      .select('quantity')
+      .select('quantity, source_warehouse_id')
       .eq('product_id', product.id)
       .eq('status', 'active')
 
-    const userInventoryStock = (inventories || []).reduce(
-      (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
-      0
-    )
-
-    const listTotal = totalStockForProductList(product, userInventoryStock, filters)
-
-    if (userInventoryStock > 0 && filters?.statusFilter !== 'available') {
-      console.log(`📊 ${product.name}:`, {
-        depo: warehouseStock,
-        zimmet: userInventoryStock,
-        toplam: listTotal,
-      })
-    }
+    const listTotal = totalStockForProductList(product, inventories, filters)
 
     return {
       ...product,
@@ -596,33 +608,13 @@ export async function fetchProductById(id: string): Promise<ProductWithDetails |
     throw error
   }
 
-  // Calculate total stock
-  // Toplam = Depo Stokları (user_id: null) + Kullanıcı Zimmetleri (user_inventory)
-  const warehouseStock = (data.warehouse_stocks || [])
-    .filter((stock: any) => stock.user_id === null || stock.user_id === undefined)
-    .reduce((sum: number, stock: any) => sum + (parseFloat(stock.quantity) || 0), 0)
-  
-  // Kullanıcı zimmetleri
   const { data: inventories } = await supabase
     .from('user_inventory')
-    .select('quantity')
+    .select('quantity, source_warehouse_id')
     .eq('product_id', id)
     .eq('status', 'active')
-  
-  const userInventoryStock = (inventories || []).reduce(
-    (sum: number, inv: any) => sum + (parseFloat(inv.quantity) || 0),
-    0
-  )
-  
-  const totalStock = warehouseStock + userInventoryStock
-  
-  // Debug log
-  console.log(`📊 ${data.name} - Toplam Stok Hesaplama:`, {
-    'Ana Depo (user_id: null)': warehouseStock,
-    'Zimmetli (user_inventory)': userInventoryStock,
-    'TOPLAM': totalStock,
-    'warehouse_stocks kayıt sayısı': data.warehouse_stocks?.length || 0
-  })
+
+  const totalStock = totalStockForProductList(data, inventories)
 
   return {
     ...data,
