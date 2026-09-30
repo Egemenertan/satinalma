@@ -1,8 +1,9 @@
 import 'server-only'
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { Database } from '../supabase'
+import { createAuthCookieStorage } from './auth-cookie-storage'
 
 export function createClient() {
   const cookieStore = cookies()
@@ -15,38 +16,44 @@ export function createClient() {
   }
 
   const isProd = process.env.NODE_ENV === 'production'
+  const cookieOptions = {
+    path: '/',
+    sameSite: 'lax' as const,
+    ...(isProd ? { secure: true as const } : {}),
+  }
+  const authCookies = {
+    get(name: string) {
+      return cookieStore.get(name)?.value
+    },
+    set(name: string, value: string, options: CookieOptions) {
+      try {
+        cookieStore.set(name, value, options)
+      } catch {
+        // The `set` method was called from a Server Component.
+        // This can be ignored if you have middleware refreshing
+        // user sessions.
+      }
+    },
+    remove(name: string, options: CookieOptions) {
+      try {
+        cookieStore.set(name, '', { ...options, maxAge: 0 })
+      } catch {
+        // The `remove` method was called from a Server Component.
+        // This can be ignored if you have middleware refreshing
+        // user sessions.
+      }
+    },
+  }
 
   return createServerClient<Database>(
     supabaseUrl,
     supabaseAnonKey,
     {
-      cookieOptions: {
-        path: '/',
-        sameSite: 'lax',
-        ...(isProd ? { secure: true } : {}),
-      },
-      cookies: {
-        get(name: string) {
-          return cookieStore.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          try {
-            cookieStore.set(name, value, options)
-          } catch {
-            // The `set` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
-        remove(name: string, options: any) {
-          try {
-            cookieStore.set(name, '', { ...options, maxAge: 0 })
-          } catch {
-            // The `remove` method was called from a Server Component.
-            // This can be ignored if you have middleware refreshing
-            // user sessions.
-          }
-        },
+      cookieOptions,
+      cookies: authCookies,
+      auth: {
+        flowType: 'pkce',
+        storage: createAuthCookieStorage(authCookies, cookieOptions, true),
       },
     }
   )

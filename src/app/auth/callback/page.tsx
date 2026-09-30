@@ -7,6 +7,8 @@ import { ensureProfile, getRedirectPath, getErrorMessage } from '@/lib/auth'
 
 const HANDOFF_QUERY_KEY = 'handoff_id'
 
+let callbackExchange: { code: string; pending: Promise<void> } | null = null
+
 /**
  * OAuth callback (PKCE).
  *
@@ -57,9 +59,22 @@ export default function AuthCallback() {
           return
         }
 
-        const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(code)
-        if (exchangeError) {
-          throw exchangeError
+        if (!callbackExchange || callbackExchange.code !== code) {
+          callbackExchange = {
+            code,
+            pending: supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+              if (error) throw error
+            }),
+          }
+        }
+
+        try {
+          await callbackExchange.pending
+        } catch (exchangeError) {
+          // Aynı kod ikinci kez takas edilirse verifier boşalır.
+          // İlk takas oturumu yazdıysa girişe geri atma.
+          const { data: { session: existing } } = await supabase.auth.getSession()
+          if (!existing?.user) throw exchangeError
         }
 
         // Cookie'lerin yazılması için kısa bekleme (SSR cookie sync)
@@ -77,12 +92,17 @@ export default function AuthCallback() {
           return
         }
 
-        const role = await ensureProfile(
-          supabase,
-          session.user.id,
-          session.user.email,
-          session.user.user_metadata?.full_name || session.user.user_metadata?.name
-        )
+        let role = null
+        try {
+          role = await ensureProfile(
+            supabase,
+            session.user.id,
+            session.user.email,
+            session.user.user_metadata?.full_name || session.user.user_metadata?.name
+          )
+        } catch (profileError) {
+          console.error('Profil okunamadı, oturum korunuyor:', profileError)
+        }
 
         if (handoffId) {
           // Embedded mod: token'ları handoff endpoint'ine ilet, sekmeyi kapat

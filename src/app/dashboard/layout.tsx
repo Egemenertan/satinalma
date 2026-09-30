@@ -10,7 +10,7 @@ import { Loading } from '@/components/ui/loading'
 import { Menu, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { canAccessPage } from '@/lib/roles'
-import { ensureProfile, getRedirectPath } from '@/lib/auth'
+import { ensureProfile, getRedirectPath, getSessionUser } from '@/lib/auth'
 import type { UserRole } from '@/lib/types'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -33,22 +33,24 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     
     const checkAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        const user = await getSessionUser(supabase)
         
         if (!mounted) return
         
-        // Session yoksa login'e yönlendir
-        if (!session?.user) {
+        // Oturum gerçekten yoksa login'e yönlendir.
+        // Geçici bir okuma hatası burada düşmez; getSessionUser bir kez daha dener.
+        if (!user) {
           window.location.href = '/auth/login'
           return
         }
 
-        // Profili kontrol et ve rolü al
+        // Profil okunamazsa oturumu kapatma. Rol veritabanında durur,
+        // bir sonraki yüklemede tekrar okunur.
         const role = await ensureProfile(
           supabase,
-          session.user.id,
-          session.user.email,
-          session.user.user_metadata?.full_name
+          user.id,
+          user.email,
+          user.user_metadata?.full_name
         )
 
         if (!mounted) return
@@ -56,10 +58,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         setUserRole(role)
         setIsLoading(false)
       } catch (error) {
-        console.error('Auth hatası:', error)
-        if (mounted) {
-          window.location.href = '/auth/login?error=auth_failed'
-        }
+        console.error('Profil okunamadı, oturum korunuyor:', error)
+        if (mounted) setIsLoading(false)
       }
     }
 

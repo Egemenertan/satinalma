@@ -23,12 +23,18 @@ export async function ensureProfile(
   const userEmail = email?.trim().toLowerCase() || ''
   const userName = fullName || userEmail || 'Kullanıcı'
 
-  // Mevcut profili kontrol et
-  const { data: profile } = await supabase
+  // Mevcut profili kontrol et. Okuma hatasında profil yokmuş gibi
+  // davranma: aksi halde satın alma kullanıcısı bu sayfa yüklemesinde
+  // site_personnel sayılır.
+  const { data: profile, error: readError } = await supabase
     .from('profiles')
     .select('role, site_id')
     .eq('id', userId)
     .maybeSingle()
+
+  if (readError) {
+    throw readError
+  }
 
   // Profil varsa
   if (profile) {
@@ -47,7 +53,7 @@ export async function ensureProfile(
   }
 
   // Yeni profil oluştur (site_id boş bırak - admin atamalı)
-  await supabase
+  const { error: insertError } = await supabase
     .from('profiles')
     .insert({
       id: userId,
@@ -58,5 +64,18 @@ export async function ensureProfile(
       created_at: new Date().toISOString(),
     })
 
-  return DEFAULT_ROLE
+  if (!insertError) {
+    return DEFAULT_ROLE
+  }
+
+  // Eşzamanlı istek profili bizden önce oluşturmuş olabilir.
+  const { data: existing, error: rereadError } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', userId)
+    .maybeSingle()
+
+  if (rereadError) throw rereadError
+  if (existing?.role) return existing.role as UserRole
+  throw insertError
 }

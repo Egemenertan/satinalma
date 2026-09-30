@@ -176,12 +176,17 @@ export default function LoginPage() {
       throw new Error(getErrorMessage(setSessionError, 'Oturum başlatılamadı'))
     }
 
-    const role = await ensureProfile(
-      supabase,
-      data.session.user.id,
-      data.session.user.email,
-      data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name
-    )
+    let role = null
+    try {
+      role = await ensureProfile(
+        supabase,
+        data.session.user.id,
+        data.session.user.email,
+        data.session.user.user_metadata?.full_name || data.session.user.user_metadata?.name
+      )
+    } catch (profileError) {
+      console.error('Profil okunamadı, oturum korunuyor:', profileError)
+    }
 
     setStatus('Yönlendiriliyorsunuz...')
     window.location.href = getRedirectPath(role)
@@ -233,12 +238,17 @@ export default function LoginPage() {
           return
         }
 
-        const role = await ensureProfile(
-          supabase,
-          user.id,
-          user.email,
-          user.user_metadata?.full_name || user.user_metadata?.name
-        )
+        let role = null
+        try {
+          role = await ensureProfile(
+            supabase,
+            user.id,
+            user.email,
+            user.user_metadata?.full_name || user.user_metadata?.name
+          )
+        } catch (profileError) {
+          console.error('Profil okunamadı, oturum korunuyor:', profileError)
+        }
 
         window.location.href = getRedirectPath(role)
       } catch (err) {

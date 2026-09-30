@@ -116,8 +116,10 @@ interface Filters {
 const fetcherWithAuth = async (url: string) => {
   const supabase = createClient()
   
-  // Kullanıcı bilgilerini çek
-  const { data: { user } } = await supabase.auth.getUser()
+  // Çerezdeki oturum. getUser() her seferinde auth sunucusuna gider ve
+  // listeyi ilk satırdan önce bekletir.
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
@@ -216,11 +218,10 @@ const fetchPurchaseRequests = async (
   const segments = key.split('/')
   const page = parseInt(segments[1] || '1', 10)
   const size = parseInt(segments[2] || '20', 10)
-  const roleFromKey = segments[3] || userRole || 'user'
-  const listView: 'main' | 'it' = segments[4] === 'it' ? 'it' : 'main'
-  const effectiveRole = roleFromKey || userRole // Key'den veya paramdan al
+  const listView: 'main' | 'it' = segments[3] === 'it' ? 'it' : 'main'
   
   const { user, profile, supabase } = await fetcherWithAuth('auth')
+  const effectiveRole = profile?.role || userRole || 'user'
 
   if (listView === 'it') {
     if (!canSeeItWorkflowTab({ role: effectiveRole, department: profile?.department })) {
@@ -619,14 +620,7 @@ const fetchPurchaseRequests = async (
     countQuery = countQuery.eq('site_id', locationFilter)
   }
   
-  // Önce toplam sayıyı al
-  const { count, error: countError } = await countQuery
-  
-  if (countError) {
-    throw new Error(countError.message)
-  }
-  
-  // Pagination ile veriyi çek
+  // Sayfa sorgusu sayımla aynı filtreleri kullanır; ikisi birlikte gider.
   const from = (page - 1) * size
   const to = from + size - 1
   
@@ -735,7 +729,15 @@ const fetchPurchaseRequests = async (
     requestsQuery = requestsQuery.eq('site_id', locationFilter)
   }
   
-  const { data: requests, error } = await requestsQuery
+  const [countResult, listResult] = await Promise.all([countQuery, requestsQuery])
+  const count = countResult.count
+  const countError = countResult.error
+  const requests = listResult.data
+  const error = listResult.error
+
+  if (countError) {
+    throw new Error(countError.message)
+  }
   
   if (error) {
     console.error('Purchase requests fetch error:', {
@@ -840,43 +842,49 @@ const fetchPurchaseRequests = async (
     .filter(r => r.status === 'sipariş verildi')
     .map(r => r.id)
   
-  if (orderedRequestIds.length > 0) {
-    try {
-      const { data: ordersData, error: ordersError } = await supabase
-        .from('orders')
-        .select('id, purchase_request_id, material_item_id, status, quantity, delivered_quantity')
-        .in('purchase_request_id', orderedRequestIds)
-      
-      if (!ordersError && ordersData) {
-        // Orders'ı ilgili request'lere ekle
-        formattedRequests.forEach((request: any) => {
-          if (request.status === 'sipariş verildi') {
-            request.orders = ordersData.filter(o => o.purchase_request_id === request.id)
-          }
-        })
-      } else if (ordersError) {
-        console.warn('Orders fetch error (non-critical):', ordersError.message)
+  const allRequestIds = formattedRequests.map(r => r.id)
+  const [ordersOutcome, unorderedMaterialsCounts] = await Promise.all([
+    (async () => {
+      if (orderedRequestIds.length === 0) return null
+      try {
+        const { data: ordersData, error: ordersError } = await supabase
+          .from('orders')
+          .select('id, purchase_request_id, material_item_id, status, quantity, delivered_quantity')
+          .in('purchase_request_id', orderedRequestIds)
+
+        if (ordersError) {
+          console.warn('Orders fetch error (non-critical):', ordersError.message)
+          return null
+        }
+        return ordersData
+      } catch (err) {
+        console.warn('Orders fetch failed (non-critical):', err)
+        return null
       }
-    } catch (err) {
-      console.warn('Orders fetch failed (non-critical):', err)
-    }
+    })(),
+    (async () => {
+      if (effectiveRole !== 'purchasing_officer' || allRequestIds.length === 0) return {}
+      try {
+        return await fetchUnorderedMaterialsCount(allRequestIds, supabase)
+      } catch (err) {
+        console.warn('Unordered materials count failed (non-critical):', err)
+        return {}
+      }
+    })(),
+  ])
+
+  if (ordersOutcome) {
+    formattedRequests.forEach((request: any) => {
+      if (request.status === 'sipariş verildi') {
+        request.orders = ordersOutcome.filter(o => o.purchase_request_id === request.id)
+      }
+    })
   }
 
-  // Siparişi verilmemiş malzeme sayılarını hesapla (purchasing_officer için)
-  const allRequestIds = formattedRequests.map(r => r.id)
-  let unorderedMaterialsCounts: { [key: string]: number } = {}
-  
-  if (effectiveRole === 'purchasing_officer' && allRequestIds.length > 0) {
-    try {
-      unorderedMaterialsCounts = await fetchUnorderedMaterialsCount(allRequestIds, supabase)
-      
-      // Her request'e unordered_materials_count ekle
-      formattedRequests.forEach((request: any) => {
-        request.unordered_materials_count = unorderedMaterialsCounts[request.id] || 0
-      })
-    } catch (err) {
-      console.warn('Unordered materials count failed (non-critical):', err)
-    }
+  if (effectiveRole === 'purchasing_officer') {
+    formattedRequests.forEach((request: any) => {
+      request.unordered_materials_count = unorderedMaterialsCounts[request.id] || 0
+    })
   }
   
   // Teslim alınmamış sipariş sayılarını hesapla (santiye_depo, santiye_depo_yonetici için)
@@ -1180,9 +1188,9 @@ export default function PurchaseRequestsTable({
   
   // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${overdueOnlyFilter ? JSON.stringify(overdueRequestIds) : ''}`,
+    `purchase_requests/${currentPage}/${pageSize}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${overdueOnlyFilter ? JSON.stringify(overdueRequestIds) : ''}`,
     () => fetchPurchaseRequests(
-    `purchase_requests/${currentPage}/${pageSize}/${userRole}/${propListView}`,
+    `purchase_requests/${currentPage}/${pageSize}/${propListView}`,
       userRole,
       debouncedSearchTerm,
       statusFilter,

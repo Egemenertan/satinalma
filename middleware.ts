@@ -1,5 +1,6 @@
-import { createServerClient } from '@supabase/ssr'
+import { createServerClient, type CookieOptions } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
+import { createAuthCookieStorage } from '@/lib/supabase/auth-cookie-storage'
 
 /**
  * Auth Middleware
@@ -89,30 +90,51 @@ export async function middleware(request: NextRequest) {
   let supabaseResponse = NextResponse.next({ request })
 
   const isProd = process.env.NODE_ENV === 'production'
+  const cookieOptions = {
+    path: '/',
+    sameSite: 'lax' as const,
+    ...(isProd ? { secure: true as const } : {}),
+  }
+
+  // Her set/remove yeni bir NextResponse üretir. Ara yanıtı atarsak
+  // bölünmüş oturum çerezinin yalnızca son parçası tarayıcıya gider.
+  const pendingCookies: { name: string; value: string; options: CookieOptions }[] = []
+
+  const rememberCookie = (name: string, value: string, options: CookieOptions) => {
+    const index = pendingCookies.findIndex((cookie) => cookie.name === name)
+    const next = { name, value, options }
+    if (index >= 0) pendingCookies[index] = next
+    else pendingCookies.push(next)
+
+    supabaseResponse = NextResponse.next({ request })
+    pendingCookies.forEach((cookie) => {
+      supabaseResponse.cookies.set(cookie)
+    })
+  }
+
+  const authCookies = {
+    get(name: string) {
+      return request.cookies.get(name)?.value
+    },
+    set(name: string, value: string, options: CookieOptions) {
+      request.cookies.set(name, value)
+      rememberCookie(name, value, options)
+    },
+    remove(name: string, options: CookieOptions) {
+      request.cookies.set(name, '')
+      rememberCookie(name, '', { ...options, maxAge: 0 })
+    },
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
-      cookieOptions: {
-        path: '/',
-        sameSite: 'lax',
-        ...(isProd ? { secure: true } : {}),
-      },
-      cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
-        },
-        set(name: string, value: string, options: any) {
-          request.cookies.set(name, value)
-          supabaseResponse = NextResponse.next({ request })
-          supabaseResponse.cookies.set({ name, value, ...options })
-        },
-        remove(name: string, options: any) {
-          request.cookies.set(name, '')
-          supabaseResponse = NextResponse.next({ request })
-          supabaseResponse.cookies.set({ name, value: '', ...options })
-        },
+      cookieOptions,
+      cookies: authCookies,
+      auth: {
+        flowType: 'pkce',
+        storage: createAuthCookieStorage(authCookies, cookieOptions, true),
       },
     }
   )

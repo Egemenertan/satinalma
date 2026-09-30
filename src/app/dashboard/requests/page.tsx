@@ -17,10 +17,15 @@ import {
 } from '@/lib/it-workflow'
 import { excludeSoftDeletedRequests } from '@/lib/softDeletePurchaseRequest'
 
+const loadSessionUser = async (supabase: ReturnType<typeof createClient>) => {
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.user ?? null
+}
+
 const fetchPageData = async () => {
   const supabase = createClient()
 
-  const { data: { user } } = await supabase.auth.getUser()
+  const user = await loadSessionUser(supabase)
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı')
   }
@@ -43,6 +48,50 @@ const fetchPageData = async () => {
       displayName = 'Kullanıcı'
     }
   }
+
+  const canSeeItTab = canSeeItWorkflowTab({
+    role: profile?.role,
+    department: profile?.department
+  })
+
+  return {
+    userId: user.id,
+    userInfo: { displayName, email: profile?.email },
+    role: profile?.role || '',
+    department: profile?.department ?? null,
+    canSeeItWorkflowTab: canSeeItTab,
+    stats: {
+      total: 0,
+      pending: 0,
+      approved: 0,
+      urgent: 0,
+      thisMonth: 0,
+      monthlyData: [],
+      monthChange: 0
+    },
+    siteId: profile?.site_id,
+    weeklyActivity: [],
+    mobileActivity: []
+  }
+}
+
+const fetchRequestAlerts = async () => {
+  const supabase = createClient()
+  const user = await loadSessionUser(supabase)
+  if (!user) {
+    return {
+      itWorkflowAttentionCount: 0,
+      pendingOrdersCount: 0,
+      overdueDeliveriesCount: 0,
+      overdueRequestIds: [] as string[],
+    }
+  }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role, site_id, department')
+    .eq('id', user.id)
+    .single()
 
   const canSeeItTab = canSeeItWorkflowTab({
     role: profile?.role,
@@ -130,25 +179,10 @@ const fetchPageData = async () => {
   await Promise.all(tasks)
 
   return {
-    userInfo: { displayName, email: profile?.email },
-    role: profile?.role || '',
-    canSeeItWorkflowTab: canSeeItTab,
     itWorkflowAttentionCount,
-    stats: {
-      total: 0,
-      pending: 0,
-      approved: 0,
-      urgent: 0,
-      thisMonth: 0,
-      monthlyData: [],
-      monthChange: 0
-    },
     pendingOrdersCount,
     overdueDeliveriesCount,
     overdueRequestIds,
-    siteId: profile?.site_id,
-    weeklyActivity: [],
-    mobileActivity: []
   }
 }
 
@@ -182,14 +216,12 @@ export default function RequestsPage() {
       dedupingInterval: 30000, // 30 saniye cache
       errorRetryCount: 3,
       fallbackData: {
+        userId: '',
         userInfo: { displayName: 'Kullanıcı', email: '' },
         role: '',
+        department: null,
         canSeeItWorkflowTab: false,
-        itWorkflowAttentionCount: 0,
         stats: { total: 0, pending: 0, approved: 0, urgent: 0, thisMonth: 0, monthlyData: [], monthChange: 0 },
-        pendingOrdersCount: 0,
-        overdueDeliveriesCount: 0,
-        overdueRequestIds: [],
         siteId: null,
         weeklyActivity: [],
         mobileActivity: []
@@ -198,14 +230,31 @@ export default function RequestsPage() {
   )
   
   // Destructure page data
+  const [alertsReady, setAlertsReady] = useState(false)
+  useEffect(() => {
+    if (!pageData?.role) return
+    const id = window.setTimeout(() => setAlertsReady(true), 600)
+    return () => window.clearTimeout(id)
+  }, [pageData?.role])
+
+  const { data: alerts } = useSWR(
+    alertsReady && pageData?.role ? ['requests_page_alerts', pageData.role] : null,
+    fetchRequestAlerts,
+    {
+      revalidateOnFocus: false,
+      dedupingInterval: 60000,
+      errorRetryCount: 1,
+    }
+  )
+
   const userInfo = pageData?.userInfo
   const userRole = pageData?.role || ''
-  const pendingOrdersCount = pageData?.pendingOrdersCount || 0
-  const overdueDeliveriesCount = pageData?.overdueDeliveriesCount || 0
-  const overdueRequestIds = pageData?.overdueRequestIds || []
+  const pendingOrdersCount = alerts?.pendingOrdersCount || 0
+  const overdueDeliveriesCount = alerts?.overdueDeliveriesCount || 0
+  const overdueRequestIds = alerts?.overdueRequestIds || []
   const userSiteId = pageData?.siteId
   const canSeeItWorkflowTabUser = pageData?.canSeeItWorkflowTab === true
-  const itWorkflowAttentionCount = pageData?.itWorkflowAttentionCount ?? 0
+  const itWorkflowAttentionCount = alerts?.itWorkflowAttentionCount ?? 0
   const showItTabNotification =
     canSeeItWorkflowTabUser && itWorkflowAttentionCount > 0 && requestsListTab === 'main'
 
