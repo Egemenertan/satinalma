@@ -5,7 +5,7 @@ import useSWR from 'swr'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ContractBudgetSummary } from '@/components/contracts/ContractBudgetSummary'
-import { ContractFormModal } from '@/components/contracts/ContractFormModal'
+import { CreateContractWizard } from '@/components/contracts/CreateContractWizard'
 import { ContractSummaryCard } from '@/components/contracts/ContractSummaryCard'
 import { fetchContractOverviews } from '@/services/contracts.service'
 import { Plus } from 'lucide-react'
@@ -80,11 +80,12 @@ export function SupplierContractsPanel({
         </div>
       )}
 
-      <ContractFormModal
+      <CreateContractWizard
         open={open}
         onOpenChange={setOpen}
-        supplierId={supplierId}
-        supplierName={supplierName}
+        presetPartyId={supplierId}
+        presetPartyName={supplierName}
+        presetPartyKind="supplier"
         showToast={showToast}
         onCreated={() => mutate()}
       />

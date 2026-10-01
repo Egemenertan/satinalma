@@ -8,6 +8,7 @@ import { Loading } from '@/components/ui/loading'
 import { ContractBudgetSummary } from '@/components/contracts/ContractBudgetSummary'
 import { ContractSummaryCard } from '@/components/contracts/ContractSummaryCard'
 import { formatContractDate, formatContractQty } from '@/lib/contracts'
+import { contractCategoryLabel, contractPartyLabel } from '@/lib/contract-setup'
 import { cancelSupplierContract, fetchContractOverviewById, fetchLinkedRequests } from '@/services/contracts.service'
 import { useToast } from '@/components/ui/toast'
 import { ArrowLeft } from 'lucide-react'
@@ -69,6 +70,22 @@ export default function ContractDetailPage({ params }: { params: { id: string } 
           <p className="mt-4 text-base text-gray-600">
             {contract.title || 'Toplu alım sözleşmesi'} · Bitiş {formatContractDate(contract.end_date)}
           </p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {[
+              contractPartyLabel(contract.party_kind),
+              contractCategoryLabel(contract.contract_category),
+              ...contract.site_labels,
+            ]
+              .filter(Boolean)
+              .map((chip) => (
+                <span
+                  key={chip}
+                  className="rounded-full bg-elegant-gray-50 px-2.5 py-1 text-xs font-medium text-elegant-gray-600"
+                >
+                  {chip}
+                </span>
+              ))}
+          </div>
         </div>
         {contract.status === 'active' && (
           <Button

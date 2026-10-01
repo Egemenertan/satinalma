@@ -2,6 +2,7 @@
 
 import { Button } from '@/components/ui/button'
 import { OrderRow } from './OrderRow'
+import { clusterOrdersByNumber, formatShortDocumentNumber } from '../../utils'
 import type { GroupedOrder, OrderData } from '../../types'
 
 interface OrderGroupProps {
@@ -26,6 +27,8 @@ export function OrderGroup({
   onExportPDF,
 }: OrderGroupProps) {
   const allSelected = group.orders.every(order => selectedOrders.has(order.id))
+  const clusters = clusterOrdersByNumber(group.orders)
+  const materialCount = group.orders.length
 
   return (
     <div className="border border-gray-200 rounded-lg overflow-hidden bg-white">
@@ -43,7 +46,8 @@ export function OrderGroup({
           </div>
           <div className="flex items-center gap-3">
             <div className="text-xs text-gray-500">
-              {group.orders.length} sipariş
+              {clusters.length} sipariş
+              {materialCount !== clusters.length ? ` · ${materialCount} malzeme` : ''}
             </div>
             <Button
               variant="outline"
@@ -59,18 +63,43 @@ export function OrderGroup({
       
       {/* Siparişler */}
       <div className="divide-y divide-gray-100">
-        {group.orders.map((order) => (
-          <OrderRow
-            key={order.id}
-            order={order}
-            isSelected={selectedOrders.has(order.id)}
-            onToggleSelect={(orderData) => onToggleOrderSelect(orderData.id, orderData)}
-            onViewInvoices={() => onViewInvoices(order.invoices || [], 0)}
-            onViewDeliveryPhotos={() => onViewDeliveryPhotos(order.delivery_image_urls || [], 0)}
-            onExportPDF={() => onExportPDF(order)}
-            isLoadingPDF={loadingPDFOrders.has(order.id)}
-          />
-        ))}
+        {clusters.map((cluster) => {
+          const sharedNumber = cluster.orders.length > 1
+          const supplierName = cluster.orders[0]?.suppliers?.name
+
+          return (
+            <div key={cluster.orderNumber}>
+              {sharedNumber && (
+                <div className="flex items-center justify-between gap-3 bg-white px-4 py-2 border-b border-gray-100">
+                  <div
+                    className="font-mono text-[11px] font-semibold text-gray-900"
+                    title={cluster.orderNumber}
+                  >
+                    Sipariş: {formatShortDocumentNumber(cluster.orderNumber)}
+                  </div>
+                  <div className="text-xs text-gray-500 truncate">
+                    {supplierName || 'Tedarikçi belirtilmemiş'} · {cluster.orders.length} malzeme
+                  </div>
+                </div>
+              )}
+              <div className="divide-y divide-gray-100">
+                {cluster.orders.map((order) => (
+                  <OrderRow
+                    key={order.id}
+                    order={order}
+                    isSelected={selectedOrders.has(order.id)}
+                    showOrderNumber={!sharedNumber}
+                    onToggleSelect={(orderData) => onToggleOrderSelect(orderData.id, orderData)}
+                    onViewInvoices={() => onViewInvoices(order.invoices || [], 0)}
+                    onViewDeliveryPhotos={() => onViewDeliveryPhotos(order.delivery_image_urls || [], 0)}
+                    onExportPDF={() => onExportPDF(order)}
+                    isLoadingPDF={loadingPDFOrders.has(order.id)}
+                  />
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

@@ -338,6 +338,7 @@ export type Database = {
           tax_number: string | null
           total_orders: number | null
           updated_at: string | null
+          kind: 'supplier' | 'subcontractor'
         }
         Insert: {
           address?: string | null
@@ -355,6 +356,7 @@ export type Database = {
           tax_number?: string | null
           total_orders?: number | null
           updated_at?: string | null
+          kind?: 'supplier' | 'subcontractor'
         }
         Update: {
           address?: string | null
@@ -372,6 +374,7 @@ export type Database = {
           tax_number?: string | null
           total_orders?: number | null
           updated_at?: string | null
+          kind?: 'supplier' | 'subcontractor'
         }
       }
       supplier_contracts: {
@@ -387,6 +390,8 @@ export type Database = {
           status: 'active' | 'cancelled'
           budget_amount: number | null
           budget_currency: string
+          party_kind: 'supplier' | 'subcontractor'
+          contract_category: 'goods_and_services' | 'goods' | 'services' | null
           created_by: string | null
           created_at: string
           updated_at: string
@@ -403,6 +408,8 @@ export type Database = {
           status?: 'active' | 'cancelled'
           budget_amount?: number | null
           budget_currency?: string
+          party_kind?: 'supplier' | 'subcontractor'
+          contract_category?: 'goods_and_services' | 'goods' | 'services' | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
@@ -419,10 +426,27 @@ export type Database = {
           status?: 'active' | 'cancelled'
           budget_amount?: number | null
           budget_currency?: string
+          party_kind?: 'supplier' | 'subcontractor'
+          contract_category?: 'goods_and_services' | 'goods' | 'services' | null
           created_by?: string | null
           created_at?: string
           updated_at?: string
         }
+      }
+      supplier_contract_sites: {
+        Row: {
+          contract_id: string
+          site_id: string
+        }
+        Insert: {
+          contract_id: string
+          site_id: string
+        }
+        Update: {
+          contract_id?: string
+          site_id?: string
+        }
+        Relationships: []
       }
       supplier_contract_items: {
         Row: {

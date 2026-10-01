@@ -2,6 +2,7 @@
  * Web MaterialSearchBar performSearch ile aynı sorgu, filtre ve sıralama.
  */
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { formatMaterialClassLabel } from './it-workflow'
 
 export type MaterialSearchResult = {
   class: string
@@ -21,13 +22,14 @@ const OFFICE_CLASS_FALLBACK = [
   'Kırtasiye Malzemeleri',
   'Reklam Ürünleri',
   'Ofis Ekipmanları',
+  'Ofis Mobilyaları',
   'Promosyon Ürünleri',
   'Mutfak Malzemeleri',
   'Hijyen ve Temizlik',
 ] as const
 
 const OFFICE_EXCLUDE_FILTER =
-  '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")'
+  '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Ofis Mobilyaları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")'
 
 function normalizeCategoryName(text: string): string {
   return text
@@ -186,7 +188,7 @@ export async function performMaterialSearch(
     class: item.class || '',
     group: item.group || '',
     item_name: item.item_name || '',
-    display_text: `${item.item_name} - ${item.group} - ${item.class}`,
+    display_text: `${item.item_name} - ${item.group} - ${formatMaterialClassLabel(item.class)}`,
     score: item.priority,
   }))
 }

@@ -167,7 +167,7 @@ export default function SitePersonnelView({
           </div>
         </CardHeader>
         <CardContent className="px-3 sm:px-6">
-          <div className="space-y-4 sm:space-y-6">
+          <div className="space-y-4 sm:space-y-6" data-material-list>
             {request.purchase_request_items.map((item, index) => {
               const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
               const itemImages =

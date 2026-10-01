@@ -46,8 +46,14 @@ const escapeHtml = (value: string): string =>
  * Header Component - With Logo Only
  */
 export const buildHeader = (request: PDFRequestData, orders: PDFOrderData[] = []): string => {
-  const orderNumbers = orders
-    .map((order) => formatShortDocumentNumber(order.order_number))
+  const orderNumbers = [...new Set(
+    orders
+      .map((order) => formatShortDocumentNumber(order.order_number))
+      .filter(Boolean)
+  )]
+  const requestNumbers = (request.request_number || '')
+    .split(',')
+    .map((number) => number.trim())
     .filter(Boolean)
 
   return `
@@ -58,6 +64,11 @@ export const buildHeader = (request: PDFRequestData, orders: PDFOrderData[] = []
         <div style="font-size: 11pt; color: #333; font-weight: 600;">
           ${escapeHtml(request.title)}
         </div>
+        ${requestNumbers.length > 0 ? `
+          <div style="font-size: 9pt; color: #111; font-weight: 600; margin-top: 4px;">
+            Talep No: ${requestNumbers.map((number) => escapeHtml(number)).join(', ')}
+          </div>
+        ` : ''}
         ${orderNumbers.length > 0 ? `
           <div style="font-size: 9pt; color: #111; font-weight: 600; margin-top: 4px;">
             Sipariş No: ${orderNumbers.map((number) => escapeHtml(number)).join(', ')}
@@ -76,9 +87,15 @@ export const buildRequestInfo = (request: PDFRequestData): string => `
   <div class="section">
     <div class="section-title">Talep Bilgileri</div>
     <div class="info-grid">
+      ${request.request_number ? `
+      <div class="info-item">
+        <span class="info-label">Talep No:</span>
+        <span class="info-value">${escapeHtml(request.request_number)}</span>
+      </div>
+      ` : ''}
       <div class="info-item">
         <span class="info-label">Talep Başlığı:</span>
-        <span class="info-value">${request.title}</span>
+        <span class="info-value">${escapeHtml(request.title)}</span>
       </div>
       <div class="info-item">
         <span class="info-label">Şantiye:</span>
@@ -225,6 +242,8 @@ export const buildInvoicesList = (invoices: PDFInvoiceData[]): string => {
           const totalDiscount = groupInvoices.reduce((sum, inv) => sum + (inv.discount || 0), 0)
           const totalTax = groupInvoices.reduce((sum, inv) => sum + (inv.tax || 0), 0)
           const totalGrandTotal = groupInvoices.reduce((sum, inv) => sum + (inv.grand_total || inv.amount), 0)
+          // Toplu faturada tutar 0 ise başlık altında tekrar yazma; detay fatura özetinde kalır.
+          const showGroupAmount = Math.abs(totalGrandTotal) >= 0.005
           
             return `
               <div class="invoice-item">
@@ -235,16 +254,16 @@ export const buildInvoicesList = (invoices: PDFInvoiceData[]): string => {
                   <div class="invoice-date">${formatDate(firstInvoice.created_at)}</div>
                 </div>
                 
-                ${hasBreakdown ? `
+                ${hasBreakdown && showGroupAmount ? `
                   <div class="invoice-breakdown">
                     <div>Ara Toplam: ${formatNumber(totalSubtotal)} ${currency}</div>
                     ${totalDiscount > 0 ? `<div>İndirim: -${formatNumber(totalDiscount)} ${currency}</div>` : ''}
                     ${totalTax > 0 ? `<div>KDV: +${formatNumber(totalTax)} ${currency}</div>` : ''}
                     <div><strong>Toplam: ${formatNumber(totalGrandTotal)} ${currency}</strong></div>
                   </div>
-                ` : `
+                ` : showGroupAmount ? `
                   <div class="invoice-amount">${formatNumber(totalGrandTotal)} ${currency}</div>
-                `}
+                ` : ''}
                 
                 <div class="invoice-meta">Ekleyen: ${firstInvoice.added_by}</div>
                 ${firstInvoice.notes ? `<div class="invoice-notes"><strong>Not:</strong> ${firstInvoice.notes}</div>` : ''}

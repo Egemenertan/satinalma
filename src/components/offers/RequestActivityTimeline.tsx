@@ -70,21 +70,21 @@ export default function RequestActivityTimeline({ requestId, refreshKey }: Props
   }, [requestId, refreshKey])
 
   return (
-    <div className="mb-3 sm:mb-8">
-      <div className="bg-white border-0 shadow-sm rounded-3xl">
-        <div className="p-3 sm:p-6 pb-2 sm:pb-3">
+    <div>
+      <div className="bg-white border border-gray-200 rounded-2xl">
+        <div className="border-b border-gray-100 px-4 py-3">
           <div className="flex items-center gap-2">
-            <History className="h-4 w-4 sm:h-5 sm:w-5 text-gray-500" />
-            <h3 className="text-base sm:text-xl font-semibold text-gray-900">
+            <History className="h-4 w-4 text-gray-500" />
+            <h3 className="text-sm font-semibold text-gray-900">
               Talep Geçmişi
             </h3>
           </div>
-          <p className="mt-1 text-xs sm:text-sm text-gray-500">
-            Oluşturma ve durum değişiklikleri — kim, ne zaman
+          <p className="mt-0.5 text-xs text-gray-500">
+            Oluşturma ve durum değişiklikleri
           </p>
         </div>
 
-        <div className="px-3 sm:px-6 pb-3 sm:pb-6">
+        <div className="px-4 py-3">
           {loading ? (
             <div className="flex items-center gap-2 py-6 text-sm text-gray-500">
               <Loader2 className="h-4 w-4 animate-spin" />

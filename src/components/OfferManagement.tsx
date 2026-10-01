@@ -132,6 +132,7 @@ export default function OfferManagement() {
         .from('suppliers')
         .select('*')
         .eq('is_approved', true)
+        .neq('kind', 'subcontractor')
         .order('name')
 
       // Teklifleri getir

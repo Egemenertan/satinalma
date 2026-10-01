@@ -75,6 +75,7 @@ export async function GET(request: NextRequest) {
       .select(`
         id,
         title,
+        request_number,
         created_at,
         updated_at,
         status,
@@ -183,6 +184,12 @@ export async function GET(request: NextRequest) {
       ordersData: orders
     })
     
+    const requestNumberById = new Map(
+      (allRequestsData || [])
+        .filter((request) => request.request_number)
+        .map((request) => [request.id, request.request_number as string])
+    )
+
     // JOIN'leri ayrı ayrı çek
     let ordersWithJoins = []
     if (orders && orders.length > 0) {
@@ -237,6 +244,7 @@ export async function GET(request: NextRequest) {
         
         ordersWithJoins.push({
           ...order,
+          request_number: requestNumberById.get(order.purchase_request_id) || null,
           suppliers: supplier,
           profiles: profile,
           purchase_request_items: material,

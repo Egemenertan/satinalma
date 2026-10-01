@@ -21,6 +21,14 @@ import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { softDeletePurchaseRequest } from '@/lib/softDeletePurchaseRequest'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
 import ReturnedMaterialsCard from './ReturnedMaterialsCard'
+import { formatShortDocumentNumber } from '@/app/dashboard/orders/utils'
+
+function formatTrackedOrderNumber(order: { order_number?: string | null; order_id?: string | null }) {
+  const short = formatShortDocumentNumber(order.order_number)
+  if (short) return short
+  const id = order.order_id?.toString()
+  return id ? id.slice(-8) : '—'
+}
 
 /** Depodan tamamen gönderilmiş (qty=0) ve siparişi olmayan kalemler satın alma ekranında gösterilmez. */
 function isPurchaseRequestItemVisibleForProcurement(
@@ -597,6 +605,7 @@ export default function ProcurementView({
           material_item_id: materialId,
           delivery_date: details.deliveryDate,
           order_id: order.id,
+          order_number: order.order_number,
           supplier_name: bulkOrderSupplier.name,
           quantity: orderQuantity
         }
@@ -1491,33 +1500,36 @@ DOVEC GROUP
             </div>
             
             {/* Multi-select controls */}
-            {(() => {
-              const activeItems = procurementVisibleItems
-              
-              return activeItems.length > 1 && (
+            {procurementVisibleItems.length > 1 && (() => {
+              const allSelected = procurementVisibleItems.every(item => selectedMaterials.has(item.id))
+
+              return (
                 <div className="flex items-center gap-2">
                   {selectedMaterials.size > 0 && (
                     <>
-                      <span className="text-sm font-medium text-gray-900">
+                      <span className="text-sm text-gray-500">
                         {selectedMaterials.size} seçili
                       </span>
                       <button
+                        type="button"
                         onClick={clearMaterialSelection}
-                        className="text-sm text-gray-500 hover:text-gray-700"
+                        className="text-sm text-gray-500 hover:text-gray-800"
                       >
                         Temizle
                       </button>
                     </>
                   )}
                   <button
+                    type="button"
                     onClick={selectAllMaterials}
-                    className="text-sm font-medium text-gray-900 hover:text-black"
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors ${
+                      allSelected
+                        ? 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
+                        : 'bg-gray-900 text-white shadow-sm hover:bg-black'
+                    }`}
                   >
-                    {(() => {
-                      const allMaterialIds = activeItems.map(item => item.id)
-                      const allSelected = allMaterialIds.every(id => selectedMaterials.has(id))
-                      return allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'
-                    })()}
+                    <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
+                    {allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}
                   </button>
                 </div>
               )
@@ -1525,7 +1537,7 @@ DOVEC GROUP
           </div>
 
           {/* Malzeme Listesi */}
-          <div className="space-y-3">
+          <div className="space-y-3" data-material-list>
             {(() => {
               const listItems = procurementVisibleItems
               
@@ -1736,6 +1748,7 @@ DOVEC GROUP
                                     material_item_id: dbOrder.material_item_id,
                                     delivery_date: dbOrder.delivery_date,
                                     order_id: dbOrder.id,
+                                    order_number: dbOrder.order_number,
                                     supplier_name: dbOrder.suppliers?.name || 'Bilinmeyen Tedarikçi',
                                     quantity: dbOrder.quantity || 0
                                   })
@@ -1780,7 +1793,9 @@ DOVEC GROUP
                                     </div>
                                     <div className="bg-gray-50 rounded-xl px-3 py-2.5">
                                       <span className="text-xs text-gray-500 block">Sipariş No</span>
-                                      <span className="text-sm font-mono font-semibold text-gray-900">#{order.order_id.toString().slice(-8)}</span>
+                                      <span className="text-sm font-mono font-semibold text-gray-900" title={order.order_number || undefined}>
+                                        {formatTrackedOrderNumber(order)}
+                                      </span>
                                     </div>
                                   </div>
                                 </div>
@@ -1839,6 +1854,7 @@ DOVEC GROUP
                                         material_item_id: dbOrder.material_item_id,
                                         delivery_date: dbOrder.delivery_date,
                                         order_id: dbOrder.id,
+                                        order_number: dbOrder.order_number,
                                         supplier_name: dbOrder.suppliers?.name || 'Bilinmeyen Tedarikçi',
                                         quantity: dbOrder.quantity || 0
                                       })
@@ -1875,7 +1891,7 @@ DOVEC GROUP
                                               <div className="text-xs text-gray-600 space-y-1">
                                                 {supplierOrders.map((order: any, orderIdx: number) => (
                                                   <div key={`${order.order_id}_${orderIdx}`} className="flex justify-between items-center">
-                                                    <span>Sipariş #{order.order_id.toString().slice(-6)}:</span>
+                                                    <span>Sipariş {formatTrackedOrderNumber(order)}:</span>
                                                     <span className="font-medium text-green-700">
                                                       {order.quantity} {item.unit} - {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
                                                     </span>
@@ -3129,6 +3145,7 @@ DOVEC GROUP
                         material_item_id: currentMaterialForAssignment.id,
                         delivery_date: orderDetails.deliveryDate,
                         order_id: order.id,
+                        order_number: order.order_number,
                         supplier_name: selectedSupplier.name,
                         quantity: orderQuantity
                       }
@@ -3153,6 +3170,7 @@ DOVEC GROUP
                           material_item_id: '',
                           delivery_date: orderDetails.deliveryDate,
                           order_id: order.id,
+                          order_number: order.order_number,
                           supplier_name: selectedSupplier.name
                         }
                       }))

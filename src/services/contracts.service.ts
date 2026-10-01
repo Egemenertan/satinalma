@@ -5,6 +5,8 @@ import {
   type ContractMoneyTotal,
   type ContractOverview,
   type ContractPendingOrder,
+  type ContractCategory,
+  type ContractPartyKind,
   type CreateContractInput,
   type RequestContractBinding,
   type SupplierContractDelivery,
@@ -14,6 +16,7 @@ import {
   isContractExpiringSoon,
   normalizeMaterialName,
 } from '@/lib/contracts'
+import { contractProjectLabel } from '@/lib/contract-setup'
 import { invalidateContractsCache } from '@/lib/cache'
 
 type RawContract = {
@@ -28,11 +31,19 @@ type RawContract = {
   status: 'active' | 'cancelled'
   budget_amount: number | null
   budget_currency: string | null
+  party_kind: ContractPartyKind | null
+  contract_category: ContractCategory | null
   created_by: string | null
   created_at: string
   updated_at: string
   supplier?: { id: string; name: string } | { id: string; name: string }[] | null
   items?: RawItem[] | null
+  sites?: RawContractSite[] | null
+}
+
+type RawContractSite = {
+  site_id: string
+  site?: { id: string; name: string } | { id: string; name: string }[] | null
 }
 
 type RawItem = {
@@ -68,9 +79,27 @@ type ContractActivity = {
   invoicedByContract: Map<string, ContractMoneyTotal[]>
 }
 
+function unwrapSite(
+  site: RawContractSite['site']
+): { id: string; name: string } | null {
+  if (!site) return null
+  return Array.isArray(site) ? site[0] ?? null : site
+}
+
+function contractSites(contract: RawContract): { site_ids: string[]; site_labels: string[] } {
+  const rows = contract.sites || []
+  const site_ids = rows.map((row) => row.site_id).filter(Boolean)
+  const site_labels = rows.map((row) => {
+    const site = unwrapSite(row.site)
+    return contractProjectLabel(row.site_id, site?.name)
+  })
+  return { site_ids, site_labels }
+}
+
 function buildOverview(contracts: RawContract[], activity: ContractActivity): ContractOverview[] {
   return contracts.map((contract) => {
     const supplier = unwrapSupplier(contract.supplier)
+    const sites = contractSites(contract)
     const items: ContractItemOverview[] = (contract.items || []).map((item) => {
       const delivered = activity.deliveredByItem.get(item.id) || 0
       const contracted = toNumber(item.contracted_quantity)
@@ -101,8 +130,12 @@ function buildOverview(contracts: RawContract[], activity: ContractActivity): Co
       ...contract,
       budget_amount: budget,
       budget_currency: budgetCurrency,
+      party_kind: contract.party_kind || 'supplier',
+      contract_category: contract.contract_category || null,
       document_urls: contract.document_urls || [],
-      supplier_name: supplier?.name || 'Tedarikçi',
+      supplier_name: supplier?.name || (contract.party_kind === 'subcontractor' ? 'Taşeron' : 'Tedarikçi'),
+      site_ids: sites.site_ids,
+      site_labels: sites.site_labels,
       items,
       total_contracted: totalContracted,
       total_delivered: totalDelivered,
@@ -272,7 +305,8 @@ export async function fetchContractOverviews(supplierId?: string): Promise<Contr
     .select(`
       *,
       supplier:suppliers(id, name),
-      items:supplier_contract_items(*)
+      items:supplier_contract_items(*),
+      sites:supplier_contract_sites(site_id, site:sites(id, name))
     `)
     .order('created_at', { ascending: false })
 
@@ -299,7 +333,8 @@ export async function fetchContractOverviewById(contractId: string): Promise<Con
     .select(`
       *,
       supplier:suppliers(id, name),
-      items:supplier_contract_items(*)
+      items:supplier_contract_items(*),
+      sites:supplier_contract_sites(site_id, site:sites(id, name))
     `)
     .eq('id', contractId)
     .maybeSingle()
@@ -535,6 +570,8 @@ export async function createSupplierContract(input: CreateContractInput): Promis
       notes: input.notes?.trim() || null,
       budget_amount: input.budget_amount,
       budget_currency: input.budget_currency || 'TRY',
+      party_kind: input.party_kind || 'supplier',
+      contract_category: input.contract_category || null,
       status: 'active',
       created_by: user?.id || null,
     })
@@ -542,6 +579,20 @@ export async function createSupplierContract(input: CreateContractInput): Promis
     .single()
 
   if (error) throw error
+
+  const siteIds = Array.from(new Set((input.site_ids || []).filter(Boolean)))
+  if (siteIds.length > 0) {
+    const { error: sitesError } = await supabase.from('supplier_contract_sites').insert(
+      siteIds.map((siteId) => ({
+        contract_id: contract.id,
+        site_id: siteId,
+      }))
+    )
+    if (sitesError) {
+      await supabase.from('supplier_contracts').delete().eq('id', contract.id)
+      throw sitesError
+    }
+  }
 
   const { error: itemsError } = await supabase
     .from('supplier_contract_items')
@@ -565,6 +616,54 @@ export async function createSupplierContract(input: CreateContractInput): Promis
 
   invalidateContractsCache()
   return contract.id
+}
+
+export interface ContractPartyOption {
+  id: string
+  name: string
+  contact_person: string | null
+  phone: string | null
+  tax_number: string | null
+}
+
+export async function fetchContractParties(kind: ContractPartyKind): Promise<ContractPartyOption[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('suppliers')
+    .select('id, name, contact_person, phone, tax_number')
+    .eq('kind', kind)
+    .order('name')
+
+  if (error) throw error
+  return data || []
+}
+
+export async function createSubcontractor(input: {
+  name: string
+  contact_person?: string
+  phone?: string
+  tax_number?: string
+}): Promise<ContractPartyOption> {
+  const supabase = createClient()
+  const name = input.name.trim()
+  if (!name) throw new Error('Taşeron adı gerekli')
+
+  const { data, error } = await supabase
+    .from('suppliers')
+    .insert({
+      name,
+      contact_person: input.contact_person?.trim() || null,
+      phone: input.phone?.trim() || null,
+      tax_number: input.tax_number?.trim() || null,
+      kind: 'subcontractor',
+      is_approved: true,
+      code: `TAS${Date.now()}`,
+    })
+    .select('id, name, contact_person, phone, tax_number')
+    .single()
+
+  if (error) throw error
+  return data
 }
 
 export async function updateContractBudget(

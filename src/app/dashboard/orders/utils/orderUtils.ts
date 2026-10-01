@@ -5,6 +5,33 @@
 
 import type { OrderData, GroupedOrder } from '../types'
 
+export interface OrderNumberCluster {
+  orderNumber: string
+  orders: OrderData[]
+}
+
+/**
+ * Aynı sipariş numarasını paylaşan malzeme satırlarını tek sipariş olarak gruplar.
+ * Numarası olmayan satırlar kendi başlarına kalır.
+ */
+export function clusterOrdersByNumber(orders: OrderData[]): OrderNumberCluster[] {
+  const clusters: OrderNumberCluster[] = []
+  const indexByNumber = new Map<string, number>()
+
+  for (const order of orders) {
+    const orderNumber = order.order_number?.trim() || order.id
+    const existingIndex = indexByNumber.get(orderNumber)
+    if (existingIndex === undefined) {
+      indexByNumber.set(orderNumber, clusters.length)
+      clusters.push({ orderNumber, orders: [order] })
+    } else {
+      clusters[existingIndex].orders.push(order)
+    }
+  }
+
+  return clusters
+}
+
 /**
  * Talep ve sipariş numaralarının listede görünen kısa hali.
  * Tam numaranın son 7 karakteri: örn. ORD-20260928-AB12CD-3246 → CD-3246

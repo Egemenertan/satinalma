@@ -16,17 +16,22 @@ import {
   type ContractOverview,
 } from '@/lib/contracts'
 import { fetchContractOverviews } from '@/services/contracts.service'
-import { FileText, Search } from 'lucide-react'
+import { CreateContractWizard } from '@/components/contracts/CreateContractWizard'
+import { contractCategoryLabel, contractPartyLabel } from '@/lib/contract-setup'
+import { useToast } from '@/components/ui/toast'
+import { FileText, Plus, Search } from 'lucide-react'
 
 const fetcher = () => fetchContractOverviews()
 
 export default function ContractsPage() {
-  const { data, isLoading, error } = useSWR('supplier_contracts/overview', fetcher, {
+  const { showToast } = useToast()
+  const { data, isLoading, error, mutate } = useSWR('supplier_contracts/overview', fetcher, {
     revalidateOnFocus: false,
     dedupingInterval: 30000,
   })
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState<'all' | 'active' | 'expired'>('all')
+  const [createOpen, setCreateOpen] = useState(false)
 
   const contracts = data || []
 
@@ -41,6 +46,9 @@ export default function ContractsPage() {
         contract.supplier_name,
         contract.title,
         contract.contract_no,
+        contractCategoryLabel(contract.contract_category),
+        contractPartyLabel(contract.party_kind),
+        ...contract.site_labels,
         ...contract.items.map((item) => item.material_item),
       ]
         .filter(Boolean)
@@ -51,11 +59,10 @@ export default function ContractsPage() {
   }, [contracts, search, status])
 
   const stats = useMemo(() => {
-    const active = contracts.filter((c) => isContractCurrentlyActive(c))
-    const remaining = active.reduce((sum, c) => sum + c.total_remaining, 0)
-    const warning = active.filter((c) => c.is_nearly_used || c.is_expiring_soon).length
+    const subcontractors = contracts.filter((c) => c.party_kind === 'subcontractor').length
+    const suppliers = contracts.filter((c) => c.party_kind !== 'subcontractor').length
     const expired = contracts.filter((c) => c.is_expired).length
-    return { active: active.length, remaining, warning, expired }
+    return { subcontractors, suppliers, expired }
   }, [contracts])
 
   if (isLoading) {
@@ -77,8 +84,13 @@ export default function ContractsPage() {
             Bütçe, bekleyen siparişler ve irsaliye ile düşen miktarlar
           </p>
         </div>
-        <Button asChild className="rounded-2xl bg-black text-white hover:bg-gray-900">
-          <Link href="/dashboard/suppliers">Tedarikçiden ekle</Link>
+        <Button
+          type="button"
+          className="rounded-2xl bg-black text-white hover:bg-gray-900"
+          onClick={() => setCreateOpen(true)}
+        >
+          <Plus className="mr-2 h-4 w-4" />
+          Sözleşme oluştur
         </Button>
       </div>
 
@@ -86,11 +98,10 @@ export default function ContractsPage() {
         <p className="text-sm text-red-600">Sözleşmeler yüklenirken bir hata oluştu.</p>
       )}
 
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <Kpi label="Aktif sözleşme" value={String(stats.active)} />
-        <Kpi label="Toplam kalan" value={new Intl.NumberFormat('tr-TR').format(stats.remaining)} />
-        <Kpi label="Bitmek üzere" value={String(stats.warning)} />
-        <Kpi label="Süresi dolmuş" value={String(stats.expired)} />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+        <Kpi label="Taşeron sözleşmesi" value={String(stats.subcontractors)} />
+        <Kpi label="Tedarikçi sözleşmesi" value={String(stats.suppliers)} />
+        <Kpi label="Süresi dolan" value={String(stats.expired)} />
       </div>
 
       <Card className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
@@ -132,7 +143,7 @@ export default function ContractsPage() {
           </div>
           <h2 className="text-lg font-semibold text-gray-900">Henüz sözleşme yok</h2>
           <p className="mt-2 text-sm text-gray-500">
-            Tedarikçi detayından ilgili firmaya sözleşme ekleyebilirsiniz.
+            Tedarikçi veya taşeron seçerek yeni bir sözleşme oluşturabilirsiniz.
           </p>
         </div>
       ) : (
@@ -142,6 +153,37 @@ export default function ContractsPage() {
           ))}
         </div>
       )}
+
+      <CreateContractWizard
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        showToast={showToast}
+        onCreated={() => mutate()}
+      />
+    </div>
+  )
+}
+
+function ContractMeta({ contract }: { contract: ContractOverview }) {
+  const category = contractCategoryLabel(contract.contract_category)
+  const chips = [
+    contractPartyLabel(contract.party_kind),
+    category,
+    ...contract.site_labels,
+  ].filter(Boolean) as string[]
+
+  if (chips.length === 0) return null
+
+  return (
+    <div className="mt-2 flex flex-wrap gap-1.5">
+      {chips.map((chip) => (
+        <span
+          key={chip}
+          className="rounded-full bg-elegant-gray-50 px-2 py-0.5 text-[11px] font-medium text-elegant-gray-600"
+        >
+          {chip}
+        </span>
+      ))}
     </div>
   )
 }
@@ -166,6 +208,7 @@ function ContractOverviewCard({ contract }: { contract: ContractOverview }) {
               {contract.title || 'Toplu alım sözleşmesi'}
               {contract.contract_no ? ` · ${contract.contract_no}` : ''}
             </p>
+            <ContractMeta contract={contract} />
           </div>
           {contract.is_expired ? (
             <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Pasif</Badge>

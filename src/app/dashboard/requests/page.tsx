@@ -16,6 +16,7 @@ import {
   IT_STATUS_ONAYLANDI
 } from '@/lib/it-workflow'
 import { excludeSoftDeletedRequests } from '@/lib/softDeletePurchaseRequest'
+import { fetchLateDeliveryRequestIds } from '@/lib/order-delivery'
 
 const loadSessionUser = async (supabase: ReturnType<typeof createClient>) => {
   const { data: { session } } = await supabase.auth.getSession()
@@ -82,6 +83,7 @@ const fetchRequestAlerts = async () => {
     return {
       itWorkflowAttentionCount: 0,
       pendingOrdersCount: 0,
+      lateDeliveryCount: 0,
       overdueDeliveriesCount: 0,
       overdueRequestIds: [] as string[],
     }
@@ -100,6 +102,7 @@ const fetchRequestAlerts = async () => {
 
   let itWorkflowAttentionCount = 0
   let pendingOrdersCount = 0
+  let lateDeliveryCount = 0
   let overdueDeliveriesCount = 0
   let overdueRequestIds: string[] = []
 
@@ -149,11 +152,14 @@ const fetchRequestAlerts = async () => {
           idQuery = idQuery.eq('requested_by', user.id)
         }
         const { data: idRows, error: idError } = await idQuery
-        if (idError || !idRows?.length) return
-        const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
-          request_ids: idRows.map((row: { id: string }) => row.id)
-        })
-        pendingOrdersCount = unorderedData?.filter((item: { unordered_count: number }) => item.unordered_count > 0).length || 0
+        if (!idError && idRows?.length) {
+          const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
+            request_ids: idRows.map((row: { id: string }) => row.id)
+          })
+          pendingOrdersCount = unorderedData?.filter((item: { unordered_count: number }) => item.unordered_count > 0).length || 0
+        }
+        const lateIds = await fetchLateDeliveryRequestIds(supabase, user.id, profile.site_id)
+        lateDeliveryCount = lateIds.length
       } catch (err) {
         console.warn('Pending orders count failed:', err)
       }
@@ -181,6 +187,7 @@ const fetchRequestAlerts = async () => {
   return {
     itWorkflowAttentionCount,
     pendingOrdersCount,
+    lateDeliveryCount,
     overdueDeliveriesCount,
     overdueRequestIds,
   }
@@ -194,6 +201,12 @@ export default function RequestsPage() {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('unordered_filter_active')
       return saved === 'true'
+    }
+    return false
+  })
+  const [showLateDeliveryOnly, setShowLateDeliveryOnly] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('late_delivery_filter_active') === 'true'
     }
     return false
   })
@@ -250,6 +263,7 @@ export default function RequestsPage() {
   const userInfo = pageData?.userInfo
   const userRole = pageData?.role || ''
   const pendingOrdersCount = alerts?.pendingOrdersCount || 0
+  const lateDeliveryCount = alerts?.lateDeliveryCount || 0
   const overdueDeliveriesCount = alerts?.overdueDeliveriesCount || 0
   const overdueRequestIds = alerts?.overdueRequestIds || []
   const userSiteId = pageData?.siteId
@@ -303,6 +317,12 @@ export default function RequestsPage() {
       localStorage.setItem('unordered_filter_active', showUnorderedOnly.toString())
     }
   }, [showUnorderedOnly])
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('late_delivery_filter_active', showLateDeliveryOnly.toString())
+    }
+  }, [showLateDeliveryOnly])
   
   // showOverdueOnly değiştiğinde localStorage'a kaydet
   useEffect(() => {
@@ -319,7 +339,7 @@ export default function RequestsPage() {
   const showSiteWarning = requiresSiteId && !hasSiteAssignment
 
   return (
-    <div className="px-0 pb-6 space-y-6 sm:space-y-8">
+    <div className="px-0 pb-6 space-y-4">
       {/* Welcome Message */}
       <div className="px-4 pt-2 space-y-2">
         <p className="text-lg text-gray-700">
@@ -344,31 +364,46 @@ export default function RequestsPage() {
           </div>
         )}
         
-        {/* Sipariş Bekleyen Talepler Uyarısı - Sadece Purchasing Officer için */}
-        {userRole === 'purchasing_officer' && pendingOrdersCount > 0 && (
-          <div className="flex items-center gap-3 p-4 bg-[#00E676]/5 border border-[#00E676]/20 rounded-2xl">
-            <div className="flex-shrink-0">
-              <div className="w-8 h-8 bg-[#00E676] rounded-full flex items-center justify-center animate-pulse">
-                <span className="text-white font-bold text-sm">{pendingOrdersCount}</span>
-              </div>
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium text-[#00E676]">
-                {pendingOrdersCount === 1 
-                  ? 'Sipariş bekleyen 1 talebin var!' 
-                  : `Sipariş bekleyen ${pendingOrdersCount} talebin var!`}
-              </p>
-              <p className="text-xs text-gray-600 mt-0.5">
-                Bu taleplerde bazı malzemelerin siparişi verilmemiş. Lütfen kontrol et.
-              </p>
-            </div>
-            <Button
-              onClick={() => setShowUnorderedOnly(true)}
-              size="sm"
-              className="flex-shrink-0 bg-white hover:bg-[#00E676] text-[#00E676] border border-[#00E676] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
+        {userRole === 'purchasing_officer' && (
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showUnorderedOnly
+                setShowUnorderedOnly(next)
+                if (next) setShowLateDeliveryOnly(false)
+              }}
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+                showUnorderedOnly
+                  ? 'border-gray-900 bg-gray-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
             >
-              Göz At
-            </Button>
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-gray-900">Siparişi verilmemiş talepler</span>
+                <span className="text-sm tabular-nums text-gray-500">{pendingOrdersCount}</span>
+              </div>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const next = !showLateDeliveryOnly
+                setShowLateDeliveryOnly(next)
+                if (next) setShowUnorderedOnly(false)
+              }}
+              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+                showLateDeliveryOnly
+                  ? 'border-gray-900 bg-gray-50'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <span className="text-sm font-medium text-gray-900">Teslimat tarihi geçen talepler</span>
+                <span className={`text-sm tabular-nums ${lateDeliveryCount > 0 ? 'font-medium text-red-600' : 'text-gray-500'}`}>
+                  {lateDeliveryCount}
+                </span>
+              </div>
+            </button>
           </div>
         )}
         
@@ -405,7 +440,7 @@ export default function RequestsPage() {
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Satın Alma Talepleri</h1>
+            <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
             <p className="text-gray-600 mt-4 text-base">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <div className="flex items-center gap-4">
@@ -424,7 +459,7 @@ export default function RequestsPage() {
         {/* Mobile: Header only */}
         <div className="sm:hidden">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Satın Alma Talepleri</h1>
+            <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
             <p className="text-gray-600 mt-4 text-sm">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
             
             {/* Mobile: Create Request Button */}
@@ -444,10 +479,10 @@ export default function RequestsPage() {
       </div>
 
       {/* Desktop: son talepler */}
-      <div className="hidden sm:block space-y-8">
+      <div className="hidden sm:block space-y-4">
         {/* Requests Table */}
         {canSeeItWorkflowTabUser && (
-          <div className="flex flex-wrap gap-2 mb-4">
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant={requestsListTab === 'main' ? 'default' : 'outline'}
@@ -482,6 +517,8 @@ export default function RequestsPage() {
           listView={canSeeItWorkflowTabUser && requestsListTab === 'it' ? 'it' : 'main'}
           showUnorderedOnly={requestsListTab === 'main' ? showUnorderedOnly : false}
           onUnorderedFilterChange={setShowUnorderedOnly}
+          showLateDeliveryOnly={requestsListTab === 'main' ? showLateDeliveryOnly : false}
+          onLateDeliveryFilterChange={setShowLateDeliveryOnly}
           showOverdueOnly={requestsListTab === 'main' ? showOverdueOnly : false}
           onOverdueFilterChange={setShowOverdueOnly}
           overdueRequestIds={overdueRequestIds}
@@ -527,6 +564,8 @@ export default function RequestsPage() {
           listView={canSeeItWorkflowTabUser && requestsListTab === 'it' ? 'it' : 'main'}
           showUnorderedOnly={requestsListTab === 'main' ? showUnorderedOnly : false}
           onUnorderedFilterChange={setShowUnorderedOnly}
+          showLateDeliveryOnly={requestsListTab === 'main' ? showLateDeliveryOnly : false}
+          onLateDeliveryFilterChange={setShowLateDeliveryOnly}
           showOverdueOnly={requestsListTab === 'main' ? showOverdueOnly : false}
           onOverdueFilterChange={setShowOverdueOnly}
           overdueRequestIds={overdueRequestIds}

@@ -32,6 +32,7 @@ export async function fetchSuppliers() {
   const { data, error } = await supabase
     .from('suppliers')
     .select('*')
+    .neq('kind', 'subcontractor')
     .order('name', { ascending: true })
 
   if (error) {
@@ -52,6 +53,7 @@ export async function fetchActiveSuppliers() {
     .from('suppliers')
     .select('*')
     .eq('is_approved', true)
+    .neq('kind', 'subcontractor')
     .order('name', { ascending: true })
 
   if (error) {

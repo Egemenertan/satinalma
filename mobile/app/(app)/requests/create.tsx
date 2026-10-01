@@ -43,7 +43,7 @@ const REQUIRES_SITE = ['site_personnel', 'site_manager', 'santiye_depo', 'santiy
 
 const HYGIENE_DEFAULT_CATEGORY = 'Hijyen ve Temizlik' as const
 
-const OFFICE_CATEGORY_KEYWORDS = ['hijyen', 'kirtasiye', 'mutfak', 'ofis ekipman', 'promosyon', 'reklam'] as const
+const OFFICE_CATEGORY_KEYWORDS = ['hijyen', 'kirtasiye', 'mutfak', 'ofis ekipman', 'ofis mobilya', 'promosyon', 'reklam'] as const
 
 const normalizeCategoryName = (value: string): string =>
   value
@@ -222,7 +222,7 @@ export default function CreateRequestScreen() {
     }
 
     setCategoriesLoading(true)
-    const { data: cats } = await supabase.from('material_categories').select('id, name').order('name')
+    const { data: cats } = await supabase.from('material_categories').select('id, name, display_name').order('name')
     setCategories((cats as MaterialCategory[]) ?? [])
     setCategoriesLoading(false)
     setChecking(false)

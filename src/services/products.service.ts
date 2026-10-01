@@ -29,12 +29,19 @@ export interface ProductFilters {
   statusFilter?: StatusFilter
   minPrice?: number
   maxPrice?: number
+  /**
+   * Depoya bağlı kullanıcı: listedeki adet, o depodaki aktif zimmet miktarıdır.
+   * Depo yöneticisi bu bayrağı kullanmaz.
+   */
+  useDepotZimmetQty?: boolean
 }
 
 export interface ProductWithDetails extends Omit<Product, 'category'> {
   brand?: Brand | null
   category?: ProductCategory | null
   total_stock?: number
+  /** Sorumlu depodaki aktif zimmet adedi */
+  depot_quantity?: number
   warehouse_stocks?: WarehouseStock[]
 }
 
@@ -117,6 +124,51 @@ function zimmetQtyMissingFromDepot(
   return extra
 }
 
+/** Sorumlu depodaki aktif zimmet adedi. Eyüp'te 2 zimmet varsa sonuç 2'dir. */
+function sumDepotZimmetQty(
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
+  filters?: ProductFilters
+): number {
+  if (!filters?.useDepotZimmetQty) return 0
+  let total = 0
+  for (const inv of inventories || []) {
+    const qty = parseFloat(String(inv.quantity ?? 0)) || 0
+    if (!(qty > 0)) continue
+    const warehouseId = inv.source_warehouse_id || null
+    if (filters.siteId) {
+      if (warehouseId === filters.siteId) total += qty
+      continue
+    }
+    if (
+      filters.allowedWarehouseIds?.length &&
+      warehouseId &&
+      filters.allowedWarehouseIds.includes(warehouseId)
+    ) {
+      total += qty
+    }
+  }
+  return total
+}
+
+async function productIdsZimmettedAt(
+  supabase: ReturnType<typeof createClient>,
+  warehouseIds: string[]
+): Promise<string[]> {
+  const ids = warehouseIds.filter(Boolean)
+  if (ids.length === 0) return []
+  const { data, error } = await supabase
+    .from('user_inventory')
+    .select('product_id')
+    .in('source_warehouse_id', ids)
+    .eq('status', 'active')
+    .gt('quantity', 0)
+  if (error) {
+    console.error('Depo zimmet ürünleri okunamadı:', error)
+    return []
+  }
+  return [...new Set((data || []).map((row) => row.product_id).filter(Boolean))]
+}
+
 /** Liste kartı: depodaki fiziksel miktar. Zimmet, stoktan düşülmüş eski kayıtlarda buna eklenir. */
 function totalStockForProductList(
   product: any,
@@ -159,6 +211,10 @@ export async function fetchProducts(
       .eq('warehouse_id', filters.siteId)
     
     let siteProductIds = stockProducts?.map(s => s.product_id) || []
+    if (filters?.useDepotZimmetQty) {
+      const zimmetIds = await productIdsZimmettedAt(supabase, [filters.siteId])
+      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
+    }
     
     // "Mevcut Olanlar": depoda serbest (user_id null) ve quantity > 0
     if (filters?.statusFilter === 'available') {
@@ -290,6 +346,7 @@ export async function fetchProducts(
         ...product,
         warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
         total_stock: totalStockForProductList(product, inventories, filters),
+        depot_quantity: sumDepotZimmetQty(inventories, filters),
       }
     }))
 
@@ -426,6 +483,7 @@ export async function fetchProducts(
         ...product,
         warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
         total_stock: totalStockForProductList(product, inventories, filters),
+        depot_quantity: sumDepotZimmetQty(inventories, filters),
       }
     }))
     
@@ -448,6 +506,10 @@ export async function fetchProducts(
     const { data: stockProducts } = await stockQuery
     
     siteProductIds = stockProducts?.map(s => s.product_id) || []
+    if (filters?.useDepotZimmetQty) {
+      const zimmetIds = await productIdsZimmettedAt(supabase, [filters.siteId])
+      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
+    }
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }
@@ -458,6 +520,10 @@ export async function fetchProducts(
       .in('warehouse_id', filters.allowedWarehouseIds)
 
     siteProductIds = [...new Set((stockProducts || []).map((s) => s.product_id))]
+    if (filters?.useDepotZimmetQty) {
+      const zimmetIds = await productIdsZimmettedAt(supabase, filters.allowedWarehouseIds)
+      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
+    }
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }
@@ -572,6 +638,7 @@ export async function fetchProducts(
     return {
       ...product,
       total_stock: listTotal,
+      depot_quantity: sumDepotZimmetQty(inventories, filters),
     }
   }))
 

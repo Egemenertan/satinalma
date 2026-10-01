@@ -61,6 +61,25 @@ interface ProductsTableProps {
   selectedSiteId?: string
   selectedProducts?: string[]
   onSelectionChange?: (selectedIds: string[]) => void
+  /**
+   * warehouse_access ile tek/çok depoya bağlı kullanıcı.
+   * Depo yöneticisinin stok rozeti yerine yalnızca kendi deposundaki adet gösterilir.
+   */
+  ownWarehouseView?: boolean
+}
+
+function OwnWarehouseStock({
+  qty,
+  unit,
+}: {
+  qty: number
+  unit?: string | null
+}) {
+  return (
+    <span className="text-sm font-semibold tabular-nums text-gray-900">
+      {qty.toLocaleString('tr-TR')} {unit || 'adet'}
+    </span>
+  )
 }
 
 export function ProductsTable({ 
@@ -69,7 +88,8 @@ export function ProductsTable({
   onProductClick, 
   selectedSiteId,
   selectedProducts = [],
-  onSelectionChange 
+  onSelectionChange,
+  ownWarehouseView = false,
 }: ProductsTableProps) {
   const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock' | 'bosta'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
@@ -111,9 +131,14 @@ export function ProductsTable({
   }
 
   const showCheckboxes = !!onSelectionChange
-  const isWarehouseScoped = Boolean(selectedSiteId)
+  const isWarehouseScoped = Boolean(selectedSiteId) && !ownWarehouseView
+  const hideCrossDepotColumns = isWarehouseScoped || ownWarehouseView
+
+  const getOwnWarehouseQty = (product: ProductWithStock) =>
+    Number(product.depot_quantity) || 0
 
   const getDisplayStock = (product: ProductWithStock) => {
+    if (ownWarehouseView) return getOwnWarehouseQty(product)
     if (!selectedSiteId) return product.total_stock || 0
 
     const stocks = (product.warehouse_stocks || []).filter(
@@ -206,7 +231,7 @@ export function ProductsTable({
   const isSomeSelected = selectedProducts.length > 0 && selectedProducts.length < sortedProducts.length
 
   const desktopGridColumns = (() => {
-    if (isWarehouseScoped) {
+    if (hideCrossDepotColumns) {
       return showCheckboxes ? '40px 80px 2fr 1fr 1fr 1fr' : '80px 2fr 1fr 1fr 1fr'
     }
     return showCheckboxes
@@ -251,14 +276,16 @@ export function ProductsTable({
           <SortButton field="sku">SKU</SortButton>
         </div>
         <div className="flex items-center">
-          <SortButton field="stock">{isWarehouseScoped ? 'DEPO STOĞU' : 'STOK DURUMU'}</SortButton>
+          <SortButton field="stock">
+            {ownWarehouseView ? 'ADET' : isWarehouseScoped ? 'DEPO STOĞU' : 'STOK DURUMU'}
+          </SortButton>
         </div>
-        {!isWarehouseScoped && (
+        {!hideCrossDepotColumns && (
           <div className="flex items-center">
             <SortButton field="bosta">BOŞTA</SortButton>
           </div>
         )}
-        {!isWarehouseScoped && (
+        {!hideCrossDepotColumns && (
           <div className="text-xs font-medium text-black uppercase tracking-wider">DEPOLAR</div>
         )}
       </div>
@@ -365,24 +392,28 @@ export function ProductsTable({
                 )}
               </div>
 
-              {/* Stok Durumu / Depo Stoğu */}
+              {/* Stok Durumu / Depo Stoğu / kendi depo adedi */}
               <div>
-                <div className="space-y-2">
-                  <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
-                    <StockIcon className="w-3 h-3 mr-1" />
-                    {stockStatus.text}
-                  </Badge>
-                  <div className="flex items-center gap-1.5">
-                    <Box className="w-3.5 h-3.5 text-gray-400" />
-                    <span className="text-xs font-semibold text-gray-700">
-                      {totalStock} {product.unit || 'adet'}
-                    </span>
+                {ownWarehouseView ? (
+                  <OwnWarehouseStock qty={totalStock} unit={product.unit} />
+                ) : (
+                  <div className="space-y-2">
+                    <Badge className={`${stockStatus.color} border rounded-full px-3 py-1 text-xs`}>
+                      <StockIcon className="w-3 h-3 mr-1" />
+                      {stockStatus.text}
+                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Box className="w-3.5 h-3.5 text-gray-400" />
+                      <span className="text-xs font-semibold text-gray-700">
+                        {totalStock} {product.unit || 'adet'}
+                      </span>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
 
               {/* Boşta — Ana Depo / Sanayi Depo stoğu (yalnızca Envanter) */}
-              {!isWarehouseScoped && (
+              {!hideCrossDepotColumns && (
                 <div>
                   {(() => {
                     const bosta = getBostaQty(product)
@@ -401,7 +432,7 @@ export function ProductsTable({
               )}
 
               {/* Depolar — sadece tüm envanter görünümünde */}
-              {!isWarehouseScoped && (
+              {!hideCrossDepotColumns && (
                 <div>
                   {visibleWarehouseStocks.length > 0 ? (
                     <div className="flex flex-wrap gap-1.5">
@@ -470,10 +501,14 @@ export function ProductsTable({
                   </div>
                 </div>
                 <div className="flex-shrink-0">
-                  <Badge className={`${stockStatus.color} border rounded-full px-2 py-0.5 text-xs`}>
-                    <StockIcon className="w-3 h-3 mr-1" />
-                    {stockStatus.text}
-                  </Badge>
+                  {ownWarehouseView ? (
+                    <OwnWarehouseStock qty={totalStock} unit={product.unit} />
+                  ) : (
+                    <Badge className={`${stockStatus.color} border rounded-full px-2 py-0.5 text-xs`}>
+                      <StockIcon className="w-3 h-3 mr-1" />
+                      {stockStatus.text}
+                    </Badge>
+                  )}
                 </div>
               </div>
 
@@ -495,19 +530,23 @@ export function ProductsTable({
                 {/* Stok */}
                 <div>
                   <div className="text-xs text-gray-500 mb-1">
-                    {isWarehouseScoped ? 'Depo Stoğu' : 'Toplam Stok'}
+                    {ownWarehouseView ? 'Adet' : isWarehouseScoped ? 'Depo Stoğu' : 'Toplam Stok'}
                   </div>
-                  <div className="flex items-center gap-2">
-                    <div className="p-1 bg-gray-100 rounded-lg">
-                      <Box className="w-3 h-3 text-gray-600" />
+                  {ownWarehouseView ? (
+                    <OwnWarehouseStock qty={totalStock} unit={product.unit} />
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <div className="p-1 bg-gray-100 rounded-lg">
+                        <Box className="w-3 h-3 text-gray-600" />
+                      </div>
+                      <span className="font-medium text-gray-800 text-xs">
+                        {totalStock} {product.unit || 'adet'}
+                      </span>
                     </div>
-                    <span className="font-medium text-gray-800 text-xs">
-                      {totalStock} {product.unit || 'adet'}
-                    </span>
-                  </div>
+                  )}
                 </div>
 
-                {!isWarehouseScoped && (
+                {!hideCrossDepotColumns && (
                   <div>
                     <div className="text-xs text-gray-500 mb-1">Boşta</div>
                     <div className="flex items-center gap-2">
@@ -528,7 +567,7 @@ export function ProductsTable({
               </div>
 
               {/* Depolar — sadece tüm envanter görünümünde */}
-              {!isWarehouseScoped && visibleWarehouseStocks.length > 0 && (
+              {!hideCrossDepotColumns && visibleWarehouseStocks.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 pt-2 border-t border-gray-100">
                   {visibleWarehouseStocks.slice(0, 3).map((stock: any) => (
                     <div key={stock.warehouse_id || stock.id} className="bg-primary-50 border border-primary-200 rounded-lg px-2 py-1">

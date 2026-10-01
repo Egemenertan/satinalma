@@ -40,6 +40,7 @@ const OFFICE_CATEGORY_KEYWORDS = [
   'kirtasiye',
   'mutfak',
   'ofis ekipman',
+  'ofis mobilya',
   'promosyon',
   'reklam'
 ] as const

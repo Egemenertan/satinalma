@@ -267,7 +267,7 @@ export default function DepartmentHeadView({ request, onRefresh, showToast }: De
           </CardTitle>
         </CardHeader>
         <CardContent className="p-6">
-          <div className="space-y-3">
+          <div className="space-y-3" data-material-list>
             {materials.map((item: any, index: number) => (
               <div
                 key={item.id}

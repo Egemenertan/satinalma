@@ -1,4 +1,6 @@
 export type ContractStatus = 'active' | 'cancelled'
+export type ContractPartyKind = 'supplier' | 'subcontractor'
+export type ContractCategory = 'goods_and_services' | 'goods' | 'services'
 
 export interface SupplierContract {
   id: string
@@ -12,6 +14,8 @@ export interface SupplierContract {
   status: ContractStatus
   budget_amount: number | null
   budget_currency: string
+  party_kind: ContractPartyKind
+  contract_category: ContractCategory | null
   created_by: string | null
   created_at: string
   updated_at: string
@@ -69,6 +73,8 @@ export interface ContractItemOverview extends SupplierContractItem {
 
 export interface ContractOverview extends SupplierContract {
   supplier_name: string
+  site_ids: string[]
+  site_labels: string[]
   items: ContractItemOverview[]
   total_contracted: number
   total_delivered: number
@@ -118,6 +124,9 @@ export interface CreateContractItemInput {
 
 export interface CreateContractInput {
   supplier_id: string
+  party_kind?: ContractPartyKind
+  contract_category?: ContractCategory | null
+  site_ids?: string[]
   title?: string
   contract_no?: string
   start_date?: string

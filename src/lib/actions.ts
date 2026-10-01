@@ -233,8 +233,10 @@ export async function createPurchaseRequest(data: {
     })
     
     let initialStatus = 'pending'
+    // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
+    const startInItReview = useItWorkflow && user.role !== 'santiye_depo'
     
-    if (useItWorkflow) {
+    if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
       console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
     } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
@@ -268,7 +270,7 @@ export async function createPurchaseRequest(data: {
       material_group: data.material_group || null,
       material_item_name: data.material_item_name || null,
       image_urls: data.image_urls || null,
-      it_workflow_applies: useItWorkflow
+      it_workflow_applies: startInItReview
     }
     
     // Purchase request oluştur
@@ -324,16 +326,16 @@ export async function createPurchaseRequest(data: {
     }
 
     // Approval history kaydı ekle (kritik değil)
-    let historyComment = useItWorkflow
+    let historyComment = startInItReview
       ? 'Talep oluşturuldu (IT Yönetim incelemesinde — tetikleyici malzeme grubu)'
       : 'Talep oluşturuldu'
-    if (!useItWorkflow && user.email === 'hasan.oztunc@dovecgroup.com') {
+    if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (!useItWorkflow && user.role === 'santiye_depo_yonetici') {
+    } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (!useItWorkflow && user.role === 'santiye_depo') {
+    } else if (!startInItReview && user.role === 'santiye_depo') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
-    } else if (!useItWorkflow && user.role === 'purchasing_officer') {
+    } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = 'Talep oluşturuldu (Satın Alma Sorumlusu - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
     
@@ -630,8 +632,10 @@ export async function createMultiMaterialPurchaseRequest(data: {
     
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
+    // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
+    const startInItReview = useItWorkflow && user.role !== 'santiye_depo'
 
-    if (useItWorkflow) {
+    if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
       console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
     } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
@@ -670,7 +674,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       site_name: data.site_name || null,
       delivery_date: data.required_date || null,
       image_urls: data.materials[0]?.image_urls || null,
-      it_workflow_applies: useItWorkflow
+      it_workflow_applies: startInItReview
     }
     
     // Purchase request oluştur
@@ -723,16 +727,16 @@ export async function createMultiMaterialPurchaseRequest(data: {
     console.log('✅ Purchase request items oluşturuldu')
 
     // Approval history kaydı ekle
-    let historyComment = useItWorkflow
+    let historyComment = startInItReview
       ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — IT Yönetim incelemesinde (tetikleyici grup)`
       : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
-    if (!useItWorkflow && user.email === 'hasan.oztunc@dovecgroup.com') {
+    if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!useItWorkflow && user.role === 'santiye_depo_yonetici') {
+    } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!useItWorkflow && user.role === 'santiye_depo') {
+    } else if (!startInItReview && user.role === 'santiye_depo') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
-    } else if (!useItWorkflow && user.role === 'purchasing_officer') {
+    } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
     

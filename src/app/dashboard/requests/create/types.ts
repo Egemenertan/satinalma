@@ -3,6 +3,7 @@ export interface MaterialCategory {
   name: string
   type: string
   icon?: string
+  display_name?: string | null
 }
 
 export interface MaterialGroup {
@@ -137,6 +138,7 @@ export const ICON_MAP: Record<string, string> = {
   'Reklam Ürünleri': 'Sparkles',
   'Kırtasiye Malzemeleri': 'FileText',
   'Ofis Ekipmanları': 'Settings',
+  'Ofis Mobilyaları': 'Armchair',
   'Promosyon Ürünleri': 'Target',
   'Mutfak Malzemeleri': 'Package2',
   'Hijyen ve Temizlik': 'Sparkles'
@@ -164,6 +166,7 @@ export const COLOR_MAP: Record<string, string> = {
   'Reklam Ürünleri': '#ec4899',
   'Kırtasiye Malzemeleri': '#6366f1',
   'Ofis Ekipmanları': '#10b981',
+  'Ofis Mobilyaları': '#b45309',
   'Promosyon Ürünleri': '#f59e0b',
   'Mutfak Malzemeleri': '#06b6d4',
   'Hijyen ve Temizlik': '#8b5cf6'
@@ -179,6 +182,8 @@ export const CATEGORY_IMAGES: Record<string, string> = {
     'https://images.unsplash.com/photo-1556911220-bff31c812dba?w=800&q=80',
   'Ofis Ekipmanları':
     'https://images.unsplash.com/photo-1593062096033-9a26b09da705?w=800&q=80',
+  'Ofis Mobilyaları':
+    'https://images.unsplash.com/photo-1524758631624-e2822e304c36?w=800&q=80',
   'Promosyon Ürünleri':
     'https://images.unsplash.com/photo-1513506003901-1e6a229e2d15?w=800&q=80',
   'Reklam Ürünleri':

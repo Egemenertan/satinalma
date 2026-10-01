@@ -1,4 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { IT_STATUS_INCELEMEDE } from '../../lib/it-workflow'
+import { requestHasItMaterialClass } from '../../lib/it-class-routing'
 import { SPECIAL_GMO_SITE_ID } from './santiyeDepoRules'
 
 type ApproveResult = { ok: true; message: string; newStatus: string } | { ok: false; message: string }
@@ -48,14 +50,29 @@ export async function depoManagerApproveRequest(
     message = 'Talep onaylandı! Ürünler ana depoda mevcut.'
   }
 
-  const historyComment =
+  let historyComment =
     newStatus === 'onaylandı'
       ? 'Şantiye depo yöneticisi / site yöneticisi tarafından onaylandı (ana depoda stok)'
       : 'Şantiye depo yöneticisi / site yöneticisi tarafından satın almaya gönderildi'
 
+  let itWorkflowApplies = false
+  if (newStatus === 'satın almaya gönderildi') {
+    const hasItClass = await requestHasItMaterialClass(supabase, requestId)
+    if (hasItClass) {
+      newStatus = IT_STATUS_INCELEMEDE
+      message = 'Talep IT incelemesine alındı.'
+      historyComment = 'Site yöneticisi onayı sonrası IT incelemesine alındı (Ofis Ekipmanları)'
+      itWorkflowApplies = true
+    }
+  }
+
   const { error: updateError } = await supabase
     .from('purchase_requests')
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update({
+      status: newStatus,
+      ...(itWorkflowApplies ? { it_workflow_applies: true } : {}),
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', requestId)
 
   if (updateError) return { ok: false, message: updateError.message }

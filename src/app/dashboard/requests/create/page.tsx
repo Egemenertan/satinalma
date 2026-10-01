@@ -11,7 +11,8 @@ import { normalizeMaterialName, type ActiveContractOption } from '@/lib/contract
 import { 
   ArrowLeft, 
   Loader2,
-  Package
+  Package,
+  Plus
 } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
@@ -57,6 +58,7 @@ const OFFICE_CATEGORY_KEYWORDS = [
   'kirtasiye',
   'mutfak',
   'ofis ekipman',
+  'ofis mobilya',
   'promosyon',
   'reklam'
 ] as const
@@ -850,6 +852,20 @@ export default function CreatePurchaseRequestPage() {
             </div>
           </div>
         ) : (
+          <div>
+            <div className="mb-3 flex justify-start">
+              <button
+                type="button"
+                onClick={() => {
+                  setCreateMaterialData({ class: selectedCategory, group: selectedSubCategory, item_name: '' })
+                  setShowCreateMaterialModal(true)
+                }}
+                className="inline-flex h-10 items-center gap-2 rounded-full bg-[#01E884] px-4 text-[14px] font-semibold tracking-[-0.01em] text-[#10221a] transition-colors hover:bg-[#00d478] active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#01E884]/50 focus-visible:ring-offset-2"
+              >
+                <Plus className="h-4 w-4" />
+                Aradığınızı bulamadınız mı?
+              </button>
+            </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
             {/* New Material Card */}
             <NewMaterialCard
@@ -871,6 +887,7 @@ export default function CreatePurchaseRequestPage() {
                 onClick={() => handleMaterialClick(item)}
               />
             ))}
+          </div>
           </div>
         )}
         {materialsTruncated && !isMaterialsLoading && (

@@ -37,6 +37,8 @@ export interface ProductWithStock extends Omit<Product, 'category'> {
   category?: ProductCategory | null
   warehouse_stocks?: WarehouseStockWithDetails[]
   total_stock?: number
+  /** Sorumlu depodaki aktif zimmet adedi */
+  depot_quantity?: number
 }
 
 export interface WarehouseStockWithDetails extends WarehouseStock {

@@ -47,9 +47,29 @@ export function canSeeItWorkflowTab(profile: {
 
 export const IT_TRIGGER_MATERIAL_CLASS = 'Ofis Ekipmanları'
 
+/** Talep ekranında görünen ad. Kayıtlı sınıf adı IT eşlemesi için değişmez. */
+export const IT_TRIGGER_MATERIAL_CLASS_LABEL = 'Ofis Ekipmanları (IT Malzemeleri)'
+
+export function formatMaterialClassLabel(className: string | null | undefined): string {
+  const name = (className ?? '').trim()
+  if (name === IT_TRIGGER_MATERIAL_CLASS) return IT_TRIGGER_MATERIAL_CLASS_LABEL
+  return name
+}
+
 export const IT_TRIGGER_MATERIAL_GROUPS = ['Bilgisayar Donanımları', 'Elektronik Cihazlar'] as const
 
 const OFIS_CLASS_TOKEN = normalizeMaterialGroupToken(IT_TRIGGER_MATERIAL_CLASS)
+
+/** Talep kalemi Ofis Ekipmanları (IT Malzemeleri) sınıfında mı? */
+export function isItMaterialClass(className: string | null | undefined): boolean {
+  return normalizeMaterialGroupToken(className) === OFIS_CLASS_TOKEN
+}
+
+export function linesIncludeItMaterialClass(
+  lines: { material_class?: string | null }[]
+): boolean {
+  return lines.some((line) => isItMaterialClass(line.material_class))
+}
 const IT_TRIGGER_GROUP_TOKENS = new Set(IT_TRIGGER_MATERIAL_GROUPS.map((g) => normalizeMaterialGroupToken(g)))
 
 export function matchesOfisEkipmanlariItTrigger(item: {

@@ -37,6 +37,7 @@ export default function OffersPage() {
         .from('suppliers')
         .select('id')
         .eq('is_approved', true)
+        .neq('kind', 'subcontractor')
 
       setStats({
         totalOffers: offers?.length || 0,

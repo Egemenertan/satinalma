@@ -14,6 +14,7 @@ import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import SitePersonnelView from './SitePersonnelView'
 import { useRouter } from 'next/navigation'
 import { IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
+import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 
 interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'materialOrders' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   currentOrder: any
@@ -141,11 +142,25 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         }
       }
 
+      const hasItClass = await purchaseRequestHasItMaterialClass(
+        supabase,
+        request.id,
+        request.material_class
+      )
+      const routed = routeItClassAwayFromPurchasing(
+        { newStatus, successMessage, historyComment },
+        hasItClass
+      )
+      newStatus = routed.newStatus
+      successMessage = routed.successMessage
+      historyComment = routed.historyComment
+
       // Status güncelle
       const { error: updateError } = await supabase
         .from('purchase_requests')
         .update({ 
           status: newStatus,
+          ...(routed.itWorkflowApplies ? { it_workflow_applies: true } : {}),
           updated_at: new Date().toISOString()
         })
         .eq('id', request.id);

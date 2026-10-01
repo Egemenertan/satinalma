@@ -151,9 +151,19 @@ export const generatePDF = async (data: PDFData): Promise<void> => {
  */
 export const transformToPDFData = (apiData: any): PDFData => {
   // Extract request info
+  const requestNumbers = [...new Set(
+    (apiData.orders || [])
+      .map((order: any) => String(order.request_number || order.purchase_requests?.request_number || '').trim())
+      .filter(Boolean)
+  )]
+  if (requestNumbers.length === 0 && apiData.request?.request_number) {
+    requestNumbers.push(String(apiData.request.request_number).trim())
+  }
+
   const request: PDFRequestData = {
     id: apiData.request.id,
     title: apiData.request.title,
+    request_number: requestNumbers.join(', '),
     created_at: apiData.request.created_at,
     status: apiData.request.status || 'Bilinmiyor',
     urgency_level: apiData.request.urgency_level || 'normal',

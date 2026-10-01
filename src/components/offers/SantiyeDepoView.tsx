@@ -17,6 +17,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
+import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 import { useRouter } from 'next/navigation'
 
 interface SantiyeDepoViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'shipmentData' | 'onRefresh' | 'showToast'> {
@@ -384,6 +385,19 @@ export default function SantiyeDepoView({
         }
       }
 
+      const hasItClass = await purchaseRequestHasItMaterialClass(
+        supabase,
+        request.id,
+        request.material_class
+      )
+      const routed = routeItClassAwayFromPurchasing(
+        { newStatus, successMessage, historyComment },
+        hasItClass
+      )
+      newStatus = routed.newStatus
+      successMessage = routed.successMessage
+      historyComment = routed.historyComment
+
       // Status güncelle
       console.log('💾 Status güncelleme işlemi başlatılıyor:', {
         requestId: request.id,
@@ -395,6 +409,7 @@ export default function SantiyeDepoView({
         .from('purchase_requests')
         .update({ 
           status: newStatus,
+          ...(routed.itWorkflowApplies ? { it_workflow_applies: true } : {}),
           updated_at: new Date().toISOString()
         })
         .eq('id', request.id)
@@ -685,7 +700,7 @@ export default function SantiyeDepoView({
         </div>
       </CardHeader>
       <CardContent className="p-3 sm:p-6">
-        <div className="space-y-3 sm:space-y-4">
+        <div className="space-y-3 sm:space-y-4" data-material-list>
             {request.purchase_request_items.map((item, index) => {
               // Her malzeme için gönderim durumunu kontrol et
               const itemShipments = shipmentData[item.id]

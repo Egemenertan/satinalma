@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { IT_STATUS_ONAYLANDI } from '../../lib/it-workflow'
+import { IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI } from '../../lib/it-workflow'
+import { requestHasItMaterialClass } from '../../lib/it-class-routing'
 
 /** Web `SiteManagerView` ile aynı — Genel Merkez Ofisi şantiye kaydı */
 export const SITE_MANAGER_SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
@@ -107,10 +108,22 @@ export async function siteManagerApproveOrSendToPurchasing(
     }
   }
 
+  let itWorkflowApplies = false
+  if (newStatus === 'satın almaya gönderildi') {
+    const hasItClass = await requestHasItMaterialClass(supabase, requestId)
+    if (hasItClass) {
+      newStatus = IT_STATUS_INCELEMEDE
+      successMessage = 'Talep IT incelemesine alındı.'
+      historyComment = 'Site yöneticisi onayı sonrası IT incelemesine alındı (Ofis Ekipmanları)'
+      itWorkflowApplies = true
+    }
+  }
+
   const { error: updateError } = await supabase
     .from('purchase_requests')
     .update({
       status: newStatus,
+      ...(itWorkflowApplies ? { it_workflow_applies: true } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq('id', requestId)

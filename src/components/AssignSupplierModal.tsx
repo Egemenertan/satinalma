@@ -230,6 +230,7 @@ export default function AssignSupplierModal({
           is_approved,
           rating
         `)
+        .neq('kind', 'subcontractor')
         .order('name')
 
       if (error) {

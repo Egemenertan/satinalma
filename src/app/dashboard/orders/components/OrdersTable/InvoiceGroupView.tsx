@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Receipt, FileText, Eye, ChevronLeft, ChevronRight } from 'lucide-react'
 import { getCurrencySymbol } from '@/components/offers/types'
-import { formatShortDocumentNumber } from '../../utils'
+import { clusterOrdersByNumber, formatShortDocumentNumber } from '../../utils'
 import { useInvoiceGroups, useInvoiceGroupOrders } from '../../hooks'
 import { Loading } from '@/components/ui/loading'
 
@@ -217,13 +217,20 @@ export function InvoiceGroupView({
 
             {/* Siparişler - En yeniden eskiye sıralanmış */}
             <div className="divide-y divide-gray-100">
-              {groupOrders
-                .sort((a: any, b: any) => {
+              {clusterOrdersByNumber(
+                [...groupOrders].sort((a: any, b: any) => {
                   const dateA = new Date(a.created_at).getTime()
                   const dateB = new Date(b.created_at).getTime()
-                  return dateB - dateA // En yeni önce
+                  return dateB - dateA
                 })
-                .map((order: any) => (
+              ).map((cluster) => (
+                <div key={cluster.orderNumber}>
+                  {cluster.orders.length > 1 && (
+                    <div className="px-4 pt-3 font-mono text-[11px] font-semibold text-gray-900" title={cluster.orderNumber}>
+                      Sipariş: {formatShortDocumentNumber(cluster.orderNumber)} · {cluster.orders.length} malzeme
+                    </div>
+                  )}
+                  {cluster.orders.map((order: any) => (
                 <div
                   key={order.id}
                   className="px-4 py-3 hover:bg-gray-50 transition-colors"
@@ -231,9 +238,11 @@ export function InvoiceGroupView({
                   <div className="flex items-center justify-between">
                     {/* Sipariş Bilgileri */}
                     <div className="flex-1">
+                      {cluster.orders.length === 1 && (
                       <div className="font-mono text-[11px] font-semibold text-gray-900" title={order.order_number || undefined}>
                         Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
                       </div>
+                      )}
                       <div className="font-medium text-gray-900">
                         {order.purchase_request_items?.item_name || 'Malzeme belirtilmemiş'}
                       </div>
@@ -279,6 +288,8 @@ export function InvoiceGroupView({
                       </Button>
                     </div>
                   </div>
+                </div>
+                  ))}
                 </div>
               ))}
             </div>

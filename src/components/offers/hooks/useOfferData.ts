@@ -256,6 +256,7 @@ export function useOfferData(requestId: string) {
         .from('orders')
         .select(`
           id,
+          order_number,
           delivery_date,
           created_at,
           material_item_id,
@@ -300,6 +301,7 @@ export function useOfferData(requestId: string) {
 
           return {
             id: order.id,
+            order_number: order.order_number,
             delivery_date: order.delivery_date,
             created_at: order.created_at,
             material_item_id: order.material_item_id,

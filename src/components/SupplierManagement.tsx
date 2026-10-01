@@ -38,6 +38,7 @@ const fetchSuppliers = async (): Promise<Supplier[]> => {
     .select(
       'id, name, code, contact_person, email, phone, address, tax_number, payment_terms, rating, is_approved'
     )
+    .neq('kind', 'subcontractor')
     .order('name')
 
   if (error) throw error

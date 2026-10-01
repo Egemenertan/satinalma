@@ -1,10 +1,10 @@
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, Loader2, LayoutGrid } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { ChevronLeft, ChevronRight, Loader2 } from 'lucide-react'
 import type { CategoryTabsProps } from '../types'
-import { getCategoryImage, getGroupImage, getIconForClass } from '../types'
+import { getIconForClass } from '../types'
+import { formatMaterialClassLabel } from '@/lib/it-workflow'
 import * as Icons from 'lucide-react'
 
 export function CategoryTabs({
@@ -25,259 +25,225 @@ export function CategoryTabs({
 
   const checkScrollButtons = (container: HTMLDivElement | null, setLeft: (v: boolean) => void, setRight: (v: boolean) => void) => {
     if (!container) return
-    setLeft(container.scrollLeft > 0)
-    setRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 10)
+    setLeft(container.scrollLeft > 4)
+    setRight(container.scrollLeft < container.scrollWidth - container.clientWidth - 4)
   }
 
   useEffect(() => {
     const container = scrollContainerRef.current
-    if (container) {
-      checkScrollButtons(container, setShowLeftArrow, setShowRightArrow)
-      const handleScroll = () => checkScrollButtons(container, setShowLeftArrow, setShowRightArrow)
-      container.addEventListener('scroll', handleScroll)
-      window.addEventListener('resize', handleScroll)
-      return () => {
-        container.removeEventListener('scroll', handleScroll)
-        window.removeEventListener('resize', handleScroll)
-      }
+    if (!container) return
+    checkScrollButtons(container, setShowLeftArrow, setShowRightArrow)
+    const handleScroll = () => checkScrollButtons(container, setShowLeftArrow, setShowRightArrow)
+    container.addEventListener('scroll', handleScroll)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
     }
   }, [categories])
 
   useEffect(() => {
     const container = subScrollContainerRef.current
-    if (container) {
-      checkScrollButtons(container, setShowSubLeftArrow, setShowSubRightArrow)
-      const handleScroll = () => checkScrollButtons(container, setShowSubLeftArrow, setShowSubRightArrow)
-      container.addEventListener('scroll', handleScroll)
-      window.addEventListener('resize', handleScroll)
-      return () => {
-        container.removeEventListener('scroll', handleScroll)
-        window.removeEventListener('resize', handleScroll)
-      }
+    if (!container) return
+    checkScrollButtons(container, setShowSubLeftArrow, setShowSubRightArrow)
+    const handleScroll = () => checkScrollButtons(container, setShowSubLeftArrow, setShowSubRightArrow)
+    container.addEventListener('scroll', handleScroll)
+    window.addEventListener('resize', handleScroll)
+    return () => {
+      container.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
     }
-  }, [subCategories])
+  }, [subCategories, selectedCategory])
 
   const scroll = (container: HTMLDivElement | null, direction: 'left' | 'right') => {
     if (!container) return
-    const scrollAmount = 200
     container.scrollBy({
-      left: direction === 'left' ? -scrollAmount : scrollAmount,
+      left: direction === 'left' ? -220 : 220,
       behavior: 'smooth'
     })
   }
 
   const getIcon = (iconName: string) => {
     const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
-      'Wrench': Icons.Wrench,
-      'Ruler': Icons.Ruler,
-      'Truck': Icons.Truck,
-      'Package2': Icons.Package2,
-      'Settings': Icons.Settings,
-      'Zap': Icons.Zap,
-      'Sparkles': Icons.Sparkles,
-      'Shield': Icons.Shield,
-      'Palette': Icons.Palette,
-      'Package': Icons.Package,
-      'FileText': Icons.FileText,
-      'Target': Icons.Target
+      Wrench: Icons.Wrench,
+      Ruler: Icons.Ruler,
+      Truck: Icons.Truck,
+      Package2: Icons.Package2,
+      Settings: Icons.Settings,
+      Zap: Icons.Zap,
+      Sparkles: Icons.Sparkles,
+      Shield: Icons.Shield,
+      Palette: Icons.Palette,
+      Package: Icons.Package,
+      FileText: Icons.FileText,
+      Target: Icons.Target,
+      Armchair: Icons.Armchair
     }
     return iconMap[iconName] || Icons.Package
   }
 
   if (isLoading) {
     return (
-      <div className="py-4">
-        <div className="flex items-center justify-center gap-3">
-          <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
-          <span className="text-gray-500">Kategoriler yükleniyor...</span>
-        </div>
+      <div className="flex items-center gap-2.5 py-6 text-[13px] text-[#86868b]">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Sınıflar yükleniyor
       </div>
     )
   }
 
   return (
-    <div className="space-y-4 mb-6">
-      {/* Ana Kategori Tabs */}
-      <div className="relative px-1 py-2">
-        {showLeftArrow && (
-          <button
-            onClick={() => scroll(scrollContainerRef.current, 'left')}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4 text-gray-600" />
-          </button>
-        )}
-        
-        <div
-          ref={scrollContainerRef}
-          className="flex gap-3 overflow-x-auto scrollbar-hide scroll-smooth"
-          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+    <div className="mb-6 space-y-5">
+      <section aria-label="Sınıf">
+        <p className="mb-2.5 px-0.5 text-[13px] font-medium tracking-[-0.01em] text-[#86868b]">Sınıf</p>
+        <ScrollRow
+          containerRef={scrollContainerRef}
+          showLeft={showLeftArrow}
+          showRight={showRightArrow}
+          onScrollLeft={() => scroll(scrollContainerRef.current, 'left')}
+          onScrollRight={() => scroll(scrollContainerRef.current, 'right')}
         >
           {categories.map((category) => {
             const isSelected = selectedCategory === category.name
-            const categoryImage = getCategoryImage(category.name)
-            const iconName = getIconForClass(category.name)
-            const IconComponent = getIcon(iconName)
+            const IconComponent = getIcon(getIconForClass(category.name))
+            const label = category.display_name?.trim() || formatMaterialClassLabel(category.name)
 
             return (
               <button
                 key={category.id}
+                type="button"
+                aria-pressed={isSelected}
                 onClick={() => onCategorySelect(category.name)}
                 className={`
-                  relative flex-shrink-0 min-w-[120px] h-24 rounded-2xl overflow-hidden
-                  transition-all duration-300 group
-                  ${isSelected 
-                    ? 'ring-2 ring-[#00E676] shadow-md' 
-                    : 'hover:shadow-md hover:scale-[1.02]'
+                  group/tile flex w-[156px] shrink-0 flex-col items-center justify-center gap-2.5
+                  rounded-[22px] px-3.5 py-4 text-center
+                  transition-[background-color,transform] duration-200 ease-out
+                  active:scale-[0.98]
+                  focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d1d1f]/25 focus-visible:ring-offset-2
+                  ${isSelected
+                    ? 'bg-[#1d1d1f] text-white'
+                    : 'bg-white text-[#1d1d1f] ring-1 ring-black/[0.06] hover:bg-[#f5f5f7]'
                   }
                 `}
               >
-                {categoryImage ? (
-                  <>
-                    <div 
-                      className="absolute inset-0 bg-cover bg-center"
-                      style={{ backgroundImage: `url(${categoryImage})` }}
-                    />
-                    <div className={`absolute inset-0 transition-colors ${isSelected ? 'bg-[#00E676]/80' : 'bg-black/30 group-hover:bg-[#00E676]/50'}`} />
-                  </>
-                ) : (
-                  <div className={`absolute inset-0 ${isSelected ? 'bg-gradient-to-br from-[#00E676] to-[#00c46a]' : 'bg-white border border-gray-200 rounded-2xl group-hover:border-[#00E676]/30'}`} />
-                )}
-                
-                <div className="relative h-full flex flex-col items-center justify-center p-3 z-10">
-                  <div className="w-8 h-8 flex items-center justify-center mb-2">
-                    <IconComponent className={`w-5 h-5 transition-all duration-300 ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-600 group-hover:text-[#00E676]'}`} />
-                  </div>
-                  <span className={`
-                    text-xs font-medium text-center line-clamp-2 leading-tight transition-all duration-300
-                    ${categoryImage || isSelected ? 'text-white drop-shadow-lg' : 'text-gray-700 group-hover:text-[#00E676]'}
-                  `}>
-                    {category.name}
-                  </span>
-                </div>
-
-                {isSelected && (
-                  <div className="absolute top-2 right-2 w-6 h-6 bg-white rounded-full flex items-center justify-center shadow-lg animate-scale-in">
-                    <Icons.Check className="w-4 h-4 text-[#00E676]" />
-                  </div>
-                )}
+                <span
+                  className={`flex h-9 w-9 items-center justify-center rounded-[12px] ${
+                    isSelected ? 'bg-white/10' : 'bg-[#f5f5f7] group-hover/tile:bg-white'
+                  }`}
+                >
+                  <IconComponent className="h-[18px] w-[18px] stroke-[1.75]" />
+                </span>
+                <span className="line-clamp-2 min-h-[2.35rem] w-full text-[13px] font-medium leading-[1.2] tracking-[-0.02em]">
+                  {label}
+                </span>
               </button>
             )
           })}
-        </div>
+        </ScrollRow>
+      </section>
 
-        {showRightArrow && (
-          <button
-            onClick={() => scroll(scrollContainerRef.current, 'right')}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-8 h-8 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
-          >
-            <ChevronRight className="w-4 h-4 text-gray-600" />
-          </button>
-        )}
-      </div>
-
-      {/* Alt Kategori Chips */}
       {selectedCategory && subCategories.length > 0 && (
-        <div className="relative py-2">
-          {showSubLeftArrow && (
-            <button
-              onClick={() => scroll(subScrollContainerRef.current, 'left')}
-              className="absolute left-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
-            >
-              <ChevronLeft className="w-3 h-3 text-gray-600" />
-            </button>
-          )}
-
-          <div
-            ref={subScrollContainerRef}
-            className="flex gap-2 overflow-x-auto scrollbar-hide scroll-smooth px-1 py-2"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+        <section aria-label="Grup">
+          <p className="mb-2.5 px-0.5 text-[13px] font-medium tracking-[-0.01em] text-[#86868b]">Grup</p>
+          <ScrollRow
+            containerRef={subScrollContainerRef}
+            showLeft={showSubLeftArrow}
+            showRight={showSubRightArrow}
+            onScrollLeft={() => scroll(subScrollContainerRef.current, 'left')}
+            onScrollRight={() => scroll(subScrollContainerRef.current, 'right')}
           >
             <button
               type="button"
+              aria-pressed={!selectedSubCategory}
               onClick={() => onSubCategorySelect('')}
-              className={`
-                flex flex-shrink-0 items-center gap-2.5 pl-2 pr-5 py-2 rounded-full text-sm font-medium
-                transition-all duration-200 min-h-[44px]
-                ${!selectedSubCategory 
-                  ? 'bg-[#00E676] text-white shadow-sm ring-2 ring-[#00E676]/30' 
-                  : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                }
-              `}
+              className={groupChipClass(!selectedSubCategory)}
             >
-              {(() => {
-                const allImg = getCategoryImage(selectedCategory)
-                if (!allImg) {
-                  return (
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                        !selectedSubCategory ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      <LayoutGrid className="h-4 w-4" aria-hidden />
-                    </span>
-                  )
-                }
-                return (
-                  <span
-                    className="h-9 w-9 shrink-0 rounded-full bg-cover bg-center ring-2 ring-white/40"
-                    style={{ backgroundImage: `url(${allImg})` }}
-                    aria-hidden
-                  />
-                )
-              })()}
               Tümü
             </button>
             {subCategories.map((subCategory) => {
               const isSelected = selectedSubCategory === subCategory.name
-              const groupImage =
-                getGroupImage(subCategory.name) ?? getCategoryImage(selectedCategory)
               return (
                 <button
                   type="button"
                   key={subCategory.id}
+                  aria-pressed={isSelected}
                   onClick={() => onSubCategorySelect(subCategory.name)}
-                  className={`
-                    flex flex-shrink-0 items-center gap-2.5 pl-2 pr-5 py-2 rounded-full text-sm font-medium
-                    transition-all duration-200 text-left min-h-[44px] max-w-[280px]
-                    ${isSelected 
-                      ? 'bg-[#00E676] text-white shadow-sm ring-2 ring-[#00E676]/30' 
-                      : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50 hover:border-gray-300'
-                    }
-                  `}
+                  className={groupChipClass(isSelected)}
                 >
-                  {groupImage ? (
-                    <span
-                      className={`h-9 w-9 shrink-0 rounded-full bg-cover bg-center ring-2 ${
-                        isSelected ? 'ring-white/50' : 'ring-gray-200'
-                      }`}
-                      style={{ backgroundImage: `url(${groupImage})` }}
-                      aria-hidden
-                    />
-                  ) : (
-                    <span
-                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
-                        isSelected ? 'bg-white/20 text-white' : 'bg-gray-100 text-gray-500'
-                      }`}
-                    >
-                      {subCategory.name.slice(0, 1).toLocaleUpperCase('tr-TR')}
-                    </span>
-                  )}
-                  <span className="line-clamp-2 leading-snug">{subCategory.name}</span>
+                  {subCategory.name}
                 </button>
               )
             })}
-          </div>
+          </ScrollRow>
+        </section>
+      )}
+    </div>
+  )
+}
 
-          {showSubRightArrow && (
-            <button
-              onClick={() => scroll(subScrollContainerRef.current, 'right')}
-              className="absolute right-0 top-1/2 -translate-y-1/2 z-10 w-7 h-7 bg-white/90 backdrop-blur-sm rounded-full shadow-md flex items-center justify-center hover:bg-gray-50 transition-colors"
-            >
-              <ChevronRight className="w-3 h-3 text-gray-600" />
-            </button>
-          )}
-        </div>
+function groupChipClass(isSelected: boolean) {
+  return `
+    inline-flex h-9 shrink-0 items-center rounded-full px-3.5
+    text-[13px] font-medium tracking-[-0.01em]
+    transition-colors duration-200
+    active:scale-[0.98]
+    focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d1d1f]/25 focus-visible:ring-offset-2
+    ${isSelected
+      ? 'bg-[#1d1d1f] text-white'
+      : 'bg-[#efeff4] text-[#1d1d1f] hover:bg-[#e5e5ea]'
+    }
+  `
+}
+
+function ScrollRow({
+  containerRef,
+  showLeft,
+  showRight,
+  onScrollLeft,
+  onScrollRight,
+  children
+}: {
+  containerRef: React.RefObject<HTMLDivElement | null>
+  showLeft: boolean
+  showRight: boolean
+  onScrollLeft: () => void
+  onScrollRight: () => void
+  children: React.ReactNode
+}) {
+  return (
+    <div className="group/row relative">
+      {showLeft && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 left-0 z-[1] w-10 bg-gradient-to-r from-gray-50 to-transparent" />
+          <button
+            type="button"
+            aria-label="Sola kaydır"
+            onClick={onScrollLeft}
+            className="absolute left-0 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#1d1d1f] shadow-[0_2px_8px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.06] backdrop-blur-md transition-opacity hover:bg-white"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        </>
+      )}
+
+      <div
+        ref={containerRef}
+        className="flex gap-2 overflow-x-auto scroll-smooth px-0.5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      >
+        {children}
+      </div>
+
+      {showRight && (
+        <>
+          <div className="pointer-events-none absolute inset-y-0 right-0 z-[1] w-10 bg-gradient-to-l from-gray-50 to-transparent" />
+          <button
+            type="button"
+            aria-label="Sağa kaydır"
+            onClick={onScrollRight}
+            className="absolute right-0 top-1/2 z-10 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-[#1d1d1f] shadow-[0_2px_8px_rgba(0,0,0,0.12)] ring-1 ring-black/[0.06] backdrop-blur-md transition-opacity hover:bg-white"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </button>
+        </>
       )}
     </div>
   )

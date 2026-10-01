@@ -33,6 +33,8 @@ import {
   isPazarlamaDepartment,
   IT_STATUS_ONAYLANDI
 } from '@/lib/it-workflow'
+import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
+import { deliveryCountdown, fetchLateDeliveryRequestIds, isHeadOfficeRequest } from '@/lib/order-delivery'
 
 import { 
   Search, 
@@ -50,28 +52,12 @@ import {
   Truck,
   Bell,
   RotateCcw,
-  Box,
-  Hash,
   MoreVertical,
   Trash2,
   ChevronDown,
   Filter,
   X
 } from 'lucide-react'
-
-interface PurchaseRequestItem {
-  id: string
-  item_name: string
-  quantity: number
-  original_quantity?: number
-  unit: string
-  unit_price: number
-  brand?: string
-  material_class?: string
-  material_group?: string
-  specifications?: string
-  sent_quantity?: number
-}
 
 interface PurchaseRequest {
   id: string
@@ -95,6 +81,7 @@ interface PurchaseRequest {
   unordered_materials_count?: number // Siparişi verilmemiş malzeme sayısı
   overdue_deliveries_count?: number // Teslim alınmamış sipariş sayısı
   it_workflow_applies?: boolean
+  material_names?: string[]
   // Relations
   sites?: Array<{
     name: string
@@ -110,6 +97,95 @@ interface Filters {
   status: string
   sortBy: string
   sortOrder: 'asc' | 'desc'
+}
+
+function isGenericMultiMaterialTitle(title?: string | null) {
+  return /^çoklu malzeme talebi/i.test((title || '').trim())
+}
+
+function displayMaterialNames(request: PurchaseRequest): string[] {
+  if (request.material_names && request.material_names.length > 0) {
+    return request.material_names
+  }
+  const title = request.title?.trim()
+  if (!title || isGenericMultiMaterialTitle(title)) return []
+  return [title]
+}
+
+function RequestMaterialsCell({
+  names,
+  expanded,
+  onToggle,
+}: {
+  names: string[]
+  expanded: boolean
+  onToggle: (event: React.MouseEvent) => void
+}) {
+  const preview = names.slice(0, 2)
+  const overflowCount = Math.max(names.length - 2, 0)
+
+  if (preview.length === 0) {
+    return <span className="text-sm text-gray-400">—</span>
+  }
+
+  return (
+    <div className="flex min-w-0 items-center gap-1.5">
+      <div className="min-w-0 flex-1">
+        {preview.map((name, index) => (
+          <div
+            key={`${name}-${index}`}
+            className="truncate text-sm leading-5 text-gray-800"
+            title={name}
+          >
+            {name}
+          </div>
+        ))}
+      </div>
+      {overflowCount > 0 && (
+        <button
+          type="button"
+          onClick={onToggle}
+          aria-expanded={expanded}
+          aria-label={expanded ? 'Diğer malzemeleri gizle' : `${overflowCount} malzeme daha`}
+          className="inline-flex shrink-0 items-center gap-0.5 rounded-md px-1 py-1 text-gray-500 hover:bg-gray-100 hover:text-gray-800"
+        >
+          <ChevronDown
+            className={`h-4 w-4 transition-transform duration-200 ${expanded ? 'rotate-0' : '-rotate-90'}`}
+          />
+          <span className="text-xs font-medium tabular-nums text-gray-600">+{overflowCount}</span>
+        </button>
+      )}
+    </div>
+  )
+}
+
+async function withMaterialNames(supabase: ReturnType<typeof createClient>, requests: PurchaseRequest[]) {
+  if (requests.length === 0) return requests
+
+  const { data, error } = await supabase
+    .from('purchase_request_items')
+    .select('purchase_request_id, item_name, created_at')
+    .in('purchase_request_id', requests.map((request) => request.id))
+    .order('created_at', { ascending: true })
+
+  if (error) {
+    console.warn('Talep malzemeleri yüklenemedi:', error.message)
+    return requests.map((request) => ({ ...request, material_names: request.material_names || [] }))
+  }
+
+  const namesByRequest = new Map<string, string[]>()
+  for (const item of data || []) {
+    const name = String(item.item_name || '').trim()
+    if (!name || !item.purchase_request_id) continue
+    const list = namesByRequest.get(item.purchase_request_id) || []
+    list.push(name)
+    namesByRequest.set(item.purchase_request_id, list)
+  }
+
+  return requests.map((request) => ({
+    ...request,
+    material_names: namesByRequest.get(request.id) || [],
+  }))
 }
 
 // SWR fetcher fonksiyonu - Optimize edildi, sadece user bilgisi çekiliyor
@@ -213,7 +289,8 @@ const fetchPurchaseRequests = async (
   locationFilter?: string,
   unorderedOnly?: boolean,
   overdueOnly?: boolean,
-  overdueRequestIds?: string[]
+  overdueRequestIds?: string[],
+  lateDeliveryOnly?: boolean
 ) => {
   const segments = key.split('/')
   const page = parseInt(segments[1] || '1', 10)
@@ -394,6 +471,20 @@ const fetchPurchaseRequests = async (
     }
   }
   
+  let lateDeliveryFilterIds: string[] | null = null
+  if (lateDeliveryOnly && effectiveRole === 'purchasing_officer') {
+    try {
+      const userSiteIds = Array.isArray(profile?.site_id) ? profile.site_id : (profile?.site_id ? [profile.site_id] : [])
+      lateDeliveryFilterIds = await fetchLateDeliveryRequestIds(supabase, user.id, userSiteIds)
+      if (lateDeliveryFilterIds.length === 0) {
+        return { requests: [], totalCount: 0 }
+      }
+    } catch (err) {
+      console.error('Late delivery filter error:', err)
+      return { requests: [], totalCount: 0 }
+    }
+  }
+
   // Teslim alınmamış siparişler filtresi
   let overdueFilterIds: string[] | null = null
   if (overdueOnly && overdueRequestIds && overdueRequestIds.length > 0) {
@@ -440,6 +531,15 @@ const fetchPurchaseRequests = async (
     else {
       const o = new Set(overdueFilterIds)
       mergedRequestIdFilter = mergedRequestIdFilter.filter((id) => o.has(id))
+    }
+    if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
+  }
+
+  if (lateDeliveryFilterIds !== null) {
+    if (!mergedRequestIdFilter) mergedRequestIdFilter = [...lateDeliveryFilterIds]
+    else {
+      const late = new Set(lateDeliveryFilterIds)
+      mergedRequestIdFilter = mergedRequestIdFilter.filter((id) => late.has(id))
     }
     if (!mergedRequestIdFilter.length) return { requests: [], totalCount: 0 }
   }
@@ -536,7 +636,10 @@ const fetchPurchaseRequests = async (
       }
     })
 
-    return { requests: formattedIt as unknown as PurchaseRequest[], totalCount: itCount || 0 }
+    return {
+      requests: await withMaterialNames(supabase, formattedIt as unknown as PurchaseRequest[]),
+      totalCount: itCount || 0,
+    }
   }
 
   let countQuery = supabase
@@ -839,7 +942,7 @@ const fetchPurchaseRequests = async (
 
   // "Sipariş verildi" statusundaki talepler için orders'ı ayrı query ile çek
   const orderedRequestIds = formattedRequests
-    .filter(r => r.status === 'sipariş verildi')
+    .filter(r => r.status === 'sipariş verildi' || r.status === 'ordered')
     .map(r => r.id)
   
   const allRequestIds = formattedRequests.map(r => r.id)
@@ -849,7 +952,7 @@ const fetchPurchaseRequests = async (
       try {
         const { data: ordersData, error: ordersError } = await supabase
           .from('orders')
-          .select('id, purchase_request_id, material_item_id, status, quantity, delivered_quantity')
+          .select('id, purchase_request_id, material_item_id, status, quantity, delivered_quantity, delivery_date')
           .in('purchase_request_id', orderedRequestIds)
 
         if (ordersError) {
@@ -875,7 +978,7 @@ const fetchPurchaseRequests = async (
 
   if (ordersOutcome) {
     formattedRequests.forEach((request: any) => {
-      if (request.status === 'sipariş verildi') {
+      if (request.status === 'sipariş verildi' || request.status === 'ordered') {
         request.orders = ordersOutcome.filter(o => o.purchase_request_id === request.id)
       }
     })
@@ -918,7 +1021,10 @@ const fetchPurchaseRequests = async (
     }
   }
 
-  return { requests: formattedRequests, totalCount: count || 0 }
+  return {
+    requests: await withMaterialNames(supabase, formattedRequests),
+    totalCount: count || 0,
+  }
 }
 
 interface PurchaseRequestsTableProps {
@@ -929,6 +1035,8 @@ interface PurchaseRequestsTableProps {
   showOverdueOnly?: boolean // Teslim alınmamış siparişleri göster
   onOverdueFilterChange?: (active: boolean) => void // Filtre değişikliğini parent'a bildir
   overdueRequestIds?: string[] // Teslim alınmamış taleplerin ID'leri
+  showLateDeliveryOnly?: boolean
+  onLateDeliveryFilterChange?: (active: boolean) => void
 }
 
 export default function PurchaseRequestsTable({ 
@@ -938,7 +1046,9 @@ export default function PurchaseRequestsTable({
   onUnorderedFilterChange,
   showOverdueOnly = false,
   onOverdueFilterChange,
-  overdueRequestIds = []
+  overdueRequestIds = [],
+  showLateDeliveryOnly = false,
+  onLateDeliveryFilterChange
 }: PurchaseRequestsTableProps = {}) {
   const router = useRouter()
   const { showToast } = useToast()
@@ -980,15 +1090,18 @@ export default function PurchaseRequestsTable({
     }
     return showOverdueOnly
   })
+  const [lateDeliveryOnlyFilter, setLateDeliveryOnlyFilter] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('late_delivery_filter_active')
+      return saved === 'true' || showLateDeliveryOnly
+    }
+    return showLateDeliveryOnly
+  })
   const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false)
   const [isLocationDropdownOpen, setIsLocationDropdownOpen] = useState(false)
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false) // Mobile filter dropdown
 
-  // Tooltip state'leri
-  const [hoveredRequestId, setHoveredRequestId] = useState<string | null>(null)
-  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 })
-  const [requestMaterials, setRequestMaterials] = useState<{ [requestId: string]: PurchaseRequestItem[] }>({})
-  const [loadingMaterials, setLoadingMaterials] = useState<{ [requestId: string]: boolean }>({})
+  const [expandedMaterialRows, setExpandedMaterialRows] = useState<Record<string, boolean>>({})
   
   // Dropdown state'leri
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null)
@@ -1056,6 +1169,13 @@ export default function PurchaseRequestsTable({
     }
   }, [showOverdueOnly])
 
+  useEffect(() => {
+    setLateDeliveryOnlyFilter(showLateDeliveryOnly)
+    if (showLateDeliveryOnly) {
+      setCurrentPage(1)
+    }
+  }, [showLateDeliveryOnly])
+
   // unorderedOnlyFilter değiştiğinde localStorage'a kaydet
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -1070,56 +1190,11 @@ export default function PurchaseRequestsTable({
     }
   }, [overdueOnlyFilter])
 
-  // Malzeme bilgilerini çekme fonksiyonu
-  const fetchRequestMaterials = async (requestId: string) => {
-    if (requestMaterials[requestId] || loadingMaterials[requestId]) {
-      return // Zaten yüklendi veya yükleniyor
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('late_delivery_filter_active', lateDeliveryOnlyFilter.toString())
     }
-
-    setLoadingMaterials(prev => ({ ...prev, [requestId]: true }))
-
-    try {
-      const supabase = createClient()
-      const { data: materials, error } = await supabase
-        .from('purchase_request_items')
-        .select(`
-          id,
-          item_name,
-          quantity,
-          original_quantity,
-          unit,
-          unit_price,
-          brand,
-          material_class,
-          material_group,
-          specifications,
-          sent_quantity
-        `)
-        .eq('purchase_request_id', requestId)
-        .order('item_name')
-
-      if (error) {
-        console.error('Malzeme bilgileri çekilirken hata:', error)
-        return
-      }
-
-      // original_quantity varsa onu kullan, yoksa quantity kullan
-      const formattedMaterials = materials?.map(material => ({
-        ...material,
-        // original_quantity'yi quantity olarak göster (tooltip için)
-        quantity: material.original_quantity ? Number(material.original_quantity) : material.quantity
-      })) || []
-
-      setRequestMaterials(prev => ({
-        ...prev,
-        [requestId]: formattedMaterials
-      }))
-    } catch (error) {
-      console.error('Malzeme bilgileri çekilirken hata:', error)
-    } finally {
-      setLoadingMaterials(prev => ({ ...prev, [requestId]: false }))
-    }
-  }
+  }, [lateDeliveryOnlyFilter])
 
   // Role prop'tan veya fallback olarak 'user' kullan
   const userRole = propUserRole || 'user'
@@ -1188,7 +1263,7 @@ export default function PurchaseRequestsTable({
   
   // SWR ile cache'li veri çekme - Gelişmiş arama ve filtreleme ile
   const { data, error, isLoading, mutate: refreshData } = useSWR(
-    `purchase_requests/${currentPage}/${pageSize}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${overdueOnlyFilter ? JSON.stringify(overdueRequestIds) : ''}`,
+    `purchase_requests/${currentPage}/${pageSize}/${propListView}/${debouncedSearchTerm}/${statusFilter}/${locationFilter}/${unorderedOnlyFilter}/${overdueOnlyFilter}/${overdueOnlyFilter ? JSON.stringify(overdueRequestIds) : ''}/${lateDeliveryOnlyFilter}`,
     () => fetchPurchaseRequests(
     `purchase_requests/${currentPage}/${pageSize}/${propListView}`,
       userRole,
@@ -1197,7 +1272,8 @@ export default function PurchaseRequestsTable({
       locationFilter,
       unorderedOnlyFilter,
       overdueOnlyFilter,
-      overdueRequestIds
+      overdueRequestIds,
+      lateDeliveryOnlyFilter
     ),
     {
       revalidateOnFocus: true,
@@ -1261,6 +1337,25 @@ export default function PurchaseRequestsTable({
     }
     
     return null
+  }
+
+  const renderDeliveryCountdown = (request: {
+    status?: string
+    site_id?: string | null
+    site_name?: string | null
+    orders?: Parameters<typeof deliveryCountdown>[0]
+  }) => {
+    if (userRole !== 'purchasing_officer') return null
+    if (request.status !== 'sipariş verildi' && request.status !== 'ordered') return null
+    const countdown = deliveryCountdown(request.orders || [])
+    if (!countdown) return null
+    if (countdown.kind === 'overdue' && isHeadOfficeRequest(request.site_id, request.site_name)) return null
+    const overdue = countdown.kind === 'overdue'
+    return (
+      <p className={`max-w-[14rem] text-[11px] leading-snug ${overdue ? 'font-medium text-red-600' : 'text-gray-600'}`}>
+        {countdown.label}
+      </p>
+    )
   }
   
   // Teslimat durumu filtrelemesi - Frontend'de yapılıyor
@@ -1603,27 +1698,13 @@ export default function PurchaseRequestsTable({
     }
   }
 
-  // Hover event handler'ları
-  const handleMouseEnter = (e: React.MouseEvent, requestId: string) => {
-    setTooltipPosition({
-      x: e.clientX + 15, // İmlecin 15px sağında
-      y: e.clientY - 10  // İmlecin 10px üstünde
-    })
-    setHoveredRequestId(requestId)
-    fetchRequestMaterials(requestId)
-  }
-
-  const handleMouseMove = (e: React.MouseEvent) => {
-    if (hoveredRequestId) {
-      setTooltipPosition({
-        x: e.clientX + 15, // İmlecin 15px sağında
-        y: e.clientY - 10  // İmlecin 10px üstünde
-      })
-    }
-  }
-
-  const handleMouseLeave = () => {
-    setHoveredRequestId(null)
+  const toggleMaterialRow = (requestId: string, event: React.MouseEvent) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setExpandedMaterialRows((prev) => ({
+      ...prev,
+      [requestId]: !prev[requestId],
+    }))
   }
 
   // Dropdown toggle fonksiyonu
@@ -1911,6 +1992,15 @@ export default function PurchaseRequestsTable({
           console.log('⚠️ Ana depoda stok yok, direkt satın almaya gönderiliyor')
         }
       }
+
+      const hasItClass = await purchaseRequestHasItMaterialClass(supabase, requestId)
+      const routed = routeItClassAwayFromPurchasing(
+        { newStatus, successMessage, historyComment },
+        hasItClass
+      )
+      newStatus = routed.newStatus
+      successMessage = routed.successMessage
+      historyComment = routed.historyComment
       
       // Optimistic update - UI'ı hemen güncelle
       const optimisticUpdate = data ? {
@@ -1930,6 +2020,7 @@ export default function PurchaseRequestsTable({
         .from('purchase_requests')
         .update({ 
           status: newStatus,
+          ...(routed.itWorkflowApplies ? { it_workflow_applies: true } : {}),
           updated_at: new Date().toISOString()
         })
         .eq('id', requestId)
@@ -1997,42 +2088,34 @@ export default function PurchaseRequestsTable({
 
 
   return (
-    <Card className="bg-transparent border-transparent shadow-none">
+    <Card className="gap-0 bg-transparent border-transparent py-0 shadow-none">
       <CardContent className="p-0">
-        {/* Search Bar ve Tab Menu */}
-        <div className="mb-6">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-           
-            
-            {/* Tab Menu - Sadece site manager için */}
-            {userRole === 'site_manager' && propListView !== 'it' && (
-              <div className="order-2 sm:order-1">
-                <div className="flex items-center gap-2 p-1 bg-gray-50 rounded-lg border border-gray-100">
-                  <button
-                    onClick={() => setActiveTab('approval_pending')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                      activeTab === 'approval_pending'
-                        ? 'bg-black text-white shadow-sm'
-                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
-                    }`}
-                  >
-                    Onay Bekleyenler
-                  </button>
-                  <button
-                    onClick={() => setActiveTab('all')}
-                    className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                      activeTab === 'all'
-                        ? 'bg-black text-white shadow-sm'
-                        : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
-                    }`}
-                  >
-                    Tümü
-                  </button>
-                </div>
-              </div>
-            )}
+        {userRole === 'site_manager' && propListView !== 'it' && (
+          <div className="mb-4">
+            <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-1">
+              <button
+                onClick={() => setActiveTab('approval_pending')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  activeTab === 'approval_pending'
+                    ? 'bg-black text-white shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                Onay Bekleyenler
+              </button>
+              <button
+                onClick={() => setActiveTab('all')}
+                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
+                  activeTab === 'all'
+                    ? 'bg-black text-white shadow-sm'
+                    : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
+                }`}
+              >
+                Tümü
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Tablo */}
         <div className="space-y-3">
@@ -2235,7 +2318,7 @@ export default function PurchaseRequestsTable({
               </div>
               
               {/* Aktif Filtreler */}
-              {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all' || unorderedOnlyFilter || overdueOnlyFilter) && (
+              {(statusFilter !== 'all' || locationFilter !== 'all' || deliveryStatusFilter !== 'all' || unorderedOnlyFilter || overdueOnlyFilter || lateDeliveryOnlyFilter) && (
                 <div className="flex items-center gap-2 flex-wrap">
                   <span className="text-xs text-gray-500">Filtreler:</span>
                   
@@ -2256,6 +2339,20 @@ export default function PurchaseRequestsTable({
                     </Badge>
                   )}
                   
+                  {lateDeliveryOnlyFilter && (
+                    <Badge
+                      variant="outline"
+                      className="cursor-pointer gap-1 border-red-200 bg-white text-red-700 hover:bg-red-50"
+                      onClick={() => {
+                        setLateDeliveryOnlyFilter(false)
+                        onLateDeliveryFilterChange?.(false)
+                      }}
+                    >
+                      Teslimat tarihi geçen talepler
+                      <X className="w-3 h-3" />
+                    </Badge>
+                  )}
+
                   {/* Teslim Alınmamış Siparişler Filtresi */}
                   {overdueOnlyFilter && (
                     <Badge 
@@ -2426,7 +2523,7 @@ export default function PurchaseRequestsTable({
               )}
             </div>
             
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Başlık</div>
+            <div className="text-xs font-medium text-black uppercase tracking-wider">Malzemeler</div>
             
             {/* Lokasyon - Dropdown Filter */}
             <div className="relative">
@@ -2514,6 +2611,9 @@ export default function PurchaseRequestsTable({
                 // Purchasing officer için "depoda mevcut değil" statusunda tıklanamaz
                 const isClickable = (request.status !== 'draft' && request.status !== 'cancelled' && request.status !== 'rejected') &&
                                    !(userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil')
+                const materialNames = displayMaterialNames(request)
+                const overflowNames = materialNames.slice(2)
+                const materialsExpanded = !!expandedMaterialRows[request.id]
                 
                 return (
                 <div 
@@ -2548,30 +2648,15 @@ export default function PurchaseRequestsTable({
                         return getStatusBadge(request.status, request.notifications, request.site_id)
                       })()}
                       {request.status !== 'sipariş verildi' && getStatusBadge(request.status, request.notifications, request.site_id)}
+                      {renderDeliveryCountdown(request)}
                     </div>
 
-                    {/* Başlık */}
-                    <div 
-                      onMouseEnter={(e) => handleMouseEnter(e, request.id)}
-                      onMouseMove={handleMouseMove}
-                      onMouseLeave={handleMouseLeave}
-                      className="cursor-help"
-                    >
-                      <div className="font-normal text-gray-800 mb-1">
-                        {request.title && request.title.length > 30 
-                          ? `${request.title.substring(0, 30)}...` 
-                          : request.title
-                        }
-                      </div>
-                      {request.description && (
-                        <div className="text-sm text-gray-600 line-clamp-2">
-                          {request.description.length > 50 
-                            ? `${request.description.substring(0, 50)}...` 
-                            : request.description
-                          }
-                        </div>
-                      )}
-                    </div>
+                    {/* Malzemeler */}
+                    <RequestMaterialsCell
+                      names={materialNames}
+                      expanded={materialsExpanded}
+                      onToggle={(event) => toggleMaterialRow(request.id, event)}
+                    />
                     
                     {/* Lokasyon */}
                     <div>
@@ -2631,7 +2716,7 @@ export default function PurchaseRequestsTable({
                         </div>
                         <span className="font-semibold text-gray-800">{request.request_number}</span>
                         {/* Siparişi verilmemiş malzeme uyarısı - sadece purchasing_officer için */}
-                        {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
+                        {userRole === 'purchasing_officer' && Number(request.unordered_materials_count) > 0 ? (
                           <Badge 
                             variant="outline" 
                             className="bg-red-600 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
@@ -2639,9 +2724,9 @@ export default function PurchaseRequestsTable({
                           >
                             {request.unordered_materials_count}
                           </Badge>
-                        )}
+                        ) : null}
                         {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
-                        {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
+                        {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
                           <Badge 
                             variant="outline" 
                             className="bg-red-600 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
@@ -2649,7 +2734,7 @@ export default function PurchaseRequestsTable({
                           >
                             {request.overdue_deliveries_count}
                           </Badge>
-                        )}
+                        ) : null}
                       </div>
                     </div>
                     
@@ -2716,23 +2801,12 @@ export default function PurchaseRequestsTable({
                   <div className="md:hidden space-y-3">
                     {/* Header Row - Status & Title */}
                     <div className="flex items-start justify-between gap-3">
-                      <div 
-                        className="flex-1 cursor-help"
-                        onMouseEnter={(e) => handleMouseEnter(e, request.id)}
-                        onMouseMove={handleMouseMove}
-                        onMouseLeave={handleMouseLeave}
-                      >
-                        <div className="font-normal text-gray-800 mb-1">
-                          {request.title}
-                        </div>
-                        {request.description && (
-                          <div className="text-sm text-gray-600 line-clamp-2">
-                            {request.description.length > 80 
-                              ? `${request.description.substring(0, 80)}...` 
-                              : request.description
-                            }
-                          </div>
-                        )}
+                      <div className="min-w-0 flex-1">
+                        <RequestMaterialsCell
+                          names={materialNames}
+                          expanded={materialsExpanded}
+                          onToggle={(event) => toggleMaterialRow(request.id, event)}
+                        />
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <div className="flex flex-col gap-1">
@@ -2753,6 +2827,7 @@ export default function PurchaseRequestsTable({
                             return getStatusBadge(request.status, request.notifications, request.site_id)
                           })()}
                           {request.status !== 'sipariş verildi' && getStatusBadge(request.status, request.notifications, request.site_id)}
+                          {renderDeliveryCountdown(request)}
                         </div>
                         
                         {/* Kebab Menu */}
@@ -2866,7 +2941,7 @@ export default function PurchaseRequestsTable({
                             {request.request_number}
                           </span>
                           {/* Siparişi verilmemiş malzeme uyarısı - sadece purchasing_officer için */}
-                          {userRole === 'purchasing_officer' && request.unordered_materials_count && request.unordered_materials_count > 0 && (
+                          {userRole === 'purchasing_officer' && Number(request.unordered_materials_count) > 0 ? (
                             <Badge 
                               variant="outline" 
                               className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
@@ -2874,9 +2949,9 @@ export default function PurchaseRequestsTable({
                             >
                               {request.unordered_materials_count}
                             </Badge>
-                          )}
+                          ) : null}
                           {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
-                          {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && request.overdue_deliveries_count && request.overdue_deliveries_count > 0 && (
+                          {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
                             <Badge 
                               variant="outline" 
                               className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
@@ -2884,11 +2959,26 @@ export default function PurchaseRequestsTable({
                             >
                               {request.overdue_deliveries_count}
                             </Badge>
-                          )}
+                          ) : null}
                         </div>
                       </div>
                     </div>
                   </div>
+                  {materialsExpanded && overflowNames.length > 0 && (
+                    <div
+                      className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {overflowNames.map((name, nameIndex) => (
+                        <span
+                          key={`${request.id}-extra-${nameIndex}`}
+                          className="rounded-lg bg-gray-50 px-2.5 py-1 text-sm text-gray-800"
+                        >
+                          {name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )})
             )}
@@ -2994,62 +3084,6 @@ export default function PurchaseRequestsTable({
         )}
         
       </CardContent>
-
-      {/* Materials Tooltip */}
-      {hoveredRequestId && (
-        <div 
-          className="fixed z-50 bg-white border border-gray-200 rounded-xl shadow-lg p-4 max-w-sm pointer-events-none"
-          style={{
-            left: tooltipPosition.x,
-            top: tooltipPosition.y
-          }}
-        >
-          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-100">
-            <Box className="w-4 h-4 text-gray-600" />
-            <span className="font-medium text-gray-900 text-sm">Talep Edilen Malzemeler</span>
-          </div>
-          
-          {loadingMaterials[hoveredRequestId] ? (
-            <div className="flex items-center gap-2 py-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-              <span className="text-xs text-gray-500">Yükleniyor...</span>
-            </div>
-          ) : requestMaterials[hoveredRequestId]?.length > 0 ? (
-            <div className="space-y-2 max-h-64 overflow-y-auto">
-              {requestMaterials[hoveredRequestId].map((material, index) => (
-                <div key={material.id} className="flex items-start gap-2 py-1.5 px-2 bg-gray-50 rounded-lg">
-                  <Hash className="w-3 h-3 text-gray-400 mt-0.5 flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-xs text-gray-900 truncate">
-                      {material.item_name}
-                    </div>
-                    <div className="flex items-center gap-2 mt-0.5">
-                      <span className="text-xs text-gray-600">
-                        {material.quantity} {material.unit}
-                      </span>
-                      {material.brand && (
-                        <span className="text-xs text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded">
-                          {material.brand}
-                        </span>
-                      )}
-                    </div>
-                    {material.material_class && (
-                      <div className="text-xs text-gray-500 mt-0.5">
-                        {material.material_class}
-                        {material.material_group && ` • ${material.material_group}`}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-xs text-gray-500 py-2">
-              Malzeme bilgisi bulunamadı
-            </div>
-          )}
-        </div>
-      )}
 
       {/* Delete Confirmation Modal */}
       <Dialog open={showDeleteModal} onOpenChange={setShowDeleteModal}>

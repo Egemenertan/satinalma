@@ -10,6 +10,19 @@ import {
 } from 'react-native'
 import { SwipeDismissSheet } from '../island/SwipeDismissSheet'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import {
+  formatMaterialClassLabel,
+  IT_TRIGGER_MATERIAL_CLASS,
+  IT_TRIGGER_MATERIAL_CLASS_LABEL,
+} from '../../lib/it-workflow'
+
+type MaterialClassOption = { id: string; name: string; display_name?: string | null }
+
+function classLabel(option: MaterialClassOption | undefined, fallbackName: string): string {
+  const custom = option?.display_name?.trim()
+  if (custom) return custom
+  return formatMaterialClassLabel(fallbackName)
+}
 
 type Props = {
   supabase: SupabaseClient
@@ -32,7 +45,7 @@ export function CreateMaterialModalRn({
   restrictToStationery,
   onCreated,
 }: Props) {
-  const [classes, setClasses] = useState<{ id: string; name: string }[]>([])
+  const [classes, setClasses] = useState<MaterialClassOption[]>([])
   const [groups, setGroups] = useState<string[]>([])
   const [cls, setCls] = useState(initialClass)
   const [grp, setGrp] = useState(initialGroup)
@@ -58,12 +71,25 @@ export function CreateMaterialModalRn({
       const types = restrictToStationery ? ['ofis'] : ['insaat']
       const { data, error } = await supabase
         .from('material_categories')
-        .select('id, name')
+        .select('id, name, display_name')
         .in('category_type', types)
         .eq('is_active', true)
         .order('display_order')
       if (error) throw error
-      setClasses((data as { id: string; name: string }[]) ?? [])
+      let rows = (data as MaterialClassOption[]) ?? []
+      if (!rows.some((cat) => cat.name === IT_TRIGGER_MATERIAL_CLASS)) {
+        const { data: itClass } = await supabase
+          .from('material_categories')
+          .select('id, name, display_name')
+          .eq('name', IT_TRIGGER_MATERIAL_CLASS)
+          .eq('is_active', true)
+          .maybeSingle()
+        if (itClass) rows = [...rows, itClass as MaterialClassOption]
+      }
+      rows.sort((a, b) =>
+        classLabel(a, a.name).localeCompare(classLabel(b, b.name), 'tr')
+      )
+      setClasses(rows)
     } catch {
       setClasses([])
     } finally {
@@ -137,6 +163,11 @@ export function CreateMaterialModalRn({
     <SwipeDismissSheet visible={visible} onRequestClose={onClose} title="Yeni malzeme ekle" maxHeightRatio={0.9}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }} keyboardShouldPersistTaps="handled">
         <Text style={styles.subtitle}>Aradığınız malzemeyi sisteme ekleyin</Text>
+        <View style={styles.note}>
+          <Text style={styles.noteText}>
+            IT malzemeleri, {IT_TRIGGER_MATERIAL_CLASS_LABEL} kategorisinden talep edilmelidir.
+          </Text>
+        </View>
 
         {/* Malzeme Sınıfı */}
         <Text style={styles.label}>Malzeme sınıfı</Text>
@@ -145,7 +176,7 @@ export function CreateMaterialModalRn({
           onPress={() => togglePicker('class')}
         >
           <Text style={cls ? styles.selectText : styles.selectPlaceholder}>
-            {cls || 'Sınıf seçin…'}
+            {cls ? classLabel(classes.find((c) => c.name === cls), cls) : 'Sınıf seçin…'}
           </Text>
           <Text style={styles.chevron}>{expandedPicker === 'class' ? '▲' : '▼'}</Text>
         </Pressable>
@@ -169,7 +200,7 @@ export function CreateMaterialModalRn({
                     }}
                   >
                     <Text style={[styles.pickerRowText, cls === c.name && styles.pickerRowTextSelected]}>
-                      {c.name}
+                      {classLabel(c, c.name)}
                     </Text>
                     {cls === c.name && <Text style={styles.checkmark}>✓</Text>}
                   </Pressable>
@@ -258,7 +289,15 @@ export function CreateMaterialModalRn({
 }
 
 const styles = StyleSheet.create({
-  subtitle: { fontSize: 14, color: '#6b7280', marginTop: 2, marginBottom: 18 },
+  subtitle: { fontSize: 14, color: '#6b7280', marginTop: 2, marginBottom: 12 },
+  note: {
+    backgroundColor: '#f5f5f7',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    marginBottom: 16,
+  },
+  noteText: { fontSize: 13, lineHeight: 18, color: '#1d1d1f' },
   label: { fontSize: 13, fontWeight: '600', color: '#374151', marginBottom: 8, marginTop: 4 },
   select: {
     borderRadius: 12,

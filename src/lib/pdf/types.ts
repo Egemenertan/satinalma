@@ -35,6 +35,7 @@ export interface PDFStatistics {
 export interface PDFRequestData {
   id: string
   title: string
+  request_number?: string
   created_at: string
   status: string
   urgency_level: string

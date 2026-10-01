@@ -79,6 +79,7 @@ export default function ProductsPage() {
     return {
       ...baseFilters,
       allowedWarehouseIds: warehouseAccess.warehouseIds,
+      useDepotZimmetQty: true,
     }
   }, [baseFilters, warehouseAccess])
 
@@ -181,9 +182,8 @@ export default function ProductsPage() {
 
   const isRestrictedView = warehouseAccess.isRestricted && warehouseAccess.warehouseIds.length > 0
   const canManageProducts = warehouseAccess.canManageProducts
-  const canOperateStock =
-    warehouseAccess.canManageAll ||
-    (!!siteId && warehouseAccess.manageWarehouseIds.includes(siteId))
+  // Depoya bağlı kullanıcı yalnızca kendi stoğunu görür; stok işlemi depo yöneticisinde kalır.
+  const canOperateStock = warehouseAccess.canManageAll
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
 
   const handleOpenCreateModal = () => {
@@ -579,6 +579,7 @@ export default function ProductsPage() {
             selectedSiteId={siteId}
             selectedProducts={selectedProducts}
             onSelectionChange={canOperateStock ? handleSelectionChange : undefined}
+            ownWarehouseView={isRestrictedView}
           />
 
           {totalPages > 1 && (
@@ -631,6 +632,7 @@ export default function ProductsPage() {
         selectedProductIds={selectedProducts}
         defaultWarehouseId={siteId || undefined}
         canOperateStock={canOperateStock}
+        scopeWarehouseIds={isRestrictedView ? warehouseAccess.warehouseIds : undefined}
       />
 
       {canOperateStock && showBulkActions && (

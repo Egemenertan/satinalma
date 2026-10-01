@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { Input } from '@/components/ui/input'
 import { Search, Loader2, Package } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { formatMaterialClassLabel } from '@/lib/it-workflow'
 
 interface SearchResult {
   class: string
@@ -142,13 +143,14 @@ export function MaterialSearchBar({
           'Kırtasiye Malzemeleri',
           'Reklam Ürünleri',
           'Ofis Ekipmanları',
+          'Ofis Mobilyaları',
           'Promosyon Ürünleri',
           'Mutfak Malzemeleri',
           'Hijyen ve Temizlik'
         ])
       } else if (categoryNames.length === 0 && !restrictToStationery) {
         // Geriye dönük fallback (şantiye kullanıcıları)
-        searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
+        searchQuery = searchQuery.not('class', 'in', '("Kırtasiye Malzemeleri","Reklam Ürünleri","Ofis Ekipmanları","Ofis Mobilyaları","Promosyon Ürünleri","Mutfak Malzemeleri","Hijyen ve Temizlik")')
       }
       
       const { data, error } = await searchQuery
@@ -252,7 +254,7 @@ export function MaterialSearchBar({
           class: item.class || '',
           group: item.group || '',
           item_name: item.item_name || '',
-          display_text: `${item.item_name} - ${item.group} - ${item.class}`,
+          display_text: `${item.item_name} - ${item.group} - ${formatMaterialClassLabel(item.class)}`,
           score: item.priority
         }))
         setSearchResults(results)

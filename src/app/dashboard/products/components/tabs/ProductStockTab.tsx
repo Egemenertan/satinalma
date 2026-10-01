@@ -19,6 +19,9 @@ interface ProductStockTabProps {
   totalStock: number
   /** İnceleme: zimmet değiştirme ve kaldırma kapalı */
   readOnly?: boolean
+  /** Doluysa stok ve zimmet yalnızca bu depolarla sınırlanır */
+  scopeWarehouseIds?: string[]
+  stockLoading?: boolean
 }
 
 interface UserInventory {
@@ -97,26 +100,181 @@ function groupWarehouseStocks(stockData: any[] | undefined) {
   return [...map.values()].filter((s) => Number(s.quantity) > 0)
 }
 
-export function ProductStockTab({ product, stockData, totalStock, readOnly = false }: ProductStockTabProps) {
+function ScopedDepotStock({
+  warehouseIds,
+  stockData,
+  inventories,
+  unit,
+  productName,
+}: {
+  warehouseIds: string[]
+  stockData: any[] | undefined
+  inventories: UserInventory[]
+  unit: string
+  productName?: string
+}) {
+  const cards = warehouseIds.map((warehouseId) => {
+    const stocks = (stockData || []).filter(
+      (stock) =>
+        stock.warehouse_id === warehouseId &&
+        (stock.user_id == null || stock.user_id === undefined)
+    )
+    const stockQty = stocks.reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
+    const zimmets = inventories.filter((inv) => inv.source_warehouse_id === warehouseId)
+    const zimmetQty = zimmets.reduce((sum, inv) => sum + (Number(inv.quantity) || 0), 0)
+    const name =
+      stocks.map((stock) => stock.warehouse?.name).find(Boolean) ||
+      zimmets.map((inv) => inv.source_warehouse?.name).find(Boolean) ||
+      'Depo'
+    return { warehouseId, name, stockQty, zimmetQty, zimmets }
+  })
+
+  const hasAny = cards.some((card) => card.stockQty > 0 || card.zimmets.length > 0)
+  if (!hasAny) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
+          <Package className="w-10 h-10 text-gray-400" />
+        </div>
+        <p className="text-gray-500 text-lg font-medium">Bu depoda kayıt yok</p>
+        <p className="text-sm text-gray-400 mt-1">Sorumlu olduğunuz depoda bu ürüne ait stok veya zimmet bulunamadı.</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {productName && (
+        <p className="text-sm text-gray-500">{productName}</p>
+      )}
+      {cards.map((card) => {
+        const adet = card.zimmetQty > 0 ? card.zimmetQty : card.stockQty
+        return (
+          <div key={card.warehouseId} className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="p-6 flex items-start justify-between gap-4 border-b border-gray-100">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-gray-500 shrink-0" />
+                  <h3 className="text-base font-semibold text-gray-900 truncate">{card.name}</h3>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">Sorumlu olduğunuz depo</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-3xl font-bold text-gray-900 tabular-nums">
+                  {adet.toLocaleString('tr-TR')}
+                </p>
+                <p className="text-xs text-gray-500">{unit}</p>
+              </div>
+            </div>
+
+            {(card.stockQty > 0 || card.zimmetQty > 0) && (
+              <div className="px-6 py-4 grid grid-cols-2 gap-3 bg-gray-50/70">
+                <div>
+                  <p className="text-xs text-gray-500">Depo stoğu</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums">
+                    {card.stockQty.toLocaleString('tr-TR')} {unit}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Zimmet</p>
+                  <p className="text-lg font-semibold text-gray-900 tabular-nums">
+                    {card.zimmetQty.toLocaleString('tr-TR')} {unit}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div className="px-6 py-4">
+              {card.zimmets.length === 0 ? (
+                <p className="text-sm text-gray-500">Bu depoda aktif zimmet yok.</p>
+              ) : (
+                <div className="space-y-2">
+                  {card.zimmets.map((inv) => {
+                    const person = inv.owner_name || inv.user?.full_name || 'Zimmetli'
+                    return (
+                      <div
+                        key={inv.id}
+                        className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 px-3 py-2.5"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <User className="h-4 w-4 text-emerald-700 shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{person}</p>
+                            {inv.serial_number && (
+                              <p className="text-[11px] font-mono text-gray-500 truncate">SN: {inv.serial_number}</p>
+                            )}
+                          </div>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900 shrink-0 tabular-nums">
+                          {Number(inv.quantity || 0).toLocaleString('tr-TR')} {unit}
+                        </p>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function ProductStockTab({
+  product,
+  stockData,
+  totalStock,
+  readOnly = false,
+  scopeWarehouseIds,
+  stockLoading = false,
+}: ProductStockTabProps) {
   const queryClient = useQueryClient()
   const [expandedStockIds, setExpandedStockIds] = useState<Set<string>>(new Set())
   const [userInventories, setUserInventories] = useState<UserInventory[]>([])
-  const [loadingInventories, setLoadingInventories] = useState(false)
+  const [loadingInventories, setLoadingInventories] = useState(true)
   const [showUserInventories, setShowUserInventories] = useState(true)
   const [serialsByWarehouseId, setSerialsByWarehouseId] = useState<Record<string, string[]>>({})
   const [changeTarget, setChangeTarget] = useState<ZimmetActionTarget | null>(null)
   const [removeTarget, setRemoveTarget] = useState<ZimmetActionTarget | null>(null)
   const supabase = createClient()
 
+  const scopeKey = (scopeWarehouseIds || []).filter(Boolean).join(',')
+
   useEffect(() => {
-    if (product?.id) {
-      fetchUserInventories()
-      fetchGirisSerialNumbers()
+    if (!product?.id) {
+      setLoadingInventories(false)
+      return
     }
-  }, [product?.id])
+    let cancelled = false
+    const load = async () => {
+      setLoadingInventories(true)
+      try {
+        const rows = await fetchUserInventories()
+        if (!cancelled) setUserInventories(rows)
+      } catch (error) {
+        console.error('Kullanıcı zimmetleri yüklenemedi:', error)
+        if (!cancelled) setUserInventories([])
+      } finally {
+        if (!cancelled) setLoadingInventories(false)
+      }
+    }
+    load()
+    fetchGirisSerialNumbers()
+    return () => {
+      cancelled = true
+    }
+    // scopeKey depo listesini temsil eder
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product?.id, scopeKey])
 
   const refreshAfterZimmetChange = async () => {
-    await fetchUserInventories()
+    try {
+      const rows = await fetchUserInventories()
+      setUserInventories(rows)
+    } catch (error) {
+      console.error('Kullanıcı zimmetleri yüklenemedi:', error)
+    }
     if (product?.id) {
       queryClient.invalidateQueries({ queryKey: ['product-stock', product.id] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements', product.id] })
@@ -157,10 +315,26 @@ export function ProductStockTab({ product, stockData, totalStock, readOnly = fal
     }
   }
 
-  const fetchUserInventories = async () => {
-    try {
-      setLoadingInventories(true)
-      const { data, error } = await supabase
+  const fetchUserInventories = async (): Promise<UserInventory[]> => {
+    if (!product?.id) return []
+    const warehouseIds = (scopeWarehouseIds || []).filter(Boolean)
+    const formatRows = (data: any[] | null): UserInventory[] =>
+      (data || []).map((item: any) => ({
+        ...item,
+        user: Array.isArray(item.user) ? item.user[0] : item.user,
+        source_warehouse: Array.isArray(item.source_warehouse)
+          ? item.source_warehouse[0]
+          : item.source_warehouse,
+      }))
+
+    const applyWarehouse = (query: any) => {
+      if (warehouseIds.length === 1) return query.eq('source_warehouse_id', warehouseIds[0])
+      if (warehouseIds.length > 1) return query.in('source_warehouse_id', warehouseIds)
+      return query
+    }
+
+    const rich = await applyWarehouse(
+      supabase
         .from('user_inventory')
         .select(`
           id,
@@ -179,23 +353,32 @@ export function ProductStockTab({ product, stockData, totalStock, readOnly = fal
         .eq('product_id', product.id)
         .eq('status', 'active')
         .order('assigned_date', { ascending: false })
+    )
 
-      if (error) throw error
+    if (!rich.error) return formatRows(rich.data)
 
-      const formattedData = (data || []).map((item: any) => ({
-        ...item,
-        user: Array.isArray(item.user) ? item.user[0] : item.user,
-        source_warehouse: Array.isArray(item.source_warehouse)
-          ? item.source_warehouse[0]
-          : item.source_warehouse,
-      }))
-
-      setUserInventories(formattedData)
-    } catch (error) {
-      console.error('Kullanıcı zimmetleri yüklenemedi:', error)
-    } finally {
-      setLoadingInventories(false)
-    }
+    console.error('Zimmet ayrıntısı okunamadı, temel kayıt deneniyor:', rich.error)
+    const plain = await applyWarehouse(
+      supabase
+        .from('user_inventory')
+        .select(`
+          id,
+          quantity,
+          serial_number,
+          assigned_date,
+          status,
+          owner_name,
+          owner_email,
+          pending_user_name,
+          pending_user_email,
+          source_warehouse_id
+        `)
+        .eq('product_id', product.id)
+        .eq('status', 'active')
+        .order('assigned_date', { ascending: false })
+    )
+    if (plain.error) throw plain.error
+    return formatRows(plain.data)
   }
 
   const toggleStockExpand = (stockId: string) => {
@@ -210,16 +393,48 @@ export function ProductStockTab({ product, stockData, totalStock, readOnly = fal
     })
   }
 
-  const groupedUserInventories = groupZimmetsByOwner(userInventories)
+  const allowedWarehouseIds = scopeWarehouseIds?.filter(Boolean) ?? []
+  const warehouseFilter =
+    allowedWarehouseIds.length > 0 ? new Set(allowedWarehouseIds) : null
+  const visibleInventories = warehouseFilter
+    ? userInventories.filter(
+        (inv) => inv.source_warehouse_id && warehouseFilter.has(inv.source_warehouse_id)
+      )
+    : userInventories
+
+  const groupedUserInventories = groupZimmetsByOwner(visibleInventories)
   const totalUserInventory = groupedUserInventories.reduce(
     (sum, inv) => sum + parseFloat(inv.quantity.toString()),
     0
   )
 
   // Sadece ana depo stoklarını göster (user_id: null olanlar) — aynı depo tek kart
-  const warehouseStocks = groupWarehouseStocks(stockData)
+  const warehouseStocks = groupWarehouseStocks(stockData).filter(
+    (stock) => !warehouseFilter || warehouseFilter.has(stock.warehouse_id)
+  )
 
-  if ((!warehouseStocks || warehouseStocks.length === 0) && userInventories.length === 0 && !loadingInventories) {
+  if (stockLoading || loadingInventories) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin mb-4" />
+        <p className="text-gray-500 text-lg font-medium">Stok bilgisi yükleniyor...</p>
+      </div>
+    )
+  }
+
+  if (allowedWarehouseIds.length > 0) {
+    return (
+      <ScopedDepotStock
+        warehouseIds={allowedWarehouseIds}
+        stockData={stockData}
+        inventories={visibleInventories}
+        unit={product?.unit || 'adet'}
+        productName={product?.name}
+      />
+    )
+  }
+
+  if ((!warehouseStocks || warehouseStocks.length === 0) && visibleInventories.length === 0 && !loadingInventories) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <div className="w-20 h-20 rounded-full bg-gray-100 flex items-center justify-center mb-4">
@@ -246,7 +461,7 @@ export function ProductStockTab({ product, stockData, totalStock, readOnly = fal
   const zimmetsForWarehouse = (warehouseId: string | null | undefined) => {
     if (!warehouseId) return []
     return groupZimmetsByOwner(
-      userInventories.filter((inv) => inv.source_warehouse_id === warehouseId)
+      visibleInventories.filter((inv) => inv.source_warehouse_id === warehouseId)
     )
   }
 
@@ -255,9 +470,13 @@ export function ProductStockTab({ product, stockData, totalStock, readOnly = fal
     return serialsByWarehouseId[warehouseId] || []
   }
 
-  const allGirisSerialsUnique = [...new Set(Object.values(serialsByWarehouseId).flat())].sort((a, b) =>
-    a.localeCompare(b, 'tr')
-  )
+  const allGirisSerialsUnique = [
+    ...new Set(
+      Object.entries(serialsByWarehouseId)
+        .filter(([warehouseId]) => !warehouseFilter || warehouseFilter.has(warehouseId))
+        .flatMap(([, serials]) => serials)
+    ),
+  ].sort((a, b) => a.localeCompare(b, 'tr'))
 
   return (
     <>

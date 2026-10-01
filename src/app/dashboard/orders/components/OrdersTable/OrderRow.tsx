@@ -16,6 +16,8 @@ interface OrderRowProps {
   onViewDeliveryPhotos: () => void
   onExportPDF: () => void
   isLoadingPDF: boolean
+  /** Aynı numaralı satırlar grup başlığında gösterildiğinde satırda tekrarlanmaz. */
+  showOrderNumber?: boolean
 }
 
 export function OrderRow({
@@ -26,6 +28,7 @@ export function OrderRow({
   onViewDeliveryPhotos,
   onExportPDF,
   isLoadingPDF,
+  showOrderNumber = true,
 }: OrderRowProps) {
   return (
     <div 
@@ -54,13 +57,15 @@ export function OrderRow({
       
       {/* Tedarikçi */}
       <div className="min-w-0">
-        <div
-          className="font-mono text-[11px] font-semibold text-gray-900 leading-tight"
-          title={order.order_number || undefined}
-        >
-          Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
-        </div>
-        <div className="font-medium text-gray-900 text-sm break-words leading-tight mt-1">
+        {showOrderNumber && (
+          <div
+            className="font-mono text-[11px] font-semibold text-gray-900 leading-tight"
+            title={order.order_number || undefined}
+          >
+            Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
+          </div>
+        )}
+        <div className={`font-medium text-gray-900 text-sm break-words leading-tight ${showOrderNumber ? 'mt-1' : ''}`}>
           {order.suppliers?.name || 'Tedarikçi belirtilmemiş'}
         </div>
         {order.suppliers?.contact_person && (

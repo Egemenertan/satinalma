@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useMemo, useState } from 'react'
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
@@ -23,6 +23,15 @@ import ItWorkflowView from '@/components/offers/ItWorkflowView'
 import RequestActivityTimeline from '@/components/offers/RequestActivityTimeline'
 import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="px-4 py-2.5">
+      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <div className="mt-0.5 text-sm text-gray-900 break-words">{children}</div>
+    </div>
+  )
+}
+
 export default function OffersPage() {
   const params = useParams()
   const router = useRouter()
@@ -34,6 +43,8 @@ export default function OffersPage() {
   const [contractBindings, setContractBindings] = useState<RequestContractBinding[]>([])
   const [waybillBinding, setWaybillBinding] = useState<RequestContractBinding | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const columnsRef = useRef<HTMLDivElement>(null)
+  const [asideOffset, setAsideOffset] = useState(0)
 
   // Fetch all data using custom hook
   const {
@@ -72,6 +83,37 @@ export default function OffersPage() {
       .catch((error) => console.error('Sözleşme bilgisi yüklenemedi:', error))
   }, [contractItemIds, request?.updated_at])
 
+  useLayoutEffect(() => {
+    const columns = columnsRef.current
+    if (!columns) return
+
+    const measure = () => {
+      if (window.innerWidth < 1024) {
+        setAsideOffset((current) => (current === 0 ? current : 0))
+        return
+      }
+      const list = columns.querySelector<HTMLElement>('[data-material-list]')
+      if (!list) {
+        setAsideOffset((current) => (current === 0 ? current : 0))
+        return
+      }
+      const next = Math.max(
+        0,
+        Math.round(list.getBoundingClientRect().top - columns.getBoundingClientRect().top)
+      )
+      setAsideOffset((current) => (current === next ? current : next))
+    }
+
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(columns)
+    window.addEventListener('resize', measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener('resize', measure)
+    }
+  }, [request?.updated_at, contractBindings.length, userRole, loading])
+
   // Retry function for error recovery
   const handleRetry = () => {
     refreshData()
@@ -80,41 +122,31 @@ export default function OffersPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50">
-        {/* Header Skeleton */}
-        <div className="bg-white border-b border-gray-200">
-          <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
-            <div className="hidden sm:flex items-center justify-between h-16">
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-9 bg-gray-200 animate-pulse rounded-lg"></div>
-                <div className="w-px h-6 bg-gray-200"></div>
-                <div>
-                  <div className="w-32 h-5 bg-gray-200 animate-pulse rounded mb-1"></div>
-                  <div className="w-24 h-4 bg-gray-200 animate-pulse rounded"></div>
-                </div>
+        <div className="bg-white border border-gray-200 rounded-2xl px-4">
+          <div className="hidden sm:flex items-center justify-between h-14">
+            <div className="flex items-center gap-3">
+              <div className="w-16 h-8 bg-gray-200 animate-pulse rounded-lg"></div>
+              <div className="w-px h-5 bg-gray-200"></div>
+              <div>
+                <div className="w-32 h-4 bg-gray-200 animate-pulse rounded mb-1"></div>
+                <div className="w-24 h-3 bg-gray-200 animate-pulse rounded"></div>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="w-16 h-6 bg-gray-200 animate-pulse rounded"></div>
-                <div className="w-24 h-6 bg-gray-200 animate-pulse rounded"></div>
-              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-16 h-6 bg-gray-200 animate-pulse rounded"></div>
+              <div className="w-24 h-6 bg-gray-200 animate-pulse rounded"></div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
-          <div className="space-y-4 sm:space-y-8">
-            {/* Site Name Skeleton */}
-            <div className="mb-4 sm:mb-8">
-              <div className="w-64 h-8 bg-gray-200 animate-pulse rounded"></div>
-            </div>
-
-            {/* Request Details Skeleton */}
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)] gap-4">
+          <div className="space-y-3">
             <SkeletonCard />
-
-            {/* Content Skeleton */}
-            <div className="space-y-6">
-              <SkeletonCard />
-              <SkeletonCard />
-            </div>
+            <SkeletonCard />
+          </div>
+          <div className="space-y-4">
+            <SkeletonCard />
+            <SkeletonCard />
           </div>
         </div>
       </div>
@@ -315,13 +347,19 @@ export default function OffersPage() {
     }
   }
 
+  const locationName =
+    request.site_name ||
+    request.sites?.name ||
+    request.construction_sites?.name ||
+    request.department
+
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Sade Header */}
-      <div className="bg-white rounded-3xl border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8">
+      {/* Başlık — alttaki iki sütunla aynı genişlik */}
+      <div className="bg-white rounded-2xl border border-gray-200">
+        <div className="px-3 sm:px-4">
           {/* Desktop Layout */}
-          <div className="hidden sm:flex items-center justify-between h-16">
+          <div className="hidden sm:flex items-center justify-between h-14">
             {/* Sol taraf - Geri butonu ve başlık */}
             <div className="flex items-center gap-4">
               <Button
@@ -410,147 +448,114 @@ export default function OffersPage() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-2 sm:px-6 lg:px-8 py-4 sm:py-8">
-        <div className="space-y-4 sm:space-y-8">
-          
-          {/* Lokasyon Bilgisi - Sade */}
-          <div className="mb-3 sm:mb-8">
-            {request.site_name ? (
-              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.site_name}</h2>
-            ) : request.sites ? (
-              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.sites.name}</h2>
-            ) : request.construction_sites ? (
-              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.construction_sites.name}</h2>
-            ) : (
-              <h2 className="text-base sm:text-3xl font-semibold text-gray-900 break-words">{request.department}</h2>
-            )}
-          </div>
-
-          {/* Reddedilme Nedeni - Sadece reddedildi status'unda göster */}
-          {request.status === 'reddedildi' && request.rejection_reason && (
-            <div className="mb-4 sm:mb-8">
-              <div className="bg-red-50 border border-red-200 rounded-lg">
-                <div className="p-6">
-                  <div className="flex items-start gap-3">
-                    <div className="flex-shrink-0">
-                      <AlertCircle className="h-5 w-5 text-red-600 mt-0.5" />
-                    </div>
-                    <div className="flex-1">
-                      <h3 className="text-lg font-semibold text-red-900 mb-2">Talep Reddedildi</h3>
-                      <p className="text-sm font-medium text-red-800 mb-2">Reddedilme Nedeni:</p>
-                      <p className="text-sm text-red-700 leading-relaxed bg-red-100 rounded-lg p-4">
-                        {request.rejection_reason}
-                      </p>
-                    </div>
-                  </div>
-                </div>
+      <div className="mt-3 space-y-3">
+        {request.status === 'reddedildi' && request.rejection_reason && (
+          <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+            <div className="flex items-start gap-2.5">
+              <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <h3 className="text-sm font-semibold text-red-900">Talep Reddedildi</h3>
+                <p className="mt-1 text-sm text-red-800 leading-relaxed break-words">
+                  {request.rejection_reason}
+                </p>
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Talep Detayları - Tek Kolon */}
-          <div className="mb-3 sm:mb-8">
-            <div className="bg-white border-0 shadow-sm rounded-3xl">
-              <div className="p-3 sm:p-6">
-                <h3 className="text-base sm:text-xl font-semibold text-gray-900 mb-3 sm:mb-6">Talep Detayları</h3>
+        <div
+          ref={columnsRef}
+          className="grid grid-cols-1 items-start gap-3 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]"
+        >
+          <div className="min-w-0 space-y-3">
+            {contractBindings.length > 0 && (
+              <RequestContractBindingsList
+                bindings={contractBindings}
+                showOrderHint={['purchasing_officer', 'admin', 'manager'].includes(userRole)}
+                canUploadWaybill={
+                  currentUserId === request.requested_by ||
+                  ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici', 'warehouse_manager', 'department_head'].includes(userRole)
+                }
+                onUploadWaybill={setWaybillBinding}
+              />
+            )}
+
+            {renderUserView()}
+          </div>
+
+          <aside
+            className="min-w-0 space-y-3 lg:sticky lg:top-24 lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto"
+            style={asideOffset > 0 ? { marginTop: asideOffset } : undefined}
+          >
+            <section className="rounded-2xl border border-gray-200 bg-white">
+              <div className="border-b border-gray-100 px-4 py-3">
+                <h3 className="text-sm font-semibold text-gray-900">Talep Detayları</h3>
               </div>
-              <div className="px-3 sm:px-6 pb-3 sm:pb-6 space-y-3 sm:space-y-6">
-                <div>
-                  <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Başlık</p>
-                  <p className="text-sm sm:text-lg font-medium text-gray-900 break-words">{request.title}</p>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                  <div>
-                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Departman</p>
-                    <p className="text-xs sm:text-base text-gray-900 break-words">{request.department}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Talep Eden</p>
-                    <p className="text-xs sm:text-base text-gray-900 break-words">
-                      {request.profiles?.full_name || 'Kullanıcı bilgisi bulunamadı'}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Talep Tarihi</p>
-                    <p className="text-xs sm:text-base text-gray-900">{new Date(request.created_at).toLocaleDateString('tr-TR')}</p>
-                  </div>
-                  {request.delivery_date && (
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Gerekli Tarih</p>
-                      <p className="text-xs sm:text-base text-gray-900">{new Date(request.delivery_date).toLocaleDateString('tr-TR')}</p>
-                    </div>
-                  )}
-                  {/* Kategori Bilgileri */}
-                  {request.category_name && (
-                    <div className="sm:col-span-2">
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Malzeme Kategorisi</p>
-                      <p className="text-xs sm:text-base text-gray-900 break-words">{request.category_name}</p>
-                      {request.subcategory_name && (
-                        <p className="text-xs sm:text-sm text-gray-600 mt-1 break-words">→ {request.subcategory_name}</p>
-                      )}
-                    </div>
-                  )}
-                  {/* Malzeme Sınıf ve Grup Bilgileri */}
-                  {(request.material_class || request.material_group) && (
-                    <div className="sm:col-span-2 lg:col-span-3">
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Malzeme Sınıflandırması</p>
-                      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+              <div className="divide-y divide-gray-100">
+                <DetailRow label="Başlık">
+                  <span className="font-medium">{request.title}</span>
+                </DetailRow>
+                <DetailRow label="Lokasyon">{locationName}</DetailRow>
+                <DetailRow label="Departman">{request.department}</DetailRow>
+                <DetailRow label="Talep Eden">
+                  {request.profiles?.full_name || 'Kullanıcı bilgisi bulunamadı'}
+                </DetailRow>
+                <DetailRow label="Talep Tarihi">
+                  {new Date(request.created_at).toLocaleDateString('tr-TR')}
+                </DetailRow>
+                {request.delivery_date && (
+                  <DetailRow label="Gerekli Tarih">
+                    {new Date(request.delivery_date).toLocaleDateString('tr-TR')}
+                  </DetailRow>
+                )}
+                {request.category_name && (
+                  <DetailRow label="Malzeme Kategorisi">
+                    <span>{request.category_name}</span>
+                    {request.subcategory_name && (
+                      <p className="mt-0.5 text-xs text-gray-600">→ {request.subcategory_name}</p>
+                    )}
+                  </DetailRow>
+                )}
+                {(request.material_class || request.material_group) && (
+                  <DetailRow label="Malzeme Sınıflandırması">
+                    <div className="flex flex-wrap items-center gap-2">
                       {request.material_class && (
-                          <div className="flex items-center gap-1.5 sm:gap-2">
-                          <span className="text-[10px] sm:text-xs bg-gray-100 text-gray-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md font-medium">Sınıf</span>
-                          <p className="text-xs sm:text-base text-gray-900 break-words">{request.material_class}</p>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-700">Sınıf</span>
+                          {request.material_class}
+                        </span>
                       )}
                       {request.material_group && (
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <span className="text-[10px] sm:text-xs bg-blue-100 text-blue-700 px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md font-medium">Grup</span>
-                          <p className="text-xs sm:text-base text-gray-900 break-words">{request.material_group}</p>
-                        </div>
+                        <span className="inline-flex items-center gap-1.5">
+                          <span className="rounded-md bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">Grup</span>
+                          {request.material_group}
+                        </span>
                       )}
-                      </div>
                     </div>
-                  )}
-                </div>
-                  {request.description && (
-                    <div>
-                      <p className="text-xs sm:text-sm font-medium text-gray-500 mb-1 sm:mb-2">Açıklama</p>
-                    <p className="text-xs sm:text-sm text-gray-700 leading-relaxed bg-gray-50 rounded-lg p-3 sm:p-4 break-words">{request.description}</p>
-                    </div>
-                  )}
+                  </DetailRow>
+                )}
+                {request.description && (
+                  <DetailRow label="Açıklama">
+                    <p className="text-sm leading-relaxed text-gray-700">{request.description}</p>
+                  </DetailRow>
+                )}
               </div>
-            </div>
-          </div>
+            </section>
 
-          {contractBindings.length > 0 && (
-            <RequestContractBindingsList
-              bindings={contractBindings}
-              showOrderHint={['purchasing_officer', 'admin', 'manager'].includes(userRole)}
-              canUploadWaybill={
-                currentUserId === request.requested_by ||
-                ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici', 'warehouse_manager', 'department_head'].includes(userRole)
-              }
-              onUploadWaybill={setWaybillBinding}
-            />
-          )}
-
-          {/* Tüm roller için ortak talep / durum geçmişi */}
-          <RequestActivityTimeline requestId={requestId} refreshKey={request.updated_at} />
-
-          <ContractWaybillModal
-            open={!!waybillBinding}
-            onOpenChange={(open) => !open && setWaybillBinding(null)}
-            binding={waybillBinding}
-            showToast={showToast}
-            onSuccess={() => {
-              refreshData()
-              fetchRequestContractBindings(contractItemIds).then(setContractBindings)
-            }}
-          />
-
-          {/* Kullanıcı rolüne göre uygun view'i render et */}
-          {renderUserView()}
-
+            <RequestActivityTimeline requestId={requestId} refreshKey={request.updated_at} />
+          </aside>
         </div>
+
+        <ContractWaybillModal
+          open={!!waybillBinding}
+          onOpenChange={(open) => !open && setWaybillBinding(null)}
+          binding={waybillBinding}
+          showToast={showToast}
+          onSuccess={() => {
+            refreshData()
+            fetchRequestContractBindings(contractItemIds).then(setContractBindings)
+          }}
+        />
       </div>
     </div>
   )

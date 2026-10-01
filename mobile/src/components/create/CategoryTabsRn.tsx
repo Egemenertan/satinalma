@@ -9,6 +9,13 @@ import {
 } from 'react-native'
 import { SwipeDismissSheet } from '../island/SwipeDismissSheet'
 import type { MaterialCategory } from './createTypes'
+import { formatMaterialClassLabel } from '../../lib/it-workflow'
+
+function categoryLabel(category: MaterialCategory): string {
+  const custom = category.display_name?.trim()
+  if (custom) return custom
+  return formatMaterialClassLabel(category.name)
+}
 
 type Sub = { id: string; name: string }
 
@@ -64,8 +71,8 @@ export function CategoryTabsRn({
               style={[styles.chip, on && styles.chipOn]}
               onPress={() => onCategorySelect(c.name)}
             >
-              <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={1}>
-                {c.name}
+              <Text style={[styles.chipText, on && styles.chipTextOn]} numberOfLines={2}>
+                {categoryLabel(c)}
               </Text>
             </Pressable>
           )
@@ -131,7 +138,7 @@ export function CategoryTabsRn({
                   }}
                 >
                   <Text style={[styles.gridItemText, on && styles.gridItemTextOn]} numberOfLines={3}>
-                    {c.name}
+                    {categoryLabel(c)}
                   </Text>
                   {on ? (
                     <View style={styles.gridCheckBadge}>
@@ -174,7 +181,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#e5e7eb',
     marginRight: 8,
-    maxWidth: 280,
+    maxWidth: 360,
   },
   chipSm: {
     paddingHorizontal: 14,

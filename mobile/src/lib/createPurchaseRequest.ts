@@ -67,7 +67,8 @@ export async function createMultiMaterialPurchaseRequest(
     const email = (user.email ?? '').toLowerCase()
 
     let initialStatus = 'pending'
-    if (useItWorkflow) {
+    const startInItReview = useItWorkflow && role !== 'santiye_depo'
+    if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
     } else if (email === HASAN_AUTO_APPROVE_EMAIL) {
       initialStatus = 'satın almaya gönderildi'
@@ -97,7 +98,7 @@ export async function createMultiMaterialPurchaseRequest(
       site_name: data.site_name ?? null,
       delivery_date: null as string | null,
       image_urls: data.materials[0]?.image_urls ?? null,
-      it_workflow_applies: useItWorkflow,
+      it_workflow_applies: startInItReview,
     }
 
     const { data: purchaseRequest, error: requestError } = await supabase
@@ -131,16 +132,16 @@ export async function createMultiMaterialPurchaseRequest(
     const { error: itemsError } = await supabase.from('purchase_request_items').insert(itemsData)
     if (itemsError) throw new Error(itemsError.message)
 
-    let historyComment = useItWorkflow
+    let historyComment = startInItReview
       ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — IT Yönetim incelemesinde (tetikleyici grup)`
       : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
-    if (!useItWorkflow && email === HASAN_AUTO_APPROVE_EMAIL) {
+    if (!startInItReview && email === HASAN_AUTO_APPROVE_EMAIL) {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!useItWorkflow && role === 'santiye_depo_yonetici') {
+    } else if (!startInItReview && role === 'santiye_depo_yonetici') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!useItWorkflow && role === 'santiye_depo') {
+    } else if (!startInItReview && role === 'santiye_depo') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
-    } else if (!useItWorkflow && role === 'purchasing_officer') {
+    } else if (!startInItReview && role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
 

@@ -42,6 +42,8 @@ interface ProductModalProps {
   defaultWarehouseId?: string
   /** Stok işlemi, geçmiş ve zimmet değiştirme. Kapalıysa yalnızca inceleme. */
   canOperateStock?: boolean
+  /** Depoya bağlı kullanıcı: stok durumu yalnızca bu depolarla sınırlı */
+  scopeWarehouseIds?: string[]
 }
 
 export function ProductModal({
@@ -56,22 +58,23 @@ export function ProductModal({
   selectedProductIds = [],
   defaultWarehouseId,
   canOperateStock = true,
+  scopeWarehouseIds,
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
   const isBulkOperation = selectedProductIds.length > 1
 
   // Stok verileri
-  const { data: stockData } = useQuery({
+  const { data: stockData, isFetching: stockFetching } = useQuery({
     queryKey: ['product-stock', productId],
     queryFn: () => (productId ? fetchStockByProduct(productId) : null),
-    enabled: !!productId && (activeTab === 'stock' || activeTab === 'movements'),
+    enabled: !!productId && isOpen,
   })
 
   // Stok hareketleri (info ve history tablarında kullanılıyor)
   const { data: movementsData } = useQuery({
     queryKey: ['stock-movements', productId],
     queryFn: () => (productId ? fetchStockMovements({ productId }, 1, 50) : null),
-    enabled: !!productId && (activeTab === 'history' || activeTab === 'info'),
+    enabled: !!productId && canOperateStock && (activeTab === 'history' || activeTab === 'info'),
   })
 
   // Zimmet kayıtları (history tabında kullanılıyor)
@@ -141,8 +144,17 @@ export function ProductModal({
   // Create modunda productId olması gerekmez
   if (!isOpen) return null
 
-  const totalStock = product?.total_stock || 0
-  const hasLowStock = (product?.warehouse_stocks || []).some(
+  const warehouseScope = scopeWarehouseIds?.filter(Boolean) ?? []
+  const isWarehouseScopedUser = warehouseScope.length > 0
+  const scopedProductStocks = (product?.warehouse_stocks || []).filter((stock) => {
+    if (!isWarehouseScopedUser) return true
+    return Boolean(stock.warehouse_id && warehouseScope.includes(stock.warehouse_id))
+  })
+  const scopedFreeQty = scopedProductStocks
+    .filter((stock) => stock.user_id == null)
+    .reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
+  const totalStock = isWarehouseScopedUser ? scopedFreeQty : product?.total_stock || 0
+  const hasLowStock = scopedProductStocks.some(
     (stock) => stock.min_stock_level && stock.quantity <= stock.min_stock_level
   )
 
@@ -244,7 +256,11 @@ export function ProductModal({
             {/* Tabs */}
             <Tabs
               value={visibleTab}
-              onValueChange={(value) => onTabChange(value as ProductModalTab)}
+              onValueChange={(value) => {
+                const next = value as ProductModalTab
+                if (!canOperateStock && (next === 'movements' || next === 'history')) return
+                onTabChange(next)
+              }}
               className="flex-1 flex flex-col min-h-0"
             >
               <TabsList className="w-full justify-start px-8 py-6 bg-gray-50 border-b border-gray-100 gap-3 flex-shrink-0">
@@ -304,7 +320,11 @@ export function ProductModal({
                       isSaving={isSaving}
                     />
                   ) : product ? (
-                    <ProductInfoTab product={product} movementsData={movementsData} serialNumbers={serialNumbers} />
+                    <ProductInfoTab
+                      product={product}
+                      movementsData={canOperateStock ? movementsData : null}
+                      serialNumbers={serialNumbers}
+                    />
                   ) : null}
                 </TabsContent>
 
@@ -317,9 +337,18 @@ export function ProductModal({
                 <TabsContent value="stock" className="p-8 m-0 space-y-6">
                   <ProductStockTab 
                     product={product} 
-                    stockData={stockData || []} 
+                    stockData={
+                      isWarehouseScopedUser
+                        ? (stockData || []).filter(
+                            (stock) =>
+                              stock.warehouse_id && warehouseScope.includes(stock.warehouse_id)
+                          )
+                        : stockData || []
+                    }
+                    stockLoading={stockFetching && !stockData}
                     totalStock={totalStock}
                     readOnly={inspectionOnly}
+                    scopeWarehouseIds={isWarehouseScopedUser ? warehouseScope : undefined}
                   />
                 </TabsContent>
 

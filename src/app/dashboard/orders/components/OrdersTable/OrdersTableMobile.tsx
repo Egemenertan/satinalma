@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { InlineLoading } from '@/components/ui/loading'
 import { getCurrencySymbol } from '@/components/offers/types'
-import { formatShortDocumentNumber, getOrderStatusBadgeClass, getOrderStatusText, sortGroupedOrders } from '../../utils'
+import { clusterOrdersByNumber, formatShortDocumentNumber, getOrderStatusBadgeClass, getOrderStatusText, sortGroupedOrders } from '../../utils'
 import type { GroupedOrder, OrderData } from '../../types'
 
 interface OrdersTableMobileProps {
@@ -57,7 +57,7 @@ export function OrdersTableMobile({
               </div>
               <div className="flex flex-col items-end gap-2">
                 <div className="text-xs text-gray-500 bg-white px-2 py-1 rounded">
-                  {group.orders.length} sipariş
+                  {clusterOrdersByNumber(group.orders).length} sipariş
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
@@ -106,7 +106,22 @@ export function OrdersTableMobile({
           
           {/* Siparişler - Mobile */}
           <div className="divide-y divide-gray-100">
-            {group.orders.map((order) => (
+            {clusterOrdersByNumber(group.orders).map((cluster) => {
+              const sharedNumber = cluster.orders.length > 1
+              return (
+              <div key={cluster.orderNumber}>
+                {sharedNumber && (
+                  <div className="px-4 py-2 bg-white border-b border-gray-100">
+                    <div className="font-mono text-[11px] font-semibold text-gray-900" title={cluster.orderNumber}>
+                      Sipariş: {formatShortDocumentNumber(cluster.orderNumber)}
+                    </div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {cluster.orders[0]?.suppliers?.name || 'Tedarikçi belirtilmemiş'} · {cluster.orders.length} malzeme
+                    </div>
+                  </div>
+                )}
+                <div className="divide-y divide-gray-100">
+            {cluster.orders.map((order) => (
               <div 
                 key={order.id} 
                 className={`p-4 space-y-3 cursor-pointer transition-colors ${
@@ -137,13 +152,15 @@ export function OrdersTableMobile({
                 {/* Tedarikçi & Durum */}
                 <div className="flex items-start justify-between">
                   <div className="flex-1 min-w-0">
-                    <div
-                      className="font-mono text-[11px] font-semibold text-gray-900"
-                      title={order.order_number || undefined}
-                    >
-                      Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
-                    </div>
-                    <div className="font-semibold text-gray-900 text-sm mt-1">
+                    {!sharedNumber && (
+                      <div
+                        className="font-mono text-[11px] font-semibold text-gray-900"
+                        title={order.order_number || undefined}
+                      >
+                        Sipariş: {formatShortDocumentNumber(order.order_number) || '—'}
+                      </div>
+                    )}
+                    <div className={`font-semibold text-gray-900 text-sm ${sharedNumber ? '' : 'mt-1'}`}>
                       {order.suppliers?.name || 'Tedarikçi belirtilmemiş'}
                     </div>
                     {order.suppliers?.contact_person && (
@@ -302,6 +319,10 @@ export function OrdersTableMobile({
                 </div>
               </div>
             ))}
+                </div>
+              </div>
+              )
+            })}
           </div>
         </div>
       ))}

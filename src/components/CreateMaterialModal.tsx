@@ -9,10 +9,16 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Package } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { useToast } from '@/components/ui/toast'
+import {
+  formatMaterialClassLabel,
+  IT_TRIGGER_MATERIAL_CLASS,
+  IT_TRIGGER_MATERIAL_CLASS_LABEL
+} from '@/lib/it-workflow'
 
 interface MaterialClass {
   id: number
   name: string
+  displayName: string
   description: string
   icon: string
   color: string
@@ -71,13 +77,27 @@ export function CreateMaterialModal({
           .order('display_order')
 
         if (!categoriesError && categoriesData) {
-          const categories = categoriesData.map((cat) => ({
-            id: cat.id,
-            name: cat.name,
-            description: cat.description || `${cat.display_name} kategorisindeki malzemeler`,
-            icon: cat.icon,
-            color: cat.color
-          }))
+          let rows = categoriesData
+          if (!rows.some((cat) => cat.name === IT_TRIGGER_MATERIAL_CLASS)) {
+            const { data: itClass } = await supabase
+              .from('material_categories')
+              .select('*')
+              .eq('name', IT_TRIGGER_MATERIAL_CLASS)
+              .eq('is_active', true)
+              .maybeSingle()
+            if (itClass) rows = [...rows, itClass]
+          }
+
+          const categories = rows
+            .map((cat) => ({
+              id: cat.id,
+              name: cat.name,
+              displayName: cat.display_name?.trim() || formatMaterialClassLabel(cat.name),
+              description: cat.description || `${cat.display_name} kategorisindeki malzemeler`,
+              icon: cat.icon,
+              color: cat.color
+            }))
+            .sort((a, b) => a.displayName.localeCompare(b.displayName, 'tr'))
           
           setMaterialClasses(categories)
           console.log('✅ Kategoriler başarıyla yüklendi:', categories.length, 'adet')
@@ -202,6 +222,11 @@ export function CreateMaterialModal({
             <p className="text-sm text-gray-500 font-normal">
               Aradığınız malzemeyi sisteme ekleyin
             </p>
+            <p className="rounded-2xl bg-[#f5f5f7] px-4 py-3 text-[13px] leading-5 text-[#1d1d1f]">
+              IT malzemeleri,{' '}
+              <span className="font-semibold">{IT_TRIGGER_MATERIAL_CLASS_LABEL}</span>{' '}
+              kategorisinden talep edilmelidir.
+            </p>
           </DialogHeader>
           
           {/* Form */}
@@ -225,7 +250,7 @@ export function CreateMaterialModal({
                       value={cls.name}
                       className="hover:bg-gray-50 focus:bg-gray-50 rounded-lg transition-colors"
                     >
-                      {cls.name}
+                      {cls.displayName}
                     </SelectItem>
                   ))}
                 </SelectContent>
