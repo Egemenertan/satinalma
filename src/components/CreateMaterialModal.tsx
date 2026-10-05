@@ -14,6 +14,7 @@ import {
   IT_TRIGGER_MATERIAL_CLASS,
   IT_TRIGGER_MATERIAL_CLASS_LABEL
 } from '@/lib/it-workflow'
+import { materialCategoryTypesForCreateModal } from '@/lib/material-category-access'
 
 interface MaterialClass {
   id: number
@@ -67,7 +68,8 @@ export function CreateMaterialModal({
     const fetchClasses = async () => {
       try {
         // Kategori seti create sayfasındaki seçili site bağlamıyla birebir aynı olmalı.
-        const categoryTypes = restrictToStationery ? ['ofis'] : ['insaat']
+        // `both` tipli sınıflar (ör. Güvenlik) hem şantiye hem ofis taleplerinde görünür.
+        const categoryTypes = materialCategoryTypesForCreateModal(restrictToStationery)
 
         const { data: categoriesData, error: categoriesError } = await supabase
           .from('material_categories')

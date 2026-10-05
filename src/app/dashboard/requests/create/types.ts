@@ -2,6 +2,7 @@ export interface MaterialCategory {
   id: string
   name: string
   type: string
+  category_type?: string | null
   icon?: string
   display_name?: string | null
 }
@@ -133,6 +134,7 @@ export const ICON_MAP: Record<string, string> = {
   'Temizlik': 'Sparkles',
   'İş Sağlığı ve Güvenliği': 'Shield',
   'İş Güvenliği': 'Shield',
+  'Güvenlik': 'Shield',
   'Diğer Malzemeler': 'Package',
   'Boyalar': 'Palette',
   'Reklam Ürünleri': 'Sparkles',
@@ -161,6 +163,7 @@ export const COLOR_MAP: Record<string, string> = {
   'Temizlik': '#ec4899',
   'İş Sağlığı ve Güvenliği': '#6366f1',
   'İş Güvenliği': '#6366f1',
+  'Güvenlik': '#0f766e',
   'Diğer Malzemeler': '#64748b',
   'Boyalar': '#84cc16',
   'Reklam Ürünleri': '#ec4899',
