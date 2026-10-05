@@ -25,6 +25,7 @@ import {
 } from '../../../src/components/create/MaterialDetailModalRn'
 import { MaterialSearchBarRn } from '../../../src/components/create/MaterialSearchBarRn'
 import { SPECIAL_SITE_ID } from '../../../src/lib/constants'
+import { isSharedMaterialCategory } from '../../../src/lib/material-category-access'
 import { createMultiMaterialPurchaseRequest } from '../../../src/lib/createPurchaseRequest'
 import {
   loadPersistedCreateDraftCart,
@@ -167,12 +168,13 @@ export default function CreateRequestScreen() {
   const selectedSiteIsGmo = selectedSite?.id === SPECIAL_SITE_ID || selectedSite?.name === 'Genel Merkez Ofisi'
 
   const filteredCategories = useMemo(() => {
-    // Kullanıcı GMO'ya erişebiliyorsa TÜM kategorileri göster
     if (userHasGmoAccess) {
       return categories
     }
-    // GMO erişimi yoksa, seçili site'a göre filtrele
     return categories.filter((category) => {
+      if (isSharedMaterialCategory(category)) {
+        return true
+      }
       if (isOfficeCategory(category.name)) {
         return selectedSiteIsGmo
       }
@@ -181,14 +183,15 @@ export default function CreateRequestScreen() {
   }, [categories, userHasGmoAccess, selectedSiteIsGmo])
 
   const allowedSearchCategories = useMemo(() => {
-    // GMO erişimi varsa ve GMO seçiliyse sadece ofis kategorilerinde ara
-    // GMO erişimi varsa ama başka site seçiliyse, sadece ofis olmayan kategorilerde ara
-    // GMO erişimi yoksa filteredCategories zaten doğru
     if (userHasGmoAccess) {
       if (selectedSiteIsGmo) {
-        return filteredCategories.filter((c) => isOfficeCategory(c.name)).map((c) => c.name)
+        return filteredCategories
+          .filter((c) => isOfficeCategory(c.name) || isSharedMaterialCategory(c))
+          .map((c) => c.name)
       }
-      return filteredCategories.filter((c) => !isOfficeCategory(c.name)).map((c) => c.name)
+      return filteredCategories
+        .filter((c) => !isOfficeCategory(c.name) || isSharedMaterialCategory(c))
+        .map((c) => c.name)
     }
     return filteredCategories.map((c) => c.name)
   }, [filteredCategories, userHasGmoAccess, selectedSiteIsGmo])
@@ -222,7 +225,7 @@ export default function CreateRequestScreen() {
     }
 
     setCategoriesLoading(true)
-    const { data: cats } = await supabase.from('material_categories').select('id, name, display_name').order('name')
+    const { data: cats } = await supabase.from('material_categories').select('id, name, display_name, category_type').order('name')
     setCategories((cats as MaterialCategory[]) ?? [])
     setCategoriesLoading(false)
     setChecking(false)

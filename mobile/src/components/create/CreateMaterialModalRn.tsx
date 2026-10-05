@@ -15,6 +15,7 @@ import {
   IT_TRIGGER_MATERIAL_CLASS,
   IT_TRIGGER_MATERIAL_CLASS_LABEL,
 } from '../../lib/it-workflow'
+import { materialCategoryTypesForCreateModal } from '../../lib/material-category-access'
 
 type MaterialClassOption = { id: string; name: string; display_name?: string | null }
 
@@ -68,7 +69,7 @@ export function CreateMaterialModalRn({
   const loadClasses = useCallback(async () => {
     setLoadingClasses(true)
     try {
-      const types = restrictToStationery ? ['ofis'] : ['insaat']
+      const types = materialCategoryTypesForCreateModal(restrictToStationery)
       const { data, error } = await supabase
         .from('material_categories')
         .select('id, name, display_name')

@@ -8,6 +8,7 @@ import { ArrowLeft, Loader2, Package } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
 import { SPECIAL_SITE_ID } from '@/lib/constants'
+import { isSharedMaterialCategory } from '@/lib/material-category-access'
 import {
   CategoryTabs,
   MaterialCard,
@@ -391,15 +392,12 @@ export function RequestMaterialShopping({
 
   const filteredCategories = categories.filter((category) => {
     if (hasMultipleSiteTypes) return true
+    if (isSharedMaterialCategory(category)) return true
     if (isOfficeCategory(category.name)) return hasOfficeCategoryAccess
     return !hasOfficeCategoryAccess
   })
 
-  const allowedSearchCategories = hasMultipleSiteTypes
-    ? filteredCategories.map((category) => category.name)
-    : hasOfficeCategoryAccess
-      ? filteredCategories.filter((category) => isOfficeCategory(category.name)).map((category) => category.name)
-      : filteredCategories.map((category) => category.name)
+  const allowedSearchCategories = filteredCategories.map((category) => category.name)
 
   useEffect(() => {
     if (filteredCategories.length === 0) return

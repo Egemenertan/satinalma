@@ -17,6 +17,7 @@ import {
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
 import { SPECIAL_SITE_ID } from '@/lib/constants'
+import { isSharedMaterialCategory } from '@/lib/material-category-access'
 
 import {
   CategoryTabs,
@@ -672,22 +673,20 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const filteredCategories = categories.filter((category) => {
-    // Eğer kullanıcının hem Genel Merkez hem de başka sitelere erişimi varsa, tüm kategorileri göster
     if (hasMultipleSiteTypes) {
       return true
     }
+
+    if (isSharedMaterialCategory(category)) {
+      return true
+    }
     
-    // Tek tip site erişimi olan kullanıcılar için eski mantık
     if (isOfficeCategory(category.name)) {
       return hasOfficeCategoryAccess
     }
     return !hasOfficeCategoryAccess
   })
-  const allowedSearchCategories = hasMultipleSiteTypes
-    ? filteredCategories.map((category) => category.name)
-    : hasOfficeCategoryAccess
-    ? filteredCategories.filter((category) => isOfficeCategory(category.name)).map((category) => category.name)
-    : filteredCategories.map((category) => category.name)
+  const allowedSearchCategories = filteredCategories.map((category) => category.name)
 
 
   // İlk yüklemede kategori varsayılanını rol/site kuralına göre belirle.
