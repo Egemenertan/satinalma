@@ -112,6 +112,38 @@ function displayMaterialNames(request: PurchaseRequest): string[] {
   return [title]
 }
 
+/** Tabloda görünen kısa talep no: sondan bir önceki parçanın son 2 karakteri + son parça. Örn. REQ-20260916-CUB2QW-3955 → QW-3955 */
+function formatVisibleRequestNumber(requestNumber?: string | null, fallbackId?: string): string {
+  if (!requestNumber) {
+    return fallbackId ? `REQ-${fallbackId.slice(-6)}` : ''
+  }
+  const parts = requestNumber.split('-')
+  if (parts.length >= 2) {
+    const lastPart = parts[parts.length - 1]
+    const secondLastPart = parts[parts.length - 2]
+    return `${secondLastPart.slice(-2)}-${lastPart}`
+  }
+  return requestNumber
+}
+
+const SEARCH_PAGE_SIZE = 1000
+
+async function fetchAllPages<T>(
+  loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += SEARCH_PAGE_SIZE) {
+    const { data, error } = await loadPage(from, from + SEARCH_PAGE_SIZE - 1)
+    if (error) {
+      throw new Error(error.message)
+    }
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < SEARCH_PAGE_SIZE) break
+  }
+  return rows
+}
+
 function RequestMaterialsCell({
   names,
   expanded,
@@ -334,27 +366,41 @@ const fetchPurchaseRequests = async (
     }
     
     const normalizedSearch = normalizeTurkish(searchTerm.trim())
-    
-    // 1. Purchase requests tablosunda ara (request_number, title, description) + talep eden bilgisi
-    const { data: requestsData } = await supabase
-      .from('purchase_requests')
-      .select(`
-        id, 
-        request_number, 
-        title, 
-        description,
-        requested_by,
-        profiles:requested_by (
-          full_name,
-          email
-        )
-      `)
-      .is('deleted_at', null)
-    
-    // 2. Purchase request items tablosunda ara (item_name)
-    const { data: itemsData } = await supabase
-      .from('purchase_request_items')
-      .select('purchase_request_id, item_name')
+
+    // Varsayılan API limiti 1000 satır. Sayfalama olmadan arama, limitin dışındaki
+    // talepleri (ör. tabloda QW-3955 görünen REQ-...-CUB2QW-3955) kaçırır.
+    const requestsData = await fetchAllPages<{
+      id: string
+      request_number: string | null
+      title: string | null
+      description: string | null
+      profiles: { full_name?: string | null; email?: string | null } | { full_name?: string | null; email?: string | null }[] | null
+    }>((from, to) =>
+      supabase
+        .from('purchase_requests')
+        .select(`
+          id, 
+          request_number, 
+          title, 
+          description,
+          requested_by,
+          profiles:requested_by (
+            full_name,
+            email
+          )
+        `)
+        .is('deleted_at', null)
+        .order('id', { ascending: true })
+        .range(from, to)
+    )
+
+    const itemsData = await fetchAllPages<{ purchase_request_id: string; item_name: string | null }>((from, to) =>
+      supabase
+        .from('purchase_request_items')
+        .select('purchase_request_id, item_name')
+        .order('id', { ascending: true })
+        .range(from, to)
+    )
     
     // Client-side filtreleme ile Türkçe karakter desteği
     const matchingIds = new Set<string>()
@@ -373,6 +419,7 @@ const fetchPurchaseRequests = async (
         
         const searchableText = [
           req.request_number || '',
+          formatVisibleRequestNumber(req.request_number, req.id),
           req.title || '',
           req.description || '',
           profileFullName,
@@ -924,18 +971,7 @@ const fetchPurchaseRequests = async (
     return {
       ...request,
       profiles: processedProfiles,
-      request_number: request.request_number ? 
-        (() => {
-          const parts = request.request_number.split('-')
-          if (parts.length >= 2) {
-            const lastPart = parts[parts.length - 1]
-            const secondLastPart = parts[parts.length - 2]
-            const lastTwoChars = secondLastPart.slice(-2)
-            return `${lastTwoChars}-${lastPart}`
-          }
-          return request.request_number
-        })() :
-        `REQ-${request.id.slice(-6)}`,
+      request_number: formatVisibleRequestNumber(request.request_number, request.id),
       updated_at: request.created_at
     }
   }) as PurchaseRequest[]
@@ -2599,8 +2635,8 @@ export default function PurchaseRequestsTable({
                 <div className="flex flex-col items-center gap-2">
                   <Package className="w-8 h-8 text-gray-300" />
                   <span>
-                    {filters.search || filters.status !== 'all' 
-                      ? 'Filtre kriterlerinize uygun talep bulunamadı' 
+                    {searchTerm.trim() || statusFilter !== 'all' || locationFilter !== 'all'
+                      ? 'Aramanıza uygun talep bulunamadı'
                       : 'Henüz talep bulunamadı'
                     }
                   </span>
