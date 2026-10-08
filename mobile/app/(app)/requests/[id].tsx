@@ -331,6 +331,8 @@ export default function RequestDetailScreen() {
             requestId={req.id}
             status={req.status ?? null}
             siteId={(req.site_id as string | null) ?? null}
+            requestDepartment={(req.department as string | null) ?? null}
+            viewerDepartment={profile?.department ?? null}
             canEdit={editable}
             onEditPress={() => {
               Alert.alert(

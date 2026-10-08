@@ -29,6 +29,7 @@ import {
 } from '@/lib/warehouse-it-material-filter'
 import {
   canSeeItWorkflowTab,
+  departmentsMatch,
   isItWorkflowElevatedRole,
   isPazarlamaDepartment,
   IT_STATUS_ONAYLANDI
@@ -81,6 +82,7 @@ interface PurchaseRequest {
   unordered_materials_count?: number // Siparişi verilmemiş malzeme sayısı
   overdue_deliveries_count?: number // Teslim alınmamış sipariş sayısı
   it_workflow_applies?: boolean
+  department?: string | null
   material_names?: string[]
   // Relations
   sites?: Array<{
@@ -635,6 +637,7 @@ const fetchPurchaseRequests = async (
       site_id,
       sent_quantity,
       notifications,
+      department,
       it_workflow_applies,
       sites:site_id (
         name
@@ -789,6 +792,7 @@ const fetchPurchaseRequests = async (
       site_id,
       sent_quantity,
       notifications,
+      department,
       it_workflow_applies,
       sites:site_id (
         name
@@ -1247,6 +1251,13 @@ export default function PurchaseRequestsTable({
       (userRole === 'site_manager' || userRole === 'santiye_depo_yonetici') &&
       standardStatuses
     ) {
+      if (
+        request.status === 'ana depoda yok' &&
+        userRole === 'site_manager' &&
+        !departmentsMatch(viewerDepartment, request.department)
+      ) {
+        return false
+      }
       return true
     }
 
@@ -1531,12 +1542,14 @@ export default function PurchaseRequestsTable({
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const isSpecialSiteUser = userSiteIds.includes(SPECIAL_SITE_ID)
     
-    // Özel site kullanıcıları için: pending -> "Onaylandı" olarak göster
+    // Genel Merkez: pending depoda bekler. Depo yöneticisi bunu Onaylandı görür;
+    // talebi açan ve diğer kullanıcılar Beklemede görür.
     if (isSpecialSiteUser && status === 'pending') {
+      const waitingForWarehouse = userRole !== 'warehouse_manager'
       return (
         <div className="flex flex-col gap-1">
-          <Badge variant="outline" className="bg-green-100 text-green-800 border-0 rounded-full text-xs font-medium px-2 py-1">
-            Onaylandı
+          <Badge variant="outline" className={`${waitingForWarehouse ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'} border-0 rounded-full text-xs font-medium px-2 py-1`}>
+            {waitingForWarehouse ? 'Beklemede' : 'Onaylandı'}
           </Badge>
         {notifications && notifications.includes('iade var') && (
           <div className="flex flex-wrap gap-1">
@@ -1915,6 +1928,67 @@ export default function PurchaseRequestsTable({
       
       if (requestError || !requestData) {
         throw new Error('Talep bilgisi alınamadı.')
+      }
+
+      if (requestData.status === 'ana depoda yok') {
+        let newStatus = 'satın almaya gönderildi'
+        let successMessage = 'Talep satın almaya gönderildi!'
+        let historyComment = `${roleLabel} tarafından satın almaya gönderildi (Ana depoda yok)`
+
+        const hasItClass = await purchaseRequestHasItMaterialClass(supabase, requestId)
+        const routed = routeItClassAwayFromPurchasing(
+          { newStatus, successMessage, historyComment },
+          hasItClass
+        )
+        newStatus = routed.newStatus
+        successMessage = routed.successMessage
+        historyComment = routed.historyComment
+
+        const optimisticUpdate = data
+          ? {
+              ...data,
+              requests: data.requests.map((req: any) =>
+                req.id === requestId ? { ...req, status: newStatus } : req
+              ),
+            }
+          : null
+
+        if (optimisticUpdate) {
+          mutate(`purchase_requests/${currentPage}/${pageSize}`, optimisticUpdate, false)
+        }
+
+        const { error } = await supabase
+          .from('purchase_requests')
+          .update({
+            status: newStatus,
+            ...(routed.itWorkflowApplies ? { it_workflow_applies: true } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', requestId)
+
+        if (error) throw error
+
+        await supabase.from('approval_history').insert({
+          purchase_request_id: requestId,
+          action: 'approved',
+          performed_by: user.id,
+          comments: historyComment,
+        })
+
+        try {
+          const { handlePurchaseRequestStatusChange } = await import('../lib/teams-webhook')
+          await handlePurchaseRequestStatusChange(requestId, newStatus, 'ana depoda yok')
+        } catch {
+          /* non-blocking */
+        }
+
+        invalidatePurchaseRequestsCache()
+        mutate('purchase_requests_stats')
+        mutate('pending_requests_count')
+        setTimeout(() => refreshData(), 100)
+        setTimeout(() => refreshData(), 300)
+        showToast(successMessage, 'success')
+        return
       }
 
       if (requestData.status === IT_STATUS_ONAYLANDI) {

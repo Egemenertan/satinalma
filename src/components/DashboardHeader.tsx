@@ -58,12 +58,12 @@ export default function DashboardHeader() {
   return (
     <header className="hidden lg:block fixed top-3 left-[5.5rem] right-0 z-[45]">
       <div className="flex justify-start px-10 overflow-visible">
-        <div className="bg-white/70 backdrop-blur-xl rounded-xl border border-gray-200/60 px-8 py-1.5 flex items-center justify-between w-1/2 overflow-visible">
+        <div className="bg-white/70 backdrop-blur-xl rounded-xl border border-gray-200/60 px-8 py-2 flex items-center justify-between w-3/5 overflow-visible">
           <div className="flex items-center">
             <img
               src="/DLX.png"
               alt="DLX"
-              className="h-8 w-auto"
+              className="h-10 w-auto"
             />
           </div>
 

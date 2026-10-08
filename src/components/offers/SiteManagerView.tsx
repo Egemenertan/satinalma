@@ -13,15 +13,16 @@ import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import SitePersonnelView from './SitePersonnelView'
 import { useRouter } from 'next/navigation'
-import { IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
+import { departmentsMatch, IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 
 interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'materialOrders' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   currentOrder: any
+  userDepartment?: string | null
 }
 
 export default function SiteManagerView(props: SiteManagerViewProps) {
-  const { request, onRefresh, showToast } = props
+  const { request, onRefresh, showToast, userDepartment = null } = props
   const [siteManagerApproving, setSiteManagerApproving] = useState(false)
   const [siteManagerRejecting, setSiteManagerRejecting] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
@@ -78,6 +79,57 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         invalidatePurchaseRequestsCache()
         await onRefresh()
         showToast('Malzemeler satın almaya gönderildi!', 'success')
+        return
+      }
+
+      if (request.status === 'ana depoda yok') {
+        let newStatus = 'satın almaya gönderildi'
+        let successMessage = 'Malzemeler satın almaya gönderildi!'
+        let historyComment = 'Site Manager tarafından satın almaya gönderildi (Ana depoda yok)'
+
+        const hasItClass = await purchaseRequestHasItMaterialClass(
+          supabase,
+          request.id,
+          request.material_class
+        )
+        const routed = routeItClassAwayFromPurchasing(
+          { newStatus, successMessage, historyComment },
+          hasItClass
+        )
+        newStatus = routed.newStatus
+        successMessage = routed.successMessage
+        historyComment = routed.historyComment
+
+        const { error: updateError } = await supabase
+          .from('purchase_requests')
+          .update({
+            status: newStatus,
+            ...(routed.itWorkflowApplies ? { it_workflow_applies: true } : {}),
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', request.id)
+
+        if (updateError) {
+          throw new Error('Status güncellenemedi: ' + updateError.message)
+        }
+
+        await supabase.from('approval_history').insert({
+          purchase_request_id: request.id,
+          action: 'approved',
+          performed_by: user.id,
+          comments: historyComment,
+        })
+
+        try {
+          const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
+          await handlePurchaseRequestStatusChange(request.id, newStatus, request.status)
+        } catch (webhookError) {
+          console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
+        }
+
+        invalidatePurchaseRequestsCache()
+        await onRefresh()
+        showToast(successMessage, 'success')
         return
       }
 
@@ -329,7 +381,11 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
   const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
   
   // Tüm siteler için aynı statuslarda buton göster: onay_bekliyor, kısmen gönderildi, depoda mevcut değil, ana depoda yok
-  const showApprovalButton = (
+  const anaDepoYokForThisDepartment =
+    request?.status !== 'ana depoda yok' ||
+    departmentsMatch(userDepartment, request?.department)
+
+  const showApprovalButton = anaDepoYokForThisDepartment && (
     request?.status === 'onay_bekliyor' || 
     request?.status === 'kısmen gönderildi' || 
     request?.status === 'depoda mevcut değil' || 

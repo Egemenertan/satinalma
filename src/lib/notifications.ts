@@ -1,5 +1,6 @@
 import { createClient } from './supabase/client';
 import { SPECIAL_SITE_ID } from './constants';
+import { normalizeMaterialGroupToken } from './it-workflow';
 
 // EmailService artık API route üzerinden çağrılıyor (nodemailer client-side'da çalışmaz)
 
@@ -448,7 +449,8 @@ export class NotificationService {
     requestNumber: string,
     requestTitle: string,
     siteId: string,
-    siteName?: string
+    siteName?: string,
+    requestDepartment?: string | null
   ): Promise<void> {
     try {
       const supabase = createClient()
@@ -458,7 +460,7 @@ export class NotificationService {
       // Site'a ait site_manager'ları bul
       const { data: siteManagers, error: managersError } = await supabase
         .from('profiles')
-        .select('id, email, full_name')
+        .select('id, email, full_name, department')
         .eq('role', 'site_manager')
         .contains('site_id', [siteId])
         .eq('is_active', true)
@@ -468,15 +470,22 @@ export class NotificationService {
         return
       }
 
-      if (!siteManagers || siteManagers.length === 0) {
+      const requestDept = normalizeMaterialGroupToken(requestDepartment)
+      const departmentManagers = requestDept
+        ? (siteManagers || []).filter(
+            (manager) => normalizeMaterialGroupToken(manager.department) === requestDept
+          )
+        : (siteManagers || [])
+
+      if (departmentManagers.length === 0) {
         console.warn(`⚠️ ${siteName || siteId} için aktif site_manager bulunamadı`)
         return
       }
 
-      console.log(`📧 ${siteManagers.length} site_manager'a bildirim gönderiliyor...`)
+      console.log(`📧 ${departmentManagers.length} site_manager'a bildirim gönderiliyor...`)
 
-      // Her site_manager'a in-app notification gönder
-      for (const manager of siteManagers) {
+      // İlgili departmanın site manager'larına in-app notification gönder
+      for (const manager of departmentManagers) {
         await supabase.from('notifications').insert({
           user_id: manager.id,
           title: 'Yönetici onayı bekleniyor',
@@ -487,10 +496,10 @@ export class NotificationService {
           is_read: false
         })
       }
-      console.log(`✉️ ${siteManagers.length} site_manager'a in-app bildirim gönderildi`)
+      console.log(`✉️ ${departmentManagers.length} site_manager'a in-app bildirim gönderildi`)
 
       // Push notification gönder - sadece 1 kez, kısa mesaj
-      const managerUserIds = siteManagers.map(m => m.id)
+      const managerUserIds = departmentManagers.map(m => m.id)
       if (managerUserIds.length > 0) {
         const pushPayload = {
           title: 'Yönetici onayı bekleniyor',

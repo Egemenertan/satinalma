@@ -329,6 +329,7 @@ export default function OffersPage() {
           <SiteManagerView 
             {...commonProps}
             currentOrder={currentOrder}
+            userDepartment={userDepartment}
           />
         )
         

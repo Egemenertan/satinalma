@@ -494,7 +494,8 @@ export default function WarehouseManagerMaterialCard({
                 request.request_number || `REQ-${request.id.slice(-6)}`,
                 request.title || 'Satın Alma Talebi',
                 request.site_id,
-                request.site_name || request.sites?.name
+                request.site_name || request.sites?.name,
+                request.department
               )
             } catch (notifError) {
               console.error('❌ Bildirim gönderme hatası:', notifError)

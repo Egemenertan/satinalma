@@ -205,6 +205,45 @@ export function buildOrderAnalyticsSnapshot(
   }
 }
 
+/** Veritabanında hesaplanmış günlük özeti grafik modeline çevirir */
+export function snapshotFromOrderAggregates(
+  totalCount: number,
+  raw: {
+    delivered: number
+    partiallyDelivered: number
+    returned: number
+    pending: number
+    anchored: boolean
+    daily: { dayKey: string; count: number; amount: number }[]
+  } | null
+): OrderAnalyticsSnapshot | null {
+  if (!raw) return null
+
+  const daily = Array.isArray(raw.daily) ? raw.daily : []
+  const labelFor = (dayKey: string) =>
+    format(parseISO(`${dayKey}T12:00:00`), 'd MMM', { locale: tr })
+
+  return {
+    totalCount,
+    delivered: Number(raw.delivered) || 0,
+    partiallyDelivered: Number(raw.partiallyDelivered) || 0,
+    returned: Number(raw.returned) || 0,
+    pending: Number(raw.pending) || 0,
+    dailyOrderCounts: daily.map(d => ({
+      dayKey: d.dayKey,
+      label: labelFor(d.dayKey),
+      count: Number(d.count) || 0,
+    })),
+    dailyTryAmounts: daily.map(d => ({
+      dayKey: d.dayKey,
+      label: labelFor(d.dayKey),
+      amount: Number(d.amount) || 0,
+    })),
+    isSampled: false,
+    performanceChartAnchoredToNewestCreation: Boolean(raw.anchored),
+  }
+}
+
 /** Mini grafik çubuk yükseklikleri % olarak */
 export function sparkHeightsFromCounts(counts: number[]): number[] {
   if (!counts.length) return counts

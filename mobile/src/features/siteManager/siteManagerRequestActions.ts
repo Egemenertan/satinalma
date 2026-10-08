@@ -65,27 +65,36 @@ export async function siteManagerApproveOrSendToPurchasing(
     return { newStatus, message: successMessage }
   }
 
-  const { data: stockCheckData, error: stockCheckError } = await supabase.rpc('check_main_warehouse_stock', {
-    request_id_param: requestId,
-  })
+  const warehouseMarkedMissing = currentStatus === 'ana depoda yok'
 
-  if (stockCheckError) {
-    throw new Error('Stok kontrolü yapılamadı: ' + stockCheckError.message)
+  let allItemsInStock = false
+  if (!warehouseMarkedMissing) {
+    const { data: stockCheckData, error: stockCheckError } = await supabase.rpc('check_main_warehouse_stock', {
+      request_id_param: requestId,
+    })
+
+    if (stockCheckError) {
+      throw new Error('Stok kontrolü yapılamadı: ' + stockCheckError.message)
+    }
+
+    allItemsInStock =
+      stockCheckData && Array.isArray(stockCheckData) && stockCheckData.length > 0
+        ? stockCheckData.every((item: { has_stock?: boolean }) => item.has_stock === true)
+        : false
   }
-
-  const allItemsInStock =
-    stockCheckData && Array.isArray(stockCheckData) && stockCheckData.length > 0
-      ? stockCheckData.every((item: { has_stock?: boolean }) => item.has_stock === true)
-      : false
 
   const isSpecialSite = siteId === SITE_MANAGER_SPECIAL_SITE_ID
   const isAwaitingApproval = currentStatus === 'onay_bekliyor' || currentStatus === 'awaiting_offers'
 
   let newStatus = 'satın almaya gönderildi'
   let successMessage = 'Malzemeler satın almaya gönderildi!'
-  let historyComment = 'Site Manager tarafından satın almaya gönderildi'
+  let historyComment = warehouseMarkedMissing
+    ? 'Site Manager tarafından satın almaya gönderildi (Ana depoda yok)'
+    : 'Site Manager tarafından satın almaya gönderildi'
 
-  if (isSpecialSite && isAwaitingApproval) {
+  if (warehouseMarkedMissing) {
+    // Depo zaten stok olmadığını işaretledi; tekrar stok kontrolü yapılmaz.
+  } else if (isSpecialSite && isAwaitingApproval) {
     if (allItemsInStock) {
       newStatus = 'onaylandı'
       successMessage = 'Talep onaylandı! Ürünler ana depoda mevcut.'

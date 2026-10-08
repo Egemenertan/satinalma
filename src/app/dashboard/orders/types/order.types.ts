@@ -46,6 +46,10 @@ export interface InvoiceData {
   amount: number
   currency: string
   invoice_photos: string[]
+  /** Liste sorgusu fotoğraf gövdesini taşımaz; adet ayrı gelir */
+  photo_count?: number
+  /** Aynı fatura görsellerini gruplamak için kısa parmak izi */
+  photo_key?: string | null
   created_at: string
   // Yeni yapı - invoice_groups ile ilişki
   invoice_group_id?: string | null

@@ -148,10 +148,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <div className="relative min-h-screen bg-gray-50">
       {/* Mobile Header */}
-      <header className={`fixed top-3 left-3 right-3 h-16 bg-white rounded-3xl border border-gray-100/50 shadow-lg z-50 lg:hidden transition-all duration-300 ${isHeaderVisible ? 'translate-y-0 opacity-100' : '-translate-y-[calc(100%+1rem)] opacity-0'}`}>
-        <div className="flex items-center justify-between h-full px-5">
+      <header className={`fixed top-0 inset-x-0 h-[4.5rem] w-full bg-white border-b border-gray-100 shadow-sm z-50 lg:hidden transition-all duration-300 ${isHeaderVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
+        <div className="flex items-center justify-between h-full px-4">
           <button onClick={() => router.push('/dashboard/requests')} className="flex items-center hover:opacity-80">
-            <img src="/d.png" alt="Logo" className="h-8 w-auto filter brightness-0" />
+            <img src="/d.png" alt="Logo" className="h-10 w-auto filter brightness-0" />
           </button>
           <div className="flex items-center gap-2">
             <NotificationPanel isOpen={isNotificationPanelOpen} onOpenChange={handleNotificationPanelChange} showMobileButton={true} />
@@ -175,9 +175,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </div>
       </main>
 
-      <main className="min-h-screen pt-[4.75rem] lg:hidden">
-        <div className="min-h-[calc(100vh-4.75rem)]">
-          <div className="px-4 py-6 sm:px-6">{children}</div>
+      <main className="min-h-screen pt-[4.5rem] lg:hidden">
+        <div className="min-h-[calc(100vh-4.5rem)]">
+          <div className="w-full px-4 py-6 sm:px-6">{children}</div>
         </div>
       </main>
     </div>

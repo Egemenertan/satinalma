@@ -53,11 +53,15 @@ function copyCookies(from: NextResponse, to: NextResponse): NextResponse {
   return to
 }
 
-function buildLoginRedirect(request: NextRequest, base: NextResponse): NextResponse {
+function buildLoginRedirect(
+  request: NextRequest,
+  base: NextResponse,
+  pathname: string
+): NextResponse {
   const redirectUrl = new URL('/auth/login', request.url)
   // Sadece dashboard route'larında redirectTo ekle (API'ler için anlamsız)
-  if (request.nextUrl.pathname.startsWith('/dashboard')) {
-    redirectUrl.searchParams.set('redirectTo', request.nextUrl.pathname)
+  if (pathname.startsWith('/dashboard')) {
+    redirectUrl.searchParams.set('redirectTo', pathname)
   }
   return copyCookies(base, NextResponse.redirect(redirectUrl))
 }
@@ -66,17 +70,46 @@ function buildUnauthorized(base: NextResponse): NextResponse {
   return copyCookies(base, NextResponse.json({ error: 'Unauthorized' }, { status: 401 }))
 }
 
+/**
+ * Bazı istemciler `html lang="tr"` yüzünden yolu `/tr/...` diye ister.
+ * Yönlendirme (307) bu istemcilerde sonsuz döngü yapar; içerik aynı
+ * adreste, asıl rotaya rewrite edilerek sunulur. Auth kararı öneksiz
+ * yola göre verilir, böylece `/tr/dashboard` korumasız kalmaz.
+ */
+function stripLocalePrefix(pathname: string): { pathname: string; prefixed: boolean } {
+  if (pathname === '/tr') return { pathname: '/', prefixed: true }
+  if (!pathname.startsWith('/tr/')) return { pathname, prefixed: false }
+  const rest = pathname.slice('/tr'.length) || '/'
+  return { pathname: rest.startsWith('/') ? rest : `/${rest}`, prefixed: true }
+}
+
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
+  const { pathname, prefixed } = stripLocalePrefix(request.nextUrl.pathname)
+
+  const rewriteTarget = () => {
+    const url = request.nextUrl.clone()
+    url.pathname = pathname
+    return url
+  }
+
+  const passThrough = () => {
+    if (!prefixed) return NextResponse.next()
+    return NextResponse.rewrite(rewriteTarget())
+  }
+
+  const continueWithRequest = () => {
+    if (!prefixed) return NextResponse.next({ request })
+    return NextResponse.rewrite(rewriteTarget(), { request })
+  }
 
   // Public route'lar için bypass
   if (isPublicRoute(pathname)) {
-    return NextResponse.next()
+    return passThrough()
   }
 
   // Protected olmayan route'lara karışma (güvenlik için varsayılan: bypass)
   if (!isProtectedRoute(pathname)) {
-    return NextResponse.next()
+    return passThrough()
   }
 
   // @supabase/ssr middleware pattern (v0.1 API):
@@ -87,7 +120,7 @@ export async function middleware(request: NextRequest) {
   //  - Tüm dönüşlerde cookies'i preserve etmek için `copyCookies` helper'ı
   //    kullanılır (özellikle redirect/401 dönüşlerinde kritik — aksi halde
   //    refresh edilmiş token'lar kaybolur → kullanıcı atılır).
-  let supabaseResponse = NextResponse.next({ request })
+  let supabaseResponse = continueWithRequest()
 
   const isProd = process.env.NODE_ENV === 'production'
   const cookieOptions = {
@@ -106,7 +139,7 @@ export async function middleware(request: NextRequest) {
     if (index >= 0) pendingCookies[index] = next
     else pendingCookies.push(next)
 
-    supabaseResponse = NextResponse.next({ request })
+    supabaseResponse = continueWithRequest()
     pendingCookies.forEach((cookie) => {
       supabaseResponse.cookies.set(cookie)
     })
@@ -146,7 +179,7 @@ export async function middleware(request: NextRequest) {
     if (pathname.startsWith('/api/')) {
       return buildUnauthorized(supabaseResponse)
     }
-    return buildLoginRedirect(request, supabaseResponse)
+    return buildLoginRedirect(request, supabaseResponse, pathname)
   }
 
   // Dashboard route'larında profil/rol tutarlılığı — BEST-EFFORT.

@@ -46,6 +46,7 @@ export type PurchaseRequestListRow = {
   requested_by: string | null
   site_name: string | null
   site_id: string | null
+  department?: string | null
   it_workflow_applies: boolean | null
   notifications?: string[] | null
   unordered_materials_count?: number
@@ -222,6 +223,7 @@ export async function fetchPurchaseRequestsPage(
       requested_by,
       site_name,
       site_id,
+      department,
       it_workflow_applies,
       notifications,
       sites:site_id ( name ),

@@ -16,6 +16,12 @@ export default async function HomePage() {
       redirect('/auth/login')
     }
   } catch (error) {
+    const digest =
+      typeof error === 'object' && error !== null && 'digest' in error
+        ? String((error as { digest?: unknown }).digest ?? '')
+        : ''
+    if (digest.startsWith('NEXT_REDIRECT')) throw error
+
     console.error('Error checking auth:', error)
     redirect('/auth/login')
   }

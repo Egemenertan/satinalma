@@ -15,6 +15,7 @@ import {
   siteManagerApproveOrSendToPurchasing,
   siteManagerRejectRequest,
 } from '../../../features/siteManager/siteManagerRequestActions'
+import { departmentsMatch } from '../../../lib/it-workflow'
 import { supabase } from '../../../lib/supabase'
 import { stats, statsCardSurface, statsFont, statsType } from '../../../theme/statsDesignTokens'
 
@@ -30,6 +31,8 @@ type Props = {
   requestId: string
   status: string | null
   siteId: string | null
+  requestDepartment?: string | null
+  viewerDepartment?: string | null
   canEdit: boolean
   onEditPress: () => void
   onSuccess: () => void
@@ -40,7 +43,16 @@ function canShowSiteManagerEdit(status: string | null) {
   return ['kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
 }
 
-export function SiteManagerActionsRn({ requestId, status, siteId, canEdit, onEditPress, onSuccess }: Props) {
+export function SiteManagerActionsRn({
+  requestId,
+  status,
+  siteId,
+  requestDepartment,
+  viewerDepartment,
+  canEdit,
+  onEditPress,
+  onSuccess,
+}: Props) {
   const { t } = useTranslation()
   const [busyApprove, setBusyApprove] = useState(false)
   const [busyReject, setBusyReject] = useState(false)
@@ -49,8 +61,12 @@ export function SiteManagerActionsRn({ requestId, status, siteId, canEdit, onEdi
 
   const showActions = useMemo(() => {
     if (!status) return false
-    return (APPROVAL_STATUSES as readonly string[]).includes(status)
-  }, [status])
+    if (!(APPROVAL_STATUSES as readonly string[]).includes(status)) return false
+    if (status === 'ana depoda yok' && !departmentsMatch(viewerDepartment, requestDepartment)) {
+      return false
+    }
+    return true
+  }, [status, viewerDepartment, requestDepartment])
 
   const primaryLabel =
     status === 'onay_bekliyor' || status === 'awaiting_offers' ? t('siteActions.approve') : t('siteActions.send')

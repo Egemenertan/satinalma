@@ -46,6 +46,16 @@ import { formatNumberWithDots, parseNumberFromDots, parseToNumber } from './util
 // Modern, refactored architecture
 // Invoice Modal artık ayrı bir component olarak organize edildi
 
+function invoicePhotoGroupKey(invoice: {
+  photo_key?: string | null
+  invoice_photos?: string[] | null
+}): string {
+  if (invoice?.photo_key) return String(invoice.photo_key)
+  const photos = invoice?.invoice_photos
+  if (!Array.isArray(photos) || photos.length === 0) return '[]'
+  return JSON.stringify([...photos].sort())
+}
+
 export default function OrdersPage() {
   const router = useRouter()
   const { showToast } = useToast()
@@ -188,7 +198,7 @@ export default function OrdersPage() {
         } else {
           // invoice_group_id yoksa, invoice_photos'a göre grupla
           // Aynı fatura fotoğraflarına sahip siparişleri birleştir
-          const photoKey = JSON.stringify(invoice.invoice_photos?.sort() || [])
+          const photoKey = invoicePhotoGroupKey(invoice)
           const groupId = `photo_${photoKey}_${invoice.id}`
           
           // Aynı fotoğraflara sahip başka bir grup var mı kontrol et
@@ -196,7 +206,7 @@ export default function OrdersPage() {
           for (const [existingGroupId, existingOrders] of Object.entries(invoiceGroups)) {
             if (existingGroupId.startsWith('photo_')) {
               const existingInvoice = existingOrders[0]?.invoices[0]
-              const existingPhotoKey = JSON.stringify(existingInvoice?.invoice_photos?.sort() || [])
+              const existingPhotoKey = invoicePhotoGroupKey(existingInvoice)
               
               if (photoKey === existingPhotoKey && photoKey !== '[]') {
                 // Aynı fotoğraflar, bu gruba ekle

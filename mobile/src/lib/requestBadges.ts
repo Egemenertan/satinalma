@@ -111,10 +111,18 @@ export function getStatusPresentation(
 
   const isSpecialSiteUser = userSiteIds.includes(SPECIAL_SITE_ID)
   if (isSpecialSiteUser && status === 'pending') {
+    if (userRole === 'warehouse_manager') {
+      return {
+        label: t('requestStatus.onaylandi'),
+        bg: '#dcfce7',
+        color: '#166534',
+        extraBadges,
+      }
+    }
     return {
-      label: t('requestStatus.onaylandi'),
-      bg: '#dcfce7',
-      color: '#166534',
+      label: t('requestStatus.pending'),
+      bg: '#fef9c3',
+      color: '#854d0e',
       extraBadges,
     }
   }

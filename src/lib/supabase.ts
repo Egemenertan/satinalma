@@ -932,7 +932,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_orders_page: {
+        Args: {
+          p_page: number
+          p_page_size: number
+          p_search: string | null
+          p_status: string
+          p_site_names: string[] | null
+          p_date_from: string | null
+          p_date_to: string | null
+          p_today: string
+        }
+        Returns: Json
+      }
     }
     Enums: {
       user_role:

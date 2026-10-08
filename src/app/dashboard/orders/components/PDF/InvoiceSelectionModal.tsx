@@ -136,9 +136,9 @@ export function InvoiceSelectionModal({
                           year: 'numeric'
                         })}
                       </span>
-                      {invoice.invoice_photos && invoice.invoice_photos.length > 0 && (
+                      {((invoice.photo_count ?? invoice.invoice_photos?.length) || 0) > 0 && (
                         <span className="flex items-center gap-1 text-gray-500">
-                          📷 {invoice.invoice_photos.length}
+                          📷 {invoice.photo_count ?? invoice.invoice_photos.length}
                         </span>
                       )}
                     </div>

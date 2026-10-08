@@ -27,6 +27,17 @@ export function isPazarlamaDepartment(department: string | null | undefined): bo
   return normalizeMaterialGroupToken(department) === normalizeMaterialGroupToken(IT_WORKFLOW_DEPARTMENT_LABEL)
 }
 
+/** İki departman adı aynı mı? Biri boşsa kısıtlama uygulanmaz. */
+export function departmentsMatch(
+  left: string | null | undefined,
+  right: string | null | undefined
+): boolean {
+  const a = normalizeMaterialGroupToken(left)
+  const b = normalizeMaterialGroupToken(right)
+  if (!a || !b) return true
+  return a === b
+}
+
 const IT_TAB_ELEVATED_ROLES = ['admin', 'super_admin', 'manager'] as const
 
 export function isItWorkflowElevatedRole(role: string | null | undefined): boolean {

@@ -23,7 +23,7 @@ import { ISLAND_BOTTOM_BAR_CONTENT_INSET } from '../../../src/components/island'
 import { SwipeDismissSheet } from '../../../src/components/island/SwipeDismissSheet'
 import { RequestCardSkeleton, RequestsPageSkeleton } from '../../../src/components/common/SkeletonLoader'
 import { siteManagerApproveOrSendToPurchasing } from '../../../src/features/siteManager/siteManagerRequestActions'
-import { canSeeItWorkflowTab, isPazarlamaDepartment, IT_STATUS_ONAYLANDI } from '../../../src/lib/it-workflow'
+import { canSeeItWorkflowTab, departmentsMatch, isPazarlamaDepartment, IT_STATUS_ONAYLANDI } from '../../../src/lib/it-workflow'
 import { fetchPurchaseRequestsPage, type PurchaseRequestListRow } from '../../../src/lib/purchaseRequestsQuery'
 import { getStatusPresentation, getUrgencyPresentation, REQUEST_STATUS_FILTER_OPTIONS } from '../../../src/lib/requestBadges'
 import { fetchRequestsPageData } from '../../../src/lib/requestsPageData'
@@ -73,11 +73,15 @@ function showSiteManagerCardSend(
   listView: 'main' | 'it',
   status: string | null,
   department: string | null | undefined,
-  itWorkflowApplies: boolean | null | undefined
+  itWorkflowApplies: boolean | null | undefined,
+  requestDepartment?: string | null
 ) {
   if (role !== 'site_manager' || !status) return false
 
   if (listView === 'main') {
+    if (status === 'ana depoda yok' && !departmentsMatch(department, requestDepartment)) {
+      return false
+    }
     return (SITE_MANAGER_CARD_SEND_STATUSES as readonly string[]).includes(status)
   }
 
@@ -839,7 +843,8 @@ export default function RequestsListScreen() {
             listView,
             item.status,
             profile?.department,
-            item.it_workflow_applies
+            item.it_workflow_applies,
+            item.department
           )
           const deliveryStatus = item.status === 'sipariş verildi' ? calculateMaterialDeliveryStatus(item) : null
           return (
