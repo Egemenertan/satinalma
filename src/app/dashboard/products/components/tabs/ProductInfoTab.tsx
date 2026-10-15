@@ -5,11 +5,13 @@
 
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
-import { TrendingUp, Receipt, Hash } from 'lucide-react'
+import { TrendingUp, Receipt, Hash, Plus, Pencil } from 'lucide-react'
 import { useUpdateProduct } from '../../hooks'
 
 const PRODUCT_UNITS = [
@@ -22,6 +24,15 @@ const PRODUCT_UNITS = [
   { value: 'paket', label: 'Paket' },
   { value: 'kutu', label: 'Kutu' },
 ] as const
+
+const PRICE_CURRENCIES = ['TRY', 'USD', 'EUR', 'GBP'] as const
+
+function formatUnitPrice(amount: number, currency: string) {
+  return `${amount.toLocaleString('tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })} ${currency || 'TRY'}`
+}
 
 function resolveUnitValue(unit: string | null | undefined) {
   if (!unit) return ''
@@ -47,10 +58,18 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
   const { showToast } = useToast()
   const updateMutation = useUpdateProduct()
   const [unit, setUnit] = useState(() => resolveUnitValue(product?.unit))
+  const [editingPrice, setEditingPrice] = useState(false)
+  const [savingPrice, setSavingPrice] = useState(false)
+  const [priceInput, setPriceInput] = useState('')
+  const [priceCurrency, setPriceCurrency] = useState('TRY')
+  const syncedPurchaseKey = useRef<string | null>(null)
 
   useEffect(() => {
     setUnit(resolveUnitValue(product?.unit))
+    setEditingPrice(false)
   }, [product?.id, product?.unit])
+
+  const movementsLoaded = Array.isArray(movementsData?.movements)
 
   const latestPurchasePrice = useMemo(() => {
     const movements = movementsData?.movements
@@ -62,16 +81,82 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
     if (!latest) return null
     return {
       amount: Number(latest.unit_price),
-      currency: latest.currency || product?.currency || 'TRY',
+      currency: latest.currency || 'TRY',
     }
-  }, [movementsData, product?.currency])
+  }, [movementsData])
 
   const storedUnitPrice = Number(String(product?.unit_price ?? '').trim())
   const hasStoredUnitPrice = Number.isFinite(storedUnitPrice) && storedUnitPrice > 0
-  const shownUnitPrice = hasStoredUnitPrice ? storedUnitPrice : latestPurchasePrice?.amount ?? null
-  const shownCurrency = hasStoredUnitPrice
-    ? product?.currency || 'TRY'
-    : latestPurchasePrice?.currency || product?.currency || 'TRY'
+  const shownUnitPrice = latestPurchasePrice?.amount ?? (hasStoredUnitPrice ? storedUnitPrice : null)
+  const shownCurrency = latestPurchasePrice
+    ? latestPurchasePrice.currency
+    : product?.currency || 'TRY'
+  const canEditPrice = movementsLoaded && !latestPurchasePrice
+
+  useEffect(() => {
+    if (!product?.id || !latestPurchasePrice) return
+    const nextPrice = latestPurchasePrice.amount.toFixed(2)
+    const nextCurrency = latestPurchasePrice.currency || 'TRY'
+    const key = `${product.id}:${nextPrice}:${nextCurrency}`
+    if (syncedPurchaseKey.current === key) return
+
+    const currentAmount = Number(String(product.unit_price ?? '').trim())
+    const sameAmount =
+      Number.isFinite(currentAmount) && Math.abs(currentAmount - latestPurchasePrice.amount) < 0.005
+    const sameCurrency = (product.currency || 'TRY') === nextCurrency
+    if (sameAmount && sameCurrency) {
+      syncedPurchaseKey.current = key
+      return
+    }
+
+    syncedPurchaseKey.current = key
+    updateMutation.mutate(
+      {
+        id: product.id,
+        updates: { unit_price: nextPrice, currency: nextCurrency },
+      },
+      {
+        onError: (error) => {
+          console.error('Birim fiyat alım geçmişinden güncellenemedi:', error)
+        },
+      }
+    )
+  }, [
+    product?.id,
+    product?.unit_price,
+    product?.currency,
+    latestPurchasePrice,
+    updateMutation,
+  ])
+
+  const startPriceEdit = () => {
+    if (!canEditPrice || !product?.id) return
+    setPriceInput(hasStoredUnitPrice ? String(storedUnitPrice) : '')
+    setPriceCurrency(product.currency || 'TRY')
+    setEditingPrice(true)
+  }
+
+  const savePrice = async () => {
+    if (!product?.id) return
+    const amount = Number(priceInput.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Geçerli bir birim fiyat girin', 'error')
+      return
+    }
+    setSavingPrice(true)
+    try {
+      await updateMutation.mutateAsync({
+        id: product.id,
+        updates: { unit_price: amount.toFixed(2), currency: priceCurrency },
+      })
+      setEditingPrice(false)
+      showToast('Birim fiyat kaydedildi', 'success')
+    } catch {
+      showToast('Birim fiyat kaydedilemedi', 'error')
+    } finally {
+      setSavingPrice(false)
+    }
+  }
 
   const unitOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = PRODUCT_UNITS.map((item) => ({
@@ -145,14 +230,83 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim Fiyat</label>
-          <p className="text-lg font-semibold text-gray-900 mt-2">
-            {shownUnitPrice != null
-              ? `${shownUnitPrice.toLocaleString('tr-TR', {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })} ${shownCurrency}`
-              : '-'}
-          </p>
+          {editingPrice ? (
+            <div className="mt-3 space-y-2">
+              <Input
+                type="number"
+                min="0"
+                step="0.01"
+                inputMode="decimal"
+                autoFocus
+                value={priceInput}
+                onChange={(event) => setPriceInput(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter') {
+                    event.preventDefault()
+                    void savePrice()
+                  }
+                  if (event.key === 'Escape') setEditingPrice(false)
+                }}
+                placeholder="Tutar"
+                aria-label="Birim fiyat"
+                className="h-11 border border-gray-200 bg-white rounded-xl text-base font-semibold shadow-none"
+              />
+              <div className="flex items-center gap-2">
+                <Select value={priceCurrency} onValueChange={setPriceCurrency}>
+                  <SelectTrigger className="h-10 w-[92px] rounded-xl border-gray-200 bg-white font-semibold">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="z-[80] rounded-2xl">
+                    {PRICE_CURRENCIES.map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setEditingPrice(false)}
+                  className="h-10 rounded-xl text-gray-600"
+                >
+                  Vazgeç
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => void savePrice()}
+                  disabled={savingPrice}
+                  className="ml-auto h-10 rounded-xl bg-gray-900 text-white hover:bg-gray-800"
+                >
+                  {savingPrice ? 'Kaydediliyor' : 'Kaydet'}
+                </Button>
+              </div>
+            </div>
+          ) : shownUnitPrice == null && canEditPrice ? (
+            <button
+              type="button"
+              onClick={startPriceEdit}
+              className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-dashed border-gray-300 bg-gray-50 text-sm font-semibold text-gray-700 transition-colors hover:border-gray-900 hover:bg-white hover:text-gray-900"
+            >
+              <Plus className="h-4 w-4" />
+              Birim fiyat ekle
+            </button>
+          ) : canEditPrice && shownUnitPrice != null ? (
+            <button
+              type="button"
+              onClick={startPriceEdit}
+              className="mt-2 flex h-11 w-full items-center justify-between rounded-xl bg-gray-50 px-3 text-left transition-colors hover:bg-gray-100"
+            >
+              <span className="text-lg font-semibold text-gray-900">
+                {formatUnitPrice(shownUnitPrice, shownCurrency)}
+              </span>
+              <Pencil className="h-4 w-4 text-gray-400" />
+            </button>
+          ) : (
+            <p className="text-lg font-semibold text-gray-900 mt-2">
+              {shownUnitPrice != null ? formatUnitPrice(shownUnitPrice, shownCurrency) : '-'}
+            </p>
+          )}
         </div>
       </div>
 
