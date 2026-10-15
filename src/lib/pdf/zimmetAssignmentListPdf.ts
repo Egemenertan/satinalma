@@ -13,6 +13,9 @@ export type ZimmetAssignmentListRow = {
   brand: string
   unit: string
   quantity: number
+  /** Ürün kartındaki birim fiyat. Yoksa null. */
+  unitPrice: number | null
+  currency: string
   productType: string
   sourceWarehouse: string
   serialNumber: string
@@ -135,6 +138,36 @@ const extraCss = `
     color: #1f2937;
   }
   table.zim-data tr:nth-child(even) td { background: #fafafa; }
+  table.zim-data th.zim-money,
+  table.zim-data td.zim-money {
+    text-align: right;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+  table.zim-data { table-layout: fixed; }
+  .zim-totals {
+    margin-top: 10px;
+    display: flex;
+    justify-content: flex-end;
+    page-break-inside: avoid;
+  }
+  .zim-totals-card {
+    min-width: 220px;
+    border: 1px solid #e5e7eb;
+    border-radius: 6px;
+    overflow: hidden;
+    font-size: 9pt;
+  }
+  .zim-totals-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 6px 10px;
+    border-top: 1px solid #e5e7eb;
+  }
+  .zim-totals-row:first-child { border-top: 0; }
+  .zim-totals-k { color: #374151; font-weight: 600; }
+  .zim-totals-v { color: #111827; font-weight: 700; font-variant-numeric: tabular-nums; }
   table.zim-data th.zim-th-img,
   table.zim-data td.zim-td-img {
     width: 52px;
@@ -219,12 +252,55 @@ const extraCss = `
 </style>
 `
 
+function formatMoney(value: number | null, currency: string): string {
+  if (value == null || !Number.isFinite(value)) return '—'
+  const formatted = value.toLocaleString('tr-TR', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })
+  return `${formatted} ${currency || 'TRY'}`
+}
+
+function lineTotal(row: ZimmetAssignmentListRow): number | null {
+  if (row.unitPrice == null || !Number.isFinite(row.unitPrice)) return null
+  const qty = Number(row.quantity)
+  if (!Number.isFinite(qty)) return null
+  return qty * row.unitPrice
+}
+
+function buildTotalsHtml(rows: ZimmetAssignmentListRow[]): string {
+  const byCurrency = new Map<string, number>()
+  let pricedCount = 0
+  for (const row of rows) {
+    const total = lineTotal(row)
+    if (total == null) continue
+    pricedCount += 1
+    const currency = row.currency || 'TRY'
+    byCurrency.set(currency, (byCurrency.get(currency) || 0) + total)
+  }
+  if (pricedCount === 0) return ''
+
+  const lines = [...byCurrency.entries()]
+    .sort(([a], [b]) => a.localeCompare(b, 'tr'))
+    .map(
+      ([currency, sum]) => `
+      <div class="zim-totals-row">
+        <span class="zim-totals-k">Toplam tutar (${esc(currency)})</span>
+        <span class="zim-totals-v">${esc(formatMoney(sum, currency))}</span>
+      </div>`
+    )
+    .join('')
+
+  return `<div class="zim-totals"><div class="zim-totals-card">${lines}</div></div>`
+}
+
 function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
   return rows
     .map((r) => {
       const imgCell = r.imageUrl
         ? `<img src="${esc(r.imageUrl)}" alt="" class="zim-prod-img" />`
         : `<div class="zim-prod-img-empty"></div>`
+      const currency = r.currency || 'TRY'
       return `
     <tr>
       <td class="zim-td-img">${imgCell}</td>
@@ -232,7 +308,8 @@ function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
       <td>${esc(r.sku)}</td>
       <td>${esc(r.brand)}</td>
       <td>${esc(r.unit)}</td>
-      <td class="zim-num">${esc(String(r.quantity))}</td>
+      <td class="zim-money">${esc(String(r.quantity))}</td>
+      <td class="zim-money">${esc(formatMoney(r.unitPrice, currency))}</td>
       <td>${esc(r.productType)}</td>
       <td>${esc(r.sourceWarehouse)}</td>
       <td>${esc(r.serialNumber)}</td>
@@ -283,6 +360,18 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
       <div class="zim-assign-heading">Zimmet kalemleri</div>
       <div class="zim-table-wrap">
         <table class="zim-data">
+          <colgroup>
+            <col style="width:44px" />
+            <col />
+            <col style="width:68px" />
+            <col style="width:58px" />
+            <col style="width:40px" />
+            <col style="width:42px" />
+            <col style="width:78px" />
+            <col style="width:58px" />
+            <col style="width:64px" />
+            <col style="width:58px" />
+          </colgroup>
           <thead>
             <tr>
               <th class="zim-th-img">Görsel</th>
@@ -290,7 +379,8 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
               <th>SKU</th>
               <th>Marka</th>
               <th>Birim</th>
-              <th>Miktar</th>
+              <th class="zim-money">Miktar</th>
+              <th class="zim-money">Birim fiyat</th>
               <th>Ürün tipi</th>
               <th>Kaynak depo</th>
               <th>Seri no</th>
@@ -298,6 +388,7 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
           </thead>
           <tbody>${buildTableRows(payload.rows)}</tbody>
         </table>
+        ${buildTotalsHtml(payload.rows)}
       </div>
     </div>
 

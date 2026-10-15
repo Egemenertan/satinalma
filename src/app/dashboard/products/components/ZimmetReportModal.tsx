@@ -138,6 +138,8 @@ const INVENTORY_SELECT = `
     unit,
     product_type,
     images,
+    unit_price,
+    currency,
     brand:brands(name)
   ),
   warehouse:sites!user_inventory_source_warehouse_id_fkey(name)
@@ -363,6 +365,11 @@ export function ZimmetReportModal({
         const images = Array.isArray(p?.images) ? (p.images as string[]) : []
         const imageUrl =
           typeof images[0] === 'string' && images[0].trim() ? images[0].trim() : ''
+        const rawPrice = p?.unit_price
+        const unitPrice =
+          rawPrice == null || rawPrice === '' || !Number.isFinite(Number(rawPrice))
+            ? null
+            : Number(rawPrice)
         return {
           imageUrl,
           productName: p?.name || r.item_name || '',
@@ -370,6 +377,8 @@ export function ZimmetReportModal({
           brand: brandName || '',
           unit: p?.unit || r.unit || '',
           quantity: Number(r.quantity ?? 0),
+          unitPrice,
+          currency: (p?.currency as string) || 'TRY',
           productType: ptype,
           sourceWarehouse: whName || '',
           serialNumber: (r.serial_number as string) || '',

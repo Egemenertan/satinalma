@@ -73,12 +73,25 @@ export default function ProductsPage() {
     clearFilters,
   } = useProductFilters()
 
+  const managesViewedWarehouse = useMemo(() => {
+    if (!warehouseAccess.loaded || warehouseAccess.canManageAll) return false
+    const managed = new Set(warehouseAccess.manageWarehouseIds)
+    if (managed.size === 0) return false
+    if (siteId) return managed.has(siteId)
+    return (
+      warehouseAccess.warehouseIds.length > 0 &&
+      warehouseAccess.warehouseIds.every((id) => managed.has(id))
+    )
+  }, [warehouseAccess, siteId])
+
   const filters = useMemo(() => {
     if (!warehouseAccess.loaded) return baseFilters
     if (warehouseAccess.canManageAll) return baseFilters
     return {
       ...baseFilters,
       allowedWarehouseIds: warehouseAccess.warehouseIds,
+      // Görüntüleme yetkisinde liste, zimmeti olan ürünleri de kapsar.
+      // Depoyu yöneten kullanıcı tabloda fiziksel stok adedini görür.
       useDepotZimmetQty: true,
     }
   }, [baseFilters, warehouseAccess])
@@ -182,8 +195,10 @@ export default function ProductsPage() {
 
   const isRestrictedView = warehouseAccess.isRestricted && warehouseAccess.warehouseIds.length > 0
   const canManageProducts = warehouseAccess.canManageProducts
-  // Depoya bağlı kullanıcı yalnızca kendi stoğunu görür; stok işlemi depo yöneticisinde kalır.
+  // Tam stok işlemi yalnızca tüm depoları yöneten kullanıcıda.
+  // Belirli depoyu yöneten kullanıcı yalnızca o depoya stok girişi yapar.
   const canOperateStock = warehouseAccess.canManageAll
+  const canReceiveInbound = !warehouseAccess.canManageAll && managesViewedWarehouse
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
 
   const handleOpenCreateModal = () => {
@@ -580,6 +595,7 @@ export default function ProductsPage() {
             selectedProducts={selectedProducts}
             onSelectionChange={canOperateStock ? handleSelectionChange : undefined}
             ownWarehouseView={isRestrictedView}
+            ownWarehouseQuantity={managesViewedWarehouse ? 'stock' : 'zimmet'}
           />
 
           {totalPages > 1 && (
@@ -632,6 +648,8 @@ export default function ProductsPage() {
         selectedProductIds={selectedProducts}
         defaultWarehouseId={siteId || undefined}
         canOperateStock={canOperateStock}
+        inboundOnly={canReceiveInbound}
+        inboundWarehouseIds={canReceiveInbound ? warehouseAccess.manageWarehouseIds : undefined}
         scopeWarehouseIds={isRestrictedView ? warehouseAccess.warehouseIds : undefined}
       />
 

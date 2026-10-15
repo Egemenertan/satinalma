@@ -30,8 +30,8 @@ export interface ProductFilters {
   minPrice?: number
   maxPrice?: number
   /**
-   * Depoya bağlı kullanıcı: listedeki adet, o depodaki aktif zimmet miktarıdır.
-   * Depo yöneticisi bu bayrağı kullanmaz.
+   * Kısıtlı depo kullanıcısı: listeye o depodaki aktif zimmet ürünleri de girer.
+   * Tablodaki adet yöneticide fiziksel stok, görüntülemede zimmet miktarıdır.
    */
   useDepotZimmetQty?: boolean
 }
@@ -150,6 +150,42 @@ function sumDepotZimmetQty(
   return total
 }
 
+function isDepotScopedList(filters?: ProductFilters) {
+  return Boolean(filters?.useDepotZimmetQty) || Boolean(filters?.allowedWarehouseIds?.length)
+}
+
+/** Depoda rafta duran (miktarı sıfırdan büyük) ürünler. */
+async function productIdsWithPositiveStock(
+  supabase: ReturnType<typeof createClient>,
+  warehouseIds: string[]
+): Promise<string[]> {
+  const ids = warehouseIds.filter(Boolean)
+  if (ids.length === 0) return []
+  let query = supabase.from('warehouse_stock').select('product_id').gt('quantity', 0)
+  query = ids.length === 1 ? query.eq('warehouse_id', ids[0]) : query.in('warehouse_id', ids)
+  const { data, error } = await query
+  if (error) {
+    console.error('Depo stok ürünleri okunamadı:', error)
+    return []
+  }
+  return [...new Set((data || []).map((row) => row.product_id).filter(Boolean))]
+}
+
+/**
+ * Deponun kendi listesi: rafta adedi olanlar ve bu depodan zimmetli olanlar.
+ * Miktarı 0 kalan boş stok satırları listeye girmez.
+ */
+async function productIdsInDepot(
+  supabase: ReturnType<typeof createClient>,
+  warehouseIds: string[],
+  includeZimmet: boolean
+): Promise<string[]> {
+  const stockIds = await productIdsWithPositiveStock(supabase, warehouseIds)
+  if (!includeZimmet) return stockIds
+  const zimmetIds = await productIdsZimmettedAt(supabase, warehouseIds)
+  return [...new Set([...stockIds, ...zimmetIds])]
+}
+
 async function productIdsZimmettedAt(
   supabase: ReturnType<typeof createClient>,
   warehouseIds: string[]
@@ -204,16 +240,26 @@ export async function fetchProducts(
   if (filters?.siteId && searchTerm) {
     console.log('🏢 Site + Search mode:', { siteId: filters.siteId, searchTerm })
     
-    // Önce site'deki ürün ID'lerini al
-    const { data: stockProducts } = await supabase
-      .from('warehouse_stock')
-      .select('product_id, quantity')
-      .eq('warehouse_id', filters.siteId)
-    
-    let siteProductIds = stockProducts?.map(s => s.product_id) || []
-    if (filters?.useDepotZimmetQty) {
-      const zimmetIds = await productIdsZimmettedAt(supabase, [filters.siteId])
-      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
+    // Depoya bağlı kullanıcı yalnızca adedi olan ürünleri görür.
+    // Boş (quantity 0) stok satırları listede 0 olarak kalmasın.
+    let siteProductIds: string[]
+    if (isDepotScopedList(filters)) {
+      siteProductIds = await productIdsInDepot(
+        supabase,
+        [filters.siteId],
+        Boolean(filters.useDepotZimmetQty)
+      )
+    } else {
+      const { data: stockProducts } = await supabase
+        .from('warehouse_stock')
+        .select('product_id, quantity')
+        .eq('warehouse_id', filters.siteId)
+
+      siteProductIds = stockProducts?.map((s) => s.product_id) || []
+      if (filters?.useDepotZimmetQty) {
+        const zimmetIds = await productIdsZimmettedAt(supabase, [filters.siteId])
+        siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
+      }
     }
     
     // "Mevcut Olanlar": depoda serbest (user_id null) ve quantity > 0
@@ -497,33 +543,31 @@ export async function fetchProducts(
   
   // Site / izinli depo filtresi varsa (arama olmadan)
   let siteProductIds: string[] | null = null
-  if (filters?.siteId) {
-    let stockQuery = supabase
+  if (filters?.siteId && isDepotScopedList(filters)) {
+    siteProductIds = await productIdsInDepot(
+      supabase,
+      [filters.siteId],
+      Boolean(filters.useDepotZimmetQty)
+    )
+    if (siteProductIds.length === 0) {
+      return { products: [], totalCount: 0, totalPages: 0 }
+    }
+  } else if (filters?.siteId) {
+    const { data: stockProducts } = await supabase
       .from('warehouse_stock')
       .select('product_id')
       .eq('warehouse_id', filters.siteId)
-    
-    const { data: stockProducts } = await stockQuery
-    
-    siteProductIds = stockProducts?.map(s => s.product_id) || []
-    if (filters?.useDepotZimmetQty) {
-      const zimmetIds = await productIdsZimmettedAt(supabase, [filters.siteId])
-      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
-    }
+
+    siteProductIds = stockProducts?.map((s) => s.product_id) || []
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }
   } else if (filters?.allowedWarehouseIds?.length) {
-    const { data: stockProducts } = await supabase
-      .from('warehouse_stock')
-      .select('product_id')
-      .in('warehouse_id', filters.allowedWarehouseIds)
-
-    siteProductIds = [...new Set((stockProducts || []).map((s) => s.product_id))]
-    if (filters?.useDepotZimmetQty) {
-      const zimmetIds = await productIdsZimmettedAt(supabase, filters.allowedWarehouseIds)
-      siteProductIds = [...new Set([...siteProductIds, ...zimmetIds])]
-    }
+    siteProductIds = await productIdsInDepot(
+      supabase,
+      filters.allowedWarehouseIds,
+      Boolean(filters.useDepotZimmetQty)
+    )
     if (siteProductIds.length === 0) {
       return { products: [], totalCount: 0, totalPages: 0 }
     }

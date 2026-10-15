@@ -63,9 +63,14 @@ interface ProductsTableProps {
   onSelectionChange?: (selectedIds: string[]) => void
   /**
    * warehouse_access ile tek/çok depoya bağlı kullanıcı.
-   * Depo yöneticisinin stok rozeti yerine yalnızca kendi deposundaki adet gösterilir.
+   * Stok rozeti yerine yalnızca kendi deposundaki adet gösterilir.
    */
   ownWarehouseView?: boolean
+  /**
+   * stock: depodaki fiziksel miktar (yönetici).
+   * zimmet: yalnızca aktif zimmet adedi (görüntüleme yetkisi).
+   */
+  ownWarehouseQuantity?: 'stock' | 'zimmet'
 }
 
 function OwnWarehouseStock({
@@ -90,6 +95,7 @@ export function ProductsTable({
   selectedProducts = [],
   onSelectionChange,
   ownWarehouseView = false,
+  ownWarehouseQuantity = 'zimmet',
 }: ProductsTableProps) {
   const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock' | 'bosta'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
@@ -134,8 +140,12 @@ export function ProductsTable({
   const isWarehouseScoped = Boolean(selectedSiteId) && !ownWarehouseView
   const hideCrossDepotColumns = isWarehouseScoped || ownWarehouseView
 
-  const getOwnWarehouseQty = (product: ProductWithStock) =>
-    Number(product.depot_quantity) || 0
+  const getOwnWarehouseQty = (product: ProductWithStock) => {
+    const onHand = Number(product.total_stock) || 0
+    const zimmet = Number(product.depot_quantity) || 0
+    if (ownWarehouseQuantity === 'stock') return onHand > 0 ? onHand : zimmet
+    return zimmet
+  }
 
   const getDisplayStock = (product: ProductWithStock) => {
     if (ownWarehouseView) return getOwnWarehouseQty(product)

@@ -4,6 +4,25 @@ import { createClient } from '@/lib/supabase/server'
 // Route'u dinamik olarak işaretle
 export const dynamic = 'force-dynamic'
 
+const IN_CHUNK = 200
+
+function uniqueIds(ids: Array<string | null | undefined>): string[] {
+  return [...new Set(ids.filter((id): id is string => Boolean(id)))]
+}
+
+async function fetchInChunks<T>(
+  ids: string[],
+  query: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  if (ids.length === 0) return []
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += IN_CHUNK) chunks.push(ids.slice(i, i + IN_CHUNK))
+  const results = await Promise.all(chunks.map((chunk) => query(chunk)))
+  const failed = results.find((result) => result.error)
+  if (failed?.error) throw new Error(failed.error.message)
+  return results.flatMap((result) => result.data ?? [])
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = request.nextUrl
@@ -134,23 +153,7 @@ export async function GET(request: NextRequest) {
       .eq('request_id', requestId)
       .order('created_at', { ascending: true })
 
-    // Sipariş bilgilerini çek - tüm request'ler için
-    console.log('🛒 Orders sorgusu yapılıyor:', { allRequestIds })
-    
-    // Önce basit orders sorgusu yap (JOIN'siz)
-    const { data: ordersSimple, error: ordersSimpleError } = await supabase
-      .from('orders')
-      .select('*')
-      .in('purchase_request_id', allRequestIds)
-    
-    console.log('🛒 Basit orders sorgusu:', {
-      allRequestIds,
-      ordersSimpleFound: ordersSimple?.length || 0,
-      ordersSimpleError: ordersSimpleError?.message,
-      ordersSimpleData: ordersSimple
-    })
-    
-    // Şimdi JOIN'li sorgu yap
+    // Siparişler: fotoğraf kolonları PDF'te kullanılmıyor, çekilmez.
     const { data: orders, error: ordersError } = await supabase
       .from('orders')
       .select(`
@@ -167,7 +170,6 @@ export async function GET(request: NextRequest) {
         delivered_at,
         delivery_confirmed_by,
         status,
-        delivery_receipt_photos,
         delivery_notes,
         user_id,
         material_item_id,
@@ -176,13 +178,8 @@ export async function GET(request: NextRequest) {
       `)
       .in('purchase_request_id', allRequestIds)
       .order('created_at', { ascending: true })
-    
-    console.log('🛒 JOINsiz orders sorgusu:', {
-      requestId,
-      ordersFound: orders?.length || 0,
-      ordersError: ordersError?.message,
-      ordersData: orders
-    })
+
+    if (ordersError) throw new Error(ordersError.message)
     
     const requestNumberById = new Map(
       (allRequestsData || [])
@@ -190,75 +187,95 @@ export async function GET(request: NextRequest) {
         .map((request) => [request.id, request.request_number as string])
     )
 
-    // JOIN'leri ayrı ayrı çek
-    let ordersWithJoins = []
-    if (orders && orders.length > 0) {
-      for (const order of orders) {
-        // Supplier bilgisi
-        const { data: supplier } = await supabase
-          .from('suppliers')
-          .select('name')
-          .eq('id', order.supplier_id)
-          .single()
-        
-        // User bilgisi
-        const { data: profile } = await supabase
-          .from('profiles') 
-          .select('full_name, email, role')
-          .eq('id', order.user_id)
-          .single()
-        
-        // Material bilgisi
-        const { data: material } = await supabase
-          .from('purchase_request_items')
-          .select('item_name, unit')
-          .eq('id', order.material_item_id)
-          .single()
-        
-        // Invoice bilgisi (bu siparişe ait faturalar)
-        const { data: invoices } = await supabase
+    const orderIds = (orders ?? []).map((order) => order.id)
+    const supplierIds = uniqueIds((orders ?? []).map((order) => order.supplier_id))
+    const profileIds = uniqueIds((orders ?? []).map((order) => order.user_id))
+    const materialIds = uniqueIds((orders ?? []).map((order) => order.material_item_id))
+
+    const [suppliers, orderProfiles, materials, detailedInvoices, deliveries] = await Promise.all([
+      fetchInChunks(supplierIds, (chunk) =>
+        supabase.from('suppliers').select('id, name').in('id', chunk)
+      ),
+      fetchInChunks(profileIds, (chunk) =>
+        supabase.from('profiles').select('id, full_name, email, role').in('id', chunk)
+      ),
+      fetchInChunks(materialIds, (chunk) =>
+        supabase.from('purchase_request_items').select('id, item_name, unit').in('id', chunk)
+      ),
+      fetchInChunks(orderIds, (chunk) =>
+        supabase
           .from('invoices')
-          .select('id, amount, currency, created_at')
-          .eq('order_id', order.id)
-        
-        // Teslimat bilgisi - order_deliveries tablosundan (received_by kullan)
-        const { data: deliveries } = await supabase
+          .select('id, amount, currency, created_at, notes, order_id, invoice_group_id, subtotal, discount, tax, grand_total')
+          .in('order_id', chunk)
+          .order('created_at', { ascending: true })
+      ),
+      fetchInChunks(orderIds, (chunk) =>
+        supabase
           .from('order_deliveries')
-          .select('delivered_at, received_by, delivery_photos')
-          .eq('order_id', order.id)
+          .select('order_id, delivered_at, received_by')
+          .in('order_id', chunk)
           .order('delivered_at', { ascending: false })
-        
-        // En son teslimat
-        const lastDelivery = deliveries?.[0]
-        
-        // Teslimat alan kullanıcı bilgisi (received_by)
-        let deliveredByUser = null
-        if (lastDelivery?.received_by) {
-          const { data: deliveryUser } = await supabase
-            .from('profiles')
-            .select('full_name, email, role')
-            .eq('id', lastDelivery.received_by)
-            .single()
-          deliveredByUser = deliveryUser
-        }
-        
-        ordersWithJoins.push({
-          ...order,
-          request_number: requestNumberById.get(order.purchase_request_id) || null,
-          suppliers: supplier,
-          profiles: profile,
-          purchase_request_items: material,
-          invoices: invoices || [],
-          // Teslimat bilgileri - order_deliveries'dan
-          actual_delivered_at: lastDelivery?.delivered_at || order.delivered_at,
-          delivered_by_user: deliveredByUser
-        })
+      ),
+    ])
+
+    const deliveryProfileIds = uniqueIds(
+      deliveries.map((delivery) => delivery.received_by).filter((id) => !orderProfiles.some((profile) => profile.id === id))
+    )
+    const deliveryProfiles = await fetchInChunks(deliveryProfileIds, (chunk) =>
+      supabase.from('profiles').select('id, full_name, email, role').in('id', chunk)
+    )
+    const profilesById = new Map([...orderProfiles, ...deliveryProfiles].map((profile) => [profile.id, profile]))
+    const suppliersById = new Map(suppliers.map((supplier) => [supplier.id, supplier]))
+    const materialsById = new Map(materials.map((material) => [material.id, material]))
+
+    const invoicesByOrderId = new Map<string, typeof detailedInvoices>()
+    for (const invoice of detailedInvoices) {
+      const list = invoicesByOrderId.get(invoice.order_id) ?? []
+      list.push(invoice)
+      invoicesByOrderId.set(invoice.order_id, list)
+    }
+
+    const latestDeliveryByOrderId = new Map<string, (typeof deliveries)[number]>()
+    for (const delivery of deliveries) {
+      const current = latestDeliveryByOrderId.get(delivery.order_id)
+      if (!current || new Date(delivery.delivered_at ?? 0).getTime() > new Date(current.delivered_at ?? 0).getTime()) {
+        latestDeliveryByOrderId.set(delivery.order_id, delivery)
       }
     }
-    
-    console.log('🛒 Manuel JOIN sonucu:', {
-      ordersWithJoinsCount: ordersWithJoins.length,
-      ordersWithJoins
+
+    const ordersWithJoins = (orders ?? []).map((order) => {
+      const supplier = order.supplier_id ? suppliersById.get(order.supplier_id) : null
+      const profile = order.user_id ? profilesById.get(order.user_id) : null
+      const material = order.material_item_id ? materialsById.get(order.material_item_id) : null
+      const lastDelivery = latestDeliveryByOrderId.get(order.id)
+      const deliveredByUser = lastDelivery?.received_by ? profilesById.get(lastDelivery.received_by) ?? null : null
+      const orderInvoices = invoicesByOrderId.get(order.id) ?? []
+
+      return {
+        ...order,
+        request_number: requestNumberById.get(order.purchase_request_id) || null,
+        suppliers: supplier ? { name: supplier.name } : null,
+        profiles: profile
+          ? { full_name: profile.full_name, email: profile.email, role: profile.role }
+          : null,
+        purchase_request_items: material
+          ? { item_name: material.item_name, unit: material.unit }
+          : null,
+        invoices: orderInvoices.map((invoice) => ({
+          id: invoice.id,
+          amount: invoice.amount,
+          currency: invoice.currency,
+          created_at: invoice.created_at,
+        })),
+        actual_delivered_at: lastDelivery?.delivered_at || order.delivered_at,
+        delivered_by_user: deliveredByUser
+          ? {
+              full_name: deliveredByUser.full_name,
+              email: deliveredByUser.email,
+              role: deliveredByUser.role,
+            }
+          : null,
+      }
     })
     
     // Manuel JOIN'li veriyi kullan
@@ -499,133 +516,20 @@ export async function GET(request: NextRequest) {
       })
     }
 
-    // 6. Invoice (Fatura) aşamaları
-    console.log('💰 Invoices sorgusu yapılıyor:', { requestId })
-    
-    // Önce basit invoices sorgusu yap
-    const { data: invoicesSimple, error: invoicesSimpleError } = await supabase
-      .from('invoices')
-      .select('*')
-    
-    console.log('💰 Basit invoices sorgusu (tüm invoices):', {
-      invoicesSimpleFound: invoicesSimple?.length || 0,
-      invoicesSimpleError: invoicesSimpleError?.message,
-      invoicesSimpleData: invoicesSimple
+    const ordersById = new Map(finalOrders.map((order) => [order.id, order]))
+    const finalInvoices = detailedInvoices.flatMap((invoice) => {
+      const relatedOrder = ordersById.get(invoice.order_id)
+      if (!relatedOrder) return []
+      return [{
+        ...invoice,
+        orders: {
+          purchase_request_id: relatedOrder.purchase_request_id,
+          suppliers: relatedOrder.suppliers,
+          purchase_request_items: relatedOrder.purchase_request_items,
+          profiles: relatedOrder.profiles,
+        },
+      }]
     })
-    
-    // Bu request'e ait orders'ları bul ve onların invoice'larını çek
-    const orderIds = finalOrders?.map(o => o.id) || []
-    console.log('💰 Order IDs for invoice lookup:', {
-      finalOrdersLength: finalOrders?.length || 0,
-      orderIds,
-      orderIdsCount: orderIds.length
-    })
-    
-    let invoices, invoicesError
-    
-    if (orderIds.length > 0) {
-      // Order IDs varsa, onlara ait invoices'ları çek
-      const result = await supabase
-        .from('invoices')
-        .select(`
-          id,
-          amount,
-          currency,
-          created_at,
-          notes,
-          order_id,
-          invoice_group_id,
-          subtotal,
-          discount,
-          tax,
-          grand_total
-        `)
-        .in('order_id', orderIds)
-        .order('created_at', { ascending: true })
-      
-      invoices = result.data
-      invoicesError = result.error
-    } else {
-      // Order IDs yoksa, tüm invoices'ları kontrol et (debug için)
-      console.log('⚠️ Order IDs boş, tüm invoices kontrol ediliyor...')
-      
-      const result = await supabase
-        .from('invoices')
-        .select(`
-          id,
-          amount,
-          currency,
-          created_at,
-          notes,
-          order_id,
-          invoice_group_id,
-          subtotal,
-          discount,
-          tax,
-          grand_total
-        `)
-        .order('created_at', { ascending: true })
-      
-      invoices = result.data
-      invoicesError = result.error
-      
-      console.log('💰 Tüm invoices verileri:', {
-        totalInvoices: invoices?.length || 0,
-        invoicesData: invoices
-      })
-    }
-    
-    console.log('💰 JOINsiz invoices sorgusu:', {
-      requestId,
-      orderIds,
-      invoicesFound: invoices?.length || 0,
-      invoicesError: invoicesError?.message,
-      invoicesData: invoices,
-      invoicesWithNotes: invoices?.filter(inv => inv.notes).length || 0,
-      notesPreview: invoices?.map(inv => ({
-        id: inv.id?.substring(0, 8),
-        hasNotes: !!inv.notes,
-        notes: inv.notes
-      }))
-    })
-    
-    // Manuel JOIN'leri yap
-    let invoicesWithJoins = []
-    if (invoices && invoices.length > 0) {
-      for (const invoice of invoices) {
-        // İlgili order'ı bul
-        const relatedOrder = finalOrders?.find(o => o.id === invoice.order_id)
-        
-        if (relatedOrder) {
-          invoicesWithJoins.push({
-            ...invoice,
-            subtotal: invoice.subtotal,
-            discount: invoice.discount,
-            tax: invoice.tax,
-            grand_total: invoice.grand_total,
-            orders: {
-              purchase_request_id: relatedOrder.purchase_request_id,
-              suppliers: relatedOrder.suppliers,
-              purchase_request_items: relatedOrder.purchase_request_items,
-              profiles: relatedOrder.profiles
-            }
-          })
-        }
-      }
-    }
-    
-    console.log('💰 Manuel JOIN invoices sonucu:', {
-      invoicesWithJoinsCount: invoicesWithJoins.length,
-      invoicesWithJoins,
-      invoicesWithNotes: invoicesWithJoins.filter(inv => inv.notes).length,
-      notesData: invoicesWithJoins.map(inv => ({
-        id: inv.id.substring(0, 8),
-        hasNotes: !!inv.notes,
-        notes: inv.notes
-      }))
-    })
-    
-    const finalInvoices = invoicesWithJoins
 
     if (finalInvoices && finalInvoices.length > 0) {
       finalInvoices.forEach(invoice => {
@@ -670,14 +574,10 @@ export async function GET(request: NextRequest) {
     let uniqueGroupIds: any[] = []
     
     if (finalInvoices && finalInvoices.length > 0) {
-      // Tüm invoice'ların invoice_group_id'lerini kontrol et
-      const invoiceIds = finalInvoices.map(inv => inv.id)
-      const result = await supabase
-        .from('invoices')
-        .select('id, invoice_group_id')
-        .in('id', invoiceIds)
-      
-      invoicesWithGroups = result.data
+      invoicesWithGroups = finalInvoices.map((invoice) => ({
+        id: invoice.id,
+        invoice_group_id: invoice.invoice_group_id,
+      }))
       
       // Eğer specific invoice_group_id belirtilmişse, onu kullan
       if (specificInvoiceGroupId) {
@@ -776,7 +676,6 @@ export async function GET(request: NextRequest) {
         invoicesFound: finalInvoices?.length || 0,
         ordersError: ordersError?.message,
         shipmentsError: shipmentsError?.message,
-        invoicesError: invoicesError?.message,
         requestIds: allRequestIds, // Tüm request ID'leri
         requestCount: allRequestIds.length,
         timelineLength: timeline.length,

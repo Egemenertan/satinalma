@@ -32,6 +32,10 @@ interface StockOperationsFormProps {
   /** Ürünler sayfasındaki seçili depo */
   defaultWarehouseId?: string
   onSuccess?: () => void
+  /** Verilirse yalnızca bu işlemler açılır. Tek işlemde seçici gizlenir. */
+  allowedOperations?: OperationType[]
+  /** Verilirse depo seçimi bu depolarla sınırlıdır. */
+  warehouseIds?: string[]
 }
 
 function isFreeWarehouseStock(stock: { user_id?: string | null; warehouse_id?: string | null }) {
@@ -60,6 +64,8 @@ export function StockOperationsForm({
   productUnit,
   defaultWarehouseId,
   onSuccess,
+  allowedOperations,
+  warehouseIds,
 }: StockOperationsFormProps) {
   const queryClient = useQueryClient()
   const [operationType, setOperationType] = useState<OperationType>('giriş')
@@ -320,6 +326,16 @@ export function StockOperationsForm({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (allowedOperations?.length && !allowedOperations.includes(operationType)) {
+      alert('Bu depoda yalnızca stok girişi yapabilirsiniz')
+      return
+    }
+
+    if (warehouseIds?.length && !warehouseIds.includes(formData.warehouse_id)) {
+      alert('Yalnızca yetkili olduğunuz depoya giriş yapabilirsiniz')
+      return
+    }
     
     // Validasyon
     if (!formData.warehouse_id) {
@@ -394,13 +410,18 @@ export function StockOperationsForm({
 
   useEffect(() => {
     if (operationType === 'zimmet') return
-    if (warehouseTouched) return
-    const picked = pickDefaultWarehouse(productStocks, defaultWarehouseId)
+    if (warehouseTouched && !(warehouseIds?.length === 1)) return
+    const preferred =
+      warehouseIds?.length === 1
+        ? warehouseIds[0]
+        : defaultWarehouseId
+    const picked = pickDefaultWarehouse(productStocks, preferred)
     if (!picked) return
+    if (warehouseIds?.length && !warehouseIds.includes(picked)) return
     setFormData((prev) =>
       prev.warehouse_id === picked ? prev : { ...prev, warehouse_id: picked }
     )
-  }, [operationType, warehouseTouched, productStocks, defaultWarehouseId])
+  }, [operationType, warehouseTouched, productStocks, defaultWarehouseId, warehouseIds])
 
   const operationConfig = {
     giriş: {
@@ -437,12 +458,25 @@ export function StockOperationsForm({
 
   const config = operationConfig[operationType]
   const OperationIcon = config.icon
+  const enabledOperations: OperationType[] =
+    allowedOperations && allowedOperations.length > 0
+      ? allowedOperations
+      : (Object.keys(operationConfig) as OperationType[])
+  const visibleSites = (sites || []).filter(
+    (site) => !warehouseIds?.length || warehouseIds.includes(site.id)
+  )
+  const warehouseLocked = warehouseIds?.length === 1
 
   return (
     <div className="space-y-6">
-      {/* İşlem Tipi Seçimi - Apple Style Tabs */}
+      {enabledOperations.length === 1 ? (
+        <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+          <p className="text-sm font-semibold text-gray-900">{operationConfig[enabledOperations[0]].label}</p>
+          <p className="text-xs text-gray-500 mt-1">Yalnızca kendi deponuza stok girişi yapabilirsiniz.</p>
+        </div>
+      ) : (
       <div className="grid grid-cols-5 gap-2 p-2 bg-gray-100 rounded-2xl">
-        {(Object.keys(operationConfig) as OperationType[]).map((type) => {
+        {enabledOperations.map((type) => {
           const Icon = operationConfig[type].icon
           return (
             <button
@@ -464,6 +498,7 @@ export function StockOperationsForm({
           )
         })}
       </div>
+      )}
 
       {/* Form */}
       <form onSubmit={handleSubmit} className="space-y-5">
@@ -565,9 +600,11 @@ export function StockOperationsForm({
           <Label htmlFor="warehouse_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
             {operationType === 'transfer' ? 'Kaynak Depo *' : operationType === 'zimmet' ? 'Zimmet Edilecek Depo *' : 'Depo *'}
           </Label>
-          <Select
+            <Select
             value={formData.warehouse_id || 'none'}
+            disabled={warehouseLocked}
             onValueChange={(value) => {
+              if (warehouseLocked) return
               setWarehouseTouched(true)
               handleChange('warehouse_id', value === 'none' ? '' : value)
             }}
@@ -583,7 +620,7 @@ export function StockOperationsForm({
                       {row.warehouseName} — {row.availableQty.toLocaleString('tr-TR')} zimmetlenebilir
                     </SelectItem>
                   ))
-                : sites?.map((site) => {
+                : visibleSites.map((site) => {
                     const qty = warehouseQtyById.get(site.id) || 0
                     return (
                       <SelectItem key={site.id} value={site.id}>

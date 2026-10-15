@@ -42,6 +42,10 @@ interface ProductModalProps {
   defaultWarehouseId?: string
   /** Stok işlemi, geçmiş ve zimmet değiştirme. Kapalıysa yalnızca inceleme. */
   canOperateStock?: boolean
+  /** Depo yöneticisi: Stok İşlemleri sekmesinde yalnızca stok girişi. */
+  inboundOnly?: boolean
+  /** inboundOnly iken giriş yapılabilecek depolar. */
+  inboundWarehouseIds?: string[]
   /** Depoya bağlı kullanıcı: stok durumu yalnızca bu depolarla sınırlı */
   scopeWarehouseIds?: string[]
 }
@@ -58,6 +62,8 @@ export function ProductModal({
   selectedProductIds = [],
   defaultWarehouseId,
   canOperateStock = true,
+  inboundOnly = false,
+  inboundWarehouseIds,
   scopeWarehouseIds,
 }: ProductModalProps) {
   const { data: product, isLoading } = useProduct(productId)
@@ -169,9 +175,10 @@ export function ProductModal({
 
   const stockStatus = getStockStatus()
   const StockIcon = stockStatus.icon
-  const inspectionOnly = !canOperateStock
+  const showMovements = canOperateStock || inboundOnly
+  const showHistory = canOperateStock
   const visibleTab =
-    inspectionOnly && (activeTab === 'movements' || activeTab === 'history')
+    (!showMovements && activeTab === 'movements') || (!showHistory && activeTab === 'history')
       ? 'stock'
       : activeTab
 
@@ -258,7 +265,8 @@ export function ProductModal({
               value={visibleTab}
               onValueChange={(value) => {
                 const next = value as ProductModalTab
-                if (!canOperateStock && (next === 'movements' || next === 'history')) return
+                if (!showMovements && next === 'movements') return
+                if (!showHistory && next === 'history') return
                 onTabChange(next)
               }}
               className="flex-1 flex flex-col min-h-0"
@@ -287,7 +295,7 @@ export function ProductModal({
                   <Package className="w-5 h-5" />
                   <span>Stok Durumu</span>
                 </TabsTrigger>
-                {!inspectionOnly && (
+                {showMovements && (
                   <TabsTrigger 
                     value="movements" 
                     className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
@@ -297,7 +305,7 @@ export function ProductModal({
                     <span>Stok İşlemleri</span>
                   </TabsTrigger>
                 )}
-                {!inspectionOnly && (
+                {showHistory && (
                   <TabsTrigger 
                     value="history" 
                     className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
@@ -347,13 +355,13 @@ export function ProductModal({
                     }
                     stockLoading={stockFetching && !stockData}
                     totalStock={totalStock}
-                    readOnly={inspectionOnly}
+                    readOnly={!canOperateStock}
                     scopeWarehouseIds={isWarehouseScopedUser ? warehouseScope : undefined}
                   />
                 </TabsContent>
 
                 {/* Stok İşlemleri Tab */}
-                {!inspectionOnly && (
+                {showMovements && (
                 <TabsContent value="movements" className="p-8 m-0">
                   {product ? (
                     <StockOperationsForm
@@ -361,6 +369,8 @@ export function ProductModal({
                       productName={product.name}
                       productUnit={product.unit}
                       defaultWarehouseId={defaultWarehouseId}
+                      allowedOperations={inboundOnly ? ['giriş'] : undefined}
+                      warehouseIds={inboundOnly ? inboundWarehouseIds : undefined}
                       onSuccess={() => {
                         // Stok güncellendiğinde diğer tabları da yenile
                         onTabChange('stock')
@@ -378,7 +388,7 @@ export function ProductModal({
                 )}
 
                 {/* Geçmiş Tab */}
-                {!inspectionOnly && (
+                {showHistory && (
                 <TabsContent value="history" className="p-8 m-0">
                   <ProductHistoryTab product={product} movementsData={movementsData} inventoryData={inventoryData} />
                 </TabsContent>
