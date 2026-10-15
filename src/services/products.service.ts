@@ -89,7 +89,7 @@ function scopeWarehouseStocks<T extends { warehouse_id?: string | null }>(
  * Eski kayıtlarda miktar sıfırlandıysa, o deponun zimmet adedi stoğa dahil edilir.
  */
 function zimmetQtyMissingFromDepot(
-  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null; parent_inventory_id?: string | null }[] | null,
   stocks: any[] | undefined,
   filters?: ProductFilters
 ): number {
@@ -104,6 +104,7 @@ function zimmetQtyMissingFromDepot(
 
   let extra = 0
   for (const inv of inventories || []) {
+    if (inv.parent_inventory_id) continue
     const qty = parseFloat(String(inv.quantity ?? 0)) || 0
     if (!(qty > 0)) continue
     const warehouseId = inv.source_warehouse_id || null
@@ -126,12 +127,13 @@ function zimmetQtyMissingFromDepot(
 
 /** Sorumlu depodaki aktif zimmet adedi. Eyüp'te 2 zimmet varsa sonuç 2'dir. */
 function sumDepotZimmetQty(
-  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null; parent_inventory_id?: string | null }[] | null,
   filters?: ProductFilters
 ): number {
   if (!filters?.useDepotZimmetQty) return 0
   let total = 0
   for (const inv of inventories || []) {
+    if (inv.parent_inventory_id) continue
     const qty = parseFloat(String(inv.quantity ?? 0)) || 0
     if (!(qty > 0)) continue
     const warehouseId = inv.source_warehouse_id || null
@@ -208,7 +210,7 @@ async function productIdsZimmettedAt(
 /** Liste kartı: depodaki fiziksel miktar. Zimmet, stoktan düşülmüş eski kayıtlarda buna eklenir. */
 function totalStockForProductList(
   product: any,
-  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null }[] | null,
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null; parent_inventory_id?: string | null }[] | null,
   filters?: ProductFilters
 ) {
   const scopedStocks = scopeWarehouseStocks(product.warehouse_stocks, filters)
@@ -384,7 +386,7 @@ export async function fetchProducts(
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
       const { data: inventories } = await supabase
         .from('user_inventory')
-        .select('quantity, source_warehouse_id')
+        .select('quantity, source_warehouse_id, parent_inventory_id')
         .eq('product_id', product.id)
         .eq('status', 'active')
 
@@ -521,7 +523,7 @@ export async function fetchProducts(
     const productsWithStock = await Promise.all((data || []).map(async (product: any) => {
       const { data: inventories } = await supabase
         .from('user_inventory')
-        .select('quantity, source_warehouse_id')
+        .select('quantity, source_warehouse_id, parent_inventory_id')
         .eq('product_id', product.id)
         .eq('status', 'active')
 
@@ -673,7 +675,7 @@ export async function fetchProducts(
     const supabaseClient = createClient()
     const { data: inventories } = await supabaseClient
       .from('user_inventory')
-      .select('quantity, source_warehouse_id')
+      .select('quantity, source_warehouse_id, parent_inventory_id')
       .eq('product_id', product.id)
       .eq('status', 'active')
 
@@ -721,7 +723,7 @@ export async function fetchProductById(id: string): Promise<ProductWithDetails |
 
   const { data: inventories } = await supabase
     .from('user_inventory')
-    .select('quantity, source_warehouse_id')
+    .select('quantity, source_warehouse_id, parent_inventory_id')
     .eq('product_id', id)
     .eq('status', 'active')
 

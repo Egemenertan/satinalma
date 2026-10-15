@@ -462,6 +462,161 @@ export async function assignZimmetInWarehouse(params: {
   return { ok: true }
 }
 
+/**
+ * Depo sorumlusunun alt zimmeti.
+ * Asıl zimmet kaydı depo sorumlusunun kendisindedir.
+ * Seçilen kullanıcıya parent_inventory_id ile bağlı ayrı bir alt zimmet yazılır.
+ * Depo stoğu değişmez.
+ */
+export async function assignSubZimmet(params: {
+  productId: string
+  productName: string
+  productUnit?: string
+  warehouseId: string
+  quantity: number
+  employee: EmployeeOption
+  reason?: string
+  serialNumber?: string
+}) {
+  const supabase = createClient()
+  const actorId = await getActorId()
+  if (!actorId) throw new Error('Oturum bulunamadı')
+
+  const qty = params.quantity
+  if (!params.warehouseId) throw new Error('Depo seçin')
+  if (!params.employee?.id) throw new Error('Çalışan seçin')
+  if (!(qty > 0)) throw new Error('Geçerli miktar girin')
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('full_name, email')
+    .eq('id', actorId)
+    .maybeSingle()
+
+  const managerName = (profile?.full_name || '').trim() || 'Depo sorumlusu'
+  const managerEmail = (profile?.email || '').trim() || null
+
+  const { data: stock, error: stockErr } = await supabase
+    .from('warehouse_stock')
+    .select('quantity')
+    .eq('product_id', params.productId)
+    .eq('warehouse_id', params.warehouseId)
+    .is('user_id', null)
+    .maybeSingle()
+
+  if (stockErr) throw new Error(stockErr.message)
+  const warehouseQty = Number(stock?.quantity) || 0
+
+  const { data: childRows, error: childErr } = await supabase
+    .from('user_inventory')
+    .select('quantity')
+    .eq('product_id', params.productId)
+    .eq('source_warehouse_id', params.warehouseId)
+    .eq('status', 'active')
+    .not('parent_inventory_id', 'is', null)
+
+  if (childErr) throw new Error(childErr.message)
+  const alreadySub = (childRows || []).reduce((sum, row) => sum + Number(row.quantity || 0), 0)
+  const available = Math.max(0, warehouseQty - alreadySub)
+  if (qty > available) {
+    throw new Error(
+      `Alt zimmet için rafta yeterli adet yok. Depo stoğu: ${warehouseQty}, mevcut alt zimmet: ${alreadySub}, kalan: ${available}`
+    )
+  }
+
+  const { data: primary, error: primaryErr } = await supabase
+    .from('user_inventory')
+    .select('id, quantity')
+    .eq('product_id', params.productId)
+    .eq('source_warehouse_id', params.warehouseId)
+    .eq('user_id', actorId)
+    .eq('status', 'active')
+    .is('parent_inventory_id', null)
+    .maybeSingle()
+
+  if (primaryErr) throw new Error(primaryErr.message)
+
+  let parentId = primary?.id
+  const now = new Date().toISOString()
+  if (!parentId) {
+    const { data: inserted, error: insertParentErr } = await supabase
+      .from('user_inventory')
+      .insert({
+        product_id: params.productId,
+        item_name: params.productName,
+        quantity: qty,
+        unit: params.productUnit || 'adet',
+        assigned_date: now,
+        assigned_by: actorId,
+        status: 'active',
+        notes: 'Depo sorumlusu asıl zimmet',
+        consumed_quantity: 0,
+        owner_name: managerName,
+        owner_email: managerEmail,
+        user_id: actorId,
+        source_warehouse_id: params.warehouseId,
+      })
+      .select('id')
+      .single()
+
+    if (insertParentErr || !inserted) {
+      throw new Error('Asıl zimmet oluşturulamadı: ' + (insertParentErr?.message || ''))
+    }
+    parentId = inserted.id
+  } else {
+    const { error: parentUpdErr } = await supabase
+      .from('user_inventory')
+      .update({
+        quantity: Number(primary?.quantity || 0) + qty,
+        updated_at: now,
+      })
+      .eq('id', parentId)
+    if (parentUpdErr) throw new Error('Asıl zimmet güncellenemedi: ' + parentUpdErr.message)
+  }
+
+  const ownerName = (params.employee.first_name || '').trim() || 'Çalışan'
+  const ownerEmail = (params.employee.work_email || '').trim() || null
+  const serialNorm = params.serialNumber?.trim() || null
+
+  const { error: childInsertErr } = await supabase.from('user_inventory').insert({
+    product_id: params.productId,
+    item_name: params.productName,
+    quantity: qty,
+    unit: params.productUnit || 'adet',
+    assigned_date: now,
+    assigned_by: actorId,
+    status: 'active',
+    notes: [
+      `Alt zimmet · asıl zimmetli: ${managerName}`,
+      params.reason || null,
+    ]
+      .filter(Boolean)
+      .join(' | '),
+    consumed_quantity: 0,
+    owner_name: ownerName,
+    owner_email: ownerEmail,
+    source_warehouse_id: params.warehouseId,
+    serial_number: serialNorm,
+    parent_inventory_id: parentId,
+  })
+
+  if (childInsertErr) throw new Error('Alt zimmet kaydı oluşturulamadı: ' + childInsertErr.message)
+
+  await supabase.from('stock_movements').insert({
+    product_id: params.productId,
+    warehouse_id: params.warehouseId,
+    movement_type: 'düzeltme',
+    quantity: qty,
+    reason: `Alt zimmet: ${ownerName}${ownerEmail ? ` <${ownerEmail}>` : ''} — asıl zimmet ${managerName} (depo stoğu değişmedi)${
+      params.reason ? ` | ${params.reason}` : ''
+    }`,
+    created_by: actorId,
+    serial_number: serialNorm,
+  })
+
+  return { ok: true }
+}
+
 export async function fetchActiveZimmetsForProduct(
   productId: string
 ): Promise<ActiveZimmetRow[]> {

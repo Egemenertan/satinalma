@@ -36,6 +36,8 @@ interface StockOperationsFormProps {
   allowedOperations?: OperationType[]
   /** Verilirse depo seçimi bu depolarla sınırlıdır. */
   warehouseIds?: string[]
+  /** sub: depo sorumlusunun alt zimmeti. Asıl zimmet kendisinde kalır. */
+  zimmetMode?: 'primary' | 'sub'
 }
 
 function isFreeWarehouseStock(stock: { user_id?: string | null; warehouse_id?: string | null }) {
@@ -66,6 +68,7 @@ export function StockOperationsForm({
   onSuccess,
   allowedOperations,
   warehouseIds,
+  zimmetMode = 'primary',
 }: StockOperationsFormProps) {
   const queryClient = useQueryClient()
   const [operationType, setOperationType] = useState<OperationType>('giriş')
@@ -263,8 +266,9 @@ export function StockOperationsForm({
             throw new Error('Seçilen çalışan bulunamadı')
           }
 
-          const { assignZimmetInWarehouse } = await import('@/services/zimmet.service')
-          await assignZimmetInWarehouse({
+          const { assignZimmetInWarehouse, assignSubZimmet } = await import('@/services/zimmet.service')
+          const assign = zimmetMode === 'sub' ? assignSubZimmet : assignZimmetInWarehouse
+          await assign({
             productId,
             productName,
             productUnit,
@@ -293,7 +297,11 @@ export function StockOperationsForm({
       queryClient.invalidateQueries({ queryKey: ['product-zimmet-availability', productId] })
       
       // Success mesajı
-      alert(`✅ Stok ${operationType} işlemi başarıyla tamamlandı!`)
+      alert(
+        operationType === 'zimmet' && zimmetMode === 'sub'
+          ? '✅ Alt zimmet kaydı oluşturuldu. Asıl zimmet depo sorumlusunda kaldı.'
+          : `✅ Stok ${operationType} işlemi başarıyla tamamlandı!`
+      )
       
       setWarehouseTouched(false)
       setFormData({
@@ -328,7 +336,7 @@ export function StockOperationsForm({
     e.preventDefault()
 
     if (allowedOperations?.length && !allowedOperations.includes(operationType)) {
-      alert('Bu depoda yalnızca stok girişi yapabilirsiniz')
+      alert('Bu işlem için yetkiniz yok')
       return
     }
 
@@ -358,7 +366,7 @@ export function StockOperationsForm({
       return
     }
 
-    if (operationType === 'zimmet') {
+    if (operationType === 'zimmet' && zimmetMode !== 'sub') {
       const avail = zimmetAvailability.find((r) => r.warehouseId === formData.warehouse_id)
       const qty = parseFloat(formData.quantity)
       if (!avail || avail.availableQty <= 0) {
@@ -475,7 +483,7 @@ export function StockOperationsForm({
           <p className="text-xs text-gray-500 mt-1">Yalnızca kendi deponuza stok girişi yapabilirsiniz.</p>
         </div>
       ) : (
-      <div className="grid grid-cols-5 gap-2 p-2 bg-gray-100 rounded-2xl">
+      <div className={`grid gap-2 p-2 bg-gray-100 rounded-2xl ${enabledOperations.length <= 2 ? 'grid-cols-2' : 'grid-cols-5'}`}>
         {enabledOperations.map((type) => {
           const Icon = operationConfig[type].icon
           return (
@@ -493,7 +501,9 @@ export function StockOperationsForm({
               `}
             >
               <Icon className="w-5 h-5" />
-              <span className="text-xs capitalize">{type}</span>
+              <span className="text-xs">
+                {zimmetMode === 'sub' && type === 'zimmet' ? 'Alt Zimmet' : type}
+              </span>
             </button>
           )
         })}
@@ -508,7 +518,16 @@ export function StockOperationsForm({
           <p className="text-lg font-semibold text-gray-900 mt-1">{productName}</p>
         </div>
 
-        {operationType === 'zimmet' && (
+        {operationType === 'zimmet' && zimmetMode === 'sub' && (
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+            <p className="text-sm font-semibold text-gray-900">Alt zimmet</p>
+            <p className="text-xs text-gray-500 mt-1">
+              Asıl zimmet depo sorumlusunda kalır. Seçilen kullanıcıya ayrı bir alt zimmet yazılır. Depo stoğu değişmez.
+            </p>
+          </div>
+        )}
+
+        {operationType === 'zimmet' && zimmetMode !== 'sub' && (
           <>
             <ZimmetManagePanel
               productId={productId}
@@ -715,7 +734,11 @@ export function StockOperationsForm({
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
             <Label htmlFor="assigned_to" className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-2">
               <UserCheck className="w-4 h-4" />
-              {operationType === 'zimmet' ? 'Zimmet Alacak Kullanıcı *' : 'Zimmet Alan (Opsiyonel)'}
+              {operationType === 'zimmet'
+                ? zimmetMode === 'sub'
+                  ? 'Alt zimmet verilecek kullanıcı *'
+                  : 'Zimmet Alacak Kullanıcı *'
+                : 'Zimmet Alan (Opsiyonel)'}
             </Label>
             <Select
               value={formData.assigned_to || 'none'}

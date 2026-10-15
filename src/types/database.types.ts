@@ -1892,6 +1892,7 @@ export type Database = {
           notes: string | null
           owner_email: string | null
           owner_name: string | null
+          parent_inventory_id: string | null
           pending_user_email: string | null
           pending_user_name: string | null
           product_id: string | null
@@ -1918,6 +1919,7 @@ export type Database = {
           notes?: string | null
           owner_email?: string | null
           owner_name?: string | null
+          parent_inventory_id?: string | null
           pending_user_email?: string | null
           pending_user_name?: string | null
           product_id?: string | null
@@ -1944,6 +1946,7 @@ export type Database = {
           notes?: string | null
           owner_email?: string | null
           owner_name?: string | null
+          parent_inventory_id?: string | null
           pending_user_email?: string | null
           pending_user_name?: string | null
           product_id?: string | null

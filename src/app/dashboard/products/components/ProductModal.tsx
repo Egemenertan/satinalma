@@ -369,8 +369,9 @@ export function ProductModal({
                       productName={product.name}
                       productUnit={product.unit}
                       defaultWarehouseId={defaultWarehouseId}
-                      allowedOperations={inboundOnly ? ['giriş'] : undefined}
+                      allowedOperations={inboundOnly ? ['giriş', 'zimmet'] : undefined}
                       warehouseIds={inboundOnly ? inboundWarehouseIds : undefined}
+                      zimmetMode={inboundOnly ? 'sub' : 'primary'}
                       onSuccess={() => {
                         // Stok güncellendiğinde diğer tabları da yenile
                         onTabChange('stock')

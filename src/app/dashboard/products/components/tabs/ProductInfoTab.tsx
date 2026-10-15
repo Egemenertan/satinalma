@@ -52,6 +52,27 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
     setUnit(resolveUnitValue(product?.unit))
   }, [product?.id, product?.unit])
 
+  const latestPurchasePrice = useMemo(() => {
+    const movements = movementsData?.movements
+    if (!Array.isArray(movements)) return null
+    const latest = movements.find(
+      (movement) =>
+        movement?.movement_type === 'giriş' && Number(movement?.unit_price) > 0
+    )
+    if (!latest) return null
+    return {
+      amount: Number(latest.unit_price),
+      currency: latest.currency || product?.currency || 'TRY',
+    }
+  }, [movementsData, product?.currency])
+
+  const storedUnitPrice = Number(String(product?.unit_price ?? '').trim())
+  const hasStoredUnitPrice = Number.isFinite(storedUnitPrice) && storedUnitPrice > 0
+  const shownUnitPrice = hasStoredUnitPrice ? storedUnitPrice : latestPurchasePrice?.amount ?? null
+  const shownCurrency = hasStoredUnitPrice
+    ? product?.currency || 'TRY'
+    : latestPurchasePrice?.currency || product?.currency || 'TRY'
+
   const unitOptions = useMemo(() => {
     const options: Array<{ value: string; label: string }> = PRODUCT_UNITS.map((item) => ({
       value: item.value,
@@ -125,10 +146,11 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
           <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim Fiyat</label>
           <p className="text-lg font-semibold text-gray-900 mt-2">
-            {product.unit_price
-              ? `${Number(product.unit_price).toLocaleString('tr-TR', {
+            {shownUnitPrice != null
+              ? `${shownUnitPrice.toLocaleString('tr-TR', {
                   minimumFractionDigits: 2,
-                })} ${product.currency || 'TRY'}`
+                  maximumFractionDigits: 2,
+                })} ${shownCurrency}`
               : '-'}
           </p>
         </div>

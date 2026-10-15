@@ -32,7 +32,6 @@ export type ZimmetAssignmentListPdfPayload = {
   generatedAtLabel: string
   warehouseScopeLine: string
   rowCountNote: string
-  filterNoteTechnical?: string
   rows: ZimmetAssignmentListRow[]
 }
 
@@ -117,7 +116,11 @@ const extraCss = `
   table.zim-data {
     width: 100%;
     border-collapse: collapse;
+    table-layout: fixed;
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 9pt;
+    line-height: 1.35;
+    letter-spacing: 0;
     page-break-inside: auto;
   }
   table.zim-data th {
@@ -125,26 +128,44 @@ const extraCss = `
     color: #fff;
     padding: 8px 6px;
     text-align: left;
-    font-weight: 600;
+    font-weight: 700;
     font-size: 8pt;
-    text-transform: uppercase;
-    letter-spacing: 0.35px;
+    line-height: 1.25;
+    letter-spacing: 0;
+    text-transform: none;
     border: 1px solid #000;
+    vertical-align: middle;
+    white-space: nowrap;
   }
   table.zim-data td {
     padding: 7px 6px;
     border: 1px solid #d1d5db;
-    vertical-align: top;
-    color: #1f2937;
+    vertical-align: middle;
+    text-align: left;
+    color: #111827;
+    line-height: 1.35;
+    letter-spacing: 0;
+    white-space: normal;
+    word-break: normal;
+    overflow-wrap: break-word;
   }
   table.zim-data tr:nth-child(even) td { background: #fafafa; }
   table.zim-data th.zim-money,
   table.zim-data td.zim-money {
     text-align: right;
     white-space: nowrap;
-    font-variant-numeric: tabular-nums;
   }
-  table.zim-data { table-layout: fixed; }
+  table.zim-data th.zim-center,
+  table.zim-data td.zim-center {
+    text-align: center;
+    white-space: nowrap;
+  }
+  table.zim-data td.zim-name {
+    font-size: 7.5pt;
+    line-height: 1.25;
+    overflow-wrap: break-word;
+    word-break: break-word;
+  }
   .zim-totals {
     margin-top: 10px;
     display: flex;
@@ -170,35 +191,36 @@ const extraCss = `
   .zim-totals-v { color: #111827; font-weight: 700; font-variant-numeric: tabular-nums; }
   table.zim-data th.zim-th-img,
   table.zim-data td.zim-td-img {
-    width: 52px;
+    width: 44px;
+    max-width: 44px;
     text-align: center;
     vertical-align: middle;
+    padding: 4px;
+    overflow: hidden;
+  }
+  .zim-img-box {
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    overflow: hidden;
+    border-radius: 4px;
+    background: #f3f4f6;
   }
   .zim-prod-img {
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+    max-width: 32px;
+    max-height: 32px;
     object-fit: cover;
-    border-radius: 6px;
-    border: 1px solid #e5e7eb;
-    background: #f3f4f6;
     display: block;
-    margin: 0 auto;
   }
   .zim-prod-img-empty {
-    width: 40px;
-    height: 40px;
-    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
     border: 1px dashed #d1d5db;
     background: #f9fafb;
     margin: 0 auto;
-  }
-  .zim-footnote {
-    margin-top: 14px;
-    font-size: 8pt;
-    color: #6b7280;
-    font-style: italic;
-    line-height: 1.45;
-    page-break-inside: avoid;
   }
   .zim-sign-wrap {
     margin-top: 28px;
@@ -252,13 +274,44 @@ const extraCss = `
 </style>
 `
 
-function formatMoney(value: number | null, currency: string): string {
-  if (value == null || !Number.isFinite(value)) return '—'
-  const formatted = value.toLocaleString('tr-TR', {
+function formatAmount(value: number): string {
+  return value.toLocaleString('tr-TR', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })
-  return `${formatted} ${currency || 'TRY'}`
+}
+
+function formatMoney(value: number | null, currency: string): string {
+  if (value == null || !Number.isFinite(value)) return '-'
+  return `${formatAmount(value)} ${currency || 'TRY'}`
+}
+
+/** Boş ve "belirtilmemiş" gibi yer tutucular raporda tire olur. */
+function displayText(raw: string | null | undefined): string {
+  const text = String(raw ?? '').replace(/\s+/g, ' ').trim()
+  if (!text) return '-'
+  const key = text.toLocaleLowerCase('tr-TR').replace(/ı/g, 'i')
+  if (
+    key === '-' ||
+    key === '—' ||
+    key === '–' ||
+    key === 'yok' ||
+    key === 'n/a' ||
+    key === 'na' ||
+    key === 'null' ||
+    key === 'undefined' ||
+    key === 'bilinmiyor' ||
+    key === 'bilinmeyen' ||
+    key.startsWith('belirtilmem') ||
+    key.startsWith('belirtilmedi')
+  ) {
+    return '-'
+  }
+  return text
+}
+
+function cell(value: string): string {
+  return esc(displayText(value))
 }
 
 function lineTotal(row: ZimmetAssignmentListRow): number | null {
@@ -298,21 +351,22 @@ function buildTableRows(rows: ZimmetAssignmentListRow[]): string {
   return rows
     .map((r) => {
       const imgCell = r.imageUrl
-        ? `<img src="${esc(r.imageUrl)}" alt="" class="zim-prod-img" />`
+        ? `<div class="zim-img-box"><img src="${esc(r.imageUrl)}" alt="" width="32" height="32" class="zim-prod-img" /></div>`
         : `<div class="zim-prod-img-empty"></div>`
       const currency = r.currency || 'TRY'
+      const price = formatMoney(r.unitPrice, currency)
       return `
     <tr>
       <td class="zim-td-img">${imgCell}</td>
-      <td>${esc(r.productName)}</td>
-      <td>${esc(r.sku)}</td>
-      <td>${esc(r.brand)}</td>
-      <td>${esc(r.unit)}</td>
-      <td class="zim-money">${esc(String(r.quantity))}</td>
-      <td class="zim-money">${esc(formatMoney(r.unitPrice, currency))}</td>
-      <td>${esc(r.productType)}</td>
-      <td>${esc(r.sourceWarehouse)}</td>
-      <td>${esc(r.serialNumber)}</td>
+      <td class="zim-name">${cell(r.productName)}</td>
+      <td>${cell(r.sku)}</td>
+      <td>${cell(r.brand)}</td>
+      <td class="zim-center">${cell(r.unit)}</td>
+      <td class="zim-money">${cell(String(r.quantity))}</td>
+      <td class="zim-money">${esc(price)}</td>
+      <td>${cell(r.productType)}</td>
+      <td>${cell(r.sourceWarehouse)}</td>
+      <td>${cell(r.serialNumber)}</td>
     </tr>`
     })
     .join('')
@@ -363,14 +417,14 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
           <colgroup>
             <col style="width:44px" />
             <col />
-            <col style="width:68px" />
+            <col style="width:118px" />
+            <col style="width:96px" />
             <col style="width:58px" />
-            <col style="width:40px" />
-            <col style="width:42px" />
-            <col style="width:78px" />
             <col style="width:58px" />
-            <col style="width:64px" />
-            <col style="width:58px" />
+            <col style="width:112px" />
+            <col style="width:88px" />
+            <col style="width:120px" />
+            <col style="width:88px" />
           </colgroup>
           <thead>
             <tr>
@@ -378,7 +432,7 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
               <th>Ürün adı</th>
               <th>SKU</th>
               <th>Marka</th>
-              <th>Birim</th>
+              <th class="zim-center">Birim</th>
               <th class="zim-money">Miktar</th>
               <th class="zim-money">Birim fiyat</th>
               <th>Ürün tipi</th>
@@ -391,12 +445,6 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
         ${buildTotalsHtml(payload.rows)}
       </div>
     </div>
-
-    ${
-      payload.filterNoteTechnical
-        ? `<div class="zim-footnote">Teknik not: ${esc(payload.filterNoteTechnical.slice(0, 3500))}</div>`
-        : ''
-    }
 
     <div class="zim-sign-wrap">
       <div class="zim-sign-card">
@@ -469,6 +517,30 @@ async function inlineImages(root: ParentNode): Promise<void> {
   )
 }
 
+/** html2canvas büyük görseli doğal boyutuyla basıyor; hücreye sığacak kareye indir. */
+async function clampProductImages(root: ParentNode): Promise<void> {
+  const imgs = Array.from(root.querySelectorAll('img.zim-prod-img'))
+  await Promise.all(
+    imgs.map(async (node) => {
+      const img = node as HTMLImageElement
+      if (!img.complete || img.naturalWidth === 0) return
+      const size = 32
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const scale = Math.max(size / img.naturalWidth, size / img.naturalHeight)
+      const width = img.naturalWidth * scale
+      const height = img.naturalHeight * scale
+      ctx.drawImage(img, (size - width) / 2, (size - height) / 2, width, height)
+      img.src = canvas.toDataURL('image/jpeg', 0.86)
+      img.width = size
+      img.height = size
+    })
+  )
+}
+
 async function waitForImages(root: ParentNode, timeoutMs = 4000): Promise<void> {
   const imgs = Array.from(root.querySelectorAll('img'))
   await Promise.all(
@@ -516,8 +588,8 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
     position: 'fixed',
     left: '-12000px',
     top: '0',
-    width: '794px',
-    height: '1123px',
+    width: '1123px',
+    height: '794px',
     border: '0',
     pointerEvents: 'none',
   })
@@ -544,9 +616,10 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
     const root = doc.body
     await inlineImages(root)
     await waitForImages(root)
+    await clampProductImages(root)
     await new Promise((r) => setTimeout(r, 80))
 
-    const contentHeight = Math.max(root.scrollHeight, root.offsetHeight, 1123)
+    const contentHeight = Math.max(root.scrollHeight, root.offsetHeight, 794)
     iframe.style.height = `${contentHeight}px`
 
     const { jsPDF } = await import('jspdf')
@@ -559,15 +632,15 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
       backgroundColor: '#ffffff',
       logging: false,
       imageTimeout: 8000,
-      windowWidth: 794,
-      width: 794,
+      windowWidth: 1123,
+      width: 1123,
       height: contentHeight,
       scrollX: 0,
       scrollY: 0,
     })
 
     const imgData = canvas.toDataURL('image/jpeg', 0.92)
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
     const imgWidth = pageWidth

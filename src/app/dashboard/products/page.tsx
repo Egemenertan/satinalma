@@ -195,6 +195,8 @@ export default function ProductsPage() {
 
   const isRestrictedView = warehouseAccess.isRestricted && warehouseAccess.warehouseIds.length > 0
   const canManageProducts = warehouseAccess.canManageProducts
+  const canCreateProduct =
+    canManageProducts || warehouseAccess.manageWarehouseIds.length > 0
   // Tam stok işlemi yalnızca tüm depoları yöneten kullanıcıda.
   // Belirli depoyu yöneten kullanıcı yalnızca o depoya stok girişi yapar.
   const canOperateStock = warehouseAccess.canManageAll
@@ -254,13 +256,19 @@ export default function ProductsPage() {
       }
 
       if (modalMode === 'create') {
-        await createMutation.mutateAsync(productData)
+        const created = await createMutation.mutateAsync(productData)
 
         if (serial_numbers && serial_numbers.trim()) {
           const serialCount = serial_numbers.split(',').filter((s: string) => s.trim()).length
           showToast(`Ürün ve ${serialCount} seri numarası başarıyla oluşturuldu!`, 'success')
         } else {
           showToast('Ürün başarıyla oluşturuldu!', 'success')
+        }
+
+        if (canReceiveInbound && created?.id) {
+          setModalMode('view')
+          openModal(created.id, 'movements')
+          return
         }
       } else {
         await updateMutation.mutateAsync({ id: selectedProductId!, updates: productData })
@@ -292,7 +300,7 @@ export default function ProductsPage() {
           <Badge variant="secondary" className="bg-gray-100 text-gray-700 px-4 py-2">
             {totalCount} Ürün
           </Badge>
-          {warehouseAccess.loaded && canManageProducts && (
+          {warehouseAccess.loaded && canCreateProduct && (
             <Button
               onClick={handleOpenCreateModal}
               className="px-8 py-6 rounded-full font-medium text-md bg-gradient-to-r from-gray-900 to-gray-800 text-white hover:from-gray-800 hover:to-gray-700 shadow-lg hover:shadow-xl transition-all duration-200"

@@ -145,6 +145,51 @@ const INVENTORY_SELECT = `
   warehouse:sites!user_inventory_source_warehouse_id_fkey(name)
 `
 
+function parseStoredUnitPrice(value: unknown): number | null {
+  if (value == null) return null
+  const parsed = Number(String(value).trim())
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null
+}
+
+function hasStoredUnitPrice(value: unknown) {
+  return parseStoredUnitPrice(value) != null
+}
+
+/** Ürün kartında fiyat yoksa son stok girişindeki birim fiyatı kullanır. */
+async function fetchLatestInboundPrices(
+  client: ReturnType<typeof createClient>,
+  productIds: string[]
+) {
+  const prices = new Map<string, { unitPrice: number; currency: string }>()
+  for (let index = 0; index < productIds.length; index += 100) {
+    const chunk = productIds.slice(index, index + 100)
+    const { data, error } = await client
+      .from('stock_movements')
+      .select('product_id, unit_price, currency, created_at')
+      .in('product_id', chunk)
+      .eq('movement_type', 'giriş')
+      .gt('unit_price', 0)
+      .order('created_at', { ascending: false })
+      .limit(2000)
+
+    if (error) {
+      console.warn('Alım fiyatı okunamadı:', error.message)
+      continue
+    }
+
+    for (const row of data || []) {
+      if (!row.product_id || prices.has(row.product_id)) continue
+      const unitPrice = Number(row.unit_price)
+      if (!Number.isFinite(unitPrice) || unitPrice <= 0) continue
+      prices.set(row.product_id, {
+        unitPrice,
+        currency: row.currency || 'TRY',
+      })
+    }
+  }
+  return prices
+}
+
 const PRODUCT_TYPE_TR: Record<string, string> = {
   demirbas: 'Demirbaş',
   sarf_malzeme: 'Sarf Malzeme',
@@ -347,15 +392,16 @@ export function ZimmetReportModal({
         exportedByEmail = prof?.email || user.email || undefined
       }
 
-      const filterNote =
-        [
-          'user_inventory: status=aktif; source_warehouse_id dolu; owner_email eşlemesi VEYA owner_name eşlemesi (e-posta boşsa) VEYA kullanıcı profili (profiles.id=user_id)',
-          profileId ? `profiles.id: ${profileId}` : 'profiles.id: eşlenmedi',
-          `E-posta adayları (owner): ${emailCandidates.join('; ') || '—'}`,
-          ownerName ? `İsim: ${ownerName}` : 'İsim: —',
-        ].join(' · ')
-
       const aggregated = aggregateInventoryForReport(matched)
+      const missingPriceIds = [
+        ...new Set(
+          aggregated
+            .filter((row) => !hasStoredUnitPrice(row.products?.unit_price))
+            .map((row) => row.product_id as string)
+            .filter(Boolean)
+        ),
+      ]
+      const inboundPrices = await fetchLatestInboundPrices(client, missingPriceIds)
       const tableRows = aggregated.map((r: any) => {
         const p = r.products
         const brandName = Array.isArray(p?.brand) ? p.brand[0]?.name : p?.brand?.name
@@ -365,11 +411,9 @@ export function ZimmetReportModal({
         const images = Array.isArray(p?.images) ? (p.images as string[]) : []
         const imageUrl =
           typeof images[0] === 'string' && images[0].trim() ? images[0].trim() : ''
-        const rawPrice = p?.unit_price
-        const unitPrice =
-          rawPrice == null || rawPrice === '' || !Number.isFinite(Number(rawPrice))
-            ? null
-            : Number(rawPrice)
+        const storedPrice = parseStoredUnitPrice(p?.unit_price)
+        const inbound = r.product_id ? inboundPrices.get(r.product_id as string) : undefined
+        const unitPrice = storedPrice ?? inbound?.unitPrice ?? null
         return {
           imageUrl,
           productName: p?.name || r.item_name || '',
@@ -378,7 +422,7 @@ export function ZimmetReportModal({
           unit: p?.unit || r.unit || '',
           quantity: Number(r.quantity ?? 0),
           unitPrice,
-          currency: (p?.currency as string) || 'TRY',
+          currency: storedPrice != null ? (p?.currency as string) || 'TRY' : inbound?.currency || (p?.currency as string) || 'TRY',
           productType: ptype,
           sourceWarehouse: whName || '',
           serialNumber: (r.serial_number as string) || '',
@@ -410,7 +454,6 @@ export function ZimmetReportModal({
           ? `Kaynak depo / site filtresi: ${warehouseLabel}`
           : 'Tüm kaynak depolar dahil',
         rowCountNote: `${tableRows.length} ürün satırı listelenmiştir (aynı ürün birleştirildi)`,
-        filterNoteTechnical: filterNote.slice(0, 4000),
         rows: tableRows,
       })
 

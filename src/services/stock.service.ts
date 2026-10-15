@@ -389,6 +389,27 @@ export async function updateStockWithMovement(
     return updatedStock as WarehouseStock
   }
 
+  // Alım fiyatı stok hareketinde durur. Ürün kartındaki birim fiyat boşsa
+  // aynı tutarı oraya da yaz; kart, liste ve zimmet raporu bu alanı okur.
+  if (
+    movementType === 'giriş' &&
+    unitPrice != null &&
+    Number.isFinite(unitPrice) &&
+    unitPrice > 0
+  ) {
+    const { error: priceError } = await supabase
+      .from('products')
+      .update({
+        unit_price: unitPrice.toFixed(2),
+        currency: currency || 'TRY',
+      })
+      .eq('id', productId)
+
+    if (priceError) {
+      console.error('Ürün birim fiyatı güncellenemedi:', priceError)
+    }
+  }
+
   // Fatura resimleri varsa yükle ve güncelle
   if (invoiceFiles && invoiceFiles.length > 0 && insertedMovement) {
     try {
