@@ -6,11 +6,13 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useToast } from '@/components/ui/toast'
+import { createClient } from '@/lib/supabase/client'
 import { TrendingUp, Receipt, Hash, Plus, Pencil } from 'lucide-react'
 import { useUpdateProduct } from '../../hooks'
 
@@ -56,10 +58,15 @@ interface ProductInfoTabProps {
 
 export function ProductInfoTab({ product, movementsData, serialNumbers }: ProductInfoTabProps) {
   const { showToast } = useToast()
+  const queryClient = useQueryClient()
   const updateMutation = useUpdateProduct()
   const [unit, setUnit] = useState(() => resolveUnitValue(product?.unit))
   const [editingPrice, setEditingPrice] = useState(false)
   const [savingPrice, setSavingPrice] = useState(false)
+  const [editingMovementId, setEditingMovementId] = useState<string | null>(null)
+  const [movementPriceInput, setMovementPriceInput] = useState('')
+  const [movementCurrency, setMovementCurrency] = useState('TRY')
+  const [savingMovement, setSavingMovement] = useState(false)
   const [priceInput, setPriceInput] = useState('')
   const [priceCurrency, setPriceCurrency] = useState('TRY')
   const syncedPurchaseKey = useRef<string | null>(null)
@@ -67,6 +74,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
   useEffect(() => {
     setUnit(resolveUnitValue(product?.unit))
     setEditingPrice(false)
+    setEditingMovementId(null)
   }, [product?.id, product?.unit])
 
   const movementsLoaded = Array.isArray(movementsData?.movements)
@@ -155,6 +163,49 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
       showToast('Birim fiyat kaydedilemedi', 'error')
     } finally {
       setSavingPrice(false)
+    }
+  }
+
+  const startMovementEdit = (movement: { id: string; unit_price: number | string; currency?: string | null }) => {
+    setEditingMovementId(movement.id)
+    setMovementPriceInput(String(movement.unit_price ?? ''))
+    setMovementCurrency(movement.currency || 'TRY')
+  }
+
+  const saveMovementPrice = async (movement: { id: string; quantity: number | string }) => {
+    const amount = Number(movementPriceInput.replace(',', '.'))
+    if (!Number.isFinite(amount) || amount <= 0) {
+      showToast('Geçerli bir birim fiyat girin', 'error')
+      return
+    }
+
+    setSavingMovement(true)
+    try {
+      const supabase = createClient()
+      const { data, error } = await supabase
+        .from('stock_movements')
+        .update({
+          unit_price: amount,
+          currency: movementCurrency,
+        })
+        .eq('id', movement.id)
+        .select('id')
+        .maybeSingle()
+
+      if (error) throw error
+      if (!data) throw new Error('Fiyat güncellenemedi')
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['stock-movements', product?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['product', product?.id] }),
+        queryClient.invalidateQueries({ queryKey: ['products'] }),
+      ])
+      setEditingMovementId(null)
+      showToast('Alım fiyatı güncellendi', 'success')
+    } catch {
+      showToast('Alım fiyatı güncellenemedi', 'error')
+    } finally {
+      setSavingMovement(false)
     }
   }
 
@@ -458,26 +509,90 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
                       )}
                     </div>
                   </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2 justify-end mb-1">
-                      <span className="text-xs text-gray-500">Birim:</span>
-                      <span className="text-lg font-bold text-gray-900">
-                        {parseFloat(movement.unit_price).toLocaleString('tr-TR', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })} {movement.currency || 'TRY'}
-                      </span>
+                  {editingMovementId === movement.id ? (
+                    <div className="w-full max-w-[260px] space-y-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        inputMode="decimal"
+                        autoFocus
+                        value={movementPriceInput}
+                        onChange={(event) => setMovementPriceInput(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault()
+                            void saveMovementPrice(movement)
+                          }
+                          if (event.key === 'Escape') setEditingMovementId(null)
+                        }}
+                        aria-label="Alım birim fiyatı"
+                        className="h-10 border border-gray-200 bg-white rounded-xl text-base font-semibold shadow-none"
+                      />
+                      <div className="flex items-center gap-2">
+                        <Select value={movementCurrency} onValueChange={setMovementCurrency}>
+                          <SelectTrigger className="h-9 w-[88px] rounded-xl border-gray-200 bg-white font-semibold">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent className="z-[80] rounded-2xl">
+                            {PRICE_CURRENCIES.map((currency) => (
+                              <SelectItem key={currency} value={currency}>
+                                {currency}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          onClick={() => setEditingMovementId(null)}
+                          className="h-9 rounded-xl px-2 text-gray-600"
+                        >
+                          Vazgeç
+                        </Button>
+                        <Button
+                          type="button"
+                          onClick={() => void saveMovementPrice(movement)}
+                          disabled={savingMovement}
+                          className="ml-auto h-9 rounded-xl bg-gray-900 px-3 text-white hover:bg-gray-800"
+                        >
+                          {savingMovement ? 'Kaydediliyor' : 'Kaydet'}
+                        </Button>
+                      </div>
+                      <p className="text-right text-xs text-gray-500">
+                        Toplam{' '}
+                        {Number.isFinite(Number(movementPriceInput.replace(',', '.')))
+                          ? formatUnitPrice(
+                              parseFloat(movement.quantity) * Number(movementPriceInput.replace(',', '.')),
+                              movementCurrency
+                            )
+                          : '-'}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2 justify-end">
-                      <span className="text-xs text-gray-500">Toplam:</span>
-                      <span className="text-base font-bold text-gray-900">
-                        {(parseFloat(movement.quantity) * parseFloat(movement.unit_price)).toLocaleString('tr-TR', {
-                          minimumFractionDigits: 2,
-                          maximumFractionDigits: 2,
-                        })} {movement.currency || 'TRY'}
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => startMovementEdit(movement)}
+                      className="rounded-xl px-3 py-2 text-right transition-colors hover:bg-white"
+                    >
+                      <span className="mb-1 flex items-center justify-end gap-2">
+                        <span className="text-xs text-gray-500">Birim</span>
+                        <span className="text-lg font-bold text-gray-900">
+                          {formatUnitPrice(parseFloat(movement.unit_price), movement.currency || 'TRY')}
+                        </span>
+                        <Pencil className="h-3.5 w-3.5 text-gray-400" />
                       </span>
-                    </div>
-                  </div>
+                      <span className="flex items-center justify-end gap-2">
+                        <span className="text-xs text-gray-500">Toplam</span>
+                        <span className="text-base font-bold text-gray-900">
+                          {formatUnitPrice(
+                            parseFloat(movement.quantity) * parseFloat(movement.unit_price),
+                            movement.currency || 'TRY'
+                          )}
+                        </span>
+                      </span>
+                    </button>
+                  )}
                 </div>
               ))}
             {movementsData.movements.filter((m: any) => m.movement_type === 'giriş' && m.unit_price).length === 0 && (
