@@ -158,7 +158,12 @@ export default function ProductsPage() {
     loadSites()
   }, [warehouseAccess, supabase])
 
-  const { data: productsData, isLoading } = useProducts(filters, currentPage, pageSize)
+  const { data: productsData, isLoading } = useProducts(
+    filters,
+    currentPage,
+    pageSize,
+    warehouseAccess.loaded
+  )
 
   const insightsSiteKey = siteId?.trim()
     ? siteId
@@ -169,7 +174,10 @@ export default function ProductsPage() {
     data: productsInsights,
     isLoading: insightsLoading,
     error: insightsError,
-  } = useProductsInsights(insightsSiteKey)
+  } = useProductsInsights(
+    insightsSiteKey,
+    warehouseAccess.loaded && (!warehouseAccess.isRestricted || Boolean(insightsSiteKey))
+  )
 
   const {
     isOpen: isModalOpen,
@@ -597,7 +605,7 @@ export default function ProductsPage() {
         <CardContent className="px-8 pb-8">
           <ProductsTable
             products={products}
-            isLoading={isLoading}
+            isLoading={!warehouseAccess.loaded || isLoading}
             onProductClick={handleOpenViewModal}
             selectedSiteId={siteId}
             selectedProducts={selectedProducts}

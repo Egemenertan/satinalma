@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
 import { getAccessibleMenuItems, getRoleLabel } from '@/lib/roles'
+import { fetchMyWarehouseAccessScope } from '@/lib/warehouse-access'
 import RoleAssignmentModal from '@/components/RoleAssignmentModal'
 import {
   LayoutDashboard,
@@ -79,7 +80,7 @@ interface NavItem {
 }
 
 // Navigation - pendingCount ve userRole'u prop olarak alacak fonksiyon
-const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
+const getNavigation = (pendingCount: number, userRole: string, extraMenuIds: string[] = []): NavItem[] => {
   const allMenuItems = [
     {
       id: 'dashboard',
@@ -169,7 +170,10 @@ const getNavigation = (pendingCount: number, userRole: string): NavItem[] => {
   ]
 
   // Kullanıcı rolüne göre erişilebilir menü öğelerini filtrele
-  const accessibleMenuIds = getAccessibleMenuItems(userRole as any)
+  const accessibleMenuIds = [
+    ...getAccessibleMenuItems(userRole as any),
+    ...extraMenuIds,
+  ]
   
   return allMenuItems.filter(item => accessibleMenuIds.includes(item.id))
 }
@@ -189,6 +193,7 @@ export default function Sidebar({
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
   const [userRole, setUserRole] = useState<string>('user')
+  const [canSeeDepotProducts, setCanSeeDepotProducts] = useState(false)
   const [userEmail, setUserEmail] = useState<string>('')
   const [userName, setUserName] = useState<string>('')
   const [userSiteIds, setUserSiteIds] = useState<string[]>([])
@@ -233,6 +238,12 @@ export default function Sidebar({
         
         if (profile?.role) {
           setUserRole(profile.role)
+          if (profile.role === 'site_manager') {
+            const scope = await fetchMyWarehouseAccessScope()
+            setCanSeeDepotProducts(scope.manageWarehouseIds.length > 0)
+          } else {
+            setCanSeeDepotProducts(false)
+          }
         }
         
         // site_id bilgisini set et
@@ -648,7 +659,11 @@ export default function Sidebar({
           "flex-1 py-4",
           isCollapsed && !isMobileOpen ? "px-2 space-y-1 overflow-visible" : isMobileOpen ? "px-6 grid grid-cols-2 gap-3 content-start overflow-y-auto" : "px-4 space-y-1 overflow-y-auto"
         )}>
-          {getNavigation(pendingCount || 0, userRole)
+          {getNavigation(
+            pendingCount || 0,
+            userRole,
+            userRole === 'site_manager' && canSeeDepotProducts ? ['products'] : []
+          )
             .filter(item => {
               // f7f3d36e-0c31-4e9a-8883-94c39330660b site ID'sine ait kullanıcılar tedarikçiler sayfasına erişemez
               const restrictedSiteId = 'f7f3d36e-0c31-4e9a-8883-94c39330660b'

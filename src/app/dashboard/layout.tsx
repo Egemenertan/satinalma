@@ -10,6 +10,7 @@ import { Loading } from '@/components/ui/loading'
 import { Menu, X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { canAccessPage } from '@/lib/roles'
+import { fetchMyWarehouseAccessScope } from '@/lib/warehouse-access'
 import { ensureProfile, getRedirectPath, getSessionUser } from '@/lib/auth'
 import type { UserRole } from '@/lib/types'
 
@@ -18,7 +19,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
   const [userRole, setUserRole] = useState<UserRole | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [hasAccess, setHasAccess] = useState(true)
+  const [accessCheck, setAccessCheck] = useState<'loading' | 'allow' | 'deny'>('loading')
   const [isHeaderVisible, setIsHeaderVisible] = useState(true)
   const lastScrollY = useRef(0)
   const ticking = useRef(false)
@@ -67,17 +68,42 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return () => { mounted = false }
   }, [supabase])
 
-  // Sayfa erişim kontrolü
+  // Sayfa erişim kontrolü. Site manager, belirli bir depoda manage ise ürünler sayfasını da açar.
   useEffect(() => {
-    if (!isLoading && userRole) {
-      const hasPageAccess = canAccessPage(userRole, pathname)
-      setHasAccess(hasPageAccess)
-      
-      if (!hasPageAccess) {
-        router.push(getRedirectPath(userRole))
+    if (isLoading || !userRole) return
+    let cancelled = false
+
+    const roleAllowed = canAccessPage(userRole, pathname)
+    const isProductsPage =
+      pathname === '/dashboard/products' || pathname.startsWith('/dashboard/products/')
+
+    if (roleAllowed) {
+      setAccessCheck('allow')
+      return
+    }
+
+    if (userRole === 'site_manager' && isProductsPage) {
+      setAccessCheck('loading')
+      fetchMyWarehouseAccessScope()
+        .then((scope) => {
+          if (cancelled) return
+          setAccessCheck(scope.manageWarehouseIds.length > 0 ? 'allow' : 'deny')
+        })
+        .catch(() => {
+          if (!cancelled) setAccessCheck('deny')
+        })
+      return () => {
+        cancelled = true
       }
     }
-  }, [pathname, userRole, isLoading, router])
+
+    setAccessCheck('deny')
+  }, [pathname, userRole, isLoading])
+
+  useEffect(() => {
+    if (accessCheck !== 'deny' || !userRole) return
+    router.push(getRedirectPath(userRole))
+  }, [accessCheck, userRole, router])
 
   // Scroll kontrolü
   const handleScroll = useCallback(() => {
@@ -118,7 +144,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsMobileMenuOpen(open)
   }
 
-  if (isLoading) {
+  if (isLoading || accessCheck === 'loading') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loading size="lg" text="Yükleniyor..." />
@@ -126,7 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
-  if (!hasAccess) {
+  if (accessCheck === 'deny') {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="text-center max-w-md">

@@ -22,10 +22,16 @@ type ProductUpdate = Database['public']['Tables']['products']['Update']
 /**
  * Products listesi için hook
  */
-export function useProducts(filters?: ProductFilters, page = 1, pageSize = 20) {
+export function useProducts(
+  filters?: ProductFilters,
+  page = 1,
+  pageSize = 20,
+  enabled = true
+) {
   return useQuery({
     queryKey: ['products', filters, page, pageSize],
     queryFn: () => fetchProducts(filters, page, pageSize),
+    enabled,
     staleTime: 30000, // 30 saniye
   })
 }
@@ -54,11 +60,12 @@ export function useProductStats(siteId?: string) {
 }
 
 /** Ürünler sayfası KPI + grafik özeti (depo filtresine göre) */
-export function useProductsInsights(siteId?: string) {
+export function useProductsInsights(siteId?: string, enabled = true) {
   const sid = siteId && siteId.trim() !== '' ? siteId : undefined
   return useQuery({
     queryKey: ['products-insights-bundle', sid ?? 'all'],
     queryFn: () => fetchProductsInsightsBundle(sid),
+    enabled,
     staleTime: 60000,
   })
 }

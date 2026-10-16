@@ -87,7 +87,8 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
     return true
   }
 
-  // Site yöneticisi requests, inventory ve all-inventory sayfasına erişebilir
+  // Site yöneticisi requests, inventory ve all-inventory sayfasına erişebilir.
+  // Ürünler sayfası rol ile açılmaz; belirli depoda manage yetkisi layout'ta kontrol edilir.
   if (userRole === 'site_manager') {
     return page === 'requests' ||
       page === '/dashboard/requests' ||

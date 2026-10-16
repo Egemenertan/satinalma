@@ -235,6 +235,16 @@ export async function fetchProducts(
 ) {
   const supabase = createClient()
   const searchTerm = filters?.search?.trim()
+
+  // Depoya bağlı kullanıcı henüz depo seçmeden tüm kataloğu görmesin.
+  if (
+    filters?.useDepotZimmetQty &&
+    !filters.siteId &&
+    Array.isArray(filters.allowedWarehouseIds) &&
+    filters.allowedWarehouseIds.length === 0
+  ) {
+    return { products: [], totalCount: 0, totalPages: 0, currentPage: page }
+  }
   
   console.log('🔍 fetchProducts called with:', { filters, searchTerm, page, pageSize })
   
