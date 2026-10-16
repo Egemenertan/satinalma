@@ -560,3 +560,274 @@ export async function adjustStock(
   )
 }
 
+const SANAYI_DEPO_NAME = 'sanayi depo'
+
+function normalizeDepotName(name: string | null | undefined) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/** Demirbaş ürün tipi. Yazım farkları (demirbaş, DEMİRBAŞ, demirbas) aynı sayılır. */
+export function isDemirbasProductType(value: string | null | undefined) {
+  const normalized = (value || '')
+    .trim()
+    .toLocaleLowerCase('tr')
+    .replace(/ı/g, 'i')
+    .replace(/ş/g, 's')
+    .replace(/ğ/g, 'g')
+    .replace(/ü/g, 'u')
+    .replace(/ö/g, 'o')
+    .replace(/ç/g, 'c')
+  return normalized === 'demirbas' || normalized.includes('demirbas')
+}
+
+type ConditionBreakdown = Record<string, number>
+
+function readBreakdown(value: unknown): ConditionBreakdown {
+  const base: ConditionBreakdown = { yeni: 0, kullanılmış: 0, hek: 0, arızalı: 0 }
+  if (!value || typeof value !== 'object') return base
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    base[key] = Number(raw) || 0
+  }
+  return base
+}
+
+function subtractBreakdown(breakdown: ConditionBreakdown, condition: string, amount: number) {
+  const next = { ...breakdown }
+  let left = amount
+  const keys = [condition, ...Object.keys(next).filter((key) => key !== condition)]
+  for (const key of keys) {
+    if (left <= 0) break
+    const current = Number(next[key] || 0)
+    const take = Math.min(current, left)
+    next[key] = current - take
+    left -= take
+  }
+  return next
+}
+
+function addBreakdown(breakdown: ConditionBreakdown, condition: string, amount: number) {
+  const next = { ...breakdown }
+  next[condition] = Number(next[condition] || 0) + amount
+  return next
+}
+
+export type CatalogShipmentTransfer = {
+  sourceWarehouseId: string
+  sourceWarehouseName: string
+  destinationWarehouseId: string
+  destinationWarehouseName: string
+  quantity: number
+  moved: boolean
+  rollback: () => Promise<void>
+}
+
+/**
+ * Katalog ürünü gönderimi: yalnızca Sanayi Depo'dan düşer, talebin deposuna eklenir.
+ * Sanayi Depo'da yoksa veya yetmiyorsa başka depodan stok alınmaz.
+ */
+export async function transferCatalogShipmentStock(params: {
+  productId: string
+  destinationWarehouseId: string
+  quantity: number
+  condition: 'yeni' | 'kullanılmış' | 'hek'
+  reason: string
+}): Promise<CatalogShipmentTransfer> {
+  const supabase = createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!(params.quantity > 0)) throw new Error('Geçerli bir miktar girin')
+  if (!params.destinationWarehouseId) throw new Error('Talebin hedef deposu yok')
+
+  const { data: siteRows, error: siteError } = await supabase
+    .from('sites')
+    .select('id, name')
+
+  if (siteError) throw new Error('Depo listesi alınamadı')
+
+  const sanayiSite = (siteRows || []).find(
+    (site) => normalizeDepotName(site.name) === SANAYI_DEPO_NAME
+  )
+  if (!sanayiSite) throw new Error('Sanayi Depo bulunamadı')
+
+  const { data: destinationSite } = await supabase
+    .from('sites')
+    .select('id, name')
+    .eq('id', params.destinationWarehouseId)
+    .maybeSingle()
+
+  const { data: sanayiRow, error } = await supabase
+    .from('warehouse_stock')
+    .select('id, warehouse_id, quantity, condition_breakdown')
+    .eq('product_id', params.productId)
+    .eq('warehouse_id', sanayiSite.id)
+    .is('user_id', null)
+    .maybeSingle()
+
+  if (error) throw new Error('Stok bilgisi alınamadı')
+
+  const available = Number(sanayiRow?.quantity) || 0
+  if (!sanayiRow || available <= 0) {
+    throw new Error("Sanayi Depo'da bu ürün yok")
+  }
+  if (available < params.quantity) {
+    throw new Error(`Sanayi Depo'da yeterli stok yok. Mevcut: ${available}`)
+  }
+
+  if (sanayiSite.id === params.destinationWarehouseId) {
+    return {
+      sourceWarehouseId: sanayiSite.id,
+      sourceWarehouseName: sanayiSite.name || 'Sanayi Depo',
+      destinationWarehouseId: params.destinationWarehouseId,
+      destinationWarehouseName: destinationSite?.name || sanayiSite.name || 'Sanayi Depo',
+      quantity: params.quantity,
+      moved: false,
+      rollback: async () => {},
+    }
+  }
+
+  const source = {
+    id: sanayiRow.id,
+    warehouseId: sanayiSite.id,
+    name: sanayiSite.name || 'Sanayi Depo',
+    quantity: available,
+    breakdown: readBreakdown(sanayiRow.condition_breakdown),
+  }
+
+  const sourceNextQty = source.quantity - params.quantity
+  const sourceNextBreakdown = subtractBreakdown(source.breakdown, params.condition, params.quantity)
+
+  const { error: sourceError } = await supabase
+    .from('warehouse_stock')
+    .update({
+      quantity: sourceNextQty,
+      condition_breakdown: sourceNextBreakdown,
+      last_updated: new Date().toISOString(),
+      updated_by: user?.id,
+    })
+    .eq('id', source.id)
+
+  if (sourceError) throw new Error('Kaynak depo stoğu düşülemedi')
+
+  const { data: destinationStock, error: destinationLookupError } = await supabase
+    .from('warehouse_stock')
+    .select('id, quantity, condition_breakdown')
+    .eq('product_id', params.productId)
+    .eq('warehouse_id', params.destinationWarehouseId)
+    .is('user_id', null)
+    .maybeSingle()
+
+  if (destinationLookupError) {
+    await supabase
+      .from('warehouse_stock')
+      .update({
+        quantity: source.quantity,
+        condition_breakdown: source.breakdown,
+      })
+      .eq('id', source.id)
+    throw new Error('Hedef depo stoğu okunamadı')
+  }
+
+  const destinationPrevious = Number(destinationStock?.quantity) || 0
+  const destinationNext = destinationPrevious + params.quantity
+  const destinationBreakdown = addBreakdown(
+    readBreakdown(destinationStock?.condition_breakdown),
+    params.condition,
+    params.quantity
+  )
+
+  let destinationStockId = destinationStock?.id
+  if (destinationStockId) {
+    const { error: destinationError } = await supabase
+      .from('warehouse_stock')
+      .update({
+        quantity: destinationNext,
+        condition_breakdown: destinationBreakdown,
+        last_updated: new Date().toISOString(),
+        updated_by: user?.id,
+      })
+      .eq('id', destinationStockId)
+    if (destinationError) {
+      await supabase
+        .from('warehouse_stock')
+        .update({ quantity: source.quantity, condition_breakdown: source.breakdown })
+        .eq('id', source.id)
+      throw new Error('Hedef depoya stok eklenemedi')
+    }
+  } else {
+    const { data: inserted, error: insertError } = await supabase
+      .from('warehouse_stock')
+      .insert({
+        product_id: params.productId,
+        warehouse_id: params.destinationWarehouseId,
+        user_id: null,
+        quantity: params.quantity,
+        condition_breakdown: destinationBreakdown,
+        last_updated: new Date().toISOString(),
+        updated_by: user?.id,
+      })
+      .select('id')
+      .single()
+    if (insertError || !inserted) {
+      await supabase
+        .from('warehouse_stock')
+        .update({ quantity: source.quantity, condition_breakdown: source.breakdown })
+        .eq('id', source.id)
+      throw new Error('Hedef depoda stok kartı açılamadı')
+    }
+    destinationStockId = inserted.id
+  }
+
+  await supabase.from('stock_movements').insert([
+    {
+      product_id: params.productId,
+      warehouse_id: source.warehouseId,
+      movement_type: 'çıkış',
+      quantity: params.quantity,
+      previous_quantity: source.quantity,
+      new_quantity: sourceNextQty,
+      reason: params.reason,
+      created_by: user?.id,
+      product_condition: params.condition,
+    },
+    {
+      product_id: params.productId,
+      warehouse_id: params.destinationWarehouseId,
+      movement_type: 'giriş',
+      quantity: params.quantity,
+      previous_quantity: destinationPrevious,
+      new_quantity: destinationNext,
+      reason: params.reason,
+      created_by: user?.id,
+      product_condition: params.condition,
+    },
+  ])
+
+  return {
+    sourceWarehouseId: source.warehouseId,
+    sourceWarehouseName: source.name || 'Kaynak depo',
+    destinationWarehouseId: params.destinationWarehouseId,
+    destinationWarehouseName: destinationSite?.name || 'Hedef depo',
+    quantity: params.quantity,
+    moved: true,
+    rollback: async () => {
+      await supabase
+        .from('warehouse_stock')
+        .update({ quantity: source.quantity, condition_breakdown: source.breakdown })
+        .eq('id', source.id)
+      if (destinationStock?.id) {
+        await supabase
+          .from('warehouse_stock')
+          .update({
+            quantity: destinationPrevious,
+            condition_breakdown: readBreakdown(destinationStock.condition_breakdown),
+          })
+          .eq('id', destinationStock.id)
+      } else if (destinationStockId) {
+        await supabase.from('warehouse_stock').delete().eq('id', destinationStockId)
+      }
+    },
+  }
+}
+

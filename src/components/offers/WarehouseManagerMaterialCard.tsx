@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/client'
 import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { NotificationService } from '@/lib/notifications'
+import { isDemirbasProductType, transferCatalogShipmentStock, type CatalogShipmentTransfer } from '@/services/stock.service'
 
 interface WarehouseManagerMaterialCardProps {
   item: any
@@ -50,6 +51,11 @@ export default function WarehouseManagerMaterialCard({
   const [processingDepotStatus, setProcessingDepotStatus] = useState(false)
   const [selectedCondition, setSelectedCondition] = useState<'yeni' | 'kullanılmış' | 'hek'>('yeni')
   const supabase = createClient()
+  const isCatalogItem = Boolean((item as { product_id?: string | null }).product_id)
+  const sanayiStock = productStock?.warehouses.find(
+    (warehouse) => warehouse.name.trim().toLowerCase().replace(/\s+/g, ' ') === 'sanayi depo'
+  )
+  const sanayiQty = sanayiStock?.quantity ?? 0
 
   const handleSend = async () => {
     try {
@@ -72,183 +78,20 @@ export default function WarehouseManagerMaterialCard({
         throw new Error('Kullanıcı bilgisi alınamadı')
       }
 
-      // Product ID varsa stok atama işlemi yap (kullanıcıya zimmet)
-      const productId = (item as any).product_id
-      if (productId && productStock && request.requested_by) {
-        console.log(`📦 Stok atama işlemi başlıyor... (product_id: ${productId}, miktar: ${quantity}, condition: ${selectedCondition}, user: ${request.requested_by})`)
-        
-        // Stok atama stratejisi: Seçilen condition'dan en çok stok olan depodan başla
-        let remainingToAssign = quantity
-        
-        // Warehouse stock kayıtlarını çek (sadece user_id null olanlar - atanmamış stoklar)
-        const { data: stockRecords, error: stockError } = await supabase
-          .from('warehouse_stock')
-          .select('id, warehouse_id, quantity, condition_breakdown, warehouse:sites(name)')
-          .eq('product_id', productId)
-          .is('user_id', null)
-          .order('quantity', { ascending: false })
-        
-        if (stockError) {
-          console.error('❌ Stok kayıtları alınamadı:', stockError)
-          throw new Error('Stok bilgileri alınamadı')
+      // Katalog ürünü: kaynak depodan düş, talebin deposuna ekle.
+      const productId = (item as any).product_id as string | undefined
+      let stockTransfer: CatalogShipmentTransfer | null = null
+      if (productId) {
+        if (!request.site_id) {
+          throw new Error('Talebin hedef deposu seçilmemiş')
         }
-
-        if (!stockRecords || stockRecords.length === 0) {
-          console.warn('⚠️ Atanmamış stok kaydı bulunamadı')
-        } else {
-          // Her depodan sırayla kullanıcıya ata (seçilen condition'dan)
-          for (const record of stockRecords) {
-            if (remainingToAssign <= 0) break
-            
-            const conditionBreakdown = (record.condition_breakdown as any) || {}
-            const availableInCondition = parseFloat(conditionBreakdown[selectedCondition]?.toString() || '0')
-            
-            if (availableInCondition <= 0) continue
-            
-            const assignFromThisWarehouse = Math.min(remainingToAssign, availableInCondition)
-            
-            // Seçilen condition'dan düş
-            conditionBreakdown[selectedCondition] = Math.max(0, availableInCondition - assignFromThisWarehouse)
-            
-            // Yeni toplam quantity'yi breakdown'dan hesapla
-            const newWarehouseQuantity = Object.values(conditionBreakdown).reduce(
-              (sum: number, val: any) => sum + (parseFloat(val?.toString() || '0') || 0),
-              0
-            )
-            
-            console.log(`📦 ${item.item_name} - ${selectedCondition} breakdown güncellendi:`, conditionBreakdown)
-            console.log(`📦 Yeni toplam: ${newWarehouseQuantity}`)
-            
-            // Depo stokunu azalt
-            const { error: updateError } = await supabase
-              .from('warehouse_stock')
-              .update({ 
-                quantity: newWarehouseQuantity,
-                condition_breakdown: conditionBreakdown,
-                last_updated: new Date().toISOString(),
-                updated_by: user.id
-              })
-              .eq('id', record.id)
-            
-            if (updateError) {
-              console.error(`❌ ${(record.warehouse as any)?.name} stok güncellenemedi:`, updateError)
-              throw new Error(`Stok güncellenemedi: ${updateError.message}`)
-            }
-            
-            // Kullanıcıya atanmış stok kaydı oluştur veya güncelle (condition bilgisi ile)
-            const userConditionBreakdown = {
-              yeni: 0,
-              kullanılmış: 0,
-              hek: 0,
-              arızalı: 0,
-              [selectedCondition]: assignFromThisWarehouse
-            }
-            
-            // Önce kullanıcı için bu üründen kayıt var mı kontrol et (warehouse_id null olanlar)
-            const { data: existingUserStock } = await supabase
-              .from('warehouse_stock')
-              .select('id, quantity, condition_breakdown')
-              .eq('product_id', productId)
-              .eq('user_id', request.requested_by)
-              .is('warehouse_id', null)
-              .maybeSingle()
-            
-            if (existingUserStock) {
-              // Mevcut kaydı güncelle
-              const existingBreakdown = (existingUserStock.condition_breakdown as any) || {
-                yeni: 0,
-                kullanılmış: 0,
-                hek: 0,
-                arızalı: 0
-              }
-              
-              const newUserBreakdown = { ...existingBreakdown }
-              newUserBreakdown[selectedCondition] = (parseFloat(newUserBreakdown[selectedCondition]?.toString() || '0') || 0) + assignFromThisWarehouse
-              
-              const newUserTotal = Object.values(newUserBreakdown).reduce(
-                (sum: number, val: any) => sum + (parseFloat(val?.toString() || '0') || 0),
-                0
-              )
-              
-              const { error: updateError } = await supabase
-                .from('warehouse_stock')
-                .update({
-                  quantity: newUserTotal,
-                  condition_breakdown: newUserBreakdown,
-                  last_updated: new Date().toISOString(),
-                  updated_by: user.id
-                })
-                .eq('id', existingUserStock.id)
-              
-              if (updateError) {
-                console.error(`❌ Kullanıcı stoku güncellenemedi:`, updateError)
-                // Rollback
-                const rollbackBreakdown = { ...conditionBreakdown }
-                rollbackBreakdown[selectedCondition] = availableInCondition
-                const rollbackTotal = Object.values(rollbackBreakdown).reduce(
-                  (sum: number, val: any) => sum + (parseFloat(val?.toString() || '0') || 0),
-                  0
-                )
-                await supabase
-                  .from('warehouse_stock')
-                  .update({ 
-                    quantity: rollbackTotal,
-                    condition_breakdown: rollbackBreakdown
-                  })
-                  .eq('id', record.id)
-                throw new Error(`Kullanıcı stoku güncellenemedi: ${updateError.message}`)
-              }
-              
-              console.log(`✅ Kullanıcı stoku güncellendi: ${existingUserStock.quantity} → ${newUserTotal}`)
-            } else {
-              // Yeni kayıt oluştur (warehouse_id null olarak)
-              const { error: assignError } = await supabase
-                .from('warehouse_stock')
-                .insert({
-                  product_id: productId,
-                  warehouse_id: null, // Kullanıcıya zimmet - depo yok
-                  quantity: assignFromThisWarehouse,
-                  user_id: request.requested_by,
-                  condition_breakdown: userConditionBreakdown,
-                  last_updated: new Date().toISOString(),
-                  updated_by: user.id
-                })
-              
-              if (assignError) {
-                console.error(`❌ Kullanıcıya stok ataması yapılamadı:`, assignError)
-                // Rollback - depo stokunu geri yükle
-                const rollbackBreakdown = { ...conditionBreakdown }
-                rollbackBreakdown[selectedCondition] = availableInCondition
-                const rollbackTotal = Object.values(rollbackBreakdown).reduce(
-                  (sum: number, val: any) => sum + (parseFloat(val?.toString() || '0') || 0),
-                  0
-                )
-                await supabase
-                  .from('warehouse_stock')
-                  .update({ 
-                    quantity: rollbackTotal,
-                    condition_breakdown: rollbackBreakdown
-                  })
-                  .eq('id', record.id)
-                throw new Error(`Stok ataması yapılamadı: ${assignError.message}`)
-              }
-              
-              console.log(`✅ Yeni kullanıcı stok kaydı oluşturuldu`)
-            }
-            
-            console.log(`✅ ${(record.warehouse as any)?.name}: ${availableInCondition} → ${conditionBreakdown[selectedCondition]} (${assignFromThisWarehouse} ${selectedCondition} kullanıcıya atandı)`)
-            
-            remainingToAssign -= assignFromThisWarehouse
-          }
-          
-          if (remainingToAssign > 0) {
-            console.warn(`⚠️ ${selectedCondition} stok yetersiz: ${remainingToAssign} ${item.unit} atanamadı`)
-            showToast(`Uyarı: ${selectedCondition} stokta sadece ${quantity - remainingToAssign} ${item.unit} mevcut`, 'error')
-            throw new Error(`${selectedCondition} stokta yeterli miktar yok`)
-          }
-          
-          console.log(`✅ Toplam ${quantity} ${item.unit} ${selectedCondition} olarak kullanıcıya atandı`)
-        }
+        stockTransfer = await transferCatalogShipmentStock({
+          productId,
+          destinationWarehouseId: request.site_id,
+          quantity,
+          condition: selectedCondition,
+          reason: `${request.request_number || 'Talep'} — ${item.item_name} gönderimi`,
+        })
       }
 
       const newQuantity = Math.max(0, item.quantity - quantity)
@@ -267,6 +110,7 @@ export default function WarehouseManagerMaterialCard({
           .eq('id', item.id)
         
         if (updateError) {
+          await stockTransfer?.rollback()
           throw new Error(`Miktar güncellenemedi: ${updateError.message}`)
         }
       }
@@ -279,56 +123,70 @@ export default function WarehouseManagerMaterialCard({
           purchase_request_item_id: item.id,
           shipped_quantity: quantity,
           shipped_by: user.id,
-          notes: `${item.item_name} - ${quantity} ${item.unit} gönderildi`
+          notes: stockTransfer
+            ? `${item.item_name} - ${quantity} ${item.unit} ${stockTransfer.sourceWarehouseName} → ${stockTransfer.destinationWarehouseName}`
+            : `${item.item_name} - ${quantity} ${item.unit} gönderildi`
         })
         .select()
         .single()
 
       if (shipmentError) {
-        // Rollback
         await supabase
           .rpc('update_purchase_request_item_quantity', {
             item_id: item.id,
             new_quantity: item.quantity
           })
+        await stockTransfer?.rollback()
         throw new Error('Gönderim kaydı oluşturulamadı')
       }
 
-      // Zimmet kaydı oluştur - Talep eden kullanıcıya zimmet
-      if (request.requested_by) {
-        console.log(`📝 Zimmet kaydı oluşturuluyor... (user: ${request.requested_by}, miktar: ${quantity})`)
-
-        const { data: requesterProfile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', request.requested_by)
+      // Demirbaş: hedef depoda, talep eden kişiye zimmet.
+      if (productId && request.requested_by && request.site_id) {
+        const { data: productRow } = await supabase
+          .from('products')
+          .select('product_type')
+          .eq('id', productId)
           .maybeSingle()
 
-        const ownerDisplayName = requesterProfile?.full_name?.trim() ?? ''
-        const ownerEmailCanonical = buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName)
-        
-        const { error: inventoryError } = await supabase
-          .from('user_inventory')
-          .insert({
-            user_id: request.requested_by,
-            product_id: productId || null,
-            item_name: item.item_name,
-            quantity: quantity,
-            unit: item.unit || 'adet',
-            assigned_by: user.id,
-            purchase_request_id: request.id,
-            shipment_id: shipmentData?.id || null,
-            notes: `${request.request_number} - ${item.item_name}`,
-            status: 'active',
-            owner_name: ownerDisplayName || null,
-            owner_email: ownerEmailCanonical || null,
-          })
-        
-        if (inventoryError) {
-          console.error('❌ Zimmet kaydı oluşturulamadı:', inventoryError)
-          // Zimmet hatası gönderimi engellemez, sadece log'lanır
-        } else {
-          console.log(`✅ Zimmet kaydı oluşturuldu: ${item.item_name} (${quantity} ${item.unit})`)
+        if (isDemirbasProductType(productRow?.product_type)) {
+          const { data: requesterProfile } = await supabase
+            .from('profiles')
+            .select('full_name')
+            .eq('id', request.requested_by)
+            .maybeSingle()
+
+          const ownerDisplayName = requesterProfile?.full_name?.trim() ?? ''
+          const ownerEmailCanonical = buildDovecGroupWorkEmailFromDisplayName(ownerDisplayName)
+
+          const { error: inventoryError } = await supabase
+            .from('user_inventory')
+            .insert({
+              user_id: request.requested_by,
+              product_id: productId,
+              item_name: item.item_name,
+              quantity: quantity,
+              unit: item.unit || 'adet',
+              assigned_by: user.id,
+              purchase_request_id: request.id,
+              shipment_id: shipmentData?.id || null,
+              source_warehouse_id: request.site_id,
+              notes: `${request.request_number} - ${item.item_name} · demirbaş zimmet`,
+              status: 'active',
+              owner_name: ownerDisplayName || null,
+              owner_email: ownerEmailCanonical || null,
+            })
+
+          if (inventoryError) {
+            if (shipmentData?.id) {
+              await supabase.from('shipments').delete().eq('id', shipmentData.id)
+            }
+            await supabase.rpc('update_purchase_request_item_quantity', {
+              item_id: item.id,
+              new_quantity: item.quantity,
+            })
+            await stockTransfer?.rollback()
+            throw new Error('Demirbaş zimmeti yazılamadı. Gönderim geri alındı.')
+          }
         }
       }
 
@@ -341,10 +199,13 @@ export default function WarehouseManagerMaterialCard({
         console.error('❌ Status güncelleme hatası:', error)
       }
 
+      const moved = stockTransfer?.moved
+        ? ` ${stockTransfer.sourceWarehouseName} ${stockTransfer.quantity} adet düştü, ${stockTransfer.destinationWarehouseName} stoğuna eklendi.`
+        : ''
       showToast(
         newQuantity === 0 
-          ? `${item.item_name} tamamen gönderildi!` 
-          : `${quantity} ${item.unit} gönderildi. Kalan: ${newQuantity} ${item.unit}`,
+          ? `${item.item_name} tamamen gönderildi!${moved}` 
+          : `${quantity} ${item.unit} gönderildi. Kalan: ${newQuantity} ${item.unit}.${moved}`,
         'success'
       )
 
@@ -683,12 +544,24 @@ export default function WarehouseManagerMaterialCard({
               </div>
               
               {/* Stok Uyarısı */}
-              {productStock.totalAvailable === 0 && (
+              {isCatalogItem && sanayiQty <= 0 && (
+                <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+                  <p className="text-xs text-red-600 font-medium">Sanayi Depo&apos;da bu ürün yok. Başka depodan gönderim yapılmaz.</p>
+                </div>
+              )}
+              {isCatalogItem && sanayiQty > 0 && sanayiQty < item.quantity && (
+                <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                  <p className="text-xs text-orange-600 font-medium">
+                    Sanayi Depo&apos;da yeterli stok yok. Mevcut: {sanayiQty} {item.unit}
+                  </p>
+                </div>
+              )}
+              {!isCatalogItem && productStock.totalAvailable === 0 && (
                 <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
                   <p className="text-xs text-red-600 font-medium">⚠️ Bu ürün hiçbir depoda mevcut değil</p>
                 </div>
               )}
-              {productStock.totalAvailable > 0 && productStock.totalAvailable < item.quantity && (
+              {!isCatalogItem && productStock.totalAvailable > 0 && productStock.totalAvailable < item.quantity && (
                 <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
                   <p className="text-xs text-orange-600 font-medium">
                     ⚠️ Stok yetersiz: Talep edilen {item.quantity} {item.unit}, mevcut {productStock.totalAvailable} {item.unit}
@@ -729,10 +602,7 @@ export default function WarehouseManagerMaterialCard({
                 <div className="grid grid-cols-3 gap-2">
                   {(['yeni', 'kullanılmış', 'hek'] as const).map((condition) => {
                     // Bu condition'dan toplam kaç adet var hesapla
-                    const totalInCondition = productStock.warehouses.reduce((sum, wh) => {
-                      const breakdown = wh.conditionBreakdown || {}
-                      return sum + (breakdown[condition] || 0)
-                    }, 0)
+                    const totalInCondition = sanayiStock?.conditionBreakdown?.[condition] || 0
                     
                     const isDisabled = totalInCondition === 0
                     const isSelected = selectedCondition === condition
@@ -798,10 +668,7 @@ export default function WarehouseManagerMaterialCard({
 
             {/* Stok Kontrolü Uyarısı - Seçilen Condition İçin */}
             {productStock && parseFloat(sendQuantity || '0') > 0 && (() => {
-              const totalInSelectedCondition = productStock.warehouses.reduce((sum, wh) => {
-                const breakdown = wh.conditionBreakdown || {}
-                return sum + (breakdown[selectedCondition] || 0)
-              }, 0)
+              const totalInSelectedCondition = sanayiStock?.conditionBreakdown?.[selectedCondition] || 0
               
               const requestedQty = parseFloat(sendQuantity || '0')
               
@@ -809,17 +676,17 @@ export default function WarehouseManagerMaterialCard({
                 return (
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl">
                     <p className="text-xs text-red-700 font-medium">
-                      ⚠️ Uyarı: Göndermek istediğiniz miktar ({sendQuantity} {item.unit}) seçili durumda ({selectedCondition}) mevcut stoktan ({totalInSelectedCondition} {item.unit}) fazla!
+                      ⚠️ Uyarı: Göndermek istediğiniz miktar ({sendQuantity} {item.unit}) Sanayi Depo&apos;daki {selectedCondition} stoktan ({totalInSelectedCondition} {item.unit}) fazla!
                     </p>
                   </div>
                 )
               }
               
-              if (requestedQty > productStock.totalAvailable) {
+              if (isCatalogItem && requestedQty > sanayiQty) {
                 return (
                   <div className="p-3 bg-orange-50 border border-orange-200 rounded-xl">
                     <p className="text-xs text-orange-700 font-medium">
-                      ⚠️ Uyarı: Göndermek istediğiniz miktar ({sendQuantity} {item.unit}) toplam mevcut stoktan ({productStock.totalAvailable} {item.unit}) fazla!
+                      Sanayi Depo&apos;da yeterli stok yok. Mevcut: {sanayiQty} {item.unit}
                     </p>
                   </div>
                 )
