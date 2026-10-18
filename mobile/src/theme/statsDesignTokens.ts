@@ -16,9 +16,9 @@ export const stats = {
   /** Web buton hover */
   primaryHover: '#00c46a',
   onPrimary: '#ffffff',
-  onPrimaryContainer: '#065f46',
-  /** Açık yeşil yüzey (rozet / vurgu) */
-  primaryContainer: '#d1fae5',
+  onPrimaryContainer: '#0A0A0A',
+  /** Açık vurgu yüzeyi — siyah nötr, birincil yeşil değil */
+  primaryContainer: '#F4F4F4',
   onSurface: '#191c1c',
   onSurfaceVariant: '#41493e',
   outline: '#717a6d',
@@ -27,9 +27,9 @@ export const stats = {
   secondaryContainer: '#e2e2e2',
   onSecondaryContainer: '#646464',
   tertiary: '#556156',
-  error: '#ba1a1a',
-  errorContainer: '#ffdad6',
-  onErrorContainer: '#93000a',
+  error: '#FF5E5B',
+  errorContainer: '#FFF1F0',
+  onErrorContainer: '#53131E',
   inverseSurface: '#2e3131',
   radiusLg: 12,
   radiusXl: 16,

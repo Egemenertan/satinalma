@@ -36,6 +36,7 @@ import {
 } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 import { deliveryCountdown, fetchLateDeliveryRequestIds, isHeadOfficeRequest } from '@/lib/order-delivery'
+import { SlidingSegmentTabs } from '@/components/SlidingSegmentTabs'
 
 import { 
   Search, 
@@ -1323,12 +1324,10 @@ export default function PurchaseRequestsTable({
       lateDeliveryOnlyFilter
     ),
     {
-      revalidateOnFocus: true,
+      revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 5000,
-      errorRetryCount: 3,
-      errorRetryInterval: 5000,
-      refreshInterval: 30000,
+      dedupingInterval: 15000,
+      errorRetryCount: 2,
     }
   )
 
@@ -1378,7 +1377,7 @@ export default function PurchaseRequestsTable({
     
     // Sonuç hesapla
     if (deliveredMaterials === totalMaterials) {
-      return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#2C5444' }, rounded: 'rounded-xl' }
+      return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#0A0A0A' }, rounded: 'rounded-xl' }
     } else if (deliveredMaterials > 0 || partialMaterials > 0) {
       return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-red-100 text-red-800', rounded: 'rounded-full' }
     }
@@ -2201,29 +2200,16 @@ export default function PurchaseRequestsTable({
     <Card className="gap-0 bg-transparent border-transparent py-0 shadow-none">
       <CardContent className="p-0">
         {userRole === 'site_manager' && propListView !== 'it' && (
-          <div className="mb-4">
-            <div className="flex w-fit items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 p-1">
-              <button
-                onClick={() => setActiveTab('approval_pending')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  activeTab === 'approval_pending'
-                    ? 'bg-black text-white shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                Onay Bekleyenler
-              </button>
-              <button
-                onClick={() => setActiveTab('all')}
-                className={`px-4 py-2 text-sm font-medium rounded-md transition-all duration-200 ${
-                  activeTab === 'all'
-                    ? 'bg-black text-white shadow-sm'
-                    : 'bg-white text-gray-600 hover:text-gray-900 hover:bg-gray-100 border border-gray-200'
-                }`}
-              >
-                Tümü
-              </button>
-            </div>
+          <div className="mb-5">
+            <SlidingSegmentTabs
+              ariaLabel="Talep durumu"
+              value={activeTab === 'all' ? 'all' : 'approval_pending'}
+              onChange={setActiveTab}
+              items={[
+                { value: 'approval_pending', label: 'Onay Bekleyenler' },
+                { value: 'all', label: 'Tümü' },
+              ]}
+            />
           </div>
         )}
 
@@ -2276,7 +2262,7 @@ export default function PurchaseRequestsTable({
                     <div className="p-4 space-y-4 max-h-[70vh] overflow-y-auto">
                       {/* Teslimat Durumu */}
                       <div>
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Teslimat Durumu</div>
+                        <div className="text-xs font-semibold text-gray-500 mb-3">Teslimat Durumu</div>
                         <div className="space-y-2">
                           <button
                             onClick={() => {
@@ -2285,7 +2271,7 @@ export default function PurchaseRequestsTable({
                               setIsMobileFilterOpen(false)
                             }}
                             className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
-                              statusFilter === 'all' && deliveryStatusFilter === 'all'
+               statusFilter === 'all' && deliveryStatusFilter === 'all'
                                 ? 'bg-gray-100'
                                 : 'hover:bg-gray-50'
                             }`}
@@ -2300,13 +2286,13 @@ export default function PurchaseRequestsTable({
                               setIsMobileFilterOpen(false)
                             }}
                             className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
-                              deliveryStatusFilter === 'tamami_teslim_alindi'
+               deliveryStatusFilter === 'tamami_teslim_alindi'
                                 ? 'bg-gray-100'
                                 : 'hover:bg-gray-50'
                             }`}
                           >
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#2C5444' }}></span>
+                              <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: '#0A0A0A' }}></span>
                               <span className="font-medium text-sm">Tamamı Teslim Alındı</span>
                             </div>
                           </button>
@@ -2318,7 +2304,7 @@ export default function PurchaseRequestsTable({
                               setIsMobileFilterOpen(false)
                             }}
                             className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
-                              deliveryStatusFilter === 'kismen_teslim_alindi'
+               deliveryStatusFilter === 'kismen_teslim_alindi'
                                 ? 'bg-gray-100'
                                 : 'hover:bg-gray-50'
                             }`}
@@ -2336,7 +2322,7 @@ export default function PurchaseRequestsTable({
                               setIsMobileFilterOpen(false)
                             }}
                             className={`w-full text-left px-4 py-3 rounded-xl transition-all ${
-                              deliveryStatusFilter === 'siparis_verildi_sadece'
+               deliveryStatusFilter === 'siparis_verildi_sadece'
                                 ? 'bg-gray-100'
                                 : 'hover:bg-gray-50'
                             }`}
@@ -2351,7 +2337,7 @@ export default function PurchaseRequestsTable({
                       
                       {/* Diğer Durumlar */}
                       <div>
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Diğer Durumlar</div>
+                        <div className="text-xs font-semibold text-gray-500 mb-3">Diğer Durumlar</div>
                         <div className="space-y-1">
                           {uniqueStatuses.map(status => (
                             <button
@@ -2362,7 +2348,7 @@ export default function PurchaseRequestsTable({
                                 setIsMobileFilterOpen(false)
                               }}
                               className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
-                                statusFilter === status && deliveryStatusFilter === 'all'
+                statusFilter === status && deliveryStatusFilter === 'all'
                                   ? 'bg-gray-100 font-medium'
                                   : 'hover:bg-gray-50'
                               }`}
@@ -2375,7 +2361,7 @@ export default function PurchaseRequestsTable({
                       
                       {/* Lokasyon */}
                       <div>
-                        <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Lokasyon</div>
+                        <div className="text-xs font-semibold text-gray-500 mb-3">Lokasyon</div>
                         <div className="space-y-1">
                           <button
                             onClick={() => {
@@ -2383,7 +2369,7 @@ export default function PurchaseRequestsTable({
                               setIsMobileFilterOpen(false)
                             }}
                             className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
-                              locationFilter === 'all'
+               locationFilter === 'all'
                                 ? 'bg-gray-100 font-medium'
                                 : 'hover:bg-gray-50'
                             }`}
@@ -2398,7 +2384,7 @@ export default function PurchaseRequestsTable({
                                 setIsMobileFilterOpen(false)
                               }}
                               className={`w-full text-left px-4 py-2.5 rounded-xl text-sm transition-all ${
-                                locationFilter === location.id
+                locationFilter === location.id
                                   ? 'bg-gray-100 font-medium'
                                   : 'hover:bg-gray-50'
                               }`}
@@ -2485,9 +2471,9 @@ export default function PurchaseRequestsTable({
                       variant="outline" 
                       className="gap-1 cursor-pointer hover:bg-gray-100"
                       style={{ 
-                        backgroundColor: deliveryStatusFilter === 'tamami_teslim_alindi' ? '#2C5444' : 
-                                       deliveryStatusFilter === 'kismen_teslim_alindi' ? '#fb923c' : '#22c55e',
-                        color: 'white',
+                        backgroundColor: deliveryStatusFilter === 'tamami_teslim_alindi' ? '#0A0A0A' :
+                                       deliveryStatusFilter === 'kismen_teslim_alindi' ? '#FF5E5B' : '#007944',
+                        color: deliveryStatusFilter === 'kismen_teslim_alindi' ? '#0A0A0A' : 'white',
                         borderColor: 'transparent'
                       }}
                       onClick={() => {
@@ -2551,7 +2537,7 @@ export default function PurchaseRequestsTable({
               <button
                 data-dropdown-trigger
                 onClick={() => setIsStatusDropdownOpen(!isStatusDropdownOpen)}
-                className="flex items-center gap-1 text-xs font-medium text-black uppercase tracking-wider hover:text-gray-600 transition-colors"
+                className="flex items-center gap-1 text-xs font-medium text-black hover:text-gray-600 transition-colors"
               >
                 Durum
                 <ChevronDown className="w-3 h-3" />
@@ -2575,7 +2561,7 @@ export default function PurchaseRequestsTable({
                     
                     {/* Teslimat Durumları - Özel Seçenekler */}
                     <div className="mt-2 pt-2 border-t border-gray-200">
-                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Teslimat Durumu</div>
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 ">Teslimat Durumu</div>
                       <button
                         onClick={() => {
                           setStatusFilter('sipariş verildi')
@@ -2584,7 +2570,7 @@ export default function PurchaseRequestsTable({
                         }}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm hover:bg-gray-100 flex items-center gap-2 ${deliveryStatusFilter === 'tamami_teslim_alindi' ? 'bg-gray-100 font-medium' : ''}`}
                       >
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#2C5444' }}></span>
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: '#0A0A0A' }}></span>
                         Tamamı Teslim Alındı
                       </button>
                       <button
@@ -2613,7 +2599,7 @@ export default function PurchaseRequestsTable({
                     
                     {/* Normal Statuslar */}
                     <div className="mt-2 pt-2 border-t border-gray-200">
-                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 uppercase">Diğer Durumlar</div>
+                      <div className="px-3 py-1 text-xs font-semibold text-gray-500 ">Diğer Durumlar</div>
                       {uniqueStatuses.map(status => (
                         <button
                           key={status}
@@ -2633,14 +2619,14 @@ export default function PurchaseRequestsTable({
               )}
             </div>
             
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Malzemeler</div>
+            <div className="text-xs font-medium text-black">Malzemeler</div>
             
             {/* Lokasyon - Dropdown Filter */}
             <div className="relative">
               <button
                 data-dropdown-trigger
                 onClick={() => setIsLocationDropdownOpen(!isLocationDropdownOpen)}
-                className="flex items-center gap-1 text-xs font-medium text-black uppercase tracking-wider hover:text-gray-600 transition-colors"
+                className="flex items-center gap-1 text-xs font-medium text-black hover:text-gray-600 transition-colors"
               >
                 Lokasyon
                 <ChevronDown className="w-3 h-3" />
@@ -2677,10 +2663,10 @@ export default function PurchaseRequestsTable({
               )}
             </div>
             
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Talep Eden</div>
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Oluşturma Tarihi</div>
-            <div className="text-xs font-medium text-black uppercase tracking-wider">Talep No</div>
-            <div className="text-xs font-medium text-black uppercase tracking-wider text-right">İşlemler</div>
+            <div className="text-xs font-medium text-black">Talep Eden</div>
+            <div className="text-xs font-medium text-black">Oluşturma Tarihi</div>
+            <div className="text-xs font-medium text-black">Talep No</div>
+            <div className="text-xs font-medium text-black text-right">İşlemler</div>
           </div>
 
           {/* Satırlar */}
@@ -2729,7 +2715,7 @@ export default function PurchaseRequestsTable({
                 <div 
                   key={request.id}
                   className={`bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 relative ${
-                    isClickable
+          isClickable
                       ? 'cursor-pointer hover:border-gray-300 hover:shadow-md' 
                       : userRole === 'purchasing_officer' && request.status === 'depoda mevcut değil'
                       ? 'cursor-not-allowed opacity-75'
@@ -3054,7 +3040,7 @@ export default function PurchaseRequestsTable({
                           {userRole === 'purchasing_officer' && Number(request.unordered_materials_count) > 0 ? (
                             <Badge 
                               variant="outline" 
-                              className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                              className="bg-red-500 text-black border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                               title={`${request.unordered_materials_count} malzemenin siparişi verilmedi!`}
                             >
                               {request.unordered_materials_count}
@@ -3064,7 +3050,7 @@ export default function PurchaseRequestsTable({
                           {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
                             <Badge 
                               variant="outline" 
-                              className="bg-red-500 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
+                              className="bg-red-500 text-black border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
                               title={`${request.overdue_deliveries_count} siparişin teslim tarihi geçti!`}
                             >
                               {request.overdue_deliveries_count}
@@ -3168,7 +3154,7 @@ export default function PurchaseRequestsTable({
                         size="sm"
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-8 h-8 p-0 rounded-xl ${
-                          currentPage === pageNum 
+             currentPage === pageNum 
                             ? 'bg-[#00E676] text-white' 
                             : 'border-gray-200 hover:bg-gray-50'
                         }`}

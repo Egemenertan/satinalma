@@ -126,8 +126,16 @@ export const buildRequestInfo = (request: PDFRequestData): string => `
   </div>
 `
 
+const formatStepperDate = (dateString: string): string => {
+  try {
+    return new Date(dateString).toLocaleDateString('tr-TR')
+  } catch {
+    return dateString
+  }
+}
+
 /**
- * Key People Timeline Component - Sadece 3 önemli kişi
+ * Key People Timeline — yatay progress / step bar
  */
 export const buildKeyPeopleTimeline = (timeline?: PDFTimelineItem[]): string => {
   if (!timeline || timeline.length === 0) {
@@ -135,14 +143,17 @@ export const buildKeyPeopleTimeline = (timeline?: PDFTimelineItem[]): string => 
   }
 
   return `
-    <div class="section">
+    <div class="section process-section">
       <div class="section-title">Süreç Özeti</div>
-      <div class="timeline-grid">
-        ${timeline.map(item => `
-          <div class="timeline-card">
-            <div class="timeline-person">${item.person_name}</div>
-            <div class="timeline-action">${item.action}</div>
-            <div class="timeline-date">${formatDate(item.date)}</div>
+      <div class="process-stepper">
+        ${timeline.map((item, index) => `
+          <div class="process-step">
+            <div class="process-step-track">
+              <span class="process-dot" aria-hidden="true">${index + 1}</span>
+            </div>
+            <div class="process-name">${escapeHtml(item.person_name)}</div>
+            <div class="process-action">${escapeHtml(item.action)}</div>
+            <div class="process-date">${escapeHtml(formatStepperDate(item.date))}</div>
           </div>
         `).join('')}
       </div>

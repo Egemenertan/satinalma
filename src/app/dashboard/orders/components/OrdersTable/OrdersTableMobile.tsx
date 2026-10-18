@@ -125,7 +125,7 @@ export function OrdersTableMobile({
               <div 
                 key={order.id} 
                 className={`p-4 space-y-3 cursor-pointer transition-colors ${
-                  selectedOrders.has(order.id) 
+         selectedOrders.has(order.id) 
                     ? 'bg-gray-100 border-l-4 border-gray-900' 
                     : 'hover:bg-gray-50'
                 }`}
@@ -135,8 +135,8 @@ export function OrdersTableMobile({
                 <div className="flex items-center gap-3 mb-3">
                   <div 
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                      selectedOrders.has(order.id)
-                        ? 'bg-gray-900 border-gray-900'
+           selectedOrders.has(order.id)
+                        ? 'bg-navy border-navy'
                         : 'border-gray-300 hover:border-gray-500'
                     }`}
                   >

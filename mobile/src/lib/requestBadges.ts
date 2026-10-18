@@ -12,48 +12,48 @@ export type StatusPresentation = {
 /** Renkler web ile uyumlu — metinler i18n ile */
 export const STATUS_BADGE_MAP: Record<string, Omit<StatusPresentation, 'extraBadges'>> = {
   draft: { label: 'Taslak', bg: '#f3f4f6', color: '#374151' },
-  pending: { label: 'Beklemede', bg: '#fef9c3', color: '#854d0e' },
-  'onay bekliyor': { label: 'Onay Bekliyor', bg: '#dbeafe', color: '#1e40af' },
-  onay_bekliyor: { label: 'Onay Bekliyor', bg: '#dbeafe', color: '#1e40af' },
+  pending: { label: 'Beklemede', bg: '#F8EEEE', color: '#53131E' },
+  'onay bekliyor': { label: 'Onay Bekliyor', bg: '#E8F2F8', color: '#004777' },
+  onay_bekliyor: { label: 'Onay Bekliyor', bg: '#E8F2F8', color: '#004777' },
   departman_onayı_bekliyor: {
     label: 'Departman Onayı Bekliyor',
-    bg: '#fffbeb',
-    color: '#b45309',
-    borderColor: '#fcd34d',
+    bg: '#F8EEEE',
+    color: '#53131E',
+    borderColor: '#E0B3B9',
   },
-  it_incelemesinde: { label: 'IT — İncelemede', bg: '#e0f2fe', color: '#075985', borderColor: '#7dd3fc' },
+  it_incelemesinde: { label: 'IT — İncelemede', bg: '#E8F2F8', color: '#004777', borderColor: '#A6C9E2' },
   it_onaylandi: {
     label: 'IT — Onaylandı (Satın almaya hazır)',
-    bg: '#d1fae5',
-    color: '#065f46',
-    borderColor: '#6ee7b7',
+    bg: '#F4F4F4',
+    color: '#0A0A0A',
+    borderColor: '#DEDEDE',
   },
-  'teklif bekliyor': { label: 'Teklif Bekliyor', bg: '#f3e8ff', color: '#6b21a8' },
-  onaylandı: { label: 'Onaylandı', bg: '#dcfce7', color: '#166534' },
-  'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', bg: '#dbeafe', color: '#1e40af' },
-  'sipariş verildi': { label: 'Sipariş Verildi', bg: '#dcfce7', color: '#166534' },
-  ordered: { label: 'Sipariş Verildi', bg: '#dcfce7', color: '#166534' },
-  gönderildi: { label: 'Gönderildi', bg: '#d1fae5', color: '#065f46' },
-  'kısmen gönderildi': { label: 'Kısmen Gönderildi', bg: '#fee2e2', color: '#991b1b' },
-  'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', bg: '#fee2e2', color: '#991b1b' },
-  'depoda mevcut değil': { label: 'Depoda Mevcut Değil', bg: '#fee2e2', color: '#991b1b' },
-  'ana depoda yok': { label: 'Ana Depoda Yok', bg: '#fee2e2', color: '#991b1b' },
-  'teslim alındı': { label: 'Teslim Alındı', bg: '#dcfce7', color: '#166534' },
-  'iade var': { label: 'İade Var', bg: '#fee2e2', color: '#991b1b' },
-  'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', bg: '#f3e8ff', color: '#6b21a8' },
-  reddedildi: { label: 'Reddedildi', bg: '#fee2e2', color: '#991b1b' },
-  rejected: { label: 'Reddedildi', bg: '#fee2e2', color: '#991b1b' },
+  'teklif bekliyor': { label: 'Teklif Bekliyor', bg: '#F8EEEE', color: '#53131E' },
+  onaylandı: { label: 'Onaylandı', bg: '#F4F4F4', color: '#0A0A0A' },
+  'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', bg: '#E8F2F8', color: '#004777' },
+  'sipariş verildi': { label: 'Sipariş Verildi', bg: '#F4F4F4', color: '#0A0A0A' },
+  ordered: { label: 'Sipariş Verildi', bg: '#F4F4F4', color: '#0A0A0A' },
+  gönderildi: { label: 'Gönderildi', bg: '#F4F4F4', color: '#0A0A0A' },
+  'kısmen gönderildi': { label: 'Kısmen Gönderildi', bg: '#FFF1F0', color: '#C2322F' },
+  'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', bg: '#FFF1F0', color: '#C2322F' },
+  'depoda mevcut değil': { label: 'Depoda Mevcut Değil', bg: '#FFF1F0', color: '#C2322F' },
+  'ana depoda yok': { label: 'Ana Depoda Yok', bg: '#FFF1F0', color: '#C2322F' },
+  'teslim alındı': { label: 'Teslim Alındı', bg: '#F4F4F4', color: '#0A0A0A' },
+  'iade var': { label: 'İade Var', bg: '#FFF1F0', color: '#C2322F' },
+  'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', bg: '#F8EEEE', color: '#53131E' },
+  reddedildi: { label: 'Reddedildi', bg: '#FFF1F0', color: '#C2322F' },
+  rejected: { label: 'Reddedildi', bg: '#FFF1F0', color: '#C2322F' },
   cancelled: { label: 'İptal Edildi', bg: '#f3f4f6', color: '#4b5563' },
-  'şantiye şefi onayladı': { label: 'Onay Bekliyor', bg: '#dbeafe', color: '#1e40af' },
-  awaiting_offers: { label: 'Teklif Bekliyor', bg: '#f3e8ff', color: '#6b21a8' },
-  approved: { label: 'Onaylandı', bg: '#dcfce7', color: '#166534' },
-  delivered: { label: 'Teslim Alındı', bg: '#dcfce7', color: '#166534' },
-  'eksik onaylandı': { label: 'Onay Bekliyor', bg: '#dbeafe', color: '#1e40af' },
-  'alternatif onaylandı': { label: 'Onaylandı', bg: '#dcfce7', color: '#166534' },
+  'şantiye şefi onayladı': { label: 'Onay Bekliyor', bg: '#E8F2F8', color: '#004777' },
+  awaiting_offers: { label: 'Teklif Bekliyor', bg: '#F8EEEE', color: '#53131E' },
+  approved: { label: 'Onaylandı', bg: '#F4F4F4', color: '#0A0A0A' },
+  delivered: { label: 'Teslim Alındı', bg: '#F4F4F4', color: '#0A0A0A' },
+  'eksik onaylandı': { label: 'Onay Bekliyor', bg: '#E8F2F8', color: '#004777' },
+  'alternatif onaylandı': { label: 'Onaylandı', bg: '#F4F4F4', color: '#0A0A0A' },
   'eksik malzemeler talep edildi': {
     label: 'Satın Almaya Gönderildi',
-    bg: '#dbeafe',
-    color: '#1e40af',
+    bg: '#E8F2F8',
+    color: '#004777',
   },
 }
 
@@ -104,8 +104,8 @@ export function getStatusPresentation(
   if (notifications?.includes('iade var')) {
     extraBadges.push({
       label: t('badges.return'),
-      bg: '#fef2f2',
-      color: '#b91c1c',
+      bg: '#FFF1F0',
+      color: '#C2322F',
     })
   }
 
@@ -114,15 +114,15 @@ export function getStatusPresentation(
     if (userRole === 'warehouse_manager') {
       return {
         label: t('requestStatus.onaylandi'),
-        bg: '#dcfce7',
-        color: '#166534',
+        bg: '#F4F4F4',
+        color: '#0A0A0A',
         extraBadges,
       }
     }
     return {
       label: t('requestStatus.pending'),
-      bg: '#fef9c3',
-      color: '#854d0e',
+      bg: '#F8EEEE',
+      color: '#53131E',
       extraBadges,
     }
   }
@@ -135,8 +135,8 @@ export function getStatusPresentation(
     ) {
       return {
         label: t('requestStatus.po_pending'),
-        bg: '#fef9c3',
-        color: '#854d0e',
+        bg: '#F8EEEE',
+        color: '#53131E',
         extraBadges,
       }
     }
@@ -161,10 +161,10 @@ export function getUrgencyPresentation(
   t: TFunction
 ): { label: string; bg: string; color: string } {
   const colors: Record<string, { bg: string; color: string }> = {
-    critical: { bg: '#fee2e2', color: '#991b1b' },
-    high: { bg: '#fee2e2', color: '#991b1b' },
-    normal: { bg: '#dbeafe', color: '#1e40af' },
-    low: { bg: '#dcfce7', color: '#166534' },
+    critical: { bg: '#FFF1F0', color: '#C2322F' },
+    high: { bg: '#FFF1F0', color: '#C2322F' },
+    normal: { bg: '#E8F2F8', color: '#004777' },
+    low: { bg: '#F4F4F4', color: '#0A0A0A' },
   }
   const slug =
     urgency === 'critical'

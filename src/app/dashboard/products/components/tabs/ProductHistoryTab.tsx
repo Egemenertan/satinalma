@@ -82,7 +82,7 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <Badge className={`text-xs border-0 ${
-                      inventory.status === 'active' 
+           inventory.status === 'active' 
                         ? 'bg-green-100 text-green-700'
                         : inventory.status === 'returned'
                         ? 'bg-slate-100 text-slate-700'
@@ -187,7 +187,7 @@ export function ProductHistoryTab({ product, movementsData, inventoryData }: Pro
               {movement.product_condition && (
                 <Badge
                   className={`text-xs border-0 ${
-                    movement.product_condition === 'yeni'
+          movement.product_condition === 'yeni'
                       ? 'bg-green-100 text-green-700'
                       : movement.product_condition === 'kullanılmış'
                       ? 'bg-orange-100 text-orange-700'

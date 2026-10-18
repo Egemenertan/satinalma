@@ -75,9 +75,9 @@ Satın Alma Yönetim Sistemi
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header { background: linear-gradient(135deg, #007944 0%, #005C33 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .success-box { background: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; }
+        .success-box { background: #F6F6F6; border-left: 4px solid #007944; padding: 15px; margin: 20px 0; }
         .feature-list { background: #f8f9fa; padding: 20px; border-radius: 6px; margin: 20px 0; }
         .feature-list ul { margin: 0; padding-left: 20px; }
         .feature-list li { margin: 8px 0; }

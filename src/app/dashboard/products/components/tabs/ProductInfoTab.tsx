@@ -241,27 +241,27 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
       {/* Ürün Bilgi Kartları */}
       <div className="grid grid-cols-2 gap-4">
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ürün Adı</label>
+          <label className="text-xs font-medium text-gray-500">Ürün Adı</label>
           <p className="text-lg font-semibold text-gray-900 mt-2">{product.name}</p>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">SKU</label>
+          <label className="text-xs font-medium text-gray-500">SKU</label>
           <p className="text-lg font-semibold text-gray-900 mt-2">{product.sku || '-'}</p>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Kategori</label>
+          <label className="text-xs font-medium text-gray-500">Kategori</label>
           <p className="text-lg font-semibold text-gray-900 mt-2">
             {product.category?.name || '-'}
           </p>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ürün Tipi</label>
+          <label className="text-xs font-medium text-gray-500">Ürün Tipi</label>
           <p className="text-lg font-semibold text-gray-900 mt-2">
             {product.product_type || '-'}
           </p>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim</label>
+          <label className="text-xs font-medium text-gray-500">Birim</label>
           <Select
             value={unit || undefined}
             onValueChange={handleUnitChange}
@@ -280,7 +280,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
           </Select>
         </div>
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Birim Fiyat</label>
+          <label className="text-xs font-medium text-gray-500">Birim Fiyat</label>
           {editingPrice ? (
             <div className="mt-3 space-y-2">
               <Input
@@ -327,7 +327,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
                   type="button"
                   onClick={() => void savePrice()}
                   disabled={savingPrice}
-                  className="ml-auto h-10 rounded-xl bg-gray-900 text-white hover:bg-gray-800"
+                  className="ml-auto h-10 rounded-xl bg-navy text-white hover:bg-navy-700"
                 >
                   {savingPrice ? 'Kaydediliyor' : 'Kaydet'}
                 </Button>
@@ -364,7 +364,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
       {/* Açıklama */}
       {product.description && (
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">
+          <label className="text-xs font-medium text-gray-500 mb-3 block">
             Açıklama
           </label>
           <p className="text-gray-900 leading-relaxed">{product.description}</p>
@@ -374,7 +374,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
       {/* Seri Numaraları */}
       {serialNumbers && (serialNumbers.active.length > 0 || serialNumbers.pending.length > 0) && (
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-500 mb-4 flex items-center gap-2">
             <Hash className="w-4 h-4" />
             Seri Numaraları
           </label>
@@ -439,7 +439,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
       {/* Alım Geçmişi */}
       {movementsData && movementsData.movements.length > 0 && (
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-6 border border-gray-200/50 shadow-sm">
-          <label className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-4 flex items-center gap-2">
+          <label className="text-xs font-medium text-gray-500 mb-4 flex items-center gap-2">
             <TrendingUp className="w-4 h-4" />
             Alım Geçmişi ve Fiyatlar
           </label>
@@ -459,7 +459,7 @@ export function ProductInfoTab({ product, movementsData, serialNumbers }: Produc
                       {movement.product_condition && (
                         <Badge
                           className={`text-xs border-0 ${
-                            movement.product_condition === 'yeni'
+              movement.product_condition === 'yeni'
                               ? 'bg-primary-100 text-primary-800'
                               : movement.product_condition === 'kullanılmış'
                               ? 'bg-orange-100 text-orange-700'

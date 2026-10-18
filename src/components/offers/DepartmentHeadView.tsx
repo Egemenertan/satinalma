@@ -318,7 +318,7 @@ export default function DepartmentHeadView({ request, onRefresh, showToast }: De
             <Button
               onClick={handleApproval}
               disabled={approving || rejecting}
-              className="h-12 bg-gray-900 hover:bg-gray-950 text-white font-medium rounded-xl transition-all"
+              className="h-12 bg-navy text-white hover:bg-navy-700 font-medium rounded-xl transition-all"
               size="lg"
             >
               {approving ? (

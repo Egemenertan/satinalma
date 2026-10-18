@@ -175,7 +175,7 @@ const extraCss = `
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: #059669;
+    color: #0A0A0A;
     margin-bottom: 4px;
   }
   .dep-total-amount {
@@ -206,8 +206,8 @@ const extraCss = `
     padding: 7px 8px;
   }
   .dep-insight-box.dep-large {
-    border-color: #f59e0b;
-    background: #fffbeb;
+    border-color: #53131E;
+    background: #F8EEEE;
   }
   .dep-insight-title {
     font-size: 7.5pt;
@@ -262,7 +262,7 @@ const extraCss = `
     display: inline-block;
     min-width: 14px;
     font-weight: 700;
-    color: #059669;
+    color: #0A0A0A;
   }
   .dep-more {
     margin: 4px 0 0;

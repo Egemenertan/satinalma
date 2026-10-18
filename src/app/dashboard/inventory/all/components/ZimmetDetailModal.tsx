@@ -622,7 +622,7 @@ export default function ZimmetDetailModal({
                 <Button
                   onClick={handleSave}
                   disabled={saving || !selectedUserId}
-                  className="bg-gray-900 hover:bg-gray-800 text-white rounded-xl h-10 sm:h-11 px-4 sm:px-6 text-sm order-1 sm:order-3"
+                  className="bg-navy text-white hover:bg-navy-700 rounded-xl h-10 sm:h-11 px-4 sm:px-6 text-sm order-1 sm:order-3"
                 >
                   <Save className="w-4 h-4 mr-2" />
                   {saving ? 'Kaydediliyor...' : 'Kaydet ve PDF Yazdır'}

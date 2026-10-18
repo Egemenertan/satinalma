@@ -113,6 +113,7 @@ export interface RequestContractBinding {
 }
 
 export interface CreateContractItemInput {
+  id?: string
   material_class: string
   material_group: string
   material_item: string
@@ -127,6 +128,17 @@ export interface CreateContractInput {
   party_kind?: ContractPartyKind
   contract_category?: ContractCategory | null
   site_ids?: string[]
+  title?: string
+  contract_no?: string
+  start_date?: string
+  end_date?: string
+  notes?: string
+  budget_amount: number
+  budget_currency: string
+  items: CreateContractItemInput[]
+}
+
+export interface UpdateContractInput {
   title?: string
   contract_no?: string
   start_date?: string
@@ -217,4 +229,12 @@ export function formatContractMoney(value: number, currency = 'TRY'): string {
 export function formatContractDate(value: string | null): string {
   if (!value) return '—'
   return new Date(value).toLocaleDateString('tr-TR')
+}
+
+export function contractUsageTone(percent: number): { bar: string; text: string } {
+  const value = Number.isFinite(percent) ? percent : 0
+  if (value >= 100) return { bar: 'bg-red-500', text: 'text-red-600' }
+  if (value >= 75) return { bar: 'bg-orange-500', text: 'text-orange-600' }
+  if (value > 50) return { bar: 'bg-amber-400', text: 'text-amber-600' }
+  return { bar: 'bg-[#01E884]', text: 'text-emerald-700' }
 }

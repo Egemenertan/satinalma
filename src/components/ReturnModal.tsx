@@ -916,7 +916,7 @@ export default function ReturnModal({
                       size="sm"
                       onClick={() => removePhoto(index)}
                       disabled={isProcessing}
-                      className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-6 sm:h-6 p-0 bg-red-500 hover:bg-red-600 text-white border-red-500 rounded-full"
+                      className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 w-5 h-5 sm:w-6 sm:h-6 p-0 bg-red-500 hover:bg-red-400 text-black border-red-500 rounded-full"
                     >
                       <X className="w-2 h-2 sm:w-3 sm:h-3" />
                     </Button>

@@ -2,6 +2,10 @@ import { createBrowserClient } from '@supabase/ssr'
 import { Database } from '../supabase'
 import { createAuthCookieStorage, createBrowserCookieStore } from './auth-cookie-storage'
 
+type BrowserClient = ReturnType<typeof createBrowserClient<Database>>
+
+let browserClient: BrowserClient | null = null
+
 /**
  * Browser Supabase client (singleton, PKCE flow).
  *
@@ -15,6 +19,8 @@ import { createAuthCookieStorage, createBrowserCookieStore } from './auth-cookie
  * (bkz: src/app/auth/login/page.tsx).
  */
 export function createClient() {
+  if (browserClient) return browserClient
+
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 
@@ -30,7 +36,7 @@ export function createClient() {
   }
   const browserCookies = createBrowserCookieStore()
 
-  return createBrowserClient<Database>(supabaseUrl, supabaseAnonKey, {
+  browserClient = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey, {
     cookies: browserCookies,
     cookieOptions,
     auth: {
@@ -39,4 +45,6 @@ export function createClient() {
       storage: createAuthCookieStorage(browserCookies, cookieOptions, false),
     },
   })
+
+  return browserClient
 }

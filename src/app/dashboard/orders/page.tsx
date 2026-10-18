@@ -1596,7 +1596,7 @@ export default function OrdersPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">Siparişler</h1>
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900">Siparişler</h1>
           <p className="text-sm sm:text-base text-gray-600 mt-1">Teslim alınmış taleplere ait sipariş yönetimi</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -2022,7 +2022,7 @@ export default function OrdersPage() {
                           {editingInvoiceId === invoice.id && (
                             <button
                               onClick={() => handleRemoveEditPhoto(photoIndex)}
-                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                              className="absolute -top-1 -right-1 bg-red-500 text-black rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
                               disabled={isUpdatingInvoice}
                             >
                               <X className="w-3 h-3" />

@@ -645,8 +645,8 @@ const styles = StyleSheet.create({
   },
   irsaliyeCard: {
     borderWidth: 1,
-    borderColor: '#d1fae5',
-    backgroundColor: '#f0fdf4',
+    borderColor: '#E8E8E8',
+    backgroundColor: '#F4F4F4',
   },
   irsaliyeTitle: {
     fontWeight: '700',
@@ -710,14 +710,14 @@ const styles = StyleSheet.create({
   chipGrayText: { fontSize: 12, fontWeight: '600', color: '#6b7280' },
   chipOk: {
     alignSelf: 'flex-end',
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
     paddingHorizontal: 12,
     paddingVertical: 6,
     borderRadius: 9999,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: '#E8E8E8',
   },
-  chipOkText: { fontSize: 12, fontWeight: '700', color: '#047857' },
+  chipOkText: { fontSize: 12, fontWeight: '700', color: '#0A0A0A' },
   statusCol: { justifyContent: 'flex-start', paddingTop: 2 },
   supplierSection: {
     marginTop: 18,

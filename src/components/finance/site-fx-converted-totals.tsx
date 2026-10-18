@@ -31,7 +31,7 @@ export function ConvertedTotalsCards({ totals, dense = false }: { totals: Curren
             : 'border-elegant-gray-200 dark:border-elegant-gray-700'
         )}
       >
-        <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-elegant-gray-500 dark:text-elegant-gray-400">
+        <p className="font-mono text-xs font-semibold text-elegant-gray-500 dark:text-elegant-gray-400">
           Toplam ≈ {target}
         </p>
         <p

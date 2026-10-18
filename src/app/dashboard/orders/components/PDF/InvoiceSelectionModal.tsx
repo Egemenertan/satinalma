@@ -64,7 +64,7 @@ export function InvoiceSelectionModal({
           >
             <div className="flex items-center gap-3">
               <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${
-                allSelected 
+        allSelected 
                   ? 'bg-black border-black' 
                   : 'border-gray-300 bg-white'
               }`}>
@@ -96,7 +96,7 @@ export function InvoiceSelectionModal({
                 >
                   {/* Checkbox */}
                   <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 mt-0.5 transition-all ${
-                    isSelected 
+          isSelected 
                       ? 'bg-black border-black' 
                       : 'border-gray-300 bg-white'
                   }`}>
@@ -179,7 +179,7 @@ export function InvoiceSelectionModal({
           <Button
             onClick={onConfirm}
             disabled={selectedInvoiceIds.size === 0}
-            className="flex-1 h-11 rounded-xl bg-black hover:bg-gray-900 text-white font-medium disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
+            className="flex-1 h-11 rounded-xl bg-bordeaux text-white hover:bg-bordeaux-700 font-medium disabled:opacity-40 disabled:cursor-not-allowed shadow-lg"
           >
             PDF Oluştur
           </Button>

@@ -52,7 +52,7 @@ export default function JoinOrganizationScreen() {
         {/* İkon */}
         <View style={styles.iconContainer}>
           <View style={styles.iconCircle}>
-            <Ionicons name="time-outline" size={48} color="#f59e0b" />
+            <Ionicons name="time-outline" size={48} color="#53131E" />
           </View>
         </View>
 
@@ -63,7 +63,7 @@ export default function JoinOrganizationScreen() {
 
         {/* Bilgi kartı */}
         <View style={styles.infoCard}>
-          <Ionicons name="information-circle" size={24} color="#3b82f6" />
+          <Ionicons name="information-circle" size={24} color="#004777" />
           <Text style={styles.infoText}>{t('organization.pendingInfoSimple')}</Text>
         </View>
 
@@ -142,7 +142,7 @@ const styles = StyleSheet.create({
   infoCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#E8F2F8',
     borderRadius: 12,
     padding: 16,
     marginBottom: 24,
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   infoText: {
     flex: 1,
     fontSize: 14,
-    color: '#1e40af',
+    color: '#004777',
     lineHeight: 20,
   },
 
@@ -183,6 +183,6 @@ const styles = StyleSheet.create({
   },
   logoutBtnText: {
     fontSize: 15,
-    color: '#ef4444',
+    color: '#FF5E5B',
   },
 })

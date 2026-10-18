@@ -180,7 +180,7 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
                 />
                 <button
                   onClick={() => removeNewImage(index)}
-                  className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
+                  className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-400 text-black rounded-full opacity-0 group-hover:opacity-100 transition-all"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -205,7 +205,7 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
               />
               <button
                 onClick={() => deleteExistingImage(image, index)}
-                className="absolute top-3 right-3 p-2 bg-red-500 hover:bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
+                className="absolute top-3 right-3 p-2 bg-red-500 hover:bg-red-400 text-black rounded-full opacity-0 group-hover:opacity-100 transition-all shadow-lg"
                 title="Resmi Sil"
               >
                 <Trash2 className="w-4 h-4" />

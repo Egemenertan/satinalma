@@ -94,7 +94,7 @@ function MaterialGroupInvoicedWithGbpTotal({
           </p>
         ) : gbpAgg ? (
           <>
-            <p className="text-[10px] font-bold uppercase tracking-wider text-elegant-gray-500 dark:text-elegant-gray-400">
+            <p className="text-[10px] font-bold text-elegant-gray-500 dark:text-elegant-gray-400">
               Toplam ≈ GBP
             </p>
             <p className="mt-1 font-mono text-sm font-semibold tabular-nums text-amber-900 dark:text-amber-300">
@@ -216,13 +216,13 @@ export function SiteMaterialGroupsBreakdown({
 
                 <div className="mt-4 grid grid-cols-2 gap-3">
                   <div className="rounded-xl border border-elegant-gray-100 bg-elegant-gray-50/90 px-3 py-2.5 dark:border-elegant-gray-800 dark:bg-elegant-black/40">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-elegant-gray-500">Talep kalemi</p>
+                    <p className="text-[10px] font-bold text-elegant-gray-500">Talep kalemi</p>
                     <p className="mt-1 text-xl font-bold tabular-nums text-elegant-black dark:text-white">
                       {row.requestItemCount}
                     </p>
                   </div>
                   <div className="rounded-xl border border-elegant-gray-100 bg-elegant-gray-50/90 px-3 py-2.5 dark:border-elegant-gray-800 dark:bg-elegant-black/40">
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-elegant-gray-500">Sipariş</p>
+                    <p className="text-[10px] font-bold text-elegant-gray-500">Sipariş</p>
                     <p className="mt-1 text-xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">
                       {row.orderCount}
                     </p>
@@ -230,7 +230,7 @@ export function SiteMaterialGroupsBreakdown({
                 </div>
 
                 <div className="mt-4 border-t border-elegant-gray-100 pt-4 dark:border-elegant-gray-800">
-                  <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-400">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-amber-800 dark:text-amber-400">
                     <Receipt className="h-3 w-3" aria-hidden />
                     Faturalanan
                   </div>
@@ -244,7 +244,7 @@ export function SiteMaterialGroupsBreakdown({
                     id={`material-group-detail-${slugifyGroupKey(row.groupLabel)}`}
                     className="mt-4 border-t border-elegant-gray-100 pt-3 dark:border-elegant-gray-800"
                   >
-                    <p className="text-[10px] font-bold uppercase tracking-[0.1em] text-elegant-gray-500 dark:text-elegant-gray-400">
+                    <p className="text-[10px] font-bold text-elegant-gray-500 dark:text-elegant-gray-400">
                       Sipariş verilmiş kalemler
                     </p>
                     {lines.length === 0 ? (
@@ -278,7 +278,7 @@ export function SiteMaterialGroupsBreakdown({
                               <span className="font-semibold text-elegant-black dark:text-white">{line.itemName}</span>
                               {line.quantityLabel != null ? (
                                 <span className="inline-flex flex-wrap items-baseline gap-x-1 font-mono text-xs tabular-nums text-elegant-gray-600 dark:text-elegant-gray-400">
-                                  <span className="font-sans text-[10px] font-medium uppercase tracking-wide text-elegant-gray-500">
+                                  <span className="font-sans text-[10px] font-medium text-elegant-gray-500">
                                     İlk talep
                                   </span>
                                   <span>
@@ -291,7 +291,7 @@ export function SiteMaterialGroupsBreakdown({
                                   {line.unit}
                                 </span>
                               ) : null}
-                              <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
+                              <span className="ml-auto shrink-0 rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-bold text-emerald-800 dark:bg-emerald-500/20 dark:text-emerald-300">
                                 {line.orderCount} sipariş
                               </span>
                             </div>

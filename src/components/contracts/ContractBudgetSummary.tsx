@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import {
+  contractUsageTone,
   formatContractMoney,
   formatContractQty,
   type ContractOverview,
@@ -21,12 +22,14 @@ const CURRENCIES = ['TRY', 'USD', 'EUR', 'GBP'] as const
 
 interface ContractBudgetSummaryProps {
   contract: ContractOverview
+  invoicedAmount?: number
   showToast?: (message: string, type: 'success' | 'error' | 'info') => void
   onBudgetSaved?: () => void
 }
 
 export function ContractBudgetSummary({
   contract,
+  invoicedAmount,
   showToast,
   onBudgetSaved,
 }: ContractBudgetSummaryProps) {
@@ -35,11 +38,16 @@ export function ContractBudgetSummary({
   const [saving, setSaving] = useState(false)
 
   const budget = contract.budget_amount
-  const invoicedInBudget =
+  const linkedInvoiced =
     contract.invoiced_amounts.find((row) => row.currency === contract.budget_currency)?.amount || 0
+  const invoicedInBudget = Math.max(linkedInvoiced, invoicedAmount || 0)
   const otherInvoices = contract.invoiced_amounts.filter((row) => row.currency !== contract.budget_currency)
-  const remainingBudget = budget == null ? null : Math.max(0, budget - invoicedInBudget)
-  const ratio = budget && budget > 0 ? Math.min(100, Math.round((invoicedInBudget / budget) * 100)) : 0
+  const remainingBudget = budget == null ? null : budget - invoicedInBudget
+  const rawRatio = budget && budget > 0 ? (invoicedInBudget / budget) * 100 : 0
+  const ratio = Math.round(rawRatio)
+  const barWidth = Math.min(100, Math.max(0, rawRatio))
+  const overBudget = remainingBudget != null && remainingBudget < 0
+  const usageTone = contractUsageTone(rawRatio)
 
   const saveBudget = async () => {
     const value = Number(amount)
@@ -64,7 +72,7 @@ export function ContractBudgetSummary({
     <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+          <p className="text-[11px] font-bold text-elegant-gray-500">
             Sözleşme bütçesi
           </p>
           <h3 className="mt-1 text-base font-semibold text-elegant-black">
@@ -73,9 +81,9 @@ export function ContractBudgetSummary({
         </div>
         {budget != null && (
           <p className="text-right text-sm text-elegant-gray-600">
-            Kalan bütçe
-            <span className="mt-0.5 block text-lg font-semibold tabular-nums text-elegant-black">
-              {formatContractMoney(remainingBudget || 0, contract.budget_currency)}
+            {overBudget ? 'Bütçe aşıldı' : 'Kalan bütçe'}
+            <span className={`mt-0.5 block text-lg font-semibold tabular-nums ${overBudget ? 'text-red-600' : 'text-elegant-black'}`}>
+              {formatContractMoney(Math.abs(remainingBudget || 0), contract.budget_currency)}
             </span>
           </p>
         )}
@@ -111,7 +119,7 @@ export function ContractBudgetSummary({
               type="button"
               onClick={saveBudget}
               disabled={saving}
-              className="h-11 rounded-xl bg-elegant-black text-white hover:bg-elegant-gray-800"
+              className="h-11 rounded-xl bg-bordeaux text-white hover:bg-bordeaux-700"
             >
               {saving ? 'Kaydediliyor' : 'Bütçeyi kaydet'}
             </Button>
@@ -126,17 +134,20 @@ export function ContractBudgetSummary({
               value={formatContractMoney(invoicedInBudget, contract.budget_currency)}
             />
           </div>
-          <div className="mt-4">
-            <div className="mb-1 flex justify-between text-xs text-elegant-gray-500">
+          <div className="mt-5">
+            <div className="mb-2 flex justify-between text-xs font-medium text-elegant-gray-500">
               <span>Bütçe kullanımı</span>
-              <span>%{ratio}</span>
+              <span className={usageTone.text}>%{ratio}</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-elegant-gray-100">
-              <div className="h-full rounded-full bg-[#01E884]" style={{ width: `${ratio}%` }} />
+            <div className="h-3 overflow-hidden rounded-full bg-elegant-gray-100">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${usageTone.bar}`}
+                style={{ width: `${barWidth}%` }}
+              />
             </div>
           </div>
           <p className="mt-3 text-sm text-elegant-gray-700">
-            Bu sözleşmeye ait şu ana kadar{' '}
+            Geçmiş alımlara göre şu ana kadar{' '}
             <span className="font-semibold text-elegant-black">
               {formatContractMoney(invoicedInBudget, contract.budget_currency)}
             </span>{' '}
@@ -152,7 +163,7 @@ export function ContractBudgetSummary({
       )}
 
       <div className="mt-5 border-t border-elegant-gray-100 pt-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+        <p className="text-[11px] font-bold text-elegant-gray-500">
           Bekleyen siparişler
         </p>
         {contract.pending_orders.length === 0 ? (
@@ -189,7 +200,7 @@ export function ContractBudgetSummary({
 function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg bg-elegant-gray-50 px-3 py-2">
-      <div className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">{label}</div>
+      <div className="text-[11px] font-bold text-elegant-gray-500">{label}</div>
       <div className="mt-1 text-sm font-semibold text-elegant-black">{value}</div>
     </div>
   )

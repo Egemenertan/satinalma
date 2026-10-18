@@ -486,7 +486,7 @@ export function ProductStockTab({
             <Hash className="h-4 w-4 text-slate-600" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+            <p className="text-xs font-semibold text-slate-600">
               Depo girişlerinde kayıtlı seri numaraları
             </p>
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -523,7 +523,7 @@ export function ProductStockTab({
             </div>
             {serialsForWarehouse(anaDepo.warehouse_id).length > 0 && (
               <div className="mt-4 pt-4 border-t border-gray-100">
-                <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-2">Bu depodaki giriş serileri</p>
+                <p className="text-xs font-medium text-gray-500 mb-2">Bu depodaki giriş serileri</p>
                 <div className="flex flex-wrap gap-1.5">
                   {serialsForWarehouse(anaDepo.warehouse_id).map((sn) => (
                     <span
@@ -602,7 +602,7 @@ export function ProductStockTab({
         <div className="space-y-4">
           <div className="flex items-center gap-3">
             <div className="h-px flex-1 bg-gray-300"></div>
-            <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide">Muvakkat Depolar</h3>
+            <h3 className="text-sm font-bold text-gray-600">Muvakkat Depolar</h3>
             <div className="h-px flex-1 bg-gray-300"></div>
           </div>
 
@@ -686,7 +686,7 @@ export function ProductStockTab({
                   <div className="px-5 pb-5 pt-0 border-t border-gray-200">
                     {activeConditions.length > 0 && (
                       <div className="space-y-2 mt-4">
-                        <p className="text-xs font-semibold text-gray-500 uppercase">Durum Dağılımı</p>
+                        <p className="text-xs font-semibold text-gray-500 ">Durum Dağılımı</p>
                         {activeConditions.map(([condition, qty]) => {
                           const conditionConfig =
                             {
@@ -715,7 +715,7 @@ export function ProductStockTab({
 
                     {warehouseZimmetler.length > 0 && (
                       <div className="space-y-2 mt-4">
-                        <p className="text-xs font-semibold text-gray-500 uppercase">
+                        <p className="text-xs font-semibold text-gray-500 ">
                           Zimmetli (bu depoda)
                         </p>
                         {warehouseZimmetler.map((inv) => {
@@ -810,7 +810,7 @@ export function ProductStockTab({
       <div className="space-y-4">
         <div className="flex items-center gap-3">
           <div className="h-px flex-1 bg-gray-200" />
-          <h3 className="text-sm font-bold text-gray-600 uppercase tracking-wide">Zimmetler</h3>
+          <h3 className="text-sm font-bold text-gray-600">Zimmetler</h3>
           <div className="h-px flex-1 bg-gray-200" />
         </div>
 
@@ -858,7 +858,7 @@ export function ProductStockTab({
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[640px] text-left">
                     <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50/80 text-[11px] uppercase tracking-wide text-gray-500">
+                      <tr className="border-b border-gray-100 bg-gray-50/80 text-[11px] text-gray-500">
                         <th className="px-4 py-3 font-medium">Depo</th>
                         <th className="px-4 py-3 font-medium">Zimmetli</th>
                         <th className="px-4 py-3 font-medium">Miktar</th>
@@ -1007,7 +1007,7 @@ export function ProductStockTab({
       {/* Toplam Stok */}
       <div className="bg-gray-900 text-white rounded-2xl p-6 flex items-center justify-between shadow-sm">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wide">Toplam depo stoğu</p>
+          <p className="text-xs text-gray-400">Toplam depo stoğu</p>
           <p className="font-semibold text-base mt-1">{product?.name}</p>
         </div>
         <p className="text-3xl font-bold">

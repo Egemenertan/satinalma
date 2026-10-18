@@ -58,16 +58,16 @@
     --muted-foreground: #737373;
     --accent: #00E676;
     --accent-foreground: #0a0a0a;
-    --destructive: #dc2626;
-    --destructive-foreground: #ffffff;
+    --destructive: #FF5E5B;
+    --destructive-foreground: #0a0a0a;
     --border: #e5e5e5;
     --input: #f5f5f5;
     --ring: #00E676;
     --chart-1: #00E676;
     --chart-2: #0a0a0a;
-    --chart-3: #737373;
-    --chart-4: #e5e5e5;
-    --chart-5: #525252;
+    --chart-3: #004777;
+    --chart-4: #FF5E5B;
+    --chart-5: #53131E;
     --sidebar: #ffffff;
     --sidebar-foreground: #0a0a0a;
     --sidebar-primary: #00E676;
@@ -107,16 +107,16 @@
     --muted-foreground: #a4a4a4;
     --accent: #333333;
     --accent-foreground: #ffffff;
-    --destructive: #ff5b5b;
-    --destructive-foreground: #000000;
+    --destructive: #FF5E5B;
+    --destructive-foreground: #0a0a0a;
     --border: #242424;
     --input: #333333;
     --ring: #a4a4a4;
-    --chart-1: #ffae04;
-    --chart-2: #2671f4;
-    --chart-3: #747474;
-    --chart-4: #525252;
-    --chart-5: #e4e4e4;
+    --chart-1: #00E676;
+    --chart-2: #0a0a0a;
+    --chart-3: #004777;
+    --chart-4: #FF5E5B;
+    --chart-5: #53131E;
     --sidebar: #121212;
     --sidebar-foreground: #ffffff;
     --sidebar-primary: #ffffff;
@@ -240,7 +240,7 @@
 
   /* Modern gradient backgrounds */
   .bg-gradient-modern {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #004777 0%, #53131E 100%);
   }
 
   .bg-gradient-glass {
@@ -268,18 +268,6 @@
     border: 1px solid rgba(255, 255, 255, 0.2);
   }
 
-  /* Custom Dove Loading Animations */
-  @keyframes pulse-smooth {
-    0%, 100% {
-      transform: scale(1);
-      opacity: 1;
-    }
-    50% {
-      transform: scale(1.1);
-      opacity: 0.8;
-    }
-  }
-
   @keyframes fade-in-out {
     0%, 100% {
       opacity: 0.7;
@@ -289,12 +277,57 @@
     }
   }
 
-  .animate-pulse-smooth {
-    animation: pulse-smooth 2s ease-in-out infinite;
-  }
-
   .animate-fade-in-out {
     animation: fade-in-out 2s ease-in-out infinite;
+  }
+
+  /* DLX logo soldan sağa dolma */
+  @keyframes dlx-reveal {
+    0% {
+      clip-path: inset(0 100% 0 0);
+    }
+    58% {
+      clip-path: inset(0 0 0 0);
+    }
+    78% {
+      clip-path: inset(0 0 0 0);
+    }
+    100% {
+      clip-path: inset(0 100% 0 0);
+    }
+  }
+
+  .animate-dlx-reveal {
+    animation: dlx-reveal 1.8s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+
+  @keyframes dlx-inline {
+    0% {
+      transform: scaleX(0);
+    }
+    55% {
+      transform: scaleX(1);
+    }
+    100% {
+      transform: scaleX(0);
+    }
+  }
+
+  .animate-dlx-inline {
+    animation: dlx-inline 1.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+    transform-origin: left center;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-dlx-reveal,
+    .animate-dlx-inline,
+    .animate-fade-in-out {
+      animation: none;
+    }
+
+    .animate-dlx-reveal {
+      clip-path: none;
+    }
   }
 
   /* Chart animations for mobile */

@@ -15,11 +15,16 @@ import { createClient } from '@/lib/supabase/client'
 import {
   CONTRACT_UNITS,
   type ContractCategory,
+  type ContractOverview,
   type ContractPartyKind,
   type CreateContractItemInput,
 } from '@/lib/contracts'
-import { createSupplierContract } from '@/services/contracts.service'
+import { createSupplierContract, updateSupplierContract } from '@/services/contracts.service'
 import { Plus, Trash2 } from 'lucide-react'
+
+function toDateInput(value: string | null | undefined) {
+  return value ? value.slice(0, 10) : ''
+}
 
 type LineItem = CreateContractItemInput
 
@@ -36,7 +41,7 @@ const emptyLine = (): LineItem => ({
 const fieldClass =
   'h-12 w-full rounded-xl border-elegant-gray-200 bg-elegant-gray-50 px-3 text-base text-elegant-black shadow-none placeholder:text-elegant-gray-400 focus-visible:ring-1 focus-visible:ring-elegant-black data-[size=default]:h-12 sm:text-sm'
 
-const labelClass = 'mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500'
+const labelClass = 'mb-1.5 block text-[11px] font-bold text-elegant-gray-500'
 
 interface ContractDetailsFormProps {
   supplierId: string
@@ -46,8 +51,10 @@ interface ContractDetailsFormProps {
   siteIds: string[]
   summary?: React.ReactNode
   cancelLabel?: string
+  initialContract?: ContractOverview | null
   onCancel: () => void
   onCreated?: () => void
+  onSaved?: () => void
   showToast: (message: string, type: 'success' | 'error' | 'info') => void
 }
 
@@ -59,19 +66,37 @@ export function ContractDetailsForm({
   siteIds,
   summary,
   cancelLabel = 'Vazgeç',
+  initialContract = null,
   onCancel,
   onCreated,
+  onSaved,
   showToast,
 }: ContractDetailsFormProps) {
   const supabase = createClient()
-  const [title, setTitle] = useState('')
-  const [contractNo, setContractNo] = useState('')
-  const [startDate, setStartDate] = useState('')
-  const [endDate, setEndDate] = useState('')
-  const [notes, setNotes] = useState('')
-  const [budgetAmount, setBudgetAmount] = useState('')
-  const [budgetCurrency, setBudgetCurrency] = useState('TRY')
-  const [items, setItems] = useState<LineItem[]>([emptyLine()])
+  const isEditing = Boolean(initialContract?.id)
+  const [title, setTitle] = useState(initialContract?.title || '')
+  const [contractNo, setContractNo] = useState(initialContract?.contract_no || '')
+  const [startDate, setStartDate] = useState(toDateInput(initialContract?.start_date))
+  const [endDate, setEndDate] = useState(toDateInput(initialContract?.end_date))
+  const [notes, setNotes] = useState(initialContract?.notes || '')
+  const [budgetAmount, setBudgetAmount] = useState(
+    initialContract?.budget_amount != null ? String(initialContract.budget_amount) : ''
+  )
+  const [budgetCurrency, setBudgetCurrency] = useState(initialContract?.budget_currency || 'TRY')
+  const [items, setItems] = useState<LineItem[]>(
+    initialContract?.items.length
+      ? initialContract.items.map((item) => ({
+          id: item.id,
+          material_class: item.material_class || '',
+          material_group: item.material_group || '',
+          material_item: item.material_item,
+          unit: item.unit || 'Kg',
+          unit_price: item.unit_price,
+          currency: item.currency || 'TRY',
+          contracted_quantity: item.contracted_quantity,
+        }))
+      : [emptyLine()]
+  )
   const [classes, setClasses] = useState<string[]>([])
   const [groupsByIndex, setGroupsByIndex] = useState<Record<number, string[]>>({})
   const [materialsByIndex, setMaterialsByIndex] = useState<Record<number, string[]>>({})
@@ -127,6 +152,25 @@ export function ContractDetailsForm({
     }))
   }
 
+  useEffect(() => {
+    if (!initialContract) return
+    initialContract.items.forEach((item, index) => {
+      if (item.material_class) {
+        void loadGroups(index, item.material_class)
+        if (item.material_group) {
+          void loadItems(index, item.material_class, item.material_group)
+        }
+      }
+    })
+  }, [initialContract?.id])
+
+  const isItemLocked = (item: LineItem) => {
+    if (!item.id || !initialContract) return false
+    const current = initialContract.items.find((row) => row.id === item.id)
+    if (!current) return false
+    return current.delivered_quantity > 0 || current.pending_request_quantity > 0
+  }
+
   const updateItem = (index: number, patch: Partial<LineItem>) => {
     setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)))
   }
@@ -153,22 +197,37 @@ export function ContractDetailsForm({
 
     setSaving(true)
     try {
-      await createSupplierContract({
-        supplier_id: supplierId,
-        party_kind: partyKind,
-        contract_category: contractCategory,
-        site_ids: siteIds,
-        title: title || `${supplierName || 'Tedarikçi'} sözleşmesi`,
-        contract_no: contractNo,
-        start_date: startDate,
-        end_date: endDate,
-        notes,
-        budget_amount: budget,
-        budget_currency: budgetCurrency,
-        items: validItems,
-      })
-      showToast('Sözleşme kaydedildi', 'success')
-      onCreated?.()
+      if (isEditing && initialContract) {
+        await updateSupplierContract(initialContract.id, {
+          title: title || `${supplierName || initialContract.supplier_name} sözleşmesi`,
+          contract_no: contractNo,
+          start_date: startDate,
+          end_date: endDate,
+          notes,
+          budget_amount: budget,
+          budget_currency: budgetCurrency,
+          items: validItems,
+        })
+        showToast('Sözleşme güncellendi', 'success')
+        onSaved?.()
+      } else {
+        await createSupplierContract({
+          supplier_id: supplierId,
+          party_kind: partyKind,
+          contract_category: contractCategory,
+          site_ids: siteIds,
+          title: title || `${supplierName || 'Tedarikçi'} sözleşmesi`,
+          contract_no: contractNo,
+          start_date: startDate,
+          end_date: endDate,
+          notes,
+          budget_amount: budget,
+          budget_currency: budgetCurrency,
+          items: validItems,
+        })
+        showToast('Sözleşme kaydedildi', 'success')
+        onCreated?.()
+      }
     } catch (error) {
       console.error(error)
       showToast(error instanceof Error ? error.message : 'Sözleşme kaydedilemedi', 'error')
@@ -182,7 +241,7 @@ export function ContractDetailsForm({
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6">
         {summary}
         <section className="space-y-4">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+          <p className="text-[11px] font-bold text-elegant-gray-500">
             Sözleşme bilgileri
           </p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -245,7 +304,7 @@ export function ContractDetailsForm({
 
         <section className="mt-8 space-y-3">
           <div className="flex items-center justify-between gap-3">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <p className="text-[11px] font-bold text-elegant-gray-500">
               Kalemler
             </p>
             <button
@@ -262,7 +321,7 @@ export function ContractDetailsForm({
             <div key={index} className="space-y-3 rounded-2xl border border-elegant-gray-200 bg-white p-4">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-elegant-black">Kalem {index + 1}</p>
-                {items.length > 1 && (
+                {items.length > 1 && !isItemLocked(item) && (
                   <button
                     type="button"
                     onClick={() => setItems((prev) => prev.filter((_, i) => i !== index))}
@@ -410,11 +469,11 @@ export function ContractDetailsForm({
           </Button>
           <Button
             type="button"
-            className="h-12 rounded-2xl bg-black text-white hover:bg-gray-900 sm:min-w-[180px]"
+            className="h-12 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700 sm:min-w-[180px]"
             onClick={handleSave}
             disabled={saving}
           >
-            {saving ? 'Kaydediliyor...' : 'Sözleşmeyi kaydet'}
+            {saving ? 'Kaydediliyor...' : isEditing ? 'Değişiklikleri kaydet' : 'Sözleşmeyi kaydet'}
           </Button>
         </div>
       </div>

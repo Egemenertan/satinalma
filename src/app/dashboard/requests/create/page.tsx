@@ -18,6 +18,7 @@ import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
 import { SPECIAL_SITE_ID } from '@/lib/constants'
 import { isSharedMaterialCategory } from '@/lib/material-category-access'
+import { enrichSiteImagesFromCatalog, getDPointHeroPublicUrl } from '@/lib/site-images'
 
 import {
   CategoryTabs,
@@ -67,58 +68,6 @@ const OFFICE_CATEGORY_KEYWORDS = [
 const isOfficeCategory = (categoryName: string | null | undefined): boolean => {
   const normalized = normalizeCategoryName(categoryName)
   return OFFICE_CATEGORY_KEYWORDS.some((keyword) => normalized.includes(keyword))
-}
-
-const normalizeSiteDisplayKey = (name: string | null | undefined): string =>
-  String(name ?? '').trim().toLocaleLowerCase('tr-TR')
-
-/** Tire/nokta vb. ayıraçları boşluğa çevirir (D-Point, D.Point …) */
-const normalizeSiteNameLoose = (name: string | null | undefined): string =>
-  String(name ?? '')
-    .trim()
-    .toLocaleLowerCase('tr-TR')
-    .replace(/[._]+/g, ' ')
-    .replace(/-/g, ' ')
-    .replace(/\s+/g, ' ')
-
-/** DB’de kırık URL olsa bile talep oluşturma — site seçiminde D Point için bucket görseli */
-function isDPointSiteLabel(name: string): boolean {
-  const n = normalizeSiteNameLoose(name)
-  if (n === 'd point' || n === 'dpoint') return true
-  const parts = n.split(' ').filter(Boolean)
-  if (parts.length >= 2 && parts[0] === 'd' && parts[1] === 'point') return true
-  return false
-}
-
-/**
- * Products sayfasındaki gibi tüm sites kataloğuna göre eksik görseli tamamlar.
- * Profil farklı UUID'ye bağlı eski/boş görsel satırını işaret ettiğinde, aynı isimli
- * başka bir sites kaydındaki image_url kullanılır.
- * D Point: DB'de dolu ama yüklenmeyen URL olabiliyor; bu adımda her zaman bucket görseli kullanılır.
- */
-function enrichSiteImagesFromCatalog(
-  picked: Site[],
-  catalog: Site[],
-  dPointHeroPublicUrl: string
-): Site[] {
-  const imageByName = new Map<string, string>()
-  for (const row of catalog) {
-    const url = row.image_url?.trim()
-    if (!url) continue
-    const key = normalizeSiteDisplayKey(row.name)
-    if (!imageByName.has(key)) imageByName.set(key, url)
-  }
-
-  return picked.map((site) => {
-    if (isDPointSiteLabel(site.name)) {
-      return { ...site, image_url: dPointHeroPublicUrl }
-    }
-    const own = site.image_url?.trim()
-    if (own) return site
-    const fb = imageByName.get(normalizeSiteDisplayKey(site.name))
-    if (fb) return { ...site, image_url: fb }
-    return site
-  })
 }
 
 export default function CreatePurchaseRequestPage() {
@@ -293,10 +242,7 @@ export default function CreatePurchaseRequestPage() {
 
             picked.sort((a, b) => String(a.name ?? '').localeCompare(String(b.name ?? ''), 'tr'))
 
-            const { data: dPointPublic } = supabase.storage
-              .from('satinalma')
-              .getPublicUrl('dpointhero.webp')
-            const dPointHeroPublicUrl = dPointPublic.publicUrl
+            const dPointHeroPublicUrl = getDPointHeroPublicUrl(supabase.storage)
 
             picked = enrichSiteImagesFromCatalog(picked, catalog, dPointHeroPublicUrl)
 
@@ -740,7 +686,7 @@ export default function CreatePurchaseRequestPage() {
           </Button>
 
           <div className="text-center mb-10">
-            <h1 className="text-3xl font-bold text-gray-900 mb-2">Lokasyon Seçin</h1>
+            <h1 className="text-4xl font-bold text-gray-900 mb-2">Lokasyon Seçin</h1>
             <p className="text-gray-600">Talep oluşturmak için bir lokasyon seçin</p>
           </div>
 

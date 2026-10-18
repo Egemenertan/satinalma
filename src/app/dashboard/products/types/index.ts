@@ -37,6 +37,10 @@ export interface ProductWithStock extends Omit<Product, 'category'> {
   category?: ProductCategory | null
   warehouse_stocks?: WarehouseStockWithDetails[]
   total_stock?: number
+  /** Raftaki adet eksi aynı depodaki zimmet. Rozet buna bakar. */
+  available_stock?: number
+  /** Depo id → aktif zimmet adedi */
+  zimmet_by_warehouse?: Record<string, number>
   /** Sorumlu depodaki aktif zimmet adedi */
   depot_quantity?: number
 }

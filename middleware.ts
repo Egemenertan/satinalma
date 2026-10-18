@@ -24,7 +24,6 @@ const PROTECTED_ROUTE_PREFIXES = ['/dashboard', '/admin'] as const
 const PROTECTED_API_PREFIXES = ['/api'] as const
 
 const PUBLIC_API_PREFIXES = ['/api/public/', '/api/auth/'] as const
-const DEFAULT_DASHBOARD_ROLE = 'site_personnel' as const
 
 function isPublicRoute(pathname: string): boolean {
   if (pathname === '/') return true
@@ -182,61 +181,9 @@ export async function middleware(request: NextRequest) {
     return buildLoginRedirect(request, supabaseResponse, pathname)
   }
 
-  // Dashboard route'larında profil/rol tutarlılığı — BEST-EFFORT.
-  // Hata olursa kullanıcıyı sistemden ATMA. Sadece logla, devam et.
-  // (Önceki implementasyon her DB hatasında login'e atıyordu — bu defansif değil.)
-  if (pathname.startsWith('/dashboard')) {
-    try {
-      const normalizedEmail = user.email?.trim().toLowerCase() ?? ''
-      const fullName =
-        user.user_metadata?.full_name ||
-        user.user_metadata?.name ||
-        normalizedEmail ||
-        'Kullanıcı'
+  // Profil oluşturma / rol yükseltme layout ve login callback'te yapılır.
+  // Her dashboard geçişinde ekstra DB round-trip sayfa yüklemesini yavaşlatıyordu.
 
-      const { data: profile, error: profileReadError } = await supabase
-        .from('profiles')
-        .select('role, site_id')
-        .eq('id', user.id)
-        .maybeSingle()
-
-      if (profileReadError) {
-        console.warn('[middleware] profile read failed (devam ediliyor):', profileReadError.message)
-      } else if (!profile) {
-        // Yeni profil oluştur (site_id boş bırak - admin atamalı)
-        const { error: profileInsertError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            email: normalizedEmail,
-            full_name: fullName,
-            role: DEFAULT_DASHBOARD_ROLE,
-            site_id: null,
-            created_at: new Date().toISOString(),
-          })
-
-        if (profileInsertError) {
-          console.warn('[middleware] profile insert failed (devam ediliyor):', profileInsertError.message)
-        }
-      } else if (profile.role === 'user') {
-        // Microsoft ile yeni gelen "user" rolünü default dashboard rolüne yükselt (site_id'ye dokunma)
-        const { error: profileUpdateError } = await supabase
-          .from('profiles')
-          .update({ role: DEFAULT_DASHBOARD_ROLE })
-          .eq('id', user.id)
-
-        if (profileUpdateError) {
-          console.warn('[middleware] role upgrade failed (devam ediliyor):', profileUpdateError.message)
-        }
-      }
-      // NOT: site_id boşsa otomatik atama YAPILMAZ - admin manuel atamalı
-    } catch (err) {
-      // Beklenmeyen hata: yine de kullanıcıyı atma
-      console.warn('[middleware] role check unexpected error (devam ediliyor):', err)
-    }
-  }
-
-  // ÖNEMLİ: cookies refresh edilmişse mutlaka tarayıcıya yansısın
   return supabaseResponse
 }
 

@@ -67,7 +67,7 @@ export function OrderFilters({
           <button
             onClick={() => onViewModeChange('default')}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
+       flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
               ${viewMode === 'default' 
                 ? 'bg-white text-gray-900 shadow-sm' 
                 : 'text-gray-600 hover:text-gray-900'
@@ -80,7 +80,7 @@ export function OrderFilters({
           <button
             onClick={() => onViewModeChange('invoice')}
             className={`
-              flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
+       flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200
               ${viewMode === 'invoice' 
                 ? 'bg-white text-gray-900 shadow-sm' 
                 : 'text-gray-600 hover:text-gray-900'

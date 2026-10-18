@@ -67,7 +67,7 @@ export function ItWorkflowActionsCardRn({ wf }: { wf: ItWorkflowActionsRnControl
                   disabled={busyAny}
                 >
                   <View style={styles.btnInline}>
-                    <MaterialIcons name="edit" size={18} color="#047857" />
+                    <MaterialIcons name="edit" size={18} color="#0A0A0A" />
                     <Text style={styles.btnOutlineBlueText} numberOfLines={1}>
                       Düzenle
                     </Text>
@@ -79,7 +79,7 @@ export function ItWorkflowActionsCardRn({ wf }: { wf: ItWorkflowActionsRnControl
                   disabled={busyAny}
                 >
                   <View style={styles.btnInline}>
-                    <MaterialIcons name="send" size={18} color="#047857" />
+                    <MaterialIcons name="send" size={18} color="#0A0A0A" />
                     <Text style={styles.btnOutlineEmeraldText} numberOfLines={1}>
                       Gönder
                     </Text>
@@ -93,7 +93,7 @@ export function ItWorkflowActionsCardRn({ wf }: { wf: ItWorkflowActionsRnControl
                 disabled={busyAny}
               >
                 <View style={styles.btnInline}>
-                  <MaterialIcons name="edit" size={18} color="#047857" />
+                  <MaterialIcons name="edit" size={18} color="#0A0A0A" />
                   <Text style={styles.btnOutlineBlueText} numberOfLines={1}>
                     Düzenle
                   </Text>
@@ -284,8 +284,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  iconSky: { backgroundColor: '#f0fdf4' },
-  iconGreen: { backgroundColor: '#f0fdf4' },
+  iconSky: { backgroundColor: '#F4F4F4' },
+  iconGreen: { backgroundColor: '#F4F4F4' },
   title: {
     fontWeight: '700',
     fontSize: 17,
@@ -357,14 +357,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 9999,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: '#E8E8E8',
     backgroundColor: '#ffffff',
   },
   btnOutlineBlueText: {
     fontWeight: '600',
     fontSize: 14,
     lineHeight: 18,
-    color: '#047857',
+    color: '#0A0A0A',
     flexShrink: 1,
     textAlign: 'center',
     ...Platform.select({
@@ -380,14 +380,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     borderRadius: 9999,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: '#E8E8E8',
     backgroundColor: '#ffffff',
   },
   btnOutlineEmeraldText: {
     fontWeight: '600',
     fontSize: 14,
     lineHeight: 18,
-    color: '#047857',
+    color: '#0A0A0A',
     flexShrink: 1,
     textAlign: 'center',
     ...Platform.select({

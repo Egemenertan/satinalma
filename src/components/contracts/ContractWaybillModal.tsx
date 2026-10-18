@@ -207,7 +207,7 @@ export function ContractWaybillModal({
             <Button
               onClick={handleSubmit}
               disabled={saving}
-              className="w-full rounded-2xl bg-black text-white hover:bg-gray-900"
+              className="w-full rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
             >
               {saving ? 'Kaydediliyor...' : 'İrsaliyeyi Kaydet'}
             </Button>

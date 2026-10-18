@@ -7,18 +7,20 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { fetchAllFilteredProductIds } from '@/services/products.service'
 import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, FileSpreadsheet } from 'lucide-react'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, ChevronDown, Truck } from 'lucide-react'
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct, useProductsInsights } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
+import useSWR from 'swr'
 import {
+  WAREHOUSE_ACCESS_SWR_KEY,
+  EMPTY_WAREHOUSE_ACCESS_SCOPE,
   fetchMyWarehouseAccessScope,
-  emptyWarehouseAccessScope,
-  type WarehouseAccessScope,
 } from '@/lib/warehouse-access'
 import {
   ProductFilters,
@@ -28,6 +30,8 @@ import {
 } from './components'
 import BulkZimmetModal from '@/components/BulkZimmetModal'
 import { ZimmetReportModal } from './components/ZimmetReportModal'
+import { TerminationModal } from './components/TerminationModal'
+import { OperationsDialog } from './components/OperationsDialog'
 
 interface Site {
   id: string
@@ -47,15 +51,19 @@ export default function ProductsPage() {
   const [modalMode, setModalMode] = useState<'view' | 'edit' | 'create'>('view')
   const [sites, setSites] = useState<SiteStock[]>([])
   const [loadingSites, setLoadingSites] = useState(true)
-  const [warehouseAccess, setWarehouseAccess] = useState<WarehouseAccessScope>(emptyWarehouseAccessScope())
   const [selectedProducts, setSelectedProducts] = useState<string[]>([])
   const [showBulkActions, setShowBulkActions] = useState(false)
+  const [selectingAllFiltered, setSelectingAllFiltered] = useState(false)
   const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
+  const [showBulkTeslimModal, setShowBulkTeslimModal] = useState(false)
   const [showZimmetReportModal, setShowZimmetReportModal] = useState(false)
+  const [showTerminationModal, setShowTerminationModal] = useState(false)
+  const [showOperationsMenu, setShowOperationsMenu] = useState(false)
   const supabase = createClient()
 
   const {
     searchTerm,
+    zimmetOwner,
     brandId,
     siteId,
     productType,
@@ -65,6 +73,7 @@ export default function ProductsPage() {
     filters: baseFilters,
     hasActiveFilters,
     setSearchTerm,
+    setZimmetOwner,
     setBrandId,
     setSiteId,
     setProductType,
@@ -72,6 +81,18 @@ export default function ProductsPage() {
     setCurrentPage,
     clearFilters,
   } = useProductFilters()
+
+  const { data: warehouseAccessData } = useSWR(
+    WAREHOUSE_ACCESS_SWR_KEY,
+    fetchMyWarehouseAccessScope,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60_000,
+      fallbackData: EMPTY_WAREHOUSE_ACCESS_SCOPE,
+    }
+  )
+  const warehouseAccess = warehouseAccessData ?? EMPTY_WAREHOUSE_ACCESS_SCOPE
 
   const managesViewedWarehouse = useMemo(() => {
     if (!warehouseAccess.loaded || warehouseAccess.canManageAll) return false
@@ -97,17 +118,12 @@ export default function ProductsPage() {
   }, [baseFilters, warehouseAccess])
 
   useEffect(() => {
-    const loadAccess = async () => {
-      const scope = await fetchMyWarehouseAccessScope()
-      setWarehouseAccess(scope)
-
-      if (scope.isRestricted && scope.warehouseIds.length > 0) {
-        setSiteId(scope.warehouseIds[0])
-      }
-    }
-
-    loadAccess()
-  }, [setSiteId])
+    if (!warehouseAccess.loaded || !warehouseAccess.isRestricted) return
+    const allowed = warehouseAccess.warehouseIds
+    if (allowed.length === 0) return
+    if (siteId && allowed.includes(siteId)) return
+    setSiteId(allowed[0])
+  }, [warehouseAccess.loaded, warehouseAccess.isRestricted, warehouseAccess.warehouseIds, siteId, setSiteId])
 
   useEffect(() => {
     if (!warehouseAccess.loaded) return
@@ -128,24 +144,33 @@ export default function ProductsPage() {
           visibleSites = visibleSites.filter((s) => allowed.has(s.id))
         }
 
-        const sitesWithStock = await Promise.all(
-          visibleSites.map(async (site) => {
-            const { data: stockData } = await supabase
+        const warehouseIds = visibleSites.map((site) => site.id)
+        const { data: stockData } = warehouseIds.length
+          ? await supabase
               .from('warehouse_stock')
-              .select('quantity')
-              .eq('warehouse_id', site.id)
+              .select('warehouse_id, quantity')
+              .in('warehouse_id', warehouseIds)
+          : { data: [] as { warehouse_id: string; quantity: number | null }[] }
 
-            const productCount = stockData?.length || 0
-            const totalQuantity =
-              stockData?.reduce((sum, item) => sum + Number(item.quantity || 0), 0) || 0
+        const stockByWarehouse = new Map<string, { productCount: number; totalQuantity: number }>()
+        for (const row of stockData || []) {
+          const current = stockByWarehouse.get(row.warehouse_id) || {
+            productCount: 0,
+            totalQuantity: 0,
+          }
+          current.productCount += 1
+          current.totalQuantity += Number(row.quantity || 0)
+          stockByWarehouse.set(row.warehouse_id, current)
+        }
 
-            return {
-              site,
-              productCount,
-              totalQuantity,
-            }
-          })
-        )
+        const sitesWithStock = visibleSites.map((site) => {
+          const stock = stockByWarehouse.get(site.id)
+          return {
+            site,
+            productCount: stock?.productCount || 0,
+            totalQuantity: stock?.totalQuantity || 0,
+          }
+        })
 
         setSites(sitesWithStock)
       } catch (error) {
@@ -158,7 +183,7 @@ export default function ProductsPage() {
     loadSites()
   }, [warehouseAccess, supabase])
 
-  const { data: productsData, isLoading } = useProducts(
+  const { data: productsData, isLoading, isFetching } = useProducts(
     filters,
     currentPage,
     pageSize,
@@ -190,8 +215,6 @@ export default function ProductsPage() {
 
   const closeModal = () => {
     originalCloseModal()
-    setSelectedProducts([])
-    setShowBulkActions(false)
   }
 
   const createMutation = useCreateProduct()
@@ -208,7 +231,18 @@ export default function ProductsPage() {
   // Tam stok işlemi yalnızca tüm depoları yöneten kullanıcıda.
   // Belirli depoyu yöneten kullanıcı yalnızca o depoya stok girişi yapar.
   const canOperateStock = warehouseAccess.canManageAll
-  const canReceiveInbound = !warehouseAccess.canManageAll && managesViewedWarehouse
+  const operatesViewedWarehouse = useMemo(() => {
+    if (!warehouseAccess.loaded || warehouseAccess.canManageAll) return false
+    const operated = new Set(warehouseAccess.operateWarehouseIds)
+    if (operated.size === 0) return false
+    if (siteId) return operated.has(siteId)
+    return (
+      warehouseAccess.warehouseIds.length > 0 &&
+      warehouseAccess.warehouseIds.every((id) => operated.has(id))
+    )
+  }, [warehouseAccess, siteId])
+  const canReceiveInbound =
+    !warehouseAccess.canManageAll && managesViewedWarehouse && !operatesViewedWarehouse
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
 
   const handleOpenCreateModal = () => {
@@ -218,12 +252,44 @@ export default function ProductsPage() {
 
   const handleOpenViewModal = (productId: string) => {
     setModalMode('view')
-    openModal(productId)
+    window.setTimeout(() => openModal(productId), 0)
   }
 
   const handleSelectionChange = (selectedIds: string[]) => {
     setSelectedProducts(selectedIds)
     setShowBulkActions(selectedIds.length > 0)
+  }
+
+  const narrowedByFilter = Boolean(
+    searchTerm.trim() ||
+      zimmetOwner ||
+      (brandId && brandId !== 'all') ||
+      productType ||
+      statusFilter !== 'active' ||
+      (!isRestrictedView && siteId)
+  )
+  const allFilteredSelected =
+    totalCount > 0 &&
+    selectedProducts.length === totalCount &&
+    products.every((product) => selectedProducts.includes(product.id))
+
+  const handleSelectAllFiltered = async () => {
+    if (allFilteredSelected) {
+      setSelectedProducts([])
+      setShowBulkActions(false)
+      return
+    }
+    setSelectingAllFiltered(true)
+    try {
+      const ids = await fetchAllFilteredProductIds(filters)
+      setSelectedProducts(ids)
+      setShowBulkActions(ids.length > 0)
+    } catch (error) {
+      console.error('Filtredeki ürünler seçilemedi:', error)
+      showToast('Filtredeki ürünler seçilemedi', 'error')
+    } finally {
+      setSelectingAllFiltered(false)
+    }
   }
 
   const handleBulkStockOperations = () => {
@@ -233,9 +299,10 @@ export default function ProductsPage() {
 
   const handleBulkZimmetSuccess = () => {
     setShowBulkZimmetModal(false)
+    setShowBulkTeslimModal(false)
     setSelectedProducts([])
     setShowBulkActions(false)
-    showToast('Toplu zimmet işlemi başarıyla tamamlandı!', 'success')
+    queryClient.invalidateQueries({ queryKey: ['products'] })
     queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
   }
 
@@ -295,7 +362,7 @@ export default function ProductsPage() {
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
+          <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
             Stok Yönetimi
           </h1>
           <p className="text-gray-600 text-base mt-4">
@@ -311,9 +378,9 @@ export default function ProductsPage() {
           {warehouseAccess.loaded && canCreateProduct && (
             <Button
               onClick={handleOpenCreateModal}
-              className="px-8 py-6 rounded-full font-medium text-md bg-gradient-to-r from-gray-900 to-gray-800 text-white hover:from-gray-800 hover:to-gray-700 shadow-lg hover:shadow-xl transition-all duration-200"
+              className="h-10 rounded-sm px-4 text-sm font-medium bg-neutral-950 text-white hover:bg-neutral-900"
             >
-              <Plus className="w-5 h-5 mr-3" />
+              <Plus className="h-4 w-4" />
               Yeni Ürün Ekle
             </Button>
           )}
@@ -333,7 +400,7 @@ export default function ProductsPage() {
         <div className="space-y-2.5">
           <div className="flex items-center gap-2">
             <Building2 className="h-5 w-5 shrink-0 text-gray-400" />
-            <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Depolar</h2>
+            <h2 className="text-sm font-medium text-gray-500">Depolar</h2>
           </div>
 
           {loadingSites ? (
@@ -348,7 +415,7 @@ export default function ProductsPage() {
                         setCurrentPage(1)
                       }}
                       className={`inline-flex shrink-0 items-center gap-3 rounded-md border px-4 py-2.5 text-left transition-colors ${
-                        !siteId
+            !siteId
                           ? 'border-gray-900 bg-gray-50 text-gray-900'
                           : 'border-gray-200 bg-white text-gray-600 hover:border-gray-300 hover:bg-gray-50/80'
                       }`}
@@ -463,7 +530,7 @@ export default function ProductsPage() {
       <div className="space-y-2.5">
         <div className="flex items-center gap-2">
           <Boxes className="h-5 w-5 shrink-0 text-gray-400" />
-          <h2 className="text-sm font-medium uppercase tracking-wide text-gray-500">Ürün Tipi</h2>
+          <h2 className="text-sm font-medium text-gray-500">Ürün Tipi</h2>
         </div>
         <div className="inline-flex flex-wrap gap-1 rounded-lg border border-gray-200 bg-gray-50/80 p-1">
           <button
@@ -473,7 +540,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              !productType
+       !productType
                 ? 'bg-white text-gray-900 shadow-sm ring-1 ring-gray-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
@@ -487,7 +554,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              productType === 'demirbas'
+       productType === 'demirbas'
                 ? 'bg-white text-sky-700 shadow-sm ring-1 ring-sky-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
@@ -502,7 +569,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              productType === 'sarf'
+       productType === 'sarf'
                 ? 'bg-white text-amber-700 shadow-sm ring-1 ring-amber-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
@@ -517,7 +584,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              productType === 'yedek_parca'
+       productType === 'yedek_parca'
                 ? 'bg-white text-orange-700 shadow-sm ring-1 ring-orange-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
@@ -532,7 +599,7 @@ export default function ProductsPage() {
               setCurrentPage(1)
             }}
             className={`inline-flex items-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-              productType === 'kontrol_sarf'
+       productType === 'kontrol_sarf'
                 ? 'bg-white text-violet-700 shadow-sm ring-1 ring-violet-200'
                 : 'text-gray-600 hover:text-gray-900'
             }`}
@@ -579,26 +646,47 @@ export default function ProductsPage() {
 
               <div className="flex flex-wrap items-center gap-2 justify-end">
                 <Button
-                  onClick={() => setShowZimmetReportModal(true)}
-                  variant="outline"
-                  className="rounded-xl border-emerald-200 text-emerald-800 hover:bg-emerald-50 hover:border-emerald-300"
+                  type="button"
+                  onClick={() => setShowOperationsMenu(true)}
+                  className="h-10 rounded-sm bg-neutral-950 px-4 text-sm font-medium text-white hover:bg-neutral-900"
                 >
-                  <FileSpreadsheet className="w-4 h-4 mr-2" />
-                  Zimmet Raporu
+                  İşlemler
+                  <ChevronDown className="h-4 w-4" />
                 </Button>
               </div>
             </div>
 
             <ProductFilters
               searchTerm={searchTerm}
+              zimmetOwner={zimmetOwner}
               brandId={brandId}
               statusFilter={statusFilter}
               onSearchChange={setSearchTerm}
+              onZimmetOwnerChange={setZimmetOwner}
               onBrandChange={setBrandId}
               onStatusFilterChange={setStatusFilter}
               onClearFilters={handleClearFilters}
               hasActiveFilters={hasActiveFilters}
+              searching={isFetching && Boolean(searchTerm.trim())}
+              warehouseIds={filters.siteId ? [filters.siteId] : filters.allowedWarehouseIds}
             />
+            {canOperateStock && narrowedByFilter && totalCount > 0 && (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5">
+                <p className="text-sm text-gray-600">
+                  Filtrede <span className="font-medium text-gray-900">{totalCount}</span> ürün var
+                  {allFilteredSelected ? '. Hepsi seçili.' : '.'}
+                </p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleSelectAllFiltered}
+                  disabled={selectingAllFiltered}
+                  className="h-9 rounded-xl border-gray-200 bg-white"
+                >
+                  {selectingAllFiltered ? 'Seçiliyor...' : allFilteredSelected ? 'Seçimi kaldır' : 'Tümünü seç'}
+                </Button>
+              </div>
+            )}
           </div>
         </CardHeader>
 
@@ -665,39 +753,62 @@ export default function ProductsPage() {
         defaultWarehouseId={siteId || undefined}
         canOperateStock={canOperateStock}
         inboundOnly={canReceiveInbound}
-        inboundWarehouseIds={canReceiveInbound ? warehouseAccess.manageWarehouseIds : undefined}
+        depotOperate={operatesViewedWarehouse}
+        inboundWarehouseIds={
+          operatesViewedWarehouse
+            ? warehouseAccess.operateWarehouseIds
+            : canReceiveInbound
+              ? warehouseAccess.manageWarehouseIds
+              : undefined
+        }
         scopeWarehouseIds={isRestrictedView ? warehouseAccess.warehouseIds : undefined}
       />
 
       {canOperateStock && showBulkActions && (
-        <div className="fixed bottom-0 left-0 right-0 bg-gradient-to-r from-gray-900 to-gray-800 text-white shadow-2xl z-50 border-t border-gray-700">
-          <div className="max-w-7xl mx-auto px-8 py-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <div className="bg-white/10 rounded-full px-4 py-2 backdrop-blur-sm">
-                  <span className="text-sm font-semibold">{selectedProducts.length} ürün seçildi</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  onClick={() => {
-                    setSelectedProducts([])
-                    setShowBulkActions(false)
-                  }}
-                  className="text-white hover:bg-white/10 rounded-full"
-                >
-                  Seçimi Temizle
-                </Button>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Button
-                  onClick={handleBulkStockOperations}
-                  className="bg-white text-gray-900 hover:bg-gray-100 rounded-full px-8 py-6 font-semibold shadow-lg"
-                >
-                  <UserPlus className="w-5 h-5 mr-2" />
-                  Toplu Zimmet Oluştur
-                </Button>
-              </div>
+        <div className="fixed bottom-6 left-1/2 z-50 w-[min(48rem,calc(100%-2rem))] -translate-x-1/2 lg:left-[calc(50%+2.75rem)]">
+          <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+            <div className="flex min-w-0 items-center gap-2 pl-2">
+              <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-gray-950 px-2 text-xs font-semibold text-white">
+                {selectedProducts.length}
+              </span>
+              <span className="truncate text-sm font-medium text-gray-900">
+                ürün seçili
+                {allFilteredSelected && totalCount > products.length
+                  ? ' · filtredeki hepsi'
+                  : selectedProducts.some((id) => !products.some((product) => product.id === id))
+                    ? ' · diğerleri de duruyor'
+                    : ''}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setSelectedProducts([])
+                  setShowBulkActions(false)
+                }}
+                className="h-10 rounded-xl text-gray-600 hover:bg-gray-100 hover:text-gray-950"
+              >
+                Temizle
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  if (selectedProducts.length === 0) return
+                  setShowBulkTeslimModal(true)
+                }}
+                className="h-10 rounded-xl border-gray-200 bg-white"
+              >
+                <Truck className="mr-2 h-4 w-4" />
+                Toplu teslim
+              </Button>
+              <Button
+                onClick={handleBulkStockOperations}
+                className="h-10 rounded-xl bg-neutral-950 px-4 text-white hover:bg-neutral-800"
+              >
+                <UserPlus className="mr-2 h-4 w-4" />
+                Toplu zimmet
+              </Button>
             </div>
           </div>
         </div>
@@ -710,6 +821,28 @@ export default function ProductsPage() {
         showToast={showToast}
         selectedProductIds={selectedProducts}
       />
+      <BulkZimmetModal
+        mode="teslim"
+        open={showBulkTeslimModal}
+        onOpenChange={setShowBulkTeslimModal}
+        onSuccess={handleBulkZimmetSuccess}
+        showToast={showToast}
+        selectedProductIds={selectedProducts}
+      />
+
+      <OperationsDialog
+        open={showOperationsMenu}
+        onOpenChange={setShowOperationsMenu}
+        showToast={showToast}
+        onTerminate={() => {
+          setShowOperationsMenu(false)
+          window.setTimeout(() => setShowTerminationModal(true), 180)
+        }}
+        onReport={() => {
+          setShowOperationsMenu(false)
+          window.setTimeout(() => setShowZimmetReportModal(true), 180)
+        }}
+      />
 
       <ZimmetReportModal
         open={showZimmetReportModal}
@@ -717,6 +850,16 @@ export default function ProductsPage() {
         showToast={showToast}
         sourceWarehouseId={siteId || undefined}
         warehouseLabel={siteId ? sites.find((s) => s.site.id === siteId)?.site.name : undefined}
+      />
+
+      <TerminationModal
+        open={showTerminationModal}
+        onOpenChange={setShowTerminationModal}
+        showToast={showToast}
+        onCompleted={() => {
+          queryClient.invalidateQueries({ queryKey: ['products'] })
+          queryClient.invalidateQueries({ queryKey: ['products-insights-bundle'] })
+        }}
       />
     </div>
   )

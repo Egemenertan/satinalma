@@ -30,7 +30,7 @@ export function ContractFormModal({
         <div className="shrink-0 border-b border-elegant-gray-200 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">
+              <p className="text-[11px] font-bold text-elegant-gray-500">
                 Toplu alım
               </p>
               <DialogTitle className="mt-1 text-xl font-semibold tracking-tight text-elegant-black">

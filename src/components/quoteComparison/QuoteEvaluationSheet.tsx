@@ -82,7 +82,7 @@ function SectionBand({ label, colSpan }: { label: string; colSpan: number }) {
     <tr>
       <td
         colSpan={colSpan}
-        className="bg-neutral-800 text-white text-[12px] font-bold uppercase tracking-wide text-center py-2.5"
+        className="bg-neutral-800 text-white text-[12px] font-bold text-center py-2.5"
       >
         {label}
       </td>
@@ -133,7 +133,7 @@ export function QuoteEvaluationSheet({
     <div className="rounded-2xl border border-neutral-200 bg-white overflow-hidden">
       {/* Başlık şeridi */}
       <div className="bg-neutral-900 py-3.5 text-center">
-        <h2 className="text-white text-[17px] sm:text-lg font-bold tracking-tight">TEKLİF DEĞERLENDİRME FORMU</h2>
+        <h2 className="text-white text-[17px] sm:text-lg font-bold tracking-tight">Teklif Değerlendirme Formu</h2>
       </div>
       <p className="text-center text-[11px] italic text-neutral-400 py-1.5 border-b border-neutral-100">
         Oluşturulma: {new Date(createdAt).toLocaleDateString('tr-TR')}
@@ -148,12 +148,12 @@ export function QuoteEvaluationSheet({
         </div>
         <div className="text-[13px] space-y-0.5">
           <div>
-            <span className="font-bold text-neutral-900">PROJE: </span>
+            <span className="font-bold text-neutral-900">Proje: </span>
             <span className="font-bold text-neutral-900">{projectLabel}</span>
           </div>
           {projectName?.trim() && (
             <div>
-              <span className="font-bold text-neutral-600">TEKLİF: </span>
+              <span className="font-bold text-neutral-600">Teklif: </span>
               <span className="text-neutral-600">{title}</span>
             </div>
           )}
@@ -170,7 +170,7 @@ export function QuoteEvaluationSheet({
       {hasRecommendationContent && (
         <div className="border-b border-neutral-200">
           <div className="bg-neutral-800 py-2.5 text-center">
-            <span className="text-white text-[12px] font-bold uppercase tracking-wide">DLX AI Değerlendirmesi</span>
+            <span className="text-white text-[12px] font-bold">DLX AI Değerlendirmesi</span>
           </div>
           <div className="px-5 sm:px-6 py-5 space-y-4">
             {recommendedOffer && (
@@ -194,7 +194,7 @@ export function QuoteEvaluationSheet({
             )}
             {recommendation?.priorityConsideration?.trim() && (
               <div className="rounded-xl bg-neutral-50 border border-neutral-200 px-4 py-3">
-                <p className="text-[11px] font-bold uppercase tracking-wide text-neutral-500 mb-1">
+                <p className="text-[11px] font-bold text-neutral-500 mb-1">
                   Dikkate alınan öncelikler
                 </p>
                 <p className="text-[13px] text-neutral-800 leading-6 whitespace-pre-wrap">
@@ -282,7 +282,7 @@ export function QuoteEvaluationSheet({
           </thead>
           <tbody>
             <tr className="border-t-2 border-neutral-300">
-              <td className={cn(featureCellClass(false), 'text-[13px] !bg-emerald-50 text-emerald-800')}>TOPLAM</td>
+              <td className={cn(featureCellClass(false), 'text-[13px] !bg-emerald-50 text-emerald-800')}>Toplam</td>
               {safeOffers.map((offer) => (
                 <td key={offer.id} className="px-4 py-4 bg-emerald-50/70">
                   <span className="text-[18px] font-bold tracking-tight text-emerald-800 tabular-nums">

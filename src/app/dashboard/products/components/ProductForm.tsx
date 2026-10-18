@@ -88,7 +88,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
       <div className="grid grid-cols-2 gap-5">
         {/* Ürün Adı */}
         <div className="col-span-2 bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="name" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="name" className="text-xs font-medium text-gray-500">
             Ürün Adı *
           </Label>
           <Input
@@ -103,7 +103,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Marka */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="brand_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="brand_id" className="text-xs font-medium text-gray-500">
             Marka
           </Label>
           <Select
@@ -126,7 +126,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* SKU */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="sku" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="sku" className="text-xs font-medium text-gray-500">
             SKU (Stok Kodu) {!product && formData.category_id && formData.category_id !== 'none' && (
               <span className="text-green-600 font-normal">• Otomatik</span>
             )}
@@ -138,7 +138,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
             placeholder={!product ? "Kategori seçince otomatik oluşturulacak" : "Örn: XYZ-123"}
             readOnly={!product && formData.category_id && formData.category_id !== 'none'}
             className={`mt-2 border-0 ${
-              !product && formData.category_id && formData.category_id !== 'none'
+       !product && formData.category_id && formData.category_id !== 'none'
                 ? 'bg-green-50/50 cursor-not-allowed'
                 : 'bg-gray-50/50 focus:bg-white'
             } transition-all rounded-xl`}
@@ -147,7 +147,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Seri Numaraları */}
         <div className="col-span-2 bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="serial_numbers" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="serial_numbers" className="text-xs font-medium text-gray-500">
             Seri Numaraları (Opsiyonel)
           </Label>
           <Input
@@ -164,7 +164,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Kategori */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="category_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="category_id" className="text-xs font-medium text-gray-500">
             Kategori
           </Label>
           <Select
@@ -187,7 +187,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Ürün Tipi */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="product_type" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="product_type" className="text-xs font-medium text-gray-500">
             Ürün Tipi
           </Label>
           <Input
@@ -201,7 +201,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Birim */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="unit" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="unit" className="text-xs font-medium text-gray-500">
             Birim *
           </Label>
           <Select
@@ -226,7 +226,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Birim Fiyat */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="unit_price" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="unit_price" className="text-xs font-medium text-gray-500">
             Birim Fiyat
           </Label>
           <Input
@@ -242,7 +242,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Para Birimi */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="currency" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="currency" className="text-xs font-medium text-gray-500">
             Para Birimi
           </Label>
           <Select
@@ -263,7 +263,7 @@ export function ProductForm({ product, onSubmit, onCancel, isSaving }: ProductFo
 
         {/* Açıklama */}
         <div className="col-span-2 bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="description" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="description" className="text-xs font-medium text-gray-500">
             Açıklama
           </Label>
           <Textarea

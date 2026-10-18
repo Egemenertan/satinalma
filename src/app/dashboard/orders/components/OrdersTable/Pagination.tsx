@@ -48,8 +48,8 @@ export function Pagination({ currentPage, totalPages, totalCount, onPageChange }
                 size="sm"
                 onClick={() => onPageChange(pageNum)}
                 className={`w-8 h-8 p-0 text-xs ${
-                  currentPage === pageNum 
-                    ? 'bg-gray-900 text-white hover:bg-gray-800' 
+         currentPage === pageNum 
+                    ? 'bg-navy text-white hover:bg-navy-700' 
                     : ''
                 }`}
               >

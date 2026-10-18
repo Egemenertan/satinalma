@@ -614,7 +614,7 @@ export default function WarehouseManagerMaterialCard({
                         onClick={() => !isDisabled && setSelectedCondition(condition)}
                         disabled={isDisabled}
                         className={`
-                          px-3 py-2 rounded-lg text-sm font-medium transition-all
+             px-3 py-2 rounded-lg text-sm font-medium transition-all
                           ${isSelected 
                             ? condition === 'yeni' 
                               ? 'bg-green-600 text-white border-2 border-green-600' 

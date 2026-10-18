@@ -313,7 +313,7 @@ const styles = StyleSheet.create({
   },
   selectActive: {
     borderColor: '#01E884',
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
   },
   selectDisabled: { opacity: 0.5 },
   selectText: { fontSize: 16, color: '#111827', flex: 1 },
@@ -341,14 +341,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   pickerRowSelected: {
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
   },
   pickerRowText: {
     fontSize: 15,
     color: '#374151',
   },
   pickerRowTextSelected: {
-    color: '#047857',
+    color: '#0A0A0A',
     fontWeight: '600',
   },
   checkmark: {

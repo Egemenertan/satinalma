@@ -526,6 +526,25 @@ export async function transferStock(
   return { from: fromStock, to: toStock }
 }
 
+/** Operasyon rolü, yetkili olduğu depoya başka depodan boş stok çeker. */
+export async function transferStockIntoOperatedWarehouse(
+  productId: string,
+  fromWarehouseId: string,
+  toWarehouseId: string,
+  quantity: number,
+  reason?: string
+) {
+  const supabase = createClient()
+  const { error } = await supabase.rpc('transfer_stock_into_operated_warehouse', {
+    p_product_id: productId,
+    p_from_warehouse_id: fromWarehouseId,
+    p_to_warehouse_id: toWarehouseId,
+    p_quantity: quantity,
+    p_reason: reason ?? null,
+  })
+  if (error) throw new Error(error.message)
+}
+
 /**
  * Stok düzeltme
  */

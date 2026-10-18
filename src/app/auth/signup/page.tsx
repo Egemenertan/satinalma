@@ -116,7 +116,7 @@ export default function SignupPage() {
             <Button 
               type="button"
               onClick={() => window.location.href = '/auth/login'}
-              className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3 transition-all duration-200"
+              className="w-full h-14 text-base font-semibold bg-white hover:bg-bordeaux text-bordeaux hover:text-white border-2 border-bordeaux rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3 transition-all duration-200"
             >
               <svg className="w-5 h-5" viewBox="0 0 23 23" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M0 0h10.93v10.93H0V0z" fill="#F25022"/>

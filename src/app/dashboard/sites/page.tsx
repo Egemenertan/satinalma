@@ -9,6 +9,9 @@ import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { createClient } from '@/lib/supabase/client'
 import { invalidateSitesCache } from '@/lib/cache'
+import { SiteKindTabs } from '@/components/SiteKindTabs'
+import { filterBySiteKind, type SiteKind } from '@/lib/site-kind'
+import { enrichSiteImagesFromCatalog, getDPointHeroPublicUrl } from '@/lib/site-images'
 import { 
   Building2, 
   Plus, 
@@ -28,6 +31,7 @@ import {
 interface Site {
   id: string
   name: string
+  image_url?: string | null
   created_at: string
   updated_at: string
   approved_expenses?: number // Onaylanan harcama tutarı
@@ -57,7 +61,7 @@ const fetchSitesWithStats = async () => {
   // Sites tablosundan veri çek (onaylanan harcama tutarı dahil)
   const sitesResult = await supabase
     .from('sites')
-    .select('id, name, created_at, updated_at, approved_expenses, total_budget')
+    .select('id, name, image_url, created_at, updated_at, approved_expenses, total_budget')
     .order('name')
 
   console.log('📊 Sites result:', sitesResult)
@@ -68,7 +72,11 @@ const fetchSitesWithStats = async () => {
     throw new Error(sitesResult.error.message)
   }
 
-  const allSitesData = sitesResult.data || []
+  const allSitesData = enrichSiteImagesFromCatalog(
+    sitesResult.data || [],
+    sitesResult.data || [],
+    getDPointHeroPublicUrl(supabase.storage)
+  )
   console.log('📋 All sites data:', allSitesData)
 
   if (allSitesData.length === 0) {
@@ -159,11 +167,12 @@ const fetchSitesWithStats = async () => {
 
 export default function SitesPage() {
   const [searchTerm, setSearchTerm] = useState('')
+  const [locationKind, setLocationKind] = useState<SiteKind>('site')
   const router = useRouter()
 
   // SWR ile cache'li sites verisi
   const { data: sites, error: sitesError, isLoading: loading } = useSWR(
-    'sites_with_stats',
+    'sites_with_stats_images',
     fetchSitesWithStats,
     {
       revalidateOnFocus: false,
@@ -209,15 +218,22 @@ export default function SitesPage() {
     }
   }, [])
 
-  const filteredSites = (sites || []).filter(site =>
+  const sitesByKind = filterBySiteKind(sites || [], locationKind, (site) => site.name)
+  const constructionCount = filterBySiteKind(sites || [], 'site', (site) => site.name).length
+  const warehouseCount = filterBySiteKind(sites || [], 'warehouse', (site) => site.name).length
+  const isWarehouseTab = locationKind === 'warehouse'
+  const locationLabel = isWarehouseTab ? 'Depo' : 'Şantiye'
+  const locationLabelPlural = isWarehouseTab ? 'Depolar' : 'Şantiyeler'
+
+  const filteredSites = sitesByKind.filter((site) =>
     site.name.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
   const stats = {
-    total: (sites || []).length,
-    totalRequests: (sites || []).reduce((sum, s) => sum + s.total_requests, 0),
-    totalAmount: (sites || []).reduce((sum, s) => sum + s.total_amount, 0),
-    activeSites: (sites || []).filter(s => s.total_requests > 0).length
+    total: sitesByKind.length,
+    totalRequests: sitesByKind.reduce((sum, s) => sum + s.total_requests, 0),
+    totalAmount: sitesByKind.reduce((sum, s) => sum + s.total_amount, 0),
+    activeSites: sitesByKind.filter((s) => s.total_requests > 0).length,
   }
 
   const formatCurrency = (amount: number) => {
@@ -270,7 +286,7 @@ export default function SitesPage() {
           <div className="w-16 h-16 bg-gradient-to-r from-gray-700 to-gray-900 rounded-full flex items-center justify-center mx-auto mb-6 shadow-lg">
             <div className="animate-spin rounded-full h-8 w-8 border-2 border-white border-t-transparent"></div>
           </div>
-          <p className="text-gray-600 font-medium">Şantiye verileri yükleniyor...</p>
+          <p className="text-gray-600 font-medium">Lokasyon Verileri Yükleniyor...</p>
         </div>
       </div>
     )
@@ -283,9 +299,13 @@ export default function SitesPage() {
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
+            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
+              {locationLabelPlural}
+            </h1>
             <p className="text-gray-600 mt-4 text-base">
-              Şantiye listesi — detaylı istatistikler ve teklifler için bir şantiyeye tıklayın
+              {isWarehouseTab
+                ? 'Depo Listesi — Detaylı İstatistikler İçin Bir Depoya Tıklayın'
+                : 'Şantiye Listesi — Detaylı İstatistikler Ve Teklifler İçin Bir Şantiyeye Tıklayın'}
             </p>
           </div>
         </div>
@@ -293,11 +313,27 @@ export default function SitesPage() {
         {/* Mobile: Header */}
         <div className="sm:hidden space-y-4">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Şantiyeler</h1>
-            <p className="text-gray-600 mt-4 text-sm">Detaylar için şantiye kartına dokunun veya tıklayın</p>
+            <h1 className="text-4xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">
+              {locationLabelPlural}
+            </h1>
+            <p className="text-gray-600 mt-4 text-sm">
+              {isWarehouseTab
+                ? 'Detaylar İçin Depo Kartına Dokunun Veya Tıklayın'
+                : 'Detaylar İçin Şantiye Kartına Dokunun Veya Tıklayın'}
+            </p>
           </div>
         </div>
       </div>
+
+      <SiteKindTabs
+        value={locationKind}
+        onChange={(kind) => {
+          setLocationKind(kind)
+          setSearchTerm('')
+        }}
+        siteCount={constructionCount}
+        warehouseCount={warehouseCount}
+      />
 
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
@@ -305,16 +341,16 @@ export default function SitesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Toplam Şantiye</p>
+                <p className="text-sm text-gray-600 mb-1">Toplam {locationLabel}</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">{stats.total}</span>
+                  <span className="text-3xl font-bold text-gray-900">{stats.total}</span>
                   <div className="flex items-center text-blue-600 text-sm">
                     <Building2 className="h-3 w-3 mr-1" />
                     <span>Aktif</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Kayıtlı şantiye sayısı</p>
-                <p className="text-xs text-gray-400">Sistemde tanımlı lokasyonlar</p>
+                <p className="text-sm text-gray-500 mt-1">Kayıtlı {locationLabel.toLocaleLowerCase('tr-TR')} sayısı</p>
+                <p className="text-sm text-gray-400">Sistemde tanımlı lokasyonlar</p>
               </div>
             </div>
           </CardContent>
@@ -324,16 +360,16 @@ export default function SitesPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-gray-600 mb-1">Aktif Şantiye</p>
+                <p className="text-sm text-gray-600 mb-1">Aktif {locationLabel}</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">{stats.activeSites}</span>
+                  <span className="text-3xl font-bold text-gray-900">{stats.activeSites}</span>
                   <div className="flex items-center text-green-600 text-sm">
                     <TrendingUp className="h-3 w-3 mr-1" />
                     <span>Faaliyet</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Talep olan şantiyeler</p>
-                <p className="text-xs text-gray-400">Aktif satın alma süreci</p>
+                <p className="text-sm text-gray-500 mt-1">Talep olan {locationLabelPlural.toLocaleLowerCase('tr-TR')}</p>
+                <p className="text-sm text-gray-400">Aktif satın alma süreci</p>
               </div>
             </div>
           </CardContent>
@@ -345,14 +381,14 @@ export default function SitesPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Toplam Talep</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">{stats.totalRequests}</span>
+                  <span className="text-3xl font-bold text-gray-900">{stats.totalRequests}</span>
                   <div className="flex items-center text-purple-600 text-sm">
                     <FileText className="h-3 w-3 mr-1" />
                     <span>Kayıt</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Oluşturulan talepler</p>
-                <p className="text-xs text-gray-400">Tüm şantiyelerdeki toplam</p>
+                <p className="text-sm text-gray-500 mt-1">Oluşturulan talepler</p>
+                <p className="text-sm text-gray-400">Bu listedeki toplam</p>
               </div>
             </div>
           </CardContent>
@@ -364,7 +400,7 @@ export default function SitesPage() {
               <div>
                 <p className="text-sm text-gray-600 mb-1">Toplam Tutar</p>
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
+                  <span className="text-3xl font-bold text-gray-900">
                     {stats.totalAmount > 999999 ? `${(stats.totalAmount / 1000000).toFixed(1)}M` : 
                      stats.totalAmount > 999 ? `${(stats.totalAmount / 1000).toFixed(0)}K` : stats.totalAmount}
                   </span>
@@ -373,8 +409,8 @@ export default function SitesPage() {
                     <span>TL</span>
                   </div>
                 </div>
-                <p className="text-xs text-gray-500 mt-1">Tahmini toplam değer</p>
-                <p className="text-xs text-gray-400">Tüm taleplerin bütçesi</p>
+                <p className="text-sm text-gray-500 mt-1">Tahmini toplam değer</p>
+                <p className="text-sm text-gray-400">Tüm taleplerin bütçesi</p>
               </div>
             </div>
           </CardContent>
@@ -385,7 +421,7 @@ export default function SitesPage() {
       <div className="relative max-w-md">
         <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
         <Input
-          placeholder="Şantiye ara..."
+          placeholder={`${locationLabel} ara...`}
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           className="pl-10 h-12 rounded-xl border-gray-200 focus:border-black focus:ring-black/20"
@@ -396,35 +432,51 @@ export default function SitesPage() {
       {filteredSites.length === 0 ? (
         <div className="text-center py-12">
           <Building2 className="w-16 h-16 mx-auto mb-4 text-gray-400" />
-          <h3 className="text-xl font-semibold text-gray-900 mb-2">Şantiye bulunamadı</h3>
+          <h3 className="text-xl font-semibold text-gray-900 mb-2">{locationLabel} bulunamadı</h3>
           <p className="text-gray-600">Arama kriterlerinizi değiştirmeyi deneyin.</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-          {filteredSites.map((site) => (
+          {filteredSites.map((site) => {
+            const imageUrl = site.image_url?.trim()
+            const hasImage = Boolean(imageUrl)
+            return (
             <Card 
               key={site.id} 
-              className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+              className="bg-white border-0 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer overflow-hidden py-0 gap-0"
               onClick={() => handleSiteClick(site)}
             >
-              <CardHeader className="pb-4">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <CardTitle className="text-xl font-semibold text-gray-900 mb-2">
+              <div className="relative h-44 overflow-hidden">
+                {hasImage && imageUrl ? (
+                  <>
+                    <img
+                      src={imageUrl}
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/40" />
+                    <div className="absolute bottom-0 left-0 right-0 h-24 bg-gradient-to-t from-black/90 via-black/50 to-transparent" />
+                  </>
+                ) : (
+                  <div className="absolute inset-0 bg-gradient-to-br from-gray-100 to-white" />
+                )}
+                <div className="absolute inset-x-0 bottom-0 z-10 flex items-end justify-between gap-3 p-4">
+                  <div className="min-w-0">
+                    <CardTitle className={`text-xl font-semibold leading-tight ${hasImage ? 'text-white drop-shadow-lg' : 'text-gray-900'}`}>
                       {site.name}
                     </CardTitle>
-                    <div className="flex items-center gap-1 mt-2">
-                      <Calendar className="w-4 h-4 text-gray-400" />
-                      <p className="text-sm text-gray-500">
+                    <div className={`mt-1 flex items-center gap-1 ${hasImage ? 'text-white/80' : 'text-gray-500'}`}>
+                      <Calendar className="h-3.5 w-3.5" />
+                      <p className="text-sm">
                         Oluşturulma: {formatDate(site.created_at)}
                       </p>
                     </div>
                   </div>
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
+                  <ChevronRight className={`h-5 w-5 shrink-0 ${hasImage ? 'text-white/80' : 'text-gray-400'}`} />
                 </div>
-              </CardHeader>
+              </div>
               
-              <CardContent className="pt-0">
+              <CardContent className="pt-5 pb-6">
                 <div className="space-y-4">
                   {/* Stats */}
                   <div className="grid grid-cols-2 gap-4">
@@ -443,7 +495,7 @@ export default function SitesPage() {
                     <div className="p-4 bg-gradient-to-r from-blue-50/50 to-indigo-50/50 rounded-xl border border-blue-100/50">
                       <div className="flex items-center gap-2 mb-2">
                         <DollarSign className="w-4 h-4 text-blue-600" />
-                        <p className="text-xs font-medium text-blue-800 uppercase tracking-wide">Onaylanan Harcama</p>
+                        <p className="text-xs font-medium text-blue-800">Onaylanan Harcama</p>
                       </div>
                       <div className="text-xl font-bold text-blue-900">
                         {formatCurrency(site.approved_expenses || 0)}
@@ -478,7 +530,7 @@ export default function SitesPage() {
                   {/* Recent requesters */}
                   {site.recent_requesters.length > 0 && (
                     <div>
-                      <p className="text-xs font-medium text-gray-600 mb-2 uppercase tracking-wide">Son Talep Edenler</p>
+                      <p className="text-xs font-medium text-gray-600 mb-2">Son Talep Edenler</p>
                       <div className="flex items-center gap-2">
                         <Users className="w-4 h-4 text-gray-400" />
                         <p className="text-sm text-gray-700">
@@ -506,7 +558,8 @@ export default function SitesPage() {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            )
+          })}
         </div>
       )}
 

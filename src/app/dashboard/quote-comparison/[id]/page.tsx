@@ -186,7 +186,7 @@ export default function QuoteComparisonDetailPage() {
         </Button>
         <div className="flex items-start justify-between flex-wrap gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">{comparison.title}</h1>
+            <h1 className="text-3xl font-bold text-gray-900 md:text-4xl">{comparison.title}</h1>
             {siteLabel && (
               <p className="text-sm font-medium text-gray-600 mt-1">{siteLabel}</p>
             )}

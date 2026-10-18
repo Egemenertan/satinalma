@@ -177,7 +177,7 @@ export default function RequestPDFExportModal({
             type="button"
             onClick={handleExportPDF}
             disabled={isGenerating}
-            className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+            className="flex-1 bg-navy text-white hover:bg-navy-700"
           >
             {isGenerating ? (
               <>

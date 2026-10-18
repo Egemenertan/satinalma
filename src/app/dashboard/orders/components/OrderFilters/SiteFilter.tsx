@@ -91,7 +91,7 @@ export function SiteFilter({ selectedSites, onSitesChange }: SiteFilterProps) {
         variant="outline"
         onClick={() => setIsOpen(!isOpen)}
         className={`h-10 border-gray-300 ${
-          selectedSites.length > 0
+     selectedSites.length > 0
             ? 'border-gray-900 bg-gray-50'
             : 'hover:bg-gray-50'
         }`}
@@ -159,7 +159,7 @@ export function SiteFilter({ selectedSites, onSitesChange }: SiteFilterProps) {
                     <Checkbox
                       checked={selectedSites.includes(site)}
                       onCheckedChange={() => handleToggleSite(site)}
-                      className="data-[state=checked]:bg-gray-900 data-[state=checked]:border-gray-900"
+                      className="data-[state=checked]:bg-navy data-[state=checked]:border-navy"
                     />
                     <span className="text-sm text-gray-900 flex-1 text-left">
                       {site}

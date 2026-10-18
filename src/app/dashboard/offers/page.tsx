@@ -55,7 +55,7 @@ export default function OffersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-normal text-gray-900">Teklif Yönetimi</h1>
+          <h1 className="text-4xl font-normal text-gray-900">Teklif Yönetimi</h1>
           <p className="text-gray-600 mt-2">Tedarikçi tekliflerini toplayın, karşılaştırın ve değerlendirin</p>
         </div>
       </div>
@@ -68,8 +68,8 @@ export default function OffersPage() {
             <FileText className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal">{stats.totalOffers}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-3xl font-normal">{stats.totalOffers}</div>
+            <p className="text-sm text-muted-foreground">
               Bu ay alınan
             </p>
           </CardContent>
@@ -81,8 +81,8 @@ export default function OffersPage() {
             <TrendingUp className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal text-orange-600">{stats.pendingRequests}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-3xl font-normal text-orange-600">{stats.pendingRequests}</div>
+            <p className="text-sm text-muted-foreground">
               Teklif gerekli
             </p>
           </CardContent>
@@ -94,8 +94,8 @@ export default function OffersPage() {
             <Users className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal">{stats.activeSuppliers}</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-3xl font-normal">{stats.activeSuppliers}</div>
+            <p className="text-sm text-muted-foreground">
               Onaylı ve aktif
             </p>
           </CardContent>
@@ -107,8 +107,8 @@ export default function OffersPage() {
             <Target className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-normal text-green-600">{stats.avgResponseTime} gün</div>
-            <p className="text-xs text-muted-foreground">
+            <div className="text-3xl font-normal text-green-600">{stats.avgResponseTime} gün</div>
+            <p className="text-sm text-muted-foreground">
               Teklif süresi
             </p>
           </CardContent>

@@ -3,7 +3,7 @@
  * React Query ile products data fetching ve cache yönetimi
  */
 
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { keepPreviousData, useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   fetchProducts,
   fetchProductById,
@@ -32,6 +32,7 @@ export function useProducts(
     queryKey: ['products', filters, page, pageSize],
     queryFn: () => fetchProducts(filters, page, pageSize),
     enabled,
+    placeholderData: keepPreviousData,
     staleTime: 30000, // 30 saniye
   })
 }

@@ -21,12 +21,13 @@ import ProcurementView from '@/components/offers/ProcurementView'
 import DepartmentHeadView from '@/components/offers/DepartmentHeadView'
 import ItWorkflowView from '@/components/offers/ItWorkflowView'
 import RequestActivityTimeline from '@/components/offers/RequestActivityTimeline'
+import { RequestProcessSection } from '@/components/requests/RequestProcessProgress'
 import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 
 function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="px-4 py-2.5">
-      <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</p>
+      <p className="text-[11px] font-medium text-gray-500">{label}</p>
       <div className="mt-0.5 text-sm text-gray-900 break-words">{children}</div>
     </div>
   )
@@ -158,7 +159,7 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center max-w-md mx-auto">
-          <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-black/[0.06] rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="h-10 w-10 text-[#00E676]" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Bir Hata Oluştu</h3>
@@ -210,7 +211,7 @@ export default function OffersPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-6">
+          <div className="w-20 h-20 bg-black/[0.06] rounded-full flex items-center justify-center mx-auto mb-6">
             <AlertCircle className="h-10 w-10 text-[#00E676]" />
           </div>
           <h3 className="text-xl font-semibold text-gray-900 mb-2">Talep Bulunamadı</h3>
@@ -374,7 +375,7 @@ export default function OffersPage() {
               </Button>
               <div className="w-px h-6 bg-gray-200"></div>
               <div>
-                <h1 className="text-lg font-semibold text-gray-900">Teklif Girişi</h1>
+                <h1 className="text-2xl font-semibold text-gray-900 md:text-3xl">Teklif Girişi</h1>
                 <p className="text-sm text-gray-500">{request.request_number}</p>
               </div>
             </div>
@@ -463,6 +464,8 @@ export default function OffersPage() {
             </div>
           </div>
         )}
+
+        <RequestProcessSection requestId={requestId} refreshKey={request.updated_at} compact />
 
         <div
           ref={columnsRef}

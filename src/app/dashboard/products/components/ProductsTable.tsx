@@ -47,7 +47,13 @@ function getBostaQty(product: ProductWithStock): number {
       (stock: any) => normalizeWarehouseName(getWarehouseName(stock)) === candidate
     )
     if (match.length > 0) {
-      return match.reduce((sum: number, stock: any) => sum + (Number(stock.quantity) || 0), 0)
+      const raw = match.reduce((sum: number, stock: any) => sum + (Number(stock.quantity) || 0), 0)
+      const assignedWarehouseIds = new Set(match.map((stock: any) => stock.warehouse_id).filter(Boolean))
+      let assigned = 0
+      for (const warehouseId of assignedWarehouseIds) {
+        assigned += Number(product.zimmet_by_warehouse?.[warehouseId as string]) || 0
+      }
+      return Math.max(0, raw - assigned)
     }
   }
 
@@ -149,19 +155,7 @@ export function ProductsTable({
 
   const getDisplayStock = (product: ProductWithStock) => {
     if (ownWarehouseView) return getOwnWarehouseQty(product)
-    if (!selectedSiteId) return product.total_stock || 0
-
-    const stocks = (product.warehouse_stocks || []).filter(
-      (stock: any) =>
-        stock.warehouse_id === selectedSiteId &&
-        (stock.user_id == null || stock.user_id === undefined)
-    )
-
-    if (stocks.length > 0) {
-      return stocks.reduce((sum: number, stock: any) => sum + (Number(stock.quantity) || 0), 0)
-    }
-
-    return product.total_stock || 0
+    return Number(product.available_stock) || 0
   }
 
   // Sıralanmış ürünler
@@ -230,15 +224,19 @@ export function ProductsTable({
     e.stopPropagation()
     if (!onSelectionChange) return
 
-    if (selectedProducts.length === sortedProducts.length) {
-      onSelectionChange([])
-    } else {
-      onSelectionChange(sortedProducts.map((p) => p.id))
+    const pageIds = sortedProducts.map((product) => product.id)
+    const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedProducts.includes(id))
+
+    if (allOnPageSelected) {
+      onSelectionChange(selectedProducts.filter((id) => !pageIds.includes(id)))
+      return
     }
+
+    onSelectionChange([...new Set([...selectedProducts, ...pageIds])])
   }
 
-  const isAllSelected = sortedProducts.length > 0 && selectedProducts.length === sortedProducts.length
-  const isSomeSelected = selectedProducts.length > 0 && selectedProducts.length < sortedProducts.length
+  const isAllSelected = sortedProducts.length > 0 && sortedProducts.every((product) => selectedProducts.includes(product.id))
+  const isSomeSelected = !isAllSelected && sortedProducts.some((product) => selectedProducts.includes(product.id))
 
   const desktopGridColumns = (() => {
     if (hideCrossDepotColumns) {
@@ -262,8 +260,8 @@ export function ProductsTable({
             <button
               onClick={handleSelectAll}
               className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                isAllSelected
-                  ? 'bg-gray-900 border-gray-900'
+        isAllSelected
+                  ? 'bg-navy border-navy'
                   : isSomeSelected
                   ? 'bg-gray-400 border-gray-400'
                   : 'border-gray-300 hover:border-gray-400'
@@ -275,28 +273,28 @@ export function ProductsTable({
             </button>
           </div>
         )}
-        <div className="text-xs font-medium text-black uppercase tracking-wider">GÖRSEL</div>
+        <div className="text-xs font-medium text-black">Görsel</div>
         <div className="flex items-center">
-          <SortButton field="name">ÜRÜN ADI</SortButton>
+          <SortButton field="name">Ürün adı</SortButton>
         </div>
         <div className="flex items-center">
-          <SortButton field="brand">MARKA</SortButton>
+          <SortButton field="brand">Marka</SortButton>
         </div>
         <div className="flex items-center">
           <SortButton field="sku">SKU</SortButton>
         </div>
         <div className="flex items-center">
           <SortButton field="stock">
-            {ownWarehouseView ? 'ADET' : isWarehouseScoped ? 'DEPO STOĞU' : 'STOK DURUMU'}
+            {ownWarehouseView ? 'Adet' : isWarehouseScoped ? 'Depo stoğu' : 'Stok durumu'}
           </SortButton>
         </div>
         {!hideCrossDepotColumns && (
           <div className="flex items-center">
-            <SortButton field="bosta">BOŞTA</SortButton>
+            <SortButton field="bosta">Boşta</SortButton>
           </div>
         )}
         {!hideCrossDepotColumns && (
-          <div className="text-xs font-medium text-black uppercase tracking-wider">DEPOLAR</div>
+          <div className="text-xs font-medium text-black">Depolar</div>
         )}
       </div>
 
@@ -307,15 +305,23 @@ export function ProductsTable({
         const totalStock = getDisplayStock(product)
         const primaryImage = product.images?.[0]
         const isSelected = selectedProducts.includes(product.id)
-        const visibleWarehouseStocks = (product.warehouse_stocks || []).filter(
-          (stock: any) => Number(stock.quantity) > 0
-        )
+        const zimmetLeft: Record<string, number> = { ...(product.zimmet_by_warehouse || {}) }
+        const visibleWarehouseStocks = (product.warehouse_stocks || [])
+          .filter((stock: any) => (stock.user_id == null || stock.user_id === undefined) && Number(stock.quantity) > 0)
+          .map((stock: any) => {
+            const shelf = Number(stock.quantity) || 0
+            const warehouseId = stock.warehouse_id as string | undefined
+            const assigned = warehouseId ? Math.min(shelf, zimmetLeft[warehouseId] || 0) : 0
+            if (warehouseId) zimmetLeft[warehouseId] = Math.max(0, (zimmetLeft[warehouseId] || 0) - assigned)
+            return { ...stock, quantity: Math.max(0, shelf - assigned) }
+          })
+          .filter((stock: any) => Number(stock.quantity) > 0)
 
         return (
           <div
             key={product.id}
             className={`bg-white rounded-3xl border border-gray-200 p-4 transition-all duration-200 cursor-pointer hover:border-gray-300 hover:shadow-md ${
-              isSelected ? 'bg-primary-50 ring-2 ring-primary-500' : ''
+       isSelected ? 'bg-primary-50 ring-2 ring-primary-500' : ''
             }`}
             onClick={() => onProductClick(product.id)}
           >
@@ -330,8 +336,8 @@ export function ProductsTable({
                   <button
                     onClick={(e) => handleCheckboxClick(e, product.id)}
                     className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      isSelected
-                        ? 'bg-gray-900 border-gray-900'
+           isSelected
+                        ? 'bg-navy border-navy'
                         : 'border-gray-300 hover:border-gray-400'
                     }`}
                   >
@@ -478,8 +484,8 @@ export function ProductsTable({
                       <button
                         onClick={(e) => handleCheckboxClick(e, product.id)}
                         className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          isSelected
-                            ? 'bg-gray-900 border-gray-900'
+             isSelected
+                            ? 'bg-navy border-navy'
                             : 'border-gray-300 hover:border-gray-400'
                         }`}
                       >

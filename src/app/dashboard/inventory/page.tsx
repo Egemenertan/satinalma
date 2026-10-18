@@ -225,7 +225,7 @@ export default function InventoryPage() {
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">Zimmetli Ürünlerim</h1>
+            <h1 className="text-4xl font-bold text-gray-900">Zimmetli Ürünlerim</h1>
             <p className="text-sm text-gray-600 mt-1">
               {userInfo?.full_name || userInfo?.email || 'Kullanıcı'}
             </p>
@@ -242,7 +242,7 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Toplam Ürün</p>
-                  <p className="text-3xl font-bold text-gray-900">{getUniqueItemsCount()}</p>
+                  <p className="text-4xl font-bold text-gray-900">{getUniqueItemsCount()}</p>
                 </div>
               </div>
             </CardContent>
@@ -256,7 +256,7 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Toplam Adet</p>
-                  <p className="text-3xl font-bold text-gray-900">{getTotalQuantity()}</p>
+                  <p className="text-4xl font-bold text-gray-900">{getTotalQuantity()}</p>
                 </div>
               </div>
             </CardContent>
@@ -270,7 +270,7 @@ export default function InventoryPage() {
                 </div>
                 <div>
                   <p className="text-sm text-gray-600 mb-1">Aktif Zimmet</p>
-                  <p className="text-3xl font-bold text-gray-900">
+                  <p className="text-4xl font-bold text-gray-900">
                     {inventoryItems.filter(item => item.status === 'active').length}
                   </p>
                 </div>

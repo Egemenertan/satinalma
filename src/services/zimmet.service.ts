@@ -231,6 +231,48 @@ export async function removeZimmetAssignment(params: {
   return { ok: true, remaining: Math.max(0, totalQty - actionQty) }
 }
 
+/** İlişki kesme: kişinin aktif zimmet satırlarını kapatır. Depo raf stoğu aynı kalır, zimmetli kalmaz. */
+export async function releaseInventoryAssignments(
+  rows: {
+    id: string
+    product_id: string | null
+    quantity: number | string | null
+    notes: string | null
+    owner_name: string | null
+    owner_email: string | null
+    source_warehouse_id: string | null
+    serial_number: string | null
+  }[]
+) {
+  const actorId = await getActorId()
+  let released = 0
+  for (const row of rows) {
+    const quantity = Number(row.quantity) || 0
+    if (!(quantity > 0) || !row.id) continue
+    const owner = row.owner_name || row.owner_email || 'personel'
+    await closeOrReduceInventoryRow({
+      inv: {
+        id: row.id,
+        product_id: row.product_id,
+        quantity,
+        notes: row.notes,
+        owner_name: row.owner_name,
+        owner_email: row.owner_email,
+        source_warehouse_id: row.source_warehouse_id,
+        serial_number: row.serial_number,
+      },
+      actionQty: quantity,
+      actorId,
+      noteFull: 'İlişki kesildi; zimmet kaynak depoda boşa düşürüldü',
+      notePartial: 'İlişki kesildi',
+      movementFull: `İlişki kesme: ${owner} zimmeti kaldırıldı, stok depoda boşa düştü`,
+      movementPartial: `İlişki kesme: ${owner}`,
+    })
+    released += 1
+  }
+  return { released }
+}
+
 /** Zimmeti değiştir: eski kaydı kapat, yeni kişiye aç (depo stoğu aynı) */
 export async function changeZimmetAssignment(params: {
   inventoryId: string

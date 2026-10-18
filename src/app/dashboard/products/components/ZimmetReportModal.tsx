@@ -21,7 +21,7 @@ import {
   buildDovecGroupWorkEmailFromDisplayName,
 } from '@/lib/dovec-work-email'
 
-interface Employee {
+export interface Employee {
   id: string
   first_name: string | null
   work_email: string | null
@@ -232,6 +232,118 @@ function aggregateInventoryForReport(rows: any[]): any[] {
   })
 }
 
+export async function loadEmployeeActiveInventory(
+  employee: Employee,
+  sourceWarehouseId?: string,
+  requireWarehouse = false
+) {
+  const client = createClient()
+  const emailCandidates = buildReportEmailCandidates(employee)
+  const emailSet = new Set(emailCandidates)
+  const ownerName = normPersonName(employee.first_name)
+  const profileId = await resolveProfileIdForEmployee(employee)
+
+  if (emailCandidates.length === 0 && !profileId && !ownerName) {
+    return []
+  }
+
+  const byId = new Map<string, Record<string, unknown>>()
+
+  if (emailCandidates.length > 0) {
+    let q = client
+      .from('user_inventory')
+      .select(INVENTORY_SELECT)
+      .eq('status', 'active')
+      .or(buildOwnerEmailOrIlikeClause(emailCandidates))
+
+    if (requireWarehouse) q = q.not('source_warehouse_id', 'is', null)
+    if (sourceWarehouseId) q = q.eq('source_warehouse_id', sourceWarehouseId)
+
+    const { data, error } = await q.order('assigned_date', { ascending: false }).limit(5000)
+    if (error) throw error
+    for (const r of data || []) byId.set((r as { id: string }).id, r as Record<string, unknown>)
+  }
+
+  if (profileId) {
+    let q2 = client
+      .from('user_inventory')
+      .select(INVENTORY_SELECT)
+      .eq('status', 'active')
+      .eq('user_id', profileId)
+
+    if (requireWarehouse) q2 = q2.not('source_warehouse_id', 'is', null)
+    if (sourceWarehouseId) q2 = q2.eq('source_warehouse_id', sourceWarehouseId)
+
+    const { data: d2, error: e2 } = await q2.order('assigned_date', { ascending: false }).limit(5000)
+    if (e2) throw e2
+    for (const r of d2 || []) byId.set((r as { id: string }).id, r as Record<string, unknown>)
+  }
+
+  if (ownerName) {
+    let q3 = client
+      .from('user_inventory')
+      .select(INVENTORY_SELECT)
+      .eq('status', 'active')
+      .ilike('owner_name', escapeIlikeExact(ownerName))
+
+    if (requireWarehouse) q3 = q3.not('source_warehouse_id', 'is', null)
+    if (sourceWarehouseId) q3 = q3.eq('source_warehouse_id', sourceWarehouseId)
+
+    const { data: d3, error: e3 } = await q3.order('assigned_date', { ascending: false }).limit(5000)
+    if (e3) throw e3
+    for (const r of d3 || []) {
+      const row = r as { id: string; owner_email?: string | null }
+      const rowEmail = normEmail(row.owner_email)
+      if (rowEmail && !emailSet.has(rowEmail)) continue
+      byId.set(row.id, r as Record<string, unknown>)
+    }
+  }
+
+  return [...byId.values()]
+}
+
+export async function assignmentRowsFromInventory(matched: any[]) {
+  const client = createClient()
+  const aggregated = aggregateInventoryForReport(matched)
+  const missingPriceIds = [
+    ...new Set(
+      aggregated
+        .filter((row) => !hasStoredUnitPrice(row.products?.unit_price))
+        .map((row) => row.product_id as string)
+        .filter(Boolean)
+    ),
+  ]
+  const inboundPrices = await fetchLatestInboundPrices(client, missingPriceIds)
+  return aggregated.map((r: any) => {
+    const p = r.products
+    const brandName = Array.isArray(p?.brand) ? p.brand[0]?.name : p?.brand?.name
+    const wh = r.warehouse
+    const whName = Array.isArray(wh) ? wh[0]?.name : wh?.name
+    const ptype = PRODUCT_TYPE_TR[p?.product_type] || p?.product_type || ''
+    const images = Array.isArray(p?.images) ? (p.images as string[]) : []
+    const imageUrl = typeof images[0] === 'string' && images[0].trim() ? images[0].trim() : ''
+    const storedPrice = parseStoredUnitPrice(p?.unit_price)
+    const inbound = r.product_id ? inboundPrices.get(r.product_id as string) : undefined
+    const unitPrice = storedPrice ?? inbound?.unitPrice ?? null
+    return {
+      imageUrl,
+      productName: p?.name || r.item_name || '',
+      sku: p?.sku || '',
+      brand: brandName || '',
+      unit: p?.unit || r.unit || '',
+      quantity: Number(r.quantity ?? 0),
+      unitPrice,
+      currency:
+        storedPrice != null
+          ? (p?.currency as string) || 'TRY'
+          : inbound?.currency || (p?.currency as string) || 'TRY',
+      productType: ptype,
+      sourceWarehouse: whName || '',
+      serialNumber: (r.serial_number as string) || '',
+    }
+  })
+}
+
 export function ZimmetReportModal({
   open,
   onOpenChange,
@@ -297,75 +409,7 @@ export function ZimmetReportModal({
     setExporting(true)
     try {
       const client = createClient()
-      const emailCandidates = buildReportEmailCandidates(selectedEmployee)
-      const emailSet = new Set(emailCandidates)
-      const ownerName = normPersonName(selectedEmployee.first_name)
-      const profileId = await resolveProfileIdForEmployee(selectedEmployee)
-
-      if (emailCandidates.length === 0 && !profileId && !ownerName) {
-        showToast('Bu çalışan için e-posta, isim veya profil eşlemesi yok; rapor alınamıyor.', 'error')
-        return
-      }
-
-      const byId = new Map<string, Record<string, unknown>>()
-
-      if (emailCandidates.length > 0) {
-        let q = client
-          .from('user_inventory')
-          .select(INVENTORY_SELECT)
-          .eq('status', 'active')
-          .not('source_warehouse_id', 'is', null)
-          .or(buildOwnerEmailOrIlikeClause(emailCandidates))
-
-        if (sourceWarehouseId) {
-          q = q.eq('source_warehouse_id', sourceWarehouseId)
-        }
-
-        const { data, error } = await q.order('assigned_date', { ascending: false }).limit(5000)
-        if (error) throw error
-        for (const r of data || []) byId.set((r as { id: string }).id, r as Record<string, unknown>)
-      }
-
-      if (profileId) {
-        let q2 = client
-          .from('user_inventory')
-          .select(INVENTORY_SELECT)
-          .eq('status', 'active')
-          .not('source_warehouse_id', 'is', null)
-          .eq('user_id', profileId)
-
-        if (sourceWarehouseId) {
-          q2 = q2.eq('source_warehouse_id', sourceWarehouseId)
-        }
-
-        const { data: d2, error: e2 } = await q2.order('assigned_date', { ascending: false }).limit(5000)
-        if (e2) throw e2
-        for (const r of d2 || []) byId.set((r as { id: string }).id, r as Record<string, unknown>)
-      }
-
-      if (ownerName) {
-        let q3 = client
-          .from('user_inventory')
-          .select(INVENTORY_SELECT)
-          .eq('status', 'active')
-          .not('source_warehouse_id', 'is', null)
-          .ilike('owner_name', escapeIlikeExact(ownerName))
-
-        if (sourceWarehouseId) {
-          q3 = q3.eq('source_warehouse_id', sourceWarehouseId)
-        }
-
-        const { data: d3, error: e3 } = await q3.order('assigned_date', { ascending: false }).limit(5000)
-        if (e3) throw e3
-        for (const r of d3 || []) {
-          const row = r as { id: string; owner_email?: string | null }
-          const rowEmail = normEmail(row.owner_email)
-          if (rowEmail && !emailSet.has(rowEmail)) continue
-          byId.set(row.id, r as Record<string, unknown>)
-        }
-      }
-
-      const matched = [...byId.values()] as any[]
+      const matched = await loadEmployeeActiveInventory(selectedEmployee, sourceWarehouseId, true)
 
       if (matched.length === 0) {
         showToast(
@@ -392,42 +436,7 @@ export function ZimmetReportModal({
         exportedByEmail = prof?.email || user.email || undefined
       }
 
-      const aggregated = aggregateInventoryForReport(matched)
-      const missingPriceIds = [
-        ...new Set(
-          aggregated
-            .filter((row) => !hasStoredUnitPrice(row.products?.unit_price))
-            .map((row) => row.product_id as string)
-            .filter(Boolean)
-        ),
-      ]
-      const inboundPrices = await fetchLatestInboundPrices(client, missingPriceIds)
-      const tableRows = aggregated.map((r: any) => {
-        const p = r.products
-        const brandName = Array.isArray(p?.brand) ? p.brand[0]?.name : p?.brand?.name
-        const wh = r.warehouse
-        const whName = Array.isArray(wh) ? wh[0]?.name : wh?.name
-        const ptype = PRODUCT_TYPE_TR[p?.product_type] || p?.product_type || ''
-        const images = Array.isArray(p?.images) ? (p.images as string[]) : []
-        const imageUrl =
-          typeof images[0] === 'string' && images[0].trim() ? images[0].trim() : ''
-        const storedPrice = parseStoredUnitPrice(p?.unit_price)
-        const inbound = r.product_id ? inboundPrices.get(r.product_id as string) : undefined
-        const unitPrice = storedPrice ?? inbound?.unitPrice ?? null
-        return {
-          imageUrl,
-          productName: p?.name || r.item_name || '',
-          sku: p?.sku || '',
-          brand: brandName || '',
-          unit: p?.unit || r.unit || '',
-          quantity: Number(r.quantity ?? 0),
-          unitPrice,
-          currency: storedPrice != null ? (p?.currency as string) || 'TRY' : inbound?.currency || (p?.currency as string) || 'TRY',
-          productType: ptype,
-          sourceWarehouse: whName || '',
-          serialNumber: (r.serial_number as string) || '',
-        }
-      })
+      const tableRows = await assignmentRowsFromInventory(matched)
 
       const safeName = (selectedEmployee.first_name || 'calisan')
         .replace(/[/\\?%*:|"<>]/g, '')
@@ -437,9 +446,7 @@ export function ZimmetReportModal({
         : ''
       const docTitle = `Zimmet raporu — ${safeName}${whPart}`
 
-      const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
-
-      await downloadZimmetAssignmentListPdf({
+      const payload = {
         docTitleSuffix: docTitle,
         titleMain: 'ZİMMET ENVANTER RAPORU',
         titleSub:
@@ -455,7 +462,16 @@ export function ZimmetReportModal({
           : 'Tüm kaynak depolar dahil',
         rowCountNote: `${tableRows.length} ürün satırı listelenmiştir (aynı ürün birleştirildi)`,
         rows: tableRows,
+      }
+      const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
+      const { recordZimmetOperation } = await import('@/services/zimmet-operations.service')
+      await recordZimmetOperation({
+        operationType: 'report',
+        personName: selectedEmployee.first_name || 'Çalışan',
+        personEmail: selectedEmployee.work_email,
+        snapshot: payload,
       })
+      await downloadZimmetAssignmentListPdf(payload)
 
       showToast(`PDF indirildi (${tableRows.length} ürün).`, 'success')
       onOpenChange(false)
@@ -539,12 +555,12 @@ export function ZimmetReportModal({
                       type="button"
                       onClick={() => setSelectedEmployeeId(employee.id)}
                       className={`w-full p-3 text-left flex items-center gap-3 hover:bg-gray-50 transition-colors ${
-                        selectedEmployeeId === employee.id ? 'bg-emerald-50' : ''
+            selectedEmployeeId === employee.id ? 'bg-emerald-50' : ''
                       }`}
                     >
                       <div
                         className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-medium ${
-                          selectedEmployeeId === employee.id
+             selectedEmployeeId === employee.id
                             ? 'bg-emerald-600 text-white'
                             : 'bg-gray-200 text-gray-700'
                         }`}

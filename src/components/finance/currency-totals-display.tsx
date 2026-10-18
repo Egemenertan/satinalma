@@ -48,7 +48,7 @@ export function CurrencyTotalsCardGrid({ totals, dense = false }: { totals: Curr
             dense ? 'min-w-[6.5rem]' : 'min-w-[7.5rem]'
           )}
         >
-          <p className="font-mono text-[10px] font-bold uppercase tracking-wider text-elegant-gray-500 dark:text-elegant-gray-400">
+          <p className="font-mono text-xs font-semibold text-elegant-gray-500 dark:text-elegant-gray-400">
             {code}
           </p>
           <p

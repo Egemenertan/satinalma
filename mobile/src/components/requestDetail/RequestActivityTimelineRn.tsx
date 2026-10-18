@@ -70,7 +70,7 @@ export function RequestActivityTimelineRn({ requestId, refreshKey }: Props) {
             const isLast = index === items.length - 1
             const dotColor =
               item.action === 'rejected'
-                ? '#ef4444'
+                ? '#FF5E5B'
                 : item.action === 'submitted'
                   ? '#9ca3af'
                   : isLast

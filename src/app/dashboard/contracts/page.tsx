@@ -9,13 +9,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
 import {
+  contractUsageTone,
   formatContractDate,
   formatContractMoney,
   formatContractQty,
   isContractCurrentlyActive,
   type ContractOverview,
 } from '@/lib/contracts'
-import { fetchContractOverviews } from '@/services/contracts.service'
+import { fetchContractInclusionsMap, fetchContractOverviews } from '@/services/contracts.service'
+import { fetchSupplierPurchaseHistory } from '@/services/supplier-purchase-history.service'
+import { enrichContractWithHistory } from '@/lib/supplier-purchase-history'
 import { CreateContractWizard } from '@/components/contracts/CreateContractWizard'
 import { contractCategoryLabel, contractPartyLabel } from '@/lib/contract-setup'
 import { useToast } from '@/components/ui/toast'
@@ -33,7 +36,37 @@ export default function ContractsPage() {
   const [status, setStatus] = useState<'all' | 'active' | 'expired'>('all')
   const [createOpen, setCreateOpen] = useState(false)
 
-  const contracts = data || []
+  const rawContracts = data || []
+  const supplierIds = useMemo(
+    () => Array.from(new Set(rawContracts.map((contract) => contract.supplier_id).filter(Boolean))),
+    [rawContracts]
+  )
+  const { data: histories } = useSWR(
+    supplierIds.length ? `supplier_purchase_history/list/${supplierIds.join(',')}` : null,
+    async () => {
+      const entries = await Promise.all(
+        supplierIds.map(async (supplierId) => {
+          const history = await fetchSupplierPurchaseHistory(supplierId)
+          return [supplierId, history] as const
+        })
+      )
+      return Object.fromEntries(entries)
+    },
+    { revalidateOnFocus: false, dedupingInterval: 30000 }
+  )
+  const { data: inclusions } = useSWR(
+    rawContracts.length ? `supplier_contracts/inclusions/${rawContracts.map((row) => row.id).join(',')}` : null,
+    () => fetchContractInclusionsMap(rawContracts.map((row) => row.id)),
+    { revalidateOnFocus: false }
+  )
+
+  const contracts = useMemo(
+    () =>
+      rawContracts.map((contract) =>
+        enrichContractWithHistory(contract, histories?.[contract.supplier_id], inclusions?.[contract.id] || [])
+      ),
+    [rawContracts, histories, inclusions]
+  )
 
   const filtered = useMemo(() => {
     const q = search.trim().toLocaleLowerCase('tr-TR')
@@ -77,7 +110,7 @@ export default function ContractsPage() {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="inline-block border-b-2 border-[#00E676] pb-3 text-3xl font-semibold text-gray-900">
+          <h1 className="inline-block border-b-2 border-[#00E676] pb-3 text-4xl font-semibold text-gray-900">
             Toplu Alım Sözleşmeleri
           </h1>
           <p className="mt-4 text-base text-gray-600">
@@ -86,7 +119,7 @@ export default function ContractsPage() {
         </div>
         <Button
           type="button"
-          className="rounded-2xl bg-black text-white hover:bg-gray-900"
+          className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
           onClick={() => setCreateOpen(true)}
         >
           <Plus className="mr-2 h-4 w-4" />
@@ -126,7 +159,7 @@ export default function ContractsPage() {
                 type="button"
                 onClick={() => setStatus(id)}
                 className={`rounded-lg px-3 py-2 text-sm font-medium ${
-                  status === id ? 'bg-white text-elegant-black shadow-sm' : 'text-elegant-gray-600'
+         status === id ? 'bg-navy text-white shadow-sm' : 'text-elegant-gray-600'
                 }`}
               >
                 {label}
@@ -191,8 +224,8 @@ function ContractMeta({ contract }: { contract: ContractOverview }) {
 function Kpi({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
-      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">{label}</p>
-      <p className="mt-2 text-3xl font-bold tracking-tight text-elegant-black">{value}</p>
+      <p className="text-sm font-semibold text-elegant-gray-500">{label}</p>
+      <p className="mt-2 text-4xl font-bold tracking-tight text-elegant-black">{value}</p>
     </div>
   )
 }
@@ -213,12 +246,13 @@ function ContractOverviewCard({ contract }: { contract: ContractOverview }) {
           {contract.is_expired ? (
             <Badge variant="outline" className="border-red-200 bg-red-50 text-red-700">Pasif</Badge>
           ) : (
-            <Badge variant="outline" className="border-primary/20 bg-primary/10 text-emerald-700">Aktif</Badge>
+            <Badge variant="outline" className="border-navy/20 bg-navy/10 text-navy">Aktif</Badge>
           )}
         </div>
         <div className="mt-4 space-y-3">
           {contract.items.map((item) => {
-            const pct = Math.min(100, Math.round(item.usage_ratio * 100))
+            const pct = Math.round(item.usage_ratio * 100)
+            const tone = contractUsageTone(pct)
             return (
               <div key={item.id} className="rounded-lg bg-elegant-gray-50 p-3">
                 <div className="flex items-center justify-between gap-2">
@@ -228,12 +262,12 @@ function ContractOverviewCard({ contract }: { contract: ContractOverview }) {
                   </p>
                 </div>
                 <p className="mt-1 text-xs text-elegant-gray-500">
-                  {formatContractQty(item.delivered_quantity, item.unit)} teslim · kalan {formatContractQty(item.remaining_quantity, item.unit)}
+                  {formatContractQty(item.delivered_quantity, item.unit)} kullanılan · kalan {formatContractQty(item.remaining_quantity, item.unit)}
                 </p>
                 <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
                   <div
-                    className="h-full rounded-full bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.35)]"
-                    style={{ width: `${pct}%` }}
+                    className={`h-full rounded-full ${tone.bar}`}
+                    style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
                   />
                 </div>
               </div>

@@ -892,7 +892,7 @@ const styles = StyleSheet.create({
     marginTop: 10,
     fontSize: 11,
     fontWeight: '700',
-    color: '#047857',
+    color: '#0A0A0A',
     alignSelf: 'flex-start',
     overflow: 'hidden',
     borderRadius: 6,

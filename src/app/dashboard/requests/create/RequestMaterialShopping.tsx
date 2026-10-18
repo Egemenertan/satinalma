@@ -435,7 +435,7 @@ export function RequestMaterialShopping({
               Vazgeç
             </Button>
           )}
-          {title && <h1 className="text-xl font-semibold text-gray-900 mb-1">{title}</h1>}
+          {title && <h1 className="text-3xl font-semibold text-gray-900 mb-1">{title}</h1>}
           <p className="text-sm text-gray-500 mb-2">
             Mevcut kalemler sepette. Yeni ürün ekleyip sepeti onaylayın.
           </p>

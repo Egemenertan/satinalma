@@ -49,11 +49,42 @@ function isPendingStatus(status: string | null | undefined): boolean {
   )
 }
 
+const PENDING_STATUSES = ['pending', 'onay bekliyor', 'awaiting_offers', 'draft']
+
+function startOfPreviousMonth(now: Date): string {
+  return new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+}
+
 export async function fetchDashboardBundle(): Promise<DashboardBundle> {
   const supabase = createClient()
+  const now = new Date()
+  const seriesFrom = startOfPreviousMonth(now)
 
-  const [requestsRes, suppliersCountRes, sitesCountRes, recentRes] = await Promise.all([
-    supabase.from('purchase_requests').select('created_at, total_amount, status'),
+  const [
+    totalCountRes,
+    pendingCountRes,
+    amountSumRes,
+    seriesRes,
+    suppliersCountRes,
+    sitesCountRes,
+    recentRes,
+  ] = await Promise.all([
+    supabase.from('purchase_requests').select('id', { count: 'exact', head: true }).is('deleted_at', null),
+    supabase
+      .from('purchase_requests')
+      .select('id', { count: 'exact', head: true })
+      .is('deleted_at', null)
+      .in('status', PENDING_STATUSES),
+    supabase
+      .from('purchase_requests')
+      .select('total_amount.sum()')
+      .is('deleted_at', null)
+      .maybeSingle(),
+    supabase
+      .from('purchase_requests')
+      .select('created_at, total_amount, status')
+      .is('deleted_at', null)
+      .gte('created_at', seriesFrom),
     supabase.from('suppliers').select('id', { count: 'exact', head: true }),
     supabase.from('sites').select('id', { count: 'exact', head: true }),
     supabase
@@ -68,21 +99,28 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle> {
       sites(name)
     `
       )
+      .is('deleted_at', null)
       .order('created_at', { ascending: false })
       .limit(12),
   ])
 
-  if (requestsRes.error) throw requestsRes.error
+  if (seriesRes.error) throw seriesRes.error
   if (recentRes.error) throw recentRes.error
 
-  const requests = requestsRes.data ?? []
-  const totalRequests = requests.length
-  const pendingRequests = requests.filter(r => isPendingStatus(r.status)).length
+  const requests = seriesRes.data ?? []
+  const totalRequests = totalCountRes.count ?? requests.length
+  const pendingRequests = pendingCountRes.count ?? requests.filter(r => isPendingStatus(r.status)).length
   const totalSuppliers = suppliersCountRes.error ? 0 : suppliersCountRes.count ?? 0
   const totalSites = sitesCountRes.error ? 0 : sitesCountRes.count ?? 0
-  const totalAmount = requests.reduce((sum, req) => sum + (parseFloat(String(req.total_amount)) || 0), 0)
+  const aggregatedSum = Number(
+    (amountSumRes.data as { sum?: number; total_amount?: number } | null)?.sum ??
+      (amountSumRes.data as { sum?: number; total_amount?: number } | null)?.total_amount ??
+      NaN
+  )
+  const totalAmount = Number.isFinite(aggregatedSum)
+    ? aggregatedSum
+    : requests.reduce((sum, req) => sum + (parseFloat(String(req.total_amount)) || 0), 0)
 
-  const now = new Date()
   const currentMonth = now.getMonth()
   const lastMonth = currentMonth === 0 ? 11 : currentMonth - 1
   const currentYear = now.getFullYear()

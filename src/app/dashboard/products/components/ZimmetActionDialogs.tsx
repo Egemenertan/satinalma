@@ -98,7 +98,7 @@ function ZimmetQuantityField({
 
   return (
     <div className="space-y-2">
-      <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+      <Label className="text-xs font-medium text-gray-500">
         Adet *
       </Label>
       <Input
@@ -278,7 +278,7 @@ export function ZimmetActionDialogs({
             <div className="px-6 py-5 space-y-4 bg-white">
               {changeTarget && (
                 <div className="rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-gray-500">
+                  <p className="text-[11px] font-medium text-gray-500">
                     Mevcut zimmetli
                   </p>
                   <p className="text-sm font-semibold text-gray-900 mt-1">
@@ -303,7 +303,7 @@ export function ZimmetActionDialogs({
               />
 
               <div className="space-y-2">
-                <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                <Label className="text-xs font-medium text-gray-500">
                   Yeni zimmetli
                 </Label>
                 {loadingEmployees ? (
@@ -348,7 +348,7 @@ export function ZimmetActionDialogs({
                 type="button"
                 disabled={!selectedEmployeeId || submitting || !parsedChange.ok}
                 onClick={confirmChange}
-                className="rounded-full px-6 bg-gray-900 text-white hover:bg-gray-800"
+                className="rounded-full px-6 bg-navy text-white hover:bg-navy-700"
               >
                 {submitting ? (
                   <>

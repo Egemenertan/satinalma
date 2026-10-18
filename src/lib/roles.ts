@@ -201,43 +201,43 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
 // Sidebar menü öğelerini filtreleme
 export const getAccessibleMenuItems = (userRole: UserRole) => {
   if (userRole === 'site_manager') {
-    return ['requests', 'inventory', 'all-inventory'] // Requests, zimmet ve tüm zimmetler menüsü
+    return ['requests']
   }
 
   if (userRole === 'warehouse_manager') {
-    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'products', 'brands']
+    return ['dashboard', 'requests', 'products', 'brands']
   }
 
   if (userRole === 'purchasing_officer') {
-    return ['dashboard', 'requests', 'inventory', 'products', 'orders', 'suppliers', 'contracts', 'quote-comparison']
+    return ['dashboard', 'requests', 'products', 'orders', 'suppliers', 'contracts', 'quote-comparison']
   }
 
   if (userRole === 'site_personnel') {
-    return ['requests', 'inventory'] // Requests ve zimmet menüsü
+    return ['requests']
   }
 
   if (userRole === 'department_head') {
-    return ['requests', 'inventory'] // Requests ve zimmet menüsü (GMO için)
+    return ['requests']
   }
 
   if (userRole === 'santiye_depo') {
-    return ['requests', 'inventory', 'products'] // Requests, zimmet ve ürünler menüsü
+    return ['requests', 'products']
   }
 
   if (userRole === 'santiye_depo_yonetici') {
-    return ['requests', 'inventory'] // Requests ve zimmet menüsü (site_manager gibi)
+    return ['requests']
   }
 
 
   if (userRole === 'user') {
-    return ['inventory'] // User rolü sadece zimmet sayfasına erişebilir
+    return []
   }
 
   // Admin tüm menülere erişebilir (admin menüsü dahil)
   if (userRole === 'admin') {
-    return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'contracts', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'reports', 'admin', 'settings']
+    return ['dashboard', 'requests', 'offers', 'suppliers', 'contracts', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'reports', 'admin', 'settings']
   }
 
   // Manager tüm menülere erişebilir (admin menüsü ve raporlar hariç)
-  return ['dashboard', 'requests', 'inventory', 'all-inventory', 'offers', 'suppliers', 'contracts', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'settings']
+  return ['dashboard', 'requests', 'offers', 'suppliers', 'contracts', 'quote-comparison', 'sites', 'orders', 'products', 'brands', 'settings']
 }

@@ -133,7 +133,7 @@ export function BrandModal({ isOpen, brand, onClose, onSave, isSaving }: BrandMo
                     <button
                       type="button"
                       onClick={handleRemoveLogo}
-                      className="absolute top-1 right-1 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
+                      className="absolute top-1 right-1 bg-red-500 text-black rounded-full w-6 h-6 flex items-center justify-center hover:bg-red-600"
                     >
                       <X className="w-4 h-4" />
                     </button>
@@ -222,7 +222,7 @@ export function BrandModal({ isOpen, brand, onClose, onSave, isSaving }: BrandMo
             </Button>
             <Button
               type="submit"
-              className="rounded-2xl bg-black text-white hover:bg-gray-900"
+              className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
               disabled={isSaving}
             >
               {isSaving ? 'Kaydediliyor...' : brand ? 'Güncelle' : 'Kaydet'}

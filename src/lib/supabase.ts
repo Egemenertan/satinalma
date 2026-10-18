@@ -530,6 +530,29 @@ export type Database = {
           created_at?: string
         }
       }
+      supplier_contract_inclusions: {
+        Row: {
+          id: string
+          contract_id: string
+          request_key: string
+          item_name: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          contract_id: string
+          request_key: string
+          item_name: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          contract_id?: string
+          request_key?: string
+          item_name?: string
+          created_at?: string
+        }
+      }
       offers: {
         Row: {
           created_at: string | null
@@ -927,11 +950,65 @@ export type Database = {
           },
         ]
       }
+      zimmet_operations: {
+        Row: {
+          id: string
+          operation_type: string
+          person_name: string
+          person_email: string | null
+          performed_by: string | null
+          performed_by_name: string | null
+          item_count: number
+          snapshot: Json
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          operation_type: string
+          person_name: string
+          person_email?: string | null
+          performed_by?: string | null
+          performed_by_name?: string | null
+          item_count?: number
+          snapshot: Json
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          operation_type?: string
+          person_name?: string
+          person_email?: string | null
+          performed_by?: string | null
+          performed_by_name?: string | null
+          item_count?: number
+          snapshot?: Json
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "zimmet_operations_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      transfer_stock_into_operated_warehouse: {
+        Args: {
+          p_product_id: string
+          p_from_warehouse_id: string
+          p_to_warehouse_id: string
+          p_quantity: number
+          p_reason: string | null
+        }
+        Returns: undefined
+      }
       get_orders_page: {
         Args: {
           p_page: number

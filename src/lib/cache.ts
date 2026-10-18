@@ -14,7 +14,11 @@ export const invalidatePurchaseRequestsCache = () => {
   mutate('purchase_requests_stats', undefined, { revalidate: true })
   
   // Bekleyen talep sayısı cache'ini temizle (Sidebar notification için)
-  mutate('pending_requests_count', undefined, { revalidate: true })
+  mutate(
+    (key) => typeof key === 'string' && key.startsWith('pending_requests_count'),
+    undefined,
+    { revalidate: true }
+  )
   
   // Auth cache'ini de temizle (kullanıcı rol kontrolü için)
   mutate('auth', undefined, { revalidate: true })
@@ -28,13 +32,21 @@ export const invalidateDashboardCache = () => {
 // Sites cache'leri
 export const invalidateSitesCache = () => {
   mutate('sites_with_stats', undefined, { revalidate: true })
+  mutate('sites_with_stats_images', undefined, { revalidate: true })
   mutate('sites_stats', undefined, { revalidate: true })
 }
 
 // Suppliers cache'leri
 export const invalidateSuppliersCache = () => {
   mutate('suppliers_list', undefined, { revalidate: true })
+  mutate('subcontractors_list', undefined, { revalidate: true })
   mutate('suppliers_stats', undefined, { revalidate: true })
+  mutate('supplier_live_metrics', undefined, { revalidate: true })
+  mutate(
+    (key) => typeof key === 'string' && key.startsWith('supplier_live_metrics/'),
+    undefined,
+    { revalidate: true }
+  )
 }
 
 export const invalidateContractsCache = () => {

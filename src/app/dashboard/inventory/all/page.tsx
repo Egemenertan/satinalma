@@ -72,7 +72,7 @@ const getStatusBadge = (status: string) => {
     case 'lost':
       return <Badge className="bg-gray-400 text-gray-900"><XCircle className="w-3 h-3 mr-1" />Kayıp</Badge>
     case 'damaged':
-      return <Badge className="bg-orange-500 text-white"><AlertTriangle className="w-3 h-3 mr-1" />Hasarlı</Badge>
+      return <Badge className="bg-orange-500 text-black"><AlertTriangle className="w-3 h-3 mr-1" />Hasarlı</Badge>
     default:
       return <Badge className="bg-gray-100 text-gray-700">{status}</Badge>
   }
@@ -174,7 +174,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
         <div className="space-y-2.5 mb-3">
           {/* User */}
           <div className="flex items-center gap-2">
-            <div className={`p-1.5 rounded-lg flex-shrink-0 ${item.owner_name ? 'bg-[#00E676]/10' : 'bg-gray-100'}`}>
+            <div className={`p-1.5 rounded-lg flex-shrink-0 ${item.owner_name ? 'bg-black/[0.06]' : 'bg-gray-100'}`}>
               <User className={`w-3.5 h-3.5 ${item.owner_name ? 'text-[#00E676]' : 'text-gray-600'}`} />
             </div>
             <div className="flex-1 min-w-0">
@@ -192,7 +192,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
           {/* Quantity & Date */}
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 flex-1">
-              <div className="p-1.5 bg-[#00E676]/10 rounded-lg">
+              <div className="p-1.5 bg-black/[0.06] rounded-lg">
                 <Package className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs font-semibold text-gray-900">
@@ -200,7 +200,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
               </span>
             </div>
             <div className="flex items-center gap-1.5 flex-1">
-              <div className="p-1.5 bg-[#00E676]/10 rounded-lg">
+              <div className="p-1.5 bg-black/[0.06] rounded-lg">
                 <Calendar className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs text-gray-600">
@@ -215,7 +215,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
           {/* Request Number */}
           {item.purchase_request && (
             <div className="flex items-center gap-2">
-              <div className="p-1.5 bg-[#00E676]/10 rounded-lg flex-shrink-0">
+              <div className="p-1.5 bg-black/[0.06] rounded-lg flex-shrink-0">
                 <FileText className="w-3.5 h-3.5 text-[#00E676]" />
               </div>
               <span className="text-xs font-medium text-gray-800">
@@ -236,7 +236,7 @@ const InventoryRow = memo(function InventoryRow({ item, onRowClick, onExportPDF 
         </div>
 
         {/* Action Area */}
-        <div className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-700 group-hover:bg-gray-900 group-hover:text-white transition-all duration-200">
+        <div className="w-full py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 bg-gray-100 text-gray-700 group-hover:bg-navy group-hover:text-white transition-all duration-200">
           <FileText className="w-4 h-4" />
           <span>Detayları Gör</span>
         </div>
@@ -474,7 +474,7 @@ export default function AllInventoryPage() {
       {/* Header - Desktop */}
       <div className="hidden sm:block px-4 pt-2 space-y-2">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
+          <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
             {userRole === 'site_manager' ? 'Oluşturduğum Zimmetler' : 'Tüm Zimmetler'}
           </h1>
           <p className="text-gray-600 mt-4 text-base">
@@ -489,7 +489,7 @@ export default function AllInventoryPage() {
       {/* Header - Mobile */}
       <div className="sm:hidden px-4 pt-2 space-y-2">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">
+          <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">
             {userRole === 'site_manager' ? 'Oluşturduğum Zimmetler' : 'Tüm Zimmetler'}
           </h1>
           <p className="text-gray-600 mt-4 text-sm">
@@ -511,7 +511,7 @@ export default function AllInventoryPage() {
                 <div>
                   <p className="text-sm font-medium text-gray-600 mb-1">En Çok Zimmetlenen Ürünler</p>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-3xl font-bold text-gray-900">{stats.totalItems}</p>
+                    <p className="text-4xl font-bold text-gray-900">{stats.totalItems}</p>
                     <span className="text-sm text-gray-500">toplam zimmet</span>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">İlk 5 ürün dağılımı</p>
@@ -536,7 +536,7 @@ export default function AllInventoryPage() {
                         <div className="w-full flex items-end justify-center" style={{ height: '90px' }}>
                           <div 
                             className={`w-full rounded-t-lg transition-all duration-300 cursor-pointer ${
-                              isHovered ? 'bg-[#00E676] shadow-lg scale-105' : 'bg-gray-900'
+               isHovered ? 'bg-[#00E676] shadow-lg scale-105' : 'bg-gray-900'
                             }`}
                             style={{ 
                               height: `${height}%`,
@@ -577,7 +577,7 @@ export default function AllInventoryPage() {
               <div className="flex items-start justify-between mb-6">
                 <div>
                   <p className="text-sm font-medium text-white/80 mb-1">Toplam Performans</p>
-                  <p className="text-3xl font-bold text-white">{stats.totalItems}</p>
+                  <p className="text-4xl font-bold text-white">{stats.totalItems}</p>
                   <p className="text-xs text-white/70 mt-1">Aktif zimmet kayıtları</p>
                 </div>
                 <div className="w-12 h-12 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
@@ -611,7 +611,7 @@ export default function AllInventoryPage() {
                 <div>
                   <p className="text-xs font-medium text-gray-600 mb-1">En Çok Zimmetlenen</p>
                   <div className="flex items-baseline gap-2">
-                    <p className="text-2xl font-bold text-gray-900">{stats.totalItems}</p>
+                    <p className="text-3xl font-bold text-gray-900">{stats.totalItems}</p>
                     <span className="text-xs text-gray-500">zimmet</span>
                   </div>
                 </div>
@@ -659,7 +659,7 @@ export default function AllInventoryPage() {
               <div className="flex items-start justify-between mb-3">
                 <div>
                   <p className="text-xs font-medium text-white/80 mb-1">Toplam Performans</p>
-                  <p className="text-2xl font-bold text-white">{stats.totalItems}</p>
+                  <p className="text-3xl font-bold text-white">{stats.totalItems}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
                   <Package className="w-5 h-5 text-white" />
@@ -717,7 +717,7 @@ export default function AllInventoryPage() {
           <CardContent className="p-0">
             {paginatedItems.length === 0 ? (
               <div className="text-center py-16 px-4">
-                <div className="w-20 h-20 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-4">
+                <div className="w-20 h-20 bg-black/[0.06] rounded-full flex items-center justify-center mx-auto mb-4">
                   <Package className="w-10 h-10 text-[#00E676]" />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 mb-2">
@@ -784,7 +784,7 @@ export default function AllInventoryPage() {
                           variant={currentPage === page ? 'default' : 'outline'}
                           onClick={() => setCurrentPage(page)}
                           className={`rounded-xl w-9 h-9 p-0 ${
-                            currentPage === page 
+              currentPage === page 
                               ? 'bg-[#00E676] text-white hover:bg-[#00c46a]' 
                               : 'border-gray-200 hover:bg-gray-50'
                           }`}
@@ -845,7 +845,7 @@ export default function AllInventoryPage() {
           <CardContent className="p-0">
             {paginatedItems.length === 0 ? (
               <div className="text-center py-12 px-4">
-                <div className="w-16 h-16 bg-[#00E676]/10 rounded-full flex items-center justify-center mx-auto mb-3">
+                <div className="w-16 h-16 bg-black/[0.06] rounded-full flex items-center justify-center mx-auto mb-3">
                   <Package className="w-8 h-8 text-[#00E676]" />
                 </div>
                 <h3 className="text-base font-semibold text-gray-900 mb-2">

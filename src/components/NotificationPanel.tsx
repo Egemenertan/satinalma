@@ -158,7 +158,7 @@ export default function NotificationPanel({ isOpen, onOpenChange, showMobileButt
 
             {/* Eski/okunmuş bildirimler */}
             <div className="pt-4 border-t border-gray-200">
-              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3 px-2">
+              <p className="text-xs font-semibold text-gray-400 mb-3 px-2">
                 Önceki Bildirimler
               </p>
               

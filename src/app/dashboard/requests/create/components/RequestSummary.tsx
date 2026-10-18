@@ -156,7 +156,7 @@ export function RequestSummary({
             type="button"
             onClick={onSubmit}
             disabled={isLoading || items.length === 0}
-            className="w-full h-14 px-8 rounded-xl font-semibold bg-black hover:bg-gray-900 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
+            className="w-full h-14 px-8 rounded-xl font-semibold bg-bordeaux text-white hover:bg-bordeaux-700 shadow-lg hover:shadow-xl transition-all duration-200 text-lg"
           >
             {isLoading ? (
               <>

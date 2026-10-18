@@ -69,7 +69,7 @@ export function ProductStatsCards({ siteId }: ProductStatsCardsProps) {
                   <div className="w-full flex items-end justify-center" style={{ height: '120px' }}>
                     <div 
                       className={`w-2 rounded-full transition-all duration-300 cursor-pointer ${
-                        isHovered ? 'bg-gray-900 shadow-lg' : 'bg-gray-900'
+            isHovered ? 'bg-gray-900 shadow-lg' : 'bg-gray-900'
                       }`}
                       style={{ 
                         height: `${normalizedHeight}%`,

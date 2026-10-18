@@ -53,10 +53,10 @@ export async function GET(request: NextRequest) {
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header { background: linear-gradient(135deg, #007944 0%, #005C33 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .info-box { background: #f0fdf4; border-left: 4px solid #10b981; padding: 15px; margin: 20px 0; }
-        .button { display: inline-block; background: #10b981; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .info-box { background: #F6F6F6; border-left: 4px solid #007944; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; background: #007944; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
     </style>
 </head>

@@ -1049,7 +1049,7 @@ export default function SantiyeDepoView({
           <Button
             onClick={handleSiteManagerRejection}
             disabled={!rejectionReason.trim() || siteManagerRejecting}
-            className="w-full sm:w-auto bg-gray-900 hover:bg-gray-800 text-white"
+            className="w-full sm:w-auto bg-navy text-white hover:bg-navy-700"
           >
             {siteManagerRejecting ? (
               <>

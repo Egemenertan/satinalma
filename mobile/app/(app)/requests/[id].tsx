@@ -446,9 +446,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     borderRadius: 9999,
   },
-  badgeOk: { backgroundColor: '#f0fdf4' },
+  badgeOk: { backgroundColor: '#F4F4F4' },
   badgeRo: { backgroundColor: '#f3f4f6' },
-  badgeText: { fontSize: 13, fontWeight: '600', color: '#047857' },
+  badgeText: { fontSize: 13, fontWeight: '600', color: '#0A0A0A' },
   sectionTitle: {
     marginTop: 24,
     fontWeight: '700',

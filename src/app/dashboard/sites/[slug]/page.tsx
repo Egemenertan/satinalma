@@ -125,7 +125,7 @@ function DeltaPill({ value }: { value: number | null }) {
     <div
       className={cn(
         'flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
-        up ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-600'
+        up ? 'bg-navy/10 text-navy' : 'bg-coral/15 text-coral-700'
       )}
     >
       {up ? <TrendingUp className="mr-0.5 h-3 w-3" /> : <TrendingDown className="mr-0.5 h-3 w-3" />}
@@ -166,12 +166,12 @@ function formatCompactTry(value: number): string {
 }
 
 const INVOICE_STROKE_PRESET: Record<string, string> = {
-  TRY: '#f59e0b',
-  USD: '#0ea5e9',
-  EUR: '#a855f7',
-  GBP: '#ec4899',
+  TRY: '#53131E',
+  USD: '#004777',
+  EUR: '#FF5E5B',
+  GBP: '#0A0A0A',
 }
-const INVOICE_STROKE_FALLBACK = ['#14b8a6', '#eab308', '#f97316', '#84cc16', '#64748b'] as const
+const INVOICE_STROKE_FALLBACK = ['#004777', '#53131E', '#FF5E5B', '#0A0A0A'] as const
 
 function strokeForInvoiceCurrency(code: string, index: number): string {
   const c = code.trim().toUpperCase()
@@ -285,8 +285,8 @@ function FinanceInvoiceOrderChart({
       >
         <defs>
           <linearGradient id={safeFillOrd} x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#6366f1" stopOpacity={0.16} />
-            <stop offset="100%" stopColor="#6366f1" stopOpacity={0} />
+            <stop offset="0%" stopColor="#004777" stopOpacity={0.16} />
+            <stop offset="100%" stopColor="#004777" stopOpacity={0} />
           </linearGradient>
           <linearGradient id="finance-grid" x1="0" x2="1" y1="0" y2="0">
             <stop offset="0%" stopColor="#e5e7eb" stopOpacity={0} />
@@ -322,7 +322,7 @@ function FinanceInvoiceOrderChart({
         <path
           d={smoothPath(ordPts)}
           fill="none"
-          stroke="#6366f1"
+          stroke="#004777"
           strokeWidth={2.35}
           strokeLinecap="round"
           strokeLinejoin="round"
@@ -345,7 +345,7 @@ function FinanceInvoiceOrderChart({
                 />
               ) : null
             )}
-            <circle cx={ordPts[hoverIdx]![0]} cy={ordPts[hoverIdx]![1]} r={6} fill="#fff" stroke="#6366f1" strokeWidth={2} />
+            <circle cx={ordPts[hoverIdx]![0]} cy={ordPts[hoverIdx]![1]} r={6} fill="#fff" stroke="#004777" strokeWidth={2} />
           </>
         )}
 
@@ -490,7 +490,7 @@ function statusBadgeClass(status: string): string {
     return 'border-red-200 bg-red-500/10 text-red-700 dark:border-red-900 dark:text-red-400'
   }
   if (s.includes('tamam') || s.includes('complete')) {
-    return 'border-primary/30 bg-primary/10 text-primary'
+    return 'border-navy/25 bg-navy/10 text-navy'
   }
   if (s.includes('bekle') || s.includes('draft') || s.includes('taslak')) {
     return 'border-amber-200 bg-amber-500/10 text-amber-800 dark:border-amber-900 dark:text-amber-400'
@@ -537,6 +537,34 @@ function linkedRequestLabel(o: OrderRow): { title: string; requestNo: string } {
 function parseOrderAmount(o: OrderRow): number {
   const v = typeof o.amount === 'string' ? parseFloat(o.amount) : Number(o.amount ?? 0)
   return Number.isFinite(v) ? v : 0
+}
+
+/** PostgREST varsayılan satır limiti. Üstü sessizce kesilir. */
+const SUPABASE_PAGE_SIZE = 1000
+/**
+ * Tek `.in()` listesi GET adresini ~24KB üzerine çıkarınca API 400 döner.
+ * Uzun select ile 80 uuid bu sınırın altında kalır.
+ */
+const ID_FILTER_CHUNK = 80
+
+function chunkIds(ids: string[], size: number): string[][] {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size))
+  return chunks
+}
+
+async function fetchAllPages<T>(
+  queryPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += SUPABASE_PAGE_SIZE) {
+    const { data, error } = await queryPage(from, from + SUPABASE_PAGE_SIZE - 1)
+    if (error) throw error
+    const batch = data ?? []
+    rows.push(...batch)
+    if (batch.length < SUPABASE_PAGE_SIZE) break
+  }
+  return rows
 }
 
 export default function SiteDetailPage() {
@@ -586,10 +614,11 @@ export default function SiteDetailPage() {
         return
       }
 
-      const { data: prData, error: prError } = await supabase
-        .from('purchase_requests')
-        .select(
-          `
+      const requests = await fetchAllPages<PurchaseRequestRow>((from, to) =>
+        supabase
+          .from('purchase_requests')
+          .select(
+            `
           id,
           title,
           request_number,
@@ -602,40 +631,34 @@ export default function SiteDetailPage() {
           requested_by,
           profiles!purchase_requests_requested_by_fkey(full_name, email)
         `
-        )
-        .eq('site_id', siteRow.id)
-        .order('created_at', { ascending: false })
-
-      if (prError) throw prError
-      const requests = (prData || []) as PurchaseRequestRow[]
+          )
+          .eq('site_id', siteRow.id)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to)
+      )
       const prIds = requests.map((r) => r.id)
 
-      let itemCount = 0
       let priFetched: PurchaseRequestMaterialItemRow[] = []
-      if (prIds.length) {
-        const { count, error: cErr } = await supabase
-          .from('purchase_request_items')
-          .select('*', { count: 'exact', head: true })
-          .in('purchase_request_id', prIds)
-        if (!cErr && count != null) itemCount = count
-
-        const priChunkSize = 200
-        for (let i = 0; i < prIds.length; i += priChunkSize) {
-          const sliceIds = prIds.slice(i, i + priChunkSize)
-          const { data: piData, error: piErr } = await supabase
+      for (const sliceIds of chunkIds(prIds, ID_FILTER_CHUNK)) {
+        const batch = await fetchAllPages<PurchaseRequestMaterialItemRow>((from, to) =>
+          supabase
             .from('purchase_request_items')
             .select('id, material_group, item_name, purpose, unit, quantity, original_quantity')
             .in('purchase_request_id', sliceIds)
-          if (!piErr && piData) priFetched = priFetched.concat(piData as PurchaseRequestMaterialItemRow[])
-        }
+            .order('id', { ascending: true })
+            .range(from, to)
+        )
+        priFetched = priFetched.concat(batch)
       }
 
       let ordersFetched: OrderRow[] = []
-      if (prIds.length) {
-        const { data: ord, error: oErr } = await supabase
-          .from('orders')
-          .select(
-            `
+      for (const sliceIds of chunkIds(prIds, ID_FILTER_CHUNK)) {
+        const batch = await fetchAllPages<OrderRow>((from, to) =>
+          supabase
+            .from('orders')
+            .select(
+              `
             id,
           supplier_id,
             amount,
@@ -648,48 +671,45 @@ export default function SiteDetailPage() {
           suppliers!orders_supplier_id_fkey(name),
           purchase_requests!orders_purchase_request_id_fkey(title, request_number)
         `
-          )
-          .in('purchase_request_id', prIds)
-          .order('created_at', { ascending: false })
-
-        if (!oErr && ord) ordersFetched = ord as unknown as OrderRow[]
+            )
+            .in('purchase_request_id', sliceIds)
+            .order('created_at', { ascending: false })
+            .order('id', { ascending: true })
+            .range(from, to)
+        )
+        ordersFetched = ordersFetched.concat(batch)
       }
 
       let invoicesFetched: SiteInvoiceRow[] = []
       const orderIds = ordersFetched.map((o) => o.id).filter(Boolean)
-      if (orderIds.length > 0) {
-        const chunkSize = 100
-        for (let i = 0; i < orderIds.length; i += chunkSize) {
-          const chunk = orderIds.slice(i, i + chunkSize)
-          const { data: invData, error: invErr } = await supabase
+      for (const chunk of chunkIds(orderIds, ID_FILTER_CHUNK)) {
+        const batch = await fetchAllPages<SiteInvoiceRow>((from, to) =>
+          supabase
             .from('invoices')
-            .select(
-              'id, order_id, amount, grand_total, currency, created_at, parent_invoice_id, is_master'
-            )
+            .select('id, order_id, amount, grand_total, currency, created_at, parent_invoice_id, is_master')
             .in('order_id', chunk)
-          if (!invErr && invData) {
-            invoicesFetched = invoicesFetched.concat(invData as SiteInvoiceRow[])
-          }
-        }
-      }
-
-      let offersFetched: ApprovedOfferRow[] = []
-      const { data: offData, error: offErr } = await supabase
-        .from('offers')
-        .select(
-          'id, supplier_name, total_price, currency, delivery_days, created_at, offer_date, purchase_request_id'
+            .order('id', { ascending: true })
+            .range(from, to)
         )
-        .eq('site_id', siteRow.id)
-        .eq('is_selected', true)
-        .order('created_at', { ascending: false })
-
-      if (!offErr && offData) {
-        offersFetched = offData as ApprovedOfferRow[]
+        invoicesFetched = invoicesFetched.concat(batch)
       }
+
+      const offersFetched = await fetchAllPages<ApprovedOfferRow>((from, to) =>
+        supabase
+          .from('offers')
+          .select(
+            'id, supplier_name, total_price, currency, delivery_days, created_at, offer_date, purchase_request_id'
+          )
+          .eq('site_id', siteRow.id)
+          .eq('is_selected', true)
+          .order('created_at', { ascending: false })
+          .order('id', { ascending: true })
+          .range(from, to)
+      )
 
       setSiteMeta(siteRow as SiteRow)
       setPurchaseRequests(requests)
-      setLineItemCount(itemCount)
+      setLineItemCount(priFetched.length)
       setPurchaseRequestMaterials(priFetched)
       setOrders(ordersFetched)
       setSiteInvoices(invoicesFetched)
@@ -1182,24 +1202,24 @@ export default function SiteDetailPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Toplam talep
             </span>
             <DeltaPill value={totals.logisticsReqTrend} />
                 </div>
-          <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{totals.total_requests}</span>
-          <p className="mt-1 text-xs text-elegant-gray-500">Bu şantiye için oluşturulan talepler</p>
+          <span className="text-4xl font-bold tracking-tight text-elegant-black dark:text-white">{totals.total_requests}</span>
+          <p className="mt-1 text-sm text-elegant-gray-500">Bu şantiye için oluşturulan talepler</p>
           <SparkBars heightsPct={sparkHeights} accentClass="bg-primary shadow-[0_0_12px_rgba(0,230,118,0.35)]" />
                 </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Talep kalemi
             </span>
               </div>
-          <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{lineItemCount}</span>
-          <p className="mt-1 text-xs text-elegant-gray-500">
+          <span className="text-4xl font-bold tracking-tight text-elegant-black dark:text-white">{lineItemCount}</span>
+          <p className="mt-1 text-sm text-elegant-gray-500">
             Ortalama{' '}
             {totals.total_requests > 0 ? (lineItemCount / totals.total_requests).toFixed(1) : '—'} kalem / talep
           </p>
@@ -1215,18 +1235,18 @@ export default function SiteDetailPage() {
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900 md:col-span-2 xl:col-span-1">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               İş akışında
             </span>
             </div>
-          <span className="text-3xl font-bold tracking-tight text-amber-700 dark:text-amber-400">{totals.inPipeline}</span>
-          <p className="mt-1 text-xs text-elegant-gray-500">
+          <span className="text-4xl font-bold tracking-tight text-amber-700 dark:text-amber-400">{totals.inPipeline}</span>
+          <p className="mt-1 text-sm text-elegant-gray-500">
             Tamamlanmamış / iptal olmayan süreçler · Klasik onaylı talep (status):{' '}
             <span className="font-semibold">{totals.legacyApproved}</span>
           </p>
           <SparkBars
             heightsPct={pipelineSpark.map((h) => Math.round(h * 0.85))}
-            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
+            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(83,19,30,0.35)]"
           />
         </div>
       </div>
@@ -1235,7 +1255,7 @@ export default function SiteDetailPage() {
       <section className="w-full rounded-2xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900 sm:p-8">
         <div className="flex flex-col gap-6 xl:flex-row xl:items-start xl:justify-between">
           <div className="space-y-1">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <p className="text-[11px] font-bold text-elegant-gray-500">
               Günlük tutar eğrisi
             </p>
             <h2 className="text-xl font-semibold tracking-tight text-elegant-black dark:text-white sm:text-2xl">
@@ -1264,9 +1284,9 @@ export default function SiteDetailPage() {
                   type="button"
                   onClick={() => setChartRange(d)}
                   className={cn(
-                    'rounded-lg px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors',
+                    'rounded-lg px-4 py-2 text-[11px] font-bold transition-colors',
                     chartRange === d
-                      ? 'bg-white text-elegant-black shadow-sm dark:bg-elegant-gray-800 dark:text-white'
+                      ? 'bg-navy text-white shadow-sm dark:bg-elegant-gray-800 dark:text-white'
                       : 'text-elegant-gray-500 hover:text-elegant-black dark:hover:text-white'
                   )}
                 >
@@ -1298,7 +1318,7 @@ export default function SiteDetailPage() {
             <div className="rounded-xl border border-elegant-gray-200 bg-elegant-gray-50/80 px-4 py-3 dark:border-elegant-gray-800 dark:bg-elegant-black/40">
               <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                  <p className="text-[11px] font-bold text-elegant-gray-500">
                     Faturalanan — tarih
                   </p>
                   <p className="mt-0.5 text-xs text-elegant-gray-500 dark:text-elegant-gray-400">
@@ -1317,7 +1337,7 @@ export default function SiteDetailPage() {
           </div>
           <div className="grid grid-cols-1 gap-8 sm:grid-cols-2">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Faturalanan (sipariş → fatura)</p>
+              <p className="text-[11px] font-bold text-elegant-gray-500">Faturalanan (sipariş → fatura)</p>
               <div className="mt-3">
                 <ConvertedTotalsCards totals={totals.invoicedByCurrency} />
               </div>
@@ -1332,7 +1352,7 @@ export default function SiteDetailPage() {
               </p>
             </div>
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Siparişler</p>
+              <p className="text-[11px] font-bold text-elegant-gray-500">Siparişler</p>
               <p className="mt-2 text-4xl font-bold tabular-nums text-indigo-600 dark:text-indigo-400">{totals.orders_count}</p>
               {totals.ordersAmount > 1e-9 ? (
                 <p className="mt-2 font-mono text-lg font-semibold text-elegant-black dark:text-white">
@@ -1392,8 +1412,8 @@ export default function SiteDetailPage() {
           ) : (
             <>
               {topSupplier && ordersSorted.length > 0 ? (
-                <div className="mt-8 rounded-xl border border-primary/25 bg-primary/5 px-4 py-4 dark:border-primary/30 dark:bg-primary/10">
-                  <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-primary dark:text-emerald-300">
+                <div className="mt-8 rounded-xl border border-black/10 bg-black/[0.04] px-4 py-4 dark:border-white/10 dark:bg-white/[0.04]">
+                  <p className="text-[11px] font-bold text-primary dark:text-emerald-300">
                     En çok sipariş yapılan tedarikçi
                   </p>
                   <p className="mt-2 text-base font-semibold text-elegant-black dark:text-white">
@@ -1427,7 +1447,7 @@ export default function SiteDetailPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[520px] text-left">
                     <thead>
-                      <tr className="border-b border-elegant-gray-100 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500 dark:border-elegant-gray-800">
+                      <tr className="border-b border-elegant-gray-100 text-[10px] font-bold text-elegant-gray-500 dark:border-elegant-gray-800">
                         <th className="px-4 py-3 sm:px-6">#</th>
                         <th className="px-4 py-3 sm:px-6">Tedarikçi</th>
                         <th className="px-4 py-3 text-right tabular-nums sm:px-6">Sipariş sayısı</th>
@@ -1471,7 +1491,7 @@ export default function SiteDetailPage() {
                 <div className="max-h-[min(560px,70vh)] overflow-y-auto overflow-x-auto">
                   <table className="w-full min-w-[720px] text-left">
                     <thead className="sticky top-0 z-10 bg-white shadow-sm dark:bg-elegant-gray-900">
-                      <tr className="border-b border-elegant-gray-100 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500 dark:border-elegant-gray-800">
+                      <tr className="border-b border-elegant-gray-100 text-[10px] font-bold text-elegant-gray-500 dark:border-elegant-gray-800">
                         <th className="px-4 py-3 sm:px-6">Tedarikçi</th>
                         <th className="px-4 py-3 sm:px-6">Talep</th>
                         <th className="px-4 py-3 text-right tabular-nums sm:px-6">Sipariş tutarı</th>
@@ -1545,9 +1565,9 @@ export default function SiteDetailPage() {
                   type="button"
                   onClick={() => setChartRange(d)}
                   className={cn(
-                    'rounded-lg px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors',
+                    'rounded-lg px-4 py-2 text-[11px] font-bold transition-colors',
                     chartRange === d
-                      ? 'bg-white text-elegant-black shadow-sm dark:bg-elegant-gray-800 dark:text-white'
+                      ? 'bg-navy text-white shadow-sm dark:bg-elegant-gray-800 dark:text-white'
                       : 'text-elegant-gray-500 hover:text-elegant-black dark:hover:text-white'
                   )}
                 >
@@ -1587,7 +1607,7 @@ export default function SiteDetailPage() {
                         role="tooltip"
                         className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[min(220px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-elegant-gray-700 bg-elegant-black px-3 py-2 text-left shadow-xl dark:border-elegant-gray-300 dark:bg-white"
                       >
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-white/70 dark:text-elegant-gray-600">
+                        <p className="text-[10px] font-medium text-white/70 dark:text-elegant-gray-600">
                           {chartSliceComputed.labels[i]}
                         </p>
                         <p className="mt-0.5 text-sm font-bold tabular-nums text-white dark:text-elegant-black">
@@ -1624,7 +1644,7 @@ export default function SiteDetailPage() {
 
         <div className="flex flex-col lg:col-span-4">
           <div className="flex flex-1 flex-col rounded-xl border border-elegant-gray-200 bg-white p-6 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
-            <h4 className="mb-6 text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">
+            <h4 className="mb-6 text-[11px] font-bold text-elegant-gray-500">
               Şantiye operasyon özeti
             </h4>
             <div className="space-y-10">
@@ -1681,7 +1701,7 @@ export default function SiteDetailPage() {
 
               {(siteMeta.approved_expenses ?? 0) > 0 && (
                 <div className="rounded-lg border border-elegant-gray-100 bg-elegant-gray-50 p-4 dark:border-elegant-gray-800 dark:bg-elegant-black/40">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-elegant-gray-500">
+                  <div className="flex items-center gap-2 text-xs font-bold text-elegant-gray-500">
                     <DollarSign className="h-4 w-4 text-primary" />
                     Bütçe
                   </div>
@@ -1716,7 +1736,7 @@ export default function SiteDetailPage() {
 
               {recentRequesters.length > 0 && (
                 <div>
-                  <p className="mb-2 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-elegant-gray-500">
+                  <p className="mb-2 flex items-center gap-2 text-xs font-bold text-elegant-gray-500">
                     <User className="h-3 w-3" />
                     Aktif talep edenler
                   </p>
@@ -1748,19 +1768,19 @@ export default function SiteDetailPage() {
               <table className="w-full min-w-[640px] text-left">
                 <thead>
                   <tr className="border-b border-elegant-gray-100 bg-elegant-gray-50/80 dark:border-elegant-gray-800 dark:bg-elegant-gray-800/40">
-                    <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                    <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                       Talep
                     </th>
-                    <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                    <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                       İş akışı
                     </th>
-                    <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                    <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                       Durum (kayıt)
                     </th>
-                    <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                    <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                       Tutar
                     </th>
-                    <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                    <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                       Tarih
                     </th>
                   </tr>
@@ -1782,7 +1802,7 @@ export default function SiteDetailPage() {
                         {workflowLabel(row.workflow_status)}
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant="outline" className={cn('border font-semibold uppercase tracking-tight', statusBadgeClass(row.status))}>
+                        <Badge variant="outline" className={cn('border font-semibold', statusBadgeClass(row.status))}>
                           {row.status || '—'}
                         </Badge>
                       </td>

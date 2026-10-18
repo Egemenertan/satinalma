@@ -84,7 +84,7 @@ export default function AuthDebugPage() {
               await supabase.auth.signOut()
               window.location.reload()
             }}
-            className="px-4 py-2 bg-red-500 text-white rounded"
+            className="px-4 py-2 bg-red-500 text-black rounded"
           >
             Logout
           </button>

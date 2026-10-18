@@ -227,7 +227,7 @@ export default function AdminPage() {
       {/* Header - Minimal ve Clean */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-gray-900">
+          <h1 className="text-4xl font-semibold text-gray-900">
             Admin Paneli
           </h1>
           <p className="text-sm text-gray-500 mt-1">
@@ -405,7 +405,7 @@ export default function AdminPage() {
                           <Badge 
                             variant={profile.is_active ? 'default' : 'secondary'}
                             className={`flex-shrink-0 ${profile.is_active 
-                              ? 'bg-green-100 text-green-700 hover:bg-green-100' 
+               ? 'bg-green-100 text-green-700 hover:bg-green-100' 
                               : 'bg-gray-200 text-gray-700 hover:bg-gray-200'
                             }`}
                           >

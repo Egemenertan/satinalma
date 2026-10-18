@@ -515,7 +515,7 @@ export default function CreateZimmetModal({
                         <div className="flex items-center gap-3">
                           <div className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
                             selectedProducts.includes(product.id)
-                              ? 'bg-gray-900 border-gray-900'
+                              ? 'bg-navy border-navy'
                               : 'border-gray-300'
                           }`}>
                             {selectedProducts.includes(product.id) && (
@@ -682,7 +682,7 @@ export default function CreateZimmetModal({
             <Button
               onClick={handleNextStep}
               disabled={!selectedUserId || selectedProducts.length === 0}
-              className="bg-gray-900 hover:bg-gray-800 text-white h-11 rounded-xl"
+              className="bg-navy text-white hover:bg-navy-700 h-11 rounded-xl"
             >
               İleri
               <ChevronRight className="w-4 h-4 ml-2" />
@@ -691,7 +691,7 @@ export default function CreateZimmetModal({
             <Button
               onClick={handleCreateZimmet}
               disabled={loading || loadingData}
-              className="bg-gray-900 hover:bg-gray-800 text-white h-11 rounded-xl"
+              className="bg-navy text-white hover:bg-navy-700 h-11 rounded-xl"
             >
               {loading ? (
                 <>

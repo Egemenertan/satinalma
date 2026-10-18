@@ -173,7 +173,7 @@ export default function NewQuoteComparisonPage() {
             Geri
           </a>
         </Button>
-        <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
+        <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">
           Yeni Teklif Karşılaştırması
         </h1>
         <p className="text-sm text-gray-500 mt-2">

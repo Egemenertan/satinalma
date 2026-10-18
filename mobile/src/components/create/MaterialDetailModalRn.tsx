@@ -683,7 +683,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 6,
     borderRadius: 9999,
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
     borderWidth: 0,
   },
   metaChipMuted: {
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
   metaChipText: {
     fontSize: 13,
     fontFamily: statsFont.semibold,
-    color: '#047857',
+    color: '#0A0A0A',
   },
   metaChipTextMuted: {
     fontSize: 13,
@@ -960,12 +960,12 @@ const styles = StyleSheet.create({
     borderColor: '#e5e7eb',
   },
   unitRowSelected: {
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
     borderColor: '#01E884',
   },
   unitRowPressed: { opacity: 0.9 },
   unitRowIcon: { marginRight: 12 },
   unitLabel: { fontSize: 16, fontFamily: statsFont.medium, color: '#374151', flex: 1 },
-  unitLabelSelected: { fontFamily: statsFont.semibold, color: '#047857' },
+  unitLabelSelected: { fontFamily: statsFont.semibold, color: '#0A0A0A' },
   unitOther: { fontSize: 16, fontFamily: statsFont.bold, color: '#01E884', flex: 1 },
 })

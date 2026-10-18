@@ -8,8 +8,12 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import { createClient } from '@/lib/supabase/client'
-import { getAccessibleMenuItems, getRoleLabel } from '@/lib/roles'
-import { fetchMyWarehouseAccessScope } from '@/lib/warehouse-access'
+import { getAccessibleMenuItems } from '@/lib/roles'
+import {
+  WAREHOUSE_ACCESS_SWR_KEY,
+  fetchMyWarehouseAccessScope,
+} from '@/lib/warehouse-access'
+import { useCurrentProfile, clearCurrentProfileCache } from '@/lib/auth/current-profile'
 import RoleAssignmentModal from '@/components/RoleAssignmentModal'
 import {
   LayoutDashboard,
@@ -26,46 +30,28 @@ import {
   Tag,
   UserCog,
   Plus,
-  ClipboardList,
   BarChart3
 } from 'lucide-react'
 
-// Bekleyen talep sayısını getiren fetcher (rol bazlı)
-const fetchPendingRequestsCount = async () => {
+const fetchPendingRequestsCount = async (role: string) => {
   const supabase = createClient()
-  
-  // Kullanıcı bilgilerini çek
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) {
-    return 0
-  }
-
-  // Kullanıcı rolünü çek
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('role')
-    .eq('id', user.id)
-    .single()
-
   let query = supabase
     .from('purchase_requests')
     .select('id', { count: 'exact', head: true })
 
-  // Purchasing officer için sadece "şantiye şefi onayladı" durumundaki talepleri say
-  if (profile?.role === 'purchasing_officer') {
+  if (role === 'purchasing_officer') {
     query = query.eq('status', 'şantiye şefi onayladı')
   } else {
-    // Diğer roller için pending durumundaki talepleri say
     query = query.eq('status', 'pending')
   }
-  
+
   const { count, error } = await query
-  
+
   if (error) {
     console.error('Bekleyen talep sayısı alınırken hata:', error)
     return 0
   }
-  
+
   return count || 0
 }
 
@@ -94,18 +80,6 @@ const getNavigation = (pendingCount: number, userRole: string, extraMenuIds: str
       href: '/dashboard/requests',
       icon: FileText,
       badge: pendingCount > 0 ? pendingCount.toString() : undefined
-    },
-    {
-      id: 'inventory',
-      title: 'Zimmetlerim',
-      href: '/dashboard/inventory',
-      icon: ClipboardList
-    },
-    {
-      id: 'all-inventory',
-      title: 'Tüm Zimmetler',
-      href: '/dashboard/inventory/all',
-      icon: Package
     },
     {
       id: 'sites',
@@ -192,79 +166,43 @@ export default function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(true)
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
-  const [userRole, setUserRole] = useState<string>('user')
-  const [canSeeDepotProducts, setCanSeeDepotProducts] = useState(false)
-  const [userEmail, setUserEmail] = useState<string>('')
-  const [userName, setUserName] = useState<string>('')
-  const [userSiteIds, setUserSiteIds] = useState<string[]>([])
   const [showRoleAssignmentModal, setShowRoleAssignmentModal] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
-  
-  // External prop varsa onu kullan, yoksa internal state kullan
+
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
   const setIsMobileOpen = externalSetIsMobileOpen || setInternalIsMobileOpen
   const pathname = usePathname()
   const router = useRouter()
+  const { data: profile } = useCurrentProfile()
+  const userRole = profile?.role || 'user'
+  const userEmail = profile?.email || ''
+  const userName = profile?.fullName || ''
+  const userSiteIds = profile?.siteId
+    ? (Array.isArray(profile.siteId) ? profile.siteId : [profile.siteId])
+    : []
 
-  // Bekleyen talep sayısını SWR ile çek - user role ile key oluştur
-  const { data: pendingCount, mutate: refreshPendingCount } = useSWR(
-    userRole ? `pending_requests_count_${userRole}` : null,
-    fetchPendingRequestsCount,
+  const { data: warehouseScope } = useSWR(
+    userRole === 'site_manager' ? WAREHOUSE_ACCESS_SWR_KEY : null,
+    fetchMyWarehouseAccessScope,
     {
       revalidateOnFocus: false,
       revalidateOnReconnect: true,
-      dedupingInterval: 30000, // 30 saniye cache
+      dedupingInterval: 60_000,
+    }
+  )
+  const canSeeDepotProducts = (warehouseScope?.manageWarehouseIds.length ?? 0) > 0
+
+  const { data: pendingCount, mutate: refreshPendingCount } = useSWR(
+    profile?.role ? `pending_requests_count_${profile.role}` : null,
+    () => fetchPendingRequestsCount(profile!.role),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 30000,
       errorRetryCount: 2,
       fallbackData: 0
     }
   )
-
-  // Kullanıcı bilgilerini çek
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const supabase = createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        // Email adresini set et
-        setUserEmail(user.email || '')
-        
-        // Profile bilgilerini çek
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('role, full_name, site_id')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile?.role) {
-          setUserRole(profile.role)
-          if (profile.role === 'site_manager') {
-            const scope = await fetchMyWarehouseAccessScope()
-            setCanSeeDepotProducts(scope.manageWarehouseIds.length > 0)
-          } else {
-            setCanSeeDepotProducts(false)
-          }
-        }
-        
-        // site_id bilgisini set et
-        if (profile?.site_id) {
-          const siteIds = Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id]
-          setUserSiteIds(siteIds)
-        }
-        
-        // İsim bilgisini set et - önce full_name, yoksa email'den al
-        if (profile?.full_name) {
-          setUserName(profile.full_name)
-        } else if (user.email) {
-          // Email'den isim çıkar (@ işaretinden öncesini al)
-          const nameFromEmail = user.email.split('@')[0]
-          setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1))
-        }
-      }
-    }
-    
-    fetchUserData()
-  }, [])
 
   // Mobile responsive kontrol
   useEffect(() => {
@@ -311,6 +249,7 @@ export default function Sidebar({
   
   const handleLogout = async () => {
     try {
+      clearCurrentProfileCache()
       await supabase.auth.signOut()
       router.push('/auth/login')
     } catch (error) {
@@ -345,8 +284,8 @@ export default function Sidebar({
     const logoActiveClasses = item.logoSrc
       ? '!bg-transparent hover:!bg-transparent focus-visible:!bg-transparent active:!bg-transparent shadow-none'
       : active
-        ? 'bg-neutral-950 text-white hover:bg-neutral-900'
-        : 'text-gray-700 hover:text-gray-900 hover:bg-gray-50/50'
+        ? 'bg-neutral-950 text-white hover:bg-neutral-950'
+        : 'text-gray-700 hover:bg-neutral-950 hover:text-white'
 
     const renderLogo = (opts: { collapsed?: boolean; mobile?: boolean }) => (
       <img
@@ -368,7 +307,7 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               logoActiveClasses,
-              "rounded-full"
+              "rounded-sm"
             )}
             onClick={() => toggleExpanded(item.title)}
             onMouseEnter={() => setHoveredItem(item.title)}
@@ -406,8 +345,8 @@ export default function Sidebar({
             className={cn(
               "aspect-square w-full transition-all duration-200 flex flex-col items-center justify-center gap-2 relative p-2",
               logoActiveClasses,
-              item.logoSrc ? "rounded-none overflow-visible border-0" : "rounded-full border",
-              !item.logoSrc && (active ? "border-neutral-950" : "border-gray-200")
+              item.logoSrc ? "rounded-none overflow-visible border-0" : "rounded-sm border",
+              !item.logoSrc && (active ? "border-neutral-950" : "border-gray-200 hover:border-neutral-950")
             )}
             onClick={() => {
               setIsMobileOpen(false)
@@ -444,7 +383,7 @@ export default function Sidebar({
               "w-full h-10 transition-all duration-200 overflow-visible",
               isCollapsed ? "justify-center px-0" : "justify-start px-2",
               logoActiveClasses,
-              item.logoSrc ? "rounded-none" : "rounded-full"
+              item.logoSrc ? "rounded-none" : "rounded-sm"
             )}
             onMouseEnter={() => setHoveredItem(item.title)}
             onMouseLeave={() => setHoveredItem(null)}
@@ -473,7 +412,7 @@ export default function Sidebar({
         {/* Modern Tooltip */}
         {showTooltip && (
           <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-            <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+            <div className="bg-black text-white px-5 py-2.5 rounded-md text-base font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
               {item.title}
               {item.badge && (
                 <Badge 
@@ -483,7 +422,7 @@ export default function Sidebar({
                   {item.badge}
                 </Badge>
               )}
-              <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+              <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-black" />
             </div>
           </div>
         )}
@@ -544,7 +483,7 @@ export default function Sidebar({
               variant="ghost"
               size="sm"
               onClick={() => setIsMobileOpen(false)}
-              className="h-10 w-10 p-0 rounded-full hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
+              className="h-10 w-10 p-0 rounded-sm hover:bg-gray-100/80 text-gray-600 hover:text-gray-900 transition-all duration-200 hover:rotate-90"
             >
               <X className="h-5 w-5" />
             </Button>
@@ -572,7 +511,7 @@ export default function Sidebar({
                   onClick={() => router.push('/dashboard/requests/create')}
                   onMouseEnter={() => setHoveredItem('quick-create')}
                   onMouseLeave={() => setHoveredItem(null)}
-                  className="w-10 h-10 bg-white text-neutral-950 border-2 border-neutral-950 rounded-full flex items-center justify-center transition-all duration-200 hover:bg-neutral-950 hover:text-white"
+                  className="w-10 h-10 bg-white text-neutral-950 border-2 border-neutral-950 rounded-sm flex items-center justify-center transition-all duration-200 hover:bg-neutral-950 hover:text-white"
                 >
                   <Plus className="h-5 w-5" />
                 </Button>
@@ -580,9 +519,9 @@ export default function Sidebar({
                 {/* Tooltip for Quick Create */}
                 {hoveredItem === 'quick-create' && (
                   <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                    <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                    <div className="bg-black text-white px-5 py-2.5 rounded-md text-base font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                       Hızlı Talep
-                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                      <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-black" />
                     </div>
                   </div>
                 )}
@@ -596,7 +535,7 @@ export default function Sidebar({
                     onMouseEnter={() => setHoveredItem('role-management')}
                     onMouseLeave={() => setHoveredItem(null)}
                     variant="outline"
-                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 rounded-full flex items-center justify-center transition-all duration-200"
+                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 rounded-sm flex items-center justify-center transition-all duration-200"
                   >
                     <UserCog className="h-4 w-4" />
                   </Button>
@@ -604,9 +543,9 @@ export default function Sidebar({
                   {/* Tooltip for Role Management */}
                   {hoveredItem === 'role-management' && (
                     <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                      <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                      <div className="bg-black text-white px-5 py-2.5 rounded-md text-base font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                         Rol Yönetimi
-                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-black" />
                       </div>
                     </div>
                   )}
@@ -623,7 +562,7 @@ export default function Sidebar({
                   }
                 }}
                 className={cn(
-                  "bg-white hover:bg-neutral-950 text-neutral-950 hover:text-white border-2 border-neutral-950 font-medium rounded-full transition-all duration-200",
+                  "bg-white hover:bg-neutral-950 text-neutral-950 hover:text-white border-2 border-neutral-950 font-medium rounded-sm transition-all duration-200",
                   isMobileOpen ? "aspect-square w-full h-auto flex-col gap-2 p-3" : "w-full h-9 text-sm"
                 )}
               >
@@ -642,7 +581,7 @@ export default function Sidebar({
                   }}
                   variant="outline"
                   className={cn(
-                    "border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 font-medium rounded-full transition-all duration-200",
+                    "border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 font-medium rounded-sm transition-all duration-200",
                     isMobileOpen ? "aspect-square w-full h-auto flex-col gap-2 p-3" : "w-full h-9 text-sm flex items-center justify-center gap-2"
                   )}
                 >
@@ -688,7 +627,7 @@ export default function Sidebar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="h-10 w-10 p-0 text-gray-400 hover:text-neutral-950 hover:bg-gray-100 rounded-full transition-all duration-200"
+                className="h-10 w-10 p-0 text-gray-400 hover:text-white hover:bg-neutral-950 rounded-sm transition-all duration-200"
                 onClick={handleLogout}
                 onMouseEnter={() => setHoveredItem('logout')}
                 onMouseLeave={() => setHoveredItem(null)}
@@ -699,9 +638,9 @@ export default function Sidebar({
               {/* Logout Tooltip */}
               {hoveredItem === 'logout' && (
                 <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                  <div className="bg-gray-900 text-white px-4 py-2 rounded-full text-sm font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
+                  <div className="bg-black text-white px-5 py-2.5 rounded-md text-base font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
                     Çıkış Yap
-                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-900" />
+                    <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-black" />
                   </div>
                 </div>
               )}
@@ -726,7 +665,7 @@ export default function Sidebar({
               </div>
               <Button
                 variant="ghost"
-                className="w-full h-12 text-neutral-950 hover:text-neutral-950 hover:bg-gray-100 rounded-full font-medium transition-all duration-200"
+                className="w-full h-12 text-neutral-950 hover:text-white hover:bg-neutral-950 rounded-sm font-medium transition-all duration-200"
                 onClick={handleLogout}
               >
                 <LogOut className="h-5 w-5 mr-2" />
@@ -737,7 +676,7 @@ export default function Sidebar({
             // Desktop expanded - Sadece logout butonu
             <Button
               variant="ghost"
-              className="w-full h-10 text-neutral-950 hover:text-neutral-950 hover:bg-gray-100 rounded-full font-medium transition-all duration-200"
+              className="w-full h-10 text-neutral-950 hover:text-white hover:bg-neutral-950 rounded-sm font-medium transition-all duration-200"
               onClick={handleLogout}
             >
               <LogOut className="h-4 w-4 mr-2" />

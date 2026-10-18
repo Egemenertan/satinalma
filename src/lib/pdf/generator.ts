@@ -6,6 +6,7 @@
 import type { PDFData, PDFInvoiceData, PDFOrderData, PDFRequestData } from './types'
 import { getPDFStyles } from './styles'
 import { buildHeader, buildRequestInfo, buildKeyPeopleTimeline, buildOrders, buildInvoicesList, buildInvoiceSummary } from './components'
+import { printHtmlDocument } from './printHtml'
 
 /**
  * Generate complete PDF HTML
@@ -38,112 +39,7 @@ const generatePDFHTML = (data: PDFData): string => {
  * Generate and show PDF using print dialog - INSTANT
  */
 export const generatePDF = async (data: PDFData): Promise<void> => {
-  try {
-    console.log('⚡ Fast PDF Generation Started')
-    console.log('📊 PDF Data:', {
-      request: data.request.title,
-      orders: data.orders.length,
-      invoices: data.invoices.length,
-      hasSubtotal: data.statistics.subtotal !== undefined,
-      hasDiscount: data.statistics.discount !== undefined && data.statistics.discount > 0,
-      hasTax: data.statistics.tax !== undefined && data.statistics.tax > 0,
-      subtotal: data.statistics.subtotal,
-      discount: data.statistics.discount,
-      tax: data.statistics.tax,
-      grandTotal: data.statistics.grandTotal,
-      fullStatistics: data.statistics
-    })
-    
-    console.log('💰 Invoice Summary Debug:', {
-      invoicesCount: data.invoices.length,
-      invoicesTotalAmount: data.invoices.reduce((sum, inv) => sum + inv.amount, 0),
-      statisticsSubtotal: data.statistics.subtotal,
-      statisticsDiscount: data.statistics.discount,
-      statisticsTax: data.statistics.tax,
-      statisticsGrandTotal: data.statistics.grandTotal,
-      willShowBreakdown: !!(data.statistics.discount || data.statistics.tax || data.statistics.subtotal !== undefined)
-    })
-    
-    console.log('📝 Invoice Details Debug:', {
-      invoicesWithNotes: data.invoices.filter(inv => inv.notes).length,
-      allInvoices: data.invoices.map(inv => ({
-        id: inv.id.substring(0, 8),
-        amount: inv.amount,
-        subtotal: inv.subtotal,
-        discount: inv.discount,
-        tax: inv.tax,
-        grand_total: inv.grand_total,
-        currency: inv.currency,
-        supplier: inv.supplier_name,
-        item: inv.item_name,
-        hasNotes: !!inv.notes,
-        notes: inv.notes
-      }))
-    })
-    
-    console.log('📦 Orders Debug:', {
-      ordersCount: data.orders.length,
-      allOrders: data.orders.map(order => ({
-        id: order.id.substring(0, 8),
-        amount: order.amount,
-        currency: order.currency,
-        supplier: order.supplier_name,
-        item: order.item_name
-      }))
-    })
-
-    // Generate HTML
-    const htmlContent = generatePDFHTML(data)
-
-    // Create hidden iframe for printing
-    const iframe = document.createElement('iframe')
-    iframe.style.position = 'fixed'
-    iframe.style.top = '-99999px'
-    iframe.style.left = '-99999px'
-    iframe.style.width = '210mm'
-    iframe.style.height = '297mm'
-    iframe.style.border = 'none'
-    
-    document.body.appendChild(iframe)
-
-    // Get iframe document
-    const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
-    if (!iframeDoc) {
-      throw new Error('Iframe document not accessible')
-    }
-
-    // Write HTML to iframe
-    iframeDoc.open()
-    iframeDoc.write(htmlContent)
-    iframeDoc.close()
-
-    // Wait for resources to load
-    await new Promise<void>((resolve) => {
-      if (iframe.contentWindow) {
-        iframe.contentWindow.onload = () => {
-          // Small delay to ensure all styles are applied
-          setTimeout(() => resolve(), 100)
-        }
-      } else {
-        setTimeout(() => resolve(), 100)
-      }
-    })
-
-    // Trigger print dialog
-    console.log('🖨️ Opening print dialog...')
-    iframe.contentWindow?.focus()
-    iframe.contentWindow?.print()
-
-    // Cleanup after print dialog is closed
-    setTimeout(() => {
-      document.body.removeChild(iframe)
-      console.log('✅ PDF generation complete, iframe cleaned up')
-    }, 1000)
-
-  } catch (error) {
-    console.error('❌ PDF generation error:', error)
-    throw error
-  }
+  await printHtmlDocument(generatePDFHTML(data))
 }
 
 /**
@@ -212,21 +108,24 @@ export const transformToPDFData = (apiData: any): PDFData => {
   const timeline = []
   const timelineData = apiData.timeline || []
 
-  console.log('🕐 Timeline Debug:', {
-    hasTimeline: !!apiData.timeline,
-    timelineLength: timelineData.length,
-    timelineItems: timelineData.map((item: any) => ({
-      type: item.type,
-      action: item.action,
-      actor: item.actor
-    }))
-  })
+  const creationItem = timelineData.find((item: any) => item.type === 'creation')
+  const requesterName =
+    creationItem?.actor ||
+    request.requester_name ||
+    request.requester_email ||
+    ''
 
-  // 1. Site Manager - Onaylayan (birden fazla approval olabilir, en son onayanı al)
+  if (requesterName) {
+    timeline.push({
+      person_name: requesterName,
+      person_role: 'Talep Eden',
+      action: 'Talebi Oluşturdu',
+      date: creationItem?.date || request.created_at
+    })
+  }
+
   const approvalItems = timelineData.filter((item: any) => item.type === 'approval')
-  const approvalItem = approvalItems[approvalItems.length - 1] // Son onay
-  
-  console.log('🔍 Approval Item:', approvalItem)
+  const approvalItem = approvalItems[approvalItems.length - 1]
   
   if (approvalItem) {
     timeline.push({
@@ -237,14 +136,7 @@ export const transformToPDFData = (apiData: any): PDFData => {
     })
   }
 
-  // 2. Purchasing Officer - Sipariş oluşturan
   const orderItem = timelineData.find((item: any) => item.type === 'order')
-  
-  console.log('🔍 Order Item:', {
-    found: !!orderItem,
-    actor: orderItem?.actor,
-    ordered_by: orderItem?.order_data?.ordered_by
-  })
   
   if (orderItem) {
     timeline.push({
@@ -255,31 +147,13 @@ export const transformToPDFData = (apiData: any): PDFData => {
     })
   }
 
-  // 3. Teslim Alan - order_deliveries tablosundan
   const deliveredOrder = (apiData.orders || []).find((order: any) => 
     order.actual_delivered_at && order.delivered_by_user
   )
   
-  console.log('🔍 Delivery from order_deliveries:', {
-    found: !!deliveredOrder,
-    actual_delivered_at: deliveredOrder?.actual_delivered_at,
-    delivered_by_user: deliveredOrder?.delivered_by_user,
-    allOrders: (apiData.orders || []).map((o: any) => ({
-      id: o.id?.substring(0, 8),
-      actual_delivered_at: o.actual_delivered_at,
-      has_delivered_by_user: !!o.delivered_by_user
-    }))
-  })
-  
   if (deliveredOrder && deliveredOrder.actual_delivered_at) {
     const deliveryUser = deliveredOrder.delivered_by_user
     const deliveryPerson = deliveryUser?.full_name || deliveryUser?.email
-    
-    console.log('📅 Teslimat Bilgileri:', {
-      person: deliveryPerson,
-      date: deliveredOrder.actual_delivered_at,
-      formatted: new Date(deliveredOrder.actual_delivered_at).toLocaleDateString('tr-TR')
-    })
     
     if (deliveryPerson) {
       timeline.push({
@@ -290,11 +164,6 @@ export const transformToPDFData = (apiData: any): PDFData => {
       })
     }
   }
-
-  console.log('✅ Extracted Key People:', {
-    timelineCount: timeline.length,
-    people: timeline
-  })
 
   return {
     request,

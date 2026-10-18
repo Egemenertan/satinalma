@@ -317,7 +317,7 @@ export default function SitePersonnelView({
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-4">
                     {/* İlk Talep */}
                     <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
-                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">İlk Talep</div>
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3">İlk Talep</div>
                       <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const originalRequest = item.original_quantity ?? item.quantity
@@ -329,7 +329,7 @@ export default function SitePersonnelView({
                     
                     {/* Depodan Gönderilen */}
                     <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
-                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Depodan Gönderilen</div>
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3">Depodan Gönderilen</div>
                       <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const itemShipments = shipmentData[item.id]
@@ -351,7 +351,7 @@ export default function SitePersonnelView({
                     
                     {/* Sipariş Verildi */}
                     <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50">
-                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Sipariş Verildi</div>
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3">Sipariş Verildi</div>
                       <div className="text-base sm:text-2xl font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const totalOrdered = materialOrders
@@ -385,7 +385,7 @@ export default function SitePersonnelView({
                     
                     {/* Teslimat Tarihi */}
                     <div className="bg-gray-50/50 rounded-xl p-3 sm:p-5 border border-gray-100/50 col-span-2 md:col-span-1">
-                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3 uppercase tracking-wider">Teslimat Tarihi</div>
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-1 sm:mb-3">Teslimat Tarihi</div>
                       <div className="text-sm sm:text-base font-semibold text-gray-900 tracking-tight">
                         {(() => {
                           const itemOrders = materialOrders.filter((order: any) => 
@@ -457,7 +457,7 @@ export default function SitePersonnelView({
                   {/* Tedarikçi Bilgileri - Apple Style */}
                   {(request?.status === 'sipariş verildi' || request?.status === 'kısmen teslim alındı' || request?.status === 'teslim alındı') && (
                     <div className="mt-4 sm:mt-6 pt-4 sm:pt-6 border-t border-gray-100">
-                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-3 sm:mb-4 uppercase tracking-wider">Tedarikçi Bilgileri</div>
+                      <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-3 sm:mb-4">Tedarikçi Bilgileri</div>
                       {(() => {
                         const itemOrders = materialOrders.filter((order: any) => 
                           order.material_item_id === item.id
@@ -544,7 +544,7 @@ export default function SitePersonnelView({
                                 {/* İletişim Bilgileri */}
                                 {(supplier.supplier?.contact_person || supplier.supplier?.phone) && (
                                   <div className="border-t border-gray-200/50 pt-3 sm:pt-4 mt-3 sm:mt-4">
-                                    <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-2 sm:mb-3 uppercase tracking-wider">İletişim</div>
+                                    <div className="text-[10px] sm:text-xs font-medium text-gray-500 mb-2 sm:mb-3">İletişim</div>
                                     <div className="space-y-1.5 sm:space-y-2">
                                       {supplier.supplier?.contact_person && (
                                         <div className="flex items-center justify-between text-xs sm:text-sm">

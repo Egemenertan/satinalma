@@ -420,7 +420,7 @@ export default function LoginPage() {
               <Button
                 type="submit"
                 disabled={emailLoading || loading}
-                className="w-full h-12 text-base font-semibold rounded-xl bg-gray-900 text-white hover:bg-gray-800"
+                className="w-full h-12 text-base font-semibold rounded-xl border-2 border-black bg-white text-black hover:bg-gray-50"
               >
                 {emailLoading ? (
                   <>
@@ -446,7 +446,7 @@ export default function LoginPage() {
               type="button"
               onClick={handleLogin}
               disabled={loading || emailLoading}
-              className="w-full h-14 text-base font-semibold bg-white hover:bg-gray-50 text-gray-900 border-2 border-gray-200 rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
+              className="w-full h-14 text-base font-semibold bg-black hover:bg-gray-900 text-white border-2 border-black rounded-xl shadow-lg hover:shadow-xl flex items-center justify-center gap-3"
             >
               {loading && !status ? (
                 <>
@@ -454,7 +454,15 @@ export default function LoginPage() {
                   Giriş yapılıyor...
                 </>
               ) : (
-                'Microsoft ile Giriş Yap'
+                <>
+                  <svg className="h-5 w-5" viewBox="0 0 23 23" aria-hidden="true">
+                    <path d="M0 0h10.93v10.93H0V0z" fill="#F25022" />
+                    <path d="M12.07 0H23v10.93H12.07V0z" fill="#7FBA00" />
+                    <path d="M0 12.07h10.93V23H0V12.07z" fill="#00A4EF" />
+                    <path d="M12.07 12.07H23V23H12.07V12.07z" fill="#FFB900" />
+                  </svg>
+                  Microsoft ile Giriş Yap
+                </>
               )}
             </Button>
 

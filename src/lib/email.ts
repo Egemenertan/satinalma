@@ -180,10 +180,10 @@ Bu bildirim Satın Alma Yönetim Sistemi tarafından otomatik olarak gönderilmi
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header { background: linear-gradient(135deg, #004777 0%, #53131E 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-        .info-box { background: #f8f9fa; border-left: 4px solid #667eea; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; background: #004777; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .info-box { background: #f8f9fa; border-left: 4px solid #004777; padding: 15px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
     </style>
 </head>
@@ -267,10 +267,10 @@ Talebi görüntülemek için: ${requestUrl}
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: ${newStatus === 'approved' ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)' : newStatus === 'rejected' ? 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)' : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)'}; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header { background: ${newStatus === 'approved' ? 'linear-gradient(135deg, #007944 0%, #005C33 100%)' : newStatus === 'rejected' ? 'linear-gradient(135deg, #C2322F 0%, #9A2422 100%)' : 'linear-gradient(135deg, #004777 0%, #53131E 100%)'}; color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .button { display: inline-block; background: #667eea; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-        .status-box { background: ${newStatus === 'approved' ? '#f0fdf4' : newStatus === 'rejected' ? '#fef2f2' : '#f8f9fa'}; border-left: 4px solid ${newStatus === 'approved' ? '#10b981' : newStatus === 'rejected' ? '#ef4444' : '#667eea'}; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; background: #004777; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .status-box { background: ${newStatus === 'approved' ? '#F6F6F6' : newStatus === 'rejected' ? '#FFF1F0' : '#f8f9fa'}; border-left: 4px solid ${newStatus === 'approved' ? '#007944' : newStatus === 'rejected' ? '#C2322F' : '#004777'}; padding: 15px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
     </style>
 </head>
@@ -339,10 +339,10 @@ Teklifi görüntülemek için: ${requestUrl}
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; }
         .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
+        .header { background: linear-gradient(135deg, #53131E 0%, #370D13 100%); color: white; padding: 30px; border-radius: 8px 8px 0 0; text-align: center; }
         .content { background: white; padding: 30px; border-radius: 0 0 8px 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
-        .button { display: inline-block; background: #f59e0b; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
-        .offer-box { background: #fffbeb; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0; }
+        .button { display: inline-block; background: #53131E; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; margin: 20px 0; }
+        .offer-box { background: #F8EEEE; border-left: 4px solid #53131E; padding: 15px; margin: 20px 0; }
         .footer { text-align: center; margin-top: 30px; color: #666; font-size: 12px; }
     </style>
 </head>

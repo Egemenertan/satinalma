@@ -633,7 +633,7 @@ export default function PartialDeliveryModal({
                               e.stopPropagation()
                               removeExistingPhoto(index)
                             }}
-                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full z-10"
+                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-400 text-black rounded-full z-10"
                             title="Fotoğrafı kaldır"
                           >
                             <X className="h-3 w-3" />
@@ -693,7 +693,7 @@ export default function PartialDeliveryModal({
                               e.stopPropagation()
                               removePhoto(index)
                             }}
-                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full z-10"
+                            className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-400 text-black rounded-full z-10"
                           >
                             <X className="h-3 w-3" />
                           </Button>

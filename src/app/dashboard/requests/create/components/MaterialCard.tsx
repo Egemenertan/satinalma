@@ -10,7 +10,7 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
       type="button"
       onClick={onClick}
       className={`
-        group relative w-full bg-white rounded-2xl border overflow-hidden
+    group relative w-full bg-white rounded-2xl border overflow-hidden
         transition-all duration-200 text-left
         ${isInCart 
           ? 'border-[#00E676] ring-2 ring-[#00E676]/20 shadow-md' 
@@ -20,12 +20,12 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
     >
       {/* Image/Icon Area */}
       <div className={`
-        relative w-full aspect-square flex items-center justify-center
+    relative w-full aspect-square flex items-center justify-center
         transition-all duration-200
-        ${isInCart ? 'bg-[#00E676]/5' : 'bg-gradient-to-br from-gray-50 to-gray-100'}
+        ${isInCart ? 'bg-black/[0.04]' : 'bg-gradient-to-br from-gray-50 to-gray-100'}
       `}>
         <div className={`
-          w-16 h-16 rounded-2xl flex items-center justify-center
+     w-16 h-16 rounded-2xl flex items-center justify-center
           transition-all duration-200
           ${isInCart 
             ? 'bg-[#00E676] shadow-md' 
@@ -33,7 +33,7 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
           }
         `}>
           <Package className={`
-            w-8 h-8 transition-colors duration-200
+      w-8 h-8 transition-colors duration-200
             ${isInCart ? 'text-white' : 'text-gray-400 group-hover:text-gray-600'}
           `} />
         </div>
@@ -72,9 +72,9 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
           <Badge 
             variant="secondary" 
             className={`
-              mb-2 text-xs font-medium transition-all duration-200
+       mb-2 text-xs font-medium transition-all duration-200
               ${isInCart 
-                ? 'bg-[#00E676]/10 text-[#00E676]' 
+                ? 'bg-black/[0.06] text-[#00E676]' 
                 : 'bg-gray-100 text-gray-600'
               }
             `}
@@ -85,7 +85,7 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
 
         {/* Product Name */}
         <h3 className={`
-          font-semibold text-sm leading-tight line-clamp-2 mb-2
+     font-semibold text-sm leading-tight line-clamp-2 mb-2
           transition-colors duration-200
           ${isInCart ? 'text-[#00E676]' : 'text-gray-900'}
         `}>
@@ -101,12 +101,12 @@ export function MaterialCard({ item, isInCart, onClick, hasContract }: MaterialC
 
         {/* Action Button */}
         <div className={`
-          w-full py-2.5 rounded-xl text-sm font-medium
+     w-full py-2.5 rounded-xl text-sm font-medium
           flex items-center justify-center gap-2
           transition-all duration-200
           ${isInCart 
             ? 'bg-[#00E676] text-white' 
-            : 'bg-gray-100 text-gray-700 group-hover:bg-gray-900 group-hover:text-white'
+            : 'bg-gray-100 text-gray-700 group-hover:bg-navy group-hover:text-white'
           }
         `}>
           {isInCart ? (
@@ -136,19 +136,19 @@ export function NewMaterialCard({ onClick }: NewMaterialCardProps) {
       type="button"
       onClick={onClick}
       className="
-        group relative w-full bg-white rounded-2xl border-2 border-dashed border-gray-200
+    group relative w-full bg-white rounded-2xl border-2 border-dashed border-gray-200
         overflow-hidden transition-all duration-200 text-left
         hover:border-gray-300 hover:shadow-lg hover:-translate-y-1
       "
     >
       {/* Icon Area */}
       <div className="
-        relative w-full aspect-square flex items-center justify-center
+    relative w-full aspect-square flex items-center justify-center
         bg-gradient-to-br from-gray-50 to-gray-100
         transition-all duration-200
       ">
         <div className="
-          w-16 h-16 rounded-2xl flex items-center justify-center
+     w-16 h-16 rounded-2xl flex items-center justify-center
           bg-white shadow-md group-hover:shadow-lg
           transition-all duration-200 group-hover:scale-110
         ">

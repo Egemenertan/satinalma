@@ -102,7 +102,7 @@ export default function RequestActivityTimeline({ requestId, refreshKey }: Props
                 <li key={item.id} className="relative pl-5 sm:pl-6 pb-5 last:pb-0">
                   <span
                     className={`absolute -left-1.5 top-1.5 h-3 w-3 rounded-full border-2 border-white ${
-                      item.action === 'rejected'
+           item.action === 'rejected'
                         ? 'bg-red-500'
                         : item.action === 'submitted'
                           ? 'bg-gray-400'

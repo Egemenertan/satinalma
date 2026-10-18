@@ -315,7 +315,7 @@ function buildDailyFinanceChartBlock(chart: SiteFinanceChartPrintInput | null, c
         `<span class="lg-item"><span class="dot" style="background:${escapeHtml(s.stroke)}"></span><span>${escapeHtml(s.code)}</span></span>`
     )
     .join('')
-  const legendOrder = `<span class="lg-item"><span class="dot" style="background:#6366f1"></span><span>Sipariş (gün)</span></span>`
+  const legendOrder = `<span class="lg-item"><span class="dot" style="background:#004777"></span><span>Sipariş (gün)</span></span>`
   return `
     <div class="pdf-finance-chart-wrap">
       <div class="section-title" style="margin-bottom:6px;font-size:11pt;padding-bottom:0;border-bottom:none">Günlük fatura (döviz) · sipariş</div>

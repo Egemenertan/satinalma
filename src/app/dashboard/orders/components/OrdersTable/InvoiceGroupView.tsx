@@ -311,7 +311,7 @@ export function InvoiceGroupView({
               size="sm"
               onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
               disabled={currentPage === 1}
-              className="flex items-center gap-1 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-900"
+              className="flex items-center gap-1 border-bordeaux text-bordeaux hover:bg-bordeaux hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-900"
             >
               <ChevronLeft className="w-4 h-4" />
               Önceki
@@ -332,9 +332,9 @@ export function InvoiceGroupView({
                       size="sm"
                       onClick={() => setCurrentPage(page)}
                       className={`min-w-[40px] ${
-                        currentPage === page
-                          ? 'bg-gray-900 text-white hover:bg-gray-800 border-gray-900'
-                          : 'border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white'
+            currentPage === page
+                          ? 'bg-navy text-white hover:bg-navy-700 border-gray-900'
+                          : 'border-bordeaux text-bordeaux hover:bg-bordeaux hover:text-white'
                       }`}
                     >
                       {page}
@@ -355,7 +355,7 @@ export function InvoiceGroupView({
               size="sm"
               onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
               disabled={currentPage === totalPages}
-              className="flex items-center gap-1 border-gray-900 text-gray-900 hover:bg-gray-900 hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-900"
+              className="flex items-center gap-1 border-bordeaux text-bordeaux hover:bg-bordeaux hover:text-white disabled:opacity-50 disabled:hover:bg-transparent disabled:hover:text-gray-900"
             >
               Sonraki
               <ChevronRight className="w-4 h-4" />

@@ -60,13 +60,13 @@ export function MaterialCardRn({
               style={styles.miniBtn}
               onPress={handleDecrement}
             >
-              <MaterialIcons name="remove" size={18} color="#047857" />
+              <MaterialIcons name="remove" size={18} color="#0A0A0A" />
             </Pressable>
             <Pressable style={styles.quantityDisplay} onPress={() => onOpenDetail(item)}>
               <Text style={styles.quantityDisplayText}>{cartQuantity}</Text>
             </Pressable>
             <Pressable style={styles.miniBtn} onPress={handleIncrement}>
-              <MaterialIcons name="add" size={18} color="#047857" />
+              <MaterialIcons name="add" size={18} color="#0A0A0A" />
             </Pressable>
           </View>
         ) : (
@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#ecfdf5',
     borderRadius: 50,
     borderWidth: 1,
-    borderColor: '#10b981',
+    borderColor: '#00E676',
     paddingHorizontal: 4,
     paddingVertical: 4,
   },
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
   quantityDisplayText: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#047857',
+    color: '#0A0A0A',
   },
   addBtn: {
     flex: 1,

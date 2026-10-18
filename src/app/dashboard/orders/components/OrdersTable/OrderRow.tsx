@@ -33,7 +33,7 @@ export function OrderRow({
   return (
     <div 
       className={`grid gap-3 items-start py-3 px-4 text-xs cursor-pointer transition-colors ${
-        isSelected 
+    isSelected 
           ? 'bg-gray-100 border-l-4 border-gray-900' 
           : 'hover:bg-gray-50'
       }`}
@@ -44,8 +44,8 @@ export function OrderRow({
       <div className="flex items-center justify-center">
         <div 
           className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-            isSelected
-              ? 'bg-gray-900 border-gray-900'
+      isSelected
+              ? 'bg-navy border-navy'
               : 'border-gray-300 hover:border-gray-500'
           }`}
         >

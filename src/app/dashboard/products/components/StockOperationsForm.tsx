@@ -15,7 +15,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { fetchSites } from '@/services/sites.service'
 import { addStock, removeStock, transferStock, adjustStock, fetchStockByProduct } from '@/services/stock.service'
 import { createClient } from '@/lib/supabase/client'
-import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck, Upload, X, FileText, UserPlus, Building2, Package } from 'lucide-react'
+import { ArrowDown, ArrowUp, ArrowLeftRight, Edit3, UserCheck, Upload, X, FileText, UserPlus, Truck } from 'lucide-react'
 import { validateImageFile } from '@/lib/utils/imageUpload'
 import {
   fetchActiveZimmetsForProduct,
@@ -23,12 +23,17 @@ import {
 } from '@/services/zimmet.service'
 import { ZimmetManagePanel } from './ZimmetManagePanel'
 
-type OperationType = 'giriş' | 'çıkış' | 'transfer' | 'düzeltme' | 'zimmet'
+type OperationType = 'giriş' | 'çıkış' | 'transfer' | 'düzeltme' | 'zimmet' | 'teslim'
 
 interface StockOperationsFormProps {
   productId: string
   productName: string
   productUnit?: string
+  productSku?: string | null
+  productBrand?: string | null
+  productType?: string | null
+  unitPrice?: string | number | null
+  currency?: string | null
   /** Ürünler sayfasındaki seçili depo */
   defaultWarehouseId?: string
   onSuccess?: () => void
@@ -42,6 +47,29 @@ interface StockOperationsFormProps {
 
 function isFreeWarehouseStock(stock: { user_id?: string | null; warehouse_id?: string | null }) {
   return (stock.user_id == null || stock.user_id === undefined) && !!stock.warehouse_id
+}
+
+function isSanayiDepo(name: string) {
+  return name.trim().toLocaleLowerCase('tr').replace(/\s+/g, ' ') === 'sanayi depo'
+}
+
+function defaultSourceWarehouseId(
+  sites: { id: string; name: string }[] | undefined,
+  qtyById: Map<string, number>
+) {
+  const sanayi = (sites || []).find(
+    (site) => isSanayiDepo(site.name) && (qtyById.get(site.id) || 0) > 0
+  )
+  if (sanayi) return sanayi.id
+  let bestId = ''
+  let bestQty = 0
+  for (const [id, qty] of qtyById) {
+    if (qty > bestQty) {
+      bestId = id
+      bestQty = qty
+    }
+  }
+  return bestId
 }
 
 function pickDefaultWarehouse(
@@ -64,6 +92,11 @@ export function StockOperationsForm({
   productId,
   productName,
   productUnit,
+  productSku,
+  productBrand,
+  productType,
+  unitPrice,
+  currency,
   defaultWarehouseId,
   onSuccess,
   allowedOperations,
@@ -74,6 +107,7 @@ export function StockOperationsForm({
   const [operationType, setOperationType] = useState<OperationType>('giriş')
   const [formData, setFormData] = useState({
     warehouse_id: '',
+    source_warehouse_id: '',
     to_warehouse_id: '', // Transfer için
     supplier_name: '', // Tedarikçi firma adı (sadece giriş için)
     product_condition: 'yeni' as 'yeni' | 'kullanılmış' | 'arızalı' | 'hek', // Ürün durumu (sadece giriş için)
@@ -212,6 +246,83 @@ export function StockOperationsForm({
     setPreviewUrls((prev) => prev.filter((_, i) => i !== index))
   }
 
+  const writeTeslimReport = async (input: {
+    employee: { first_name: string | null; work_email: string | null }
+    quantity: number
+    sourceId: string
+    destinationId: string
+  }) => {
+    const supabase = createClient()
+    const { data: authData } = await supabase.auth.getUser()
+    const user = authData?.user
+    let exportedByDisplayName = user?.email ?? '—'
+    let exportedByEmail = user?.email ?? undefined
+    if (user?.id) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('full_name, email')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (profile?.full_name?.trim()) exportedByDisplayName = profile.full_name.trim()
+      else if (profile?.email) exportedByDisplayName = profile.email
+      exportedByEmail = profile?.email || user.email || undefined
+    }
+
+    const sourceName = sites?.find((site) => site.id === input.sourceId)?.name || 'Depo'
+    const destination = sites?.find((site) => site.id === input.destinationId)?.name || 'Depo'
+    const person = (input.employee.first_name || '').trim() || 'Teslim alan'
+    const price = unitPrice == null || unitPrice === '' ? null : Number(unitPrice)
+    const payload = {
+      docTitleSuffix: `Teslim raporu — ${person}`,
+      titleMain: 'TESLİM RAPORU',
+      titleSub: 'Depodan teslim tutanağı.',
+      assignedPersonName: person,
+      assignedPersonEmailLine: input.employee.work_email || '',
+      exportedByDisplayName,
+      exportedByEmail,
+      generatedAtLabel: new Date().toLocaleString('tr-TR'),
+      warehouseScopeLine: `Teslim deposu: ${destination}`,
+      rowCountNote: '1 ürün teslim edilmiştir',
+      rows: [
+        {
+          productName,
+          sku: productSku || '',
+          brand: productBrand || '',
+          unit: productUnit || 'adet',
+          quantity: input.quantity,
+          unitPrice: price != null && Number.isFinite(price) ? price : null,
+          currency: currency || 'TRY',
+          productType: productType || '',
+          sourceWarehouse: sourceName === destination ? destination : `${sourceName} → ${destination}`,
+          serialNumber: '',
+        },
+      ],
+      heading: 'Teslim edilen ürünler',
+      signLeftRole: 'Teslim eden',
+      signRightRole: 'Teslim alan',
+      signRightNote: 'Ürünleri teslim aldım.',
+      footerNote: 'Teslim raporu — Satın Alma / Envanter — Dovec',
+      declaration:
+        'İşbu rapor ile yukarıda dökümü verilen malzeme ve ürünleri eksiksiz teslim aldığımı beyan ederim.',
+    }
+
+    try {
+      const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
+      const { recordZimmetOperation } = await import('@/services/zimmet-operations.service')
+      await recordZimmetOperation({
+        operationType: 'delivery',
+        personName: person,
+        personEmail: input.employee.work_email,
+        snapshot: payload,
+      })
+      await downloadZimmetAssignmentListPdf(payload)
+      return false
+    } catch (error) {
+      console.error('Teslim raporu oluşturulamadı:', error)
+      return true
+    }
+  }
+
   // Mutation'lar
   const stockMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -253,9 +364,14 @@ export function StockOperationsForm({
             parseFloat(data.quantity),
             data.reason
           )
-        case 'zimmet': {
+        case 'zimmet':
+        case 'teslim': {
           if (!data.assigned_to) {
-            throw new Error('Lütfen zimmet alacak kullanıcıyı seçin')
+            throw new Error(
+              operationType === 'teslim'
+                ? 'Lütfen teslim alacak kişiyi seçin'
+                : 'Lütfen zimmet alacak kullanıcıyı seçin'
+            )
           }
           if (!data.warehouse_id) {
             throw new Error('Lütfen depo seçin')
@@ -266,25 +382,56 @@ export function StockOperationsForm({
             throw new Error('Seçilen çalışan bulunamadı')
           }
 
-          const { assignZimmetInWarehouse, assignSubZimmet } = await import('@/services/zimmet.service')
-          const assign = zimmetMode === 'sub' ? assignSubZimmet : assignZimmetInWarehouse
-          await assign({
-            productId,
-            productName,
-            productUnit,
-            warehouseId: data.warehouse_id,
-            quantity: parseFloat(data.quantity),
+          const quantity = parseFloat(data.quantity)
+          const isSubZimmet = operationType === 'zimmet' && zimmetMode === 'sub'
+
+          if (!isSubZimmet) {
+            const sourceId = data.source_warehouse_id || data.warehouse_id
+            if (sourceId !== data.warehouse_id) {
+              const sourceName =
+                sites?.find((site) => site.id === sourceId)?.name || 'Kaynak depo'
+              const destName =
+                sites?.find((site) => site.id === data.warehouse_id)?.name || 'Hedef depo'
+              const { transferStockIntoOperatedWarehouse } = await import('@/services/stock.service')
+              await transferStockIntoOperatedWarehouse(
+                productId,
+                sourceId,
+                data.warehouse_id,
+                quantity,
+                `${operationType === 'teslim' ? 'Teslim' : 'Zimmet'}: ${sourceName} → ${destName}`
+              )
+            }
+          }
+
+          if (operationType === 'zimmet') {
+            const { assignZimmetInWarehouse, assignSubZimmet } = await import('@/services/zimmet.service')
+            const assign = isSubZimmet ? assignSubZimmet : assignZimmetInWarehouse
+            await assign({
+              productId,
+              productName,
+              productUnit,
+              warehouseId: data.warehouse_id,
+              quantity,
+              employee: selectedEmployee,
+              reason: data.reason,
+              serialNumber: data.serial_number || undefined,
+            })
+            return { success: true }
+          }
+
+          const pdfFailed = await writeTeslimReport({
             employee: selectedEmployee,
-            reason: data.reason,
-            serialNumber: data.serial_number || undefined,
+            quantity,
+            sourceId: data.source_warehouse_id || data.warehouse_id,
+            destinationId: data.warehouse_id,
           })
-          return { success: true }
+          return { success: true, pdfFailed }
         }
         default:
           throw new Error('Geçersiz işlem tipi')
       }
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       // Cache'i güncelle
       queryClient.invalidateQueries({ queryKey: ['product-stock', productId] })
       queryClient.invalidateQueries({ queryKey: ['stock-movements', productId] })
@@ -297,15 +444,22 @@ export function StockOperationsForm({
       queryClient.invalidateQueries({ queryKey: ['product-zimmet-availability', productId] })
       
       // Success mesajı
+      const pdfFailed =
+        !!result && typeof result === 'object' && 'pdfFailed' in result && result.pdfFailed === true
       alert(
-        operationType === 'zimmet' && zimmetMode === 'sub'
-          ? '✅ Alt zimmet kaydı oluşturuldu. Asıl zimmet depo sorumlusunda kaldı.'
-          : `✅ Stok ${operationType} işlemi başarıyla tamamlandı!`
+        pdfFailed
+          ? 'Teslim kaydı oluştu ancak PDF indirilemedi. İşlem geçmişinden yeniden alabilirsiniz.'
+          : operationType === 'teslim'
+            ? '✅ Teslim tamamlandı. Teslim raporu indirildi.'
+            : operationType === 'zimmet' && zimmetMode === 'sub'
+              ? '✅ Alt zimmet kaydı oluşturuldu. Asıl zimmet depo sorumlusunda kaldı.'
+              : `✅ Stok ${operationType} işlemi başarıyla tamamlandı!`
       )
       
       setWarehouseTouched(false)
       setFormData({
         warehouse_id: '',
+        source_warehouse_id: '',
         to_warehouse_id: '',
         supplier_name: '',
         product_condition: 'yeni',
@@ -356,8 +510,8 @@ export function StockOperationsForm({
       return
     }
     
-    if (operationType === 'zimmet' && !formData.assigned_to) {
-      alert('Lütfen zimmet alacak kullanıcıyı seçin')
+    if ((operationType === 'zimmet' || operationType === 'teslim') && !formData.assigned_to) {
+      alert(operationType === 'teslim' ? 'Lütfen teslim alacak kişiyi seçin' : 'Lütfen zimmet alacak kullanıcıyı seçin')
       return
     }
     
@@ -366,16 +520,25 @@ export function StockOperationsForm({
       return
     }
 
-    if (operationType === 'zimmet' && zimmetMode !== 'sub') {
-      const avail = zimmetAvailability.find((r) => r.warehouseId === formData.warehouse_id)
-      const qty = parseFloat(formData.quantity)
-      if (!avail || avail.availableQty <= 0) {
-        alert('Seçili depoda zimmetlenebilir stok yok')
+    const movesFromSource =
+      (operationType === 'teslim' || (operationType === 'zimmet' && zimmetMode !== 'sub'))
+    if (movesFromSource) {
+      const sourceId = formData.source_warehouse_id
+      if (!sourceId) {
+        alert('Lütfen kaynak depo seçin')
         return
       }
-      if (qty > avail.availableQty) {
+      const avail = zimmetAvailability.find((r) => r.warehouseId === sourceId)
+      const shelfQty = warehouseQtyById.get(sourceId) || 0
+      const availableQty = avail ? avail.availableQty : shelfQty
+      const qty = parseFloat(formData.quantity)
+      if (availableQty <= 0) {
+        alert('Kaynak depoda boş stok yok')
+        return
+      }
+      if (qty > availableQty) {
         alert(
-          `Zimmetlenebilir miktar en fazla ${avail.availableQty.toLocaleString('tr-TR')} ${productUnit || 'adet'}`
+          `Kaynak depodaki boş stok en fazla ${availableQty.toLocaleString('tr-TR')} ${productUnit || 'adet'}`
         )
         return
       }
@@ -393,6 +556,7 @@ export function StockOperationsForm({
     setWarehouseTouched(false)
     setFormData({
       warehouse_id: '',
+      source_warehouse_id: '',
       to_warehouse_id: '',
       supplier_name: '',
       product_condition: 'yeni',
@@ -417,19 +581,37 @@ export function StockOperationsForm({
   }, [operationType])
 
   useEffect(() => {
-    if (operationType === 'zimmet') return
-    if (warehouseTouched && !(warehouseIds?.length === 1)) return
-    const preferred =
-      warehouseIds?.length === 1
-        ? warehouseIds[0]
-        : defaultWarehouseId
+    const movesFromSource =
+      operationType === 'teslim' || (operationType === 'zimmet' && zimmetMode !== 'sub')
+    if (operationType === 'zimmet' && zimmetMode === 'sub') return
+    if (warehouseTouched && warehouseIds?.length !== 1) return
+    const preferred = warehouseIds?.length === 1 ? warehouseIds[0] : defaultWarehouseId
+    if (movesFromSource) {
+      if (!preferred) return
+      if (warehouseIds?.length && !warehouseIds.includes(preferred)) return
+      setFormData((prev) =>
+        prev.warehouse_id === preferred ? prev : { ...prev, warehouse_id: preferred }
+      )
+      return
+    }
     const picked = pickDefaultWarehouse(productStocks, preferred)
     if (!picked) return
     if (warehouseIds?.length && !warehouseIds.includes(picked)) return
     setFormData((prev) =>
       prev.warehouse_id === picked ? prev : { ...prev, warehouse_id: picked }
     )
-  }, [operationType, warehouseTouched, productStocks, defaultWarehouseId, warehouseIds])
+  }, [operationType, zimmetMode, warehouseTouched, productStocks, defaultWarehouseId, warehouseIds])
+
+  useEffect(() => {
+    const movesFromSource =
+      operationType === 'teslim' || (operationType === 'zimmet' && zimmetMode !== 'sub')
+    if (!movesFromSource || !sites?.length) return
+    const picked = defaultSourceWarehouseId(sites, warehouseQtyById)
+    if (!picked) return
+    setFormData((prev) =>
+      prev.source_warehouse_id ? prev : { ...prev, source_warehouse_id: picked }
+    )
+  }, [operationType, zimmetMode, sites, productStocks])
 
   const operationConfig = {
     giriş: {
@@ -462,6 +644,12 @@ export function StockOperationsForm({
       label: 'Zimmet Ver',
       quantityLabel: 'Zimmet Miktarı',
     },
+    teslim: {
+      icon: Truck,
+      color: 'from-neutral-800 to-neutral-950',
+      label: 'Teslim Et',
+      quantityLabel: 'Teslim Miktarı',
+    },
   }
 
   const config = operationConfig[operationType]
@@ -483,7 +671,7 @@ export function StockOperationsForm({
           <p className="text-xs text-gray-500 mt-1">Yalnızca kendi deponuza stok girişi yapabilirsiniz.</p>
         </div>
       ) : (
-      <div className={`grid gap-2 p-2 bg-gray-100 rounded-2xl ${enabledOperations.length <= 2 ? 'grid-cols-2' : 'grid-cols-5'}`}>
+      <div className={`grid gap-2 p-2 bg-gray-100 rounded-2xl ${enabledOperations.length <= 2 ? 'grid-cols-2' : enabledOperations.length <= 4 ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-3 sm:grid-cols-6'}`}>
         {enabledOperations.map((type) => {
           const Icon = operationConfig[type].icon
           return (
@@ -492,7 +680,7 @@ export function StockOperationsForm({
               type="button"
               onClick={() => setOperationType(type)}
               className={`
-                flex flex-col items-center gap-2 p-3 rounded-xl transition-all
+        flex flex-col items-center gap-2 p-3 rounded-xl transition-all
                 ${
                   operationType === type
                     ? 'bg-white shadow-sm text-gray-900 font-medium'
@@ -514,7 +702,7 @@ export function StockOperationsForm({
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Ürün Bilgisi */}
         <div className="bg-gradient-to-r from-gray-50 to-gray-100 rounded-2xl p-5 border border-gray-200/50">
-          <Label className="text-xs font-medium text-gray-500 uppercase tracking-wide">Ürün</Label>
+          <Label className="text-xs font-medium text-gray-500">Ürün</Label>
           <p className="text-lg font-semibold text-gray-900 mt-1">{productName}</p>
         </div>
 
@@ -528,96 +716,70 @@ export function StockOperationsForm({
         )}
 
         {operationType === 'zimmet' && zimmetMode !== 'sub' && (
-          <>
-            <ZimmetManagePanel
-              productId={productId}
-              productUnit={productUnit || 'adet'}
-              zimmets={activeZimmets}
-              loading={isLoadingActiveZimmets}
-              onChanged={handleZimmetPanelChanged}
-              compact
-            />
-
-            <div className="rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between gap-3 bg-gray-50/80">
-                <div className="flex items-center gap-3 min-w-0">
-                  <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gray-900 text-white">
-                    <Package className="h-5 w-5" />
-                  </span>
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-gray-900">Zimmetlenebilir stok</p>
-                    <p className="text-xs text-gray-500 mt-0.5">
-                      Depo stoğu − mevcut zimmet = yapılabilir adet
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 space-y-2">
-                {isLoadingZimmetAvailability ? (
-                  <p className="text-sm text-gray-500 py-4 text-center">Yükleniyor…</p>
-                ) : zimmetAvailability.length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-gray-200 bg-gray-50 px-4 py-6 text-center">
-                    <p className="text-sm text-gray-500">Bu ürün için depo stoğu bulunamadı.</p>
-                  </div>
-                ) : (
-                  zimmetAvailability.map((row) => {
-                    const selected = formData.warehouse_id === row.warehouseId
-                    return (
-                      <button
-                        key={row.warehouseId}
-                        type="button"
-                        onClick={() => handleChange('warehouse_id', row.warehouseId)}
-                        className={`w-full text-left rounded-2xl border px-4 py-3.5 transition-all ${
-                          selected
-                            ? 'border-gray-900 bg-gray-50 shadow-sm'
-                            : 'border-gray-200 bg-white hover:bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex items-start gap-2.5">
-                            <Building2 className="h-4 w-4 text-gray-500 mt-0.5 shrink-0" />
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-gray-900 truncate">
-                                {row.warehouseName}
-                              </p>
-                              <p className="text-xs text-gray-500 mt-1">
-                                Depo:{' '}
-                                <span className="font-medium text-gray-700">
-                                  {row.stockQty.toLocaleString('tr-TR')} {productUnit || 'adet'}
-                                </span>
-                                <span className="text-gray-300 mx-1.5">·</span>
-                                Zimmetli:{' '}
-                                <span className="font-medium text-gray-700">
-                                  {row.zimmetQty.toLocaleString('tr-TR')}
-                                </span>
-                              </p>
-                            </div>
-                          </div>
-                          <div className="text-right shrink-0">
-                            <p
-                              className={`text-lg font-bold tabular-nums ${
-                                row.availableQty > 0 ? 'text-emerald-700' : 'text-gray-400'
-                              }`}
-                            >
-                              {row.availableQty.toLocaleString('tr-TR')}
-                            </p>
-                            <p className="text-[11px] text-gray-500">zimmetlenebilir</p>
-                          </div>
-                        </div>
-                      </button>
-                    )
-                  })
-                )}
-              </div>
-            </div>
-          </>
+          <ZimmetManagePanel
+            productId={productId}
+            productUnit={productUnit || 'adet'}
+            zimmets={activeZimmets}
+            loading={isLoadingActiveZimmets}
+            onChanged={handleZimmetPanelChanged}
+            compact
+          />
         )}
 
-        {/* Kaynak Depo */}
+        {(operationType === 'teslim' || (operationType === 'zimmet' && zimmetMode !== 'sub')) && (
+          <div className="rounded-2xl border border-gray-200 bg-gray-50 px-5 py-4">
+            <p className="text-sm font-semibold text-gray-900">
+              {operationType === 'teslim' ? 'Teslim' : 'Zimmet'}
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Kaynak depo varsayılan olarak Sanayi Depo seçilir. Ürün başka depodaysa seçilen{' '}
+              {operationType === 'teslim' ? 'teslim' : 'zimmet'} deposuna aktarılır.
+            </p>
+          </div>
+        )}
+
+        {(operationType === 'teslim' || (operationType === 'zimmet' && zimmetMode !== 'sub')) && (
+          <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
+            <Label htmlFor="source_warehouse_id" className="text-xs font-medium text-gray-500">
+              Kaynak depo *
+            </Label>
+            <Select
+              value={formData.source_warehouse_id || 'none'}
+              onValueChange={(value) => handleChange('source_warehouse_id', value === 'none' ? '' : value)}
+            >
+              <SelectTrigger className="mt-2 border-0 bg-gray-50/50 focus:bg-white transition-all rounded-xl">
+                <SelectValue placeholder="Kaynak depo seçin" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Kaynak depo seçin</SelectItem>
+                {(sites || [])
+                  .filter((site) => (warehouseQtyById.get(site.id) || 0) > 0 || site.id === formData.source_warehouse_id)
+                  .map((site) => {
+                    const avail = zimmetAvailability.find((row) => row.warehouseId === site.id)
+                    const free = avail ? avail.availableQty : warehouseQtyById.get(site.id) || 0
+                    return (
+                      <SelectItem key={site.id} value={site.id}>
+                        {site.name} · {free.toLocaleString('tr-TR')} {productUnit || 'adet'}
+                      </SelectItem>
+                    )
+                  })}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {/* Depo */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="warehouse_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-            {operationType === 'transfer' ? 'Kaynak Depo *' : operationType === 'zimmet' ? 'Zimmet Edilecek Depo *' : 'Depo *'}
+          <Label htmlFor="warehouse_id" className="text-xs font-medium text-gray-500">
+            {operationType === 'transfer'
+              ? 'Kaynak Depo *'
+              : operationType === 'teslim'
+                ? 'Teslim deposu *'
+                : operationType === 'zimmet' && zimmetMode !== 'sub'
+                  ? 'Zimmet deposu *'
+                  : operationType === 'zimmet'
+                    ? 'Zimmet Edilecek Depo *'
+                    : 'Depo *'}
           </Label>
             <Select
             value={formData.warehouse_id || 'none'}
@@ -705,7 +867,7 @@ export function StockOperationsForm({
         {/* Hedef Depo (Sadece Transfer için) */}
         {operationType === 'transfer' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="to_warehouse_id" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <Label htmlFor="to_warehouse_id" className="text-xs font-medium text-gray-500">
               Hedef Depo *
             </Label>
             <Select
@@ -730,15 +892,17 @@ export function StockOperationsForm({
         )}
 
         {/* Zimmet Alan (Transfer ve Zimmet için) */}
-        {(operationType === 'transfer' || operationType === 'zimmet') && (
+        {(operationType === 'transfer' || operationType === 'zimmet' || operationType === 'teslim') && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="assigned_to" className="text-xs font-medium text-gray-500 uppercase tracking-wide flex items-center gap-2">
+            <Label htmlFor="assigned_to" className="text-xs font-medium text-gray-500 flex items-center gap-2">
               <UserCheck className="w-4 h-4" />
-              {operationType === 'zimmet'
-                ? zimmetMode === 'sub'
-                  ? 'Alt zimmet verilecek kullanıcı *'
-                  : 'Zimmet Alacak Kullanıcı *'
-                : 'Zimmet Alan (Opsiyonel)'}
+              {operationType === 'teslim'
+                ? 'Teslim alacak kişi *'
+                : operationType === 'zimmet'
+                  ? zimmetMode === 'sub'
+                    ? 'Alt zimmet verilecek kullanıcı *'
+                    : 'Zimmet Alacak Kullanıcı *'
+                  : 'Zimmet Alan (Opsiyonel)'}
             </Label>
             <Select
               value={formData.assigned_to || 'none'}
@@ -765,7 +929,7 @@ export function StockOperationsForm({
         {/* Tedarikçi Firma (Sadece Stok Girişi için) */}
         {operationType === 'giriş' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="supplier_name" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <Label htmlFor="supplier_name" className="text-xs font-medium text-gray-500">
               Tedarikçi Firma (Opsiyonel)
             </Label>
             <Input
@@ -781,7 +945,7 @@ export function StockOperationsForm({
         {/* Ürün Durumu (Sadece Stok Girişi için) */}
         {operationType === 'giriş' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="product_condition" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <Label htmlFor="product_condition" className="text-xs font-medium text-gray-500">
               Ürün Durumu *
             </Label>
             <Select
@@ -824,7 +988,7 @@ export function StockOperationsForm({
         {/* Seri numarası (sadece stok girişi) */}
         {operationType === 'giriş' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="serial_number" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <Label htmlFor="serial_number" className="text-xs font-medium text-gray-500">
               Seri numarası (Opsiyonel)
             </Label>
             <Input
@@ -844,7 +1008,7 @@ export function StockOperationsForm({
         {/* Birim Fiyat (Sadece Stok Girişi için) */}
         {operationType === 'giriş' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="unit_price" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+            <Label htmlFor="unit_price" className="text-xs font-medium text-gray-500">
               Birim Fiyat (Opsiyonel)
             </Label>
             <div className="flex gap-2 mt-2">
@@ -877,7 +1041,7 @@ export function StockOperationsForm({
 
         {/* Miktar */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="quantity" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="quantity" className="text-xs font-medium text-gray-500">
             {config.quantityLabel} *
           </Label>
           <Input
@@ -911,7 +1075,7 @@ export function StockOperationsForm({
         {/* Fatura/Fiş Yükleme (Sadece Stok Girişi için) */}
         {operationType === 'giriş' && (
           <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-            <Label htmlFor="invoice" className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-3 block">
+            <Label htmlFor="invoice" className="text-xs font-medium text-gray-500 mb-3 block">
               Fatura/Fiş (Opsiyonel)
             </Label>
             
@@ -975,14 +1139,14 @@ export function StockOperationsForm({
                       <button
                         type="button"
                         onClick={() => removeFile(index)}
-                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-600 text-white rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"
+                        className="absolute top-2 right-2 p-1.5 bg-red-500 hover:bg-red-400 text-black rounded-full shadow-lg opacity-0 group-hover:opacity-100 transition-all"
                       >
                         <X className="w-4 h-4" />
                       </button>
 
                       {/* PDF Badge */}
                       {file.type === 'application/pdf' && (
-                        <div className="absolute top-2 left-2 px-2 py-1 bg-red-500 text-white text-xs font-bold rounded">
+                        <div className="absolute top-2 left-2 px-2 py-1 bg-red-500 text-black text-xs font-bold rounded">
                           PDF
                         </div>
                       )}
@@ -1000,7 +1164,7 @@ export function StockOperationsForm({
 
         {/* Açıklama */}
         <div className="bg-white/80 backdrop-blur-xl rounded-2xl p-5 border border-gray-200/50 shadow-sm">
-          <Label htmlFor="reason" className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+          <Label htmlFor="reason" className="text-xs font-medium text-gray-500">
             {operationType === 'düzeltme' ? 'Düzeltme Nedeni *' : 'Açıklama (Opsiyonel)'}
           </Label>
           <Textarea
@@ -1019,7 +1183,7 @@ export function StockOperationsForm({
           type="submit"
           disabled={stockMutation.isPending || isLoadingSites}
           className={`
-            w-full py-6 rounded-full font-medium text-lg shadow-lg hover:shadow-xl transition-all
+      w-full py-6 rounded-full font-medium text-lg shadow-lg hover:shadow-xl transition-all
             bg-gradient-to-r ${config.color} text-white
           `}
         >

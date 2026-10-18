@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createClient } from '@/lib/supabase/server'
+import { requireReportsAdmin, type ReportsSupabase } from '@/lib/reports/requireAdmin'
 import {
   emptySummary,
   effectiveInvoiceAmount,
@@ -7,6 +7,7 @@ import {
   resolveReportDateRange,
   buildItemDetailLines,
   buildSpendingInsights,
+  titleCaseTr,
   type DepartmentSpendingFilters,
   type DepartmentSpendingLine,
   type DepartmentSpendingReport,
@@ -24,6 +25,7 @@ type RequestRow = {
   id: string
   request_number: string | null
   department: string | null
+  site_id: string | null
   site_name: string | null
   created_at: string
 }
@@ -95,29 +97,14 @@ type InvoiceRow = {
   parent_invoice_id: string | null
 }
 
-type Supabase = ReturnType<typeof createClient>
-
-async function requireAdmin() {
-  const supabase = createClient()
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser()
-  if (error || !user) {
-    return { error: NextResponse.json({ error: 'Oturum bulunamadı' }, { status: 401 }) }
-  }
-  const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-  if (profile?.role !== 'admin') {
-    return { error: NextResponse.json({ error: 'Bu rapor yalnızca admin içindir' }, { status: 403 }) }
-  }
-  return { supabase }
-}
+type Supabase = ReportsSupabase
 
 async function fetchRequests(
   supabase: Supabase,
   dateFrom: string,
   dateTo: string,
-  department: string | null
+  department: string | null,
+  siteId: string | null
 ): Promise<RequestRow[]> {
   const pageSize = 1000
   const all: RequestRow[] = []
@@ -125,7 +112,7 @@ async function fetchRequests(
   for (;;) {
     let q = supabase
       .from('purchase_requests')
-      .select('id, request_number, department, site_name, created_at')
+      .select('id, request_number, department, site_id, site_name, created_at')
       .is('deleted_at', null)
       .gte('created_at', dateFrom)
       .lte('created_at', dateTo)
@@ -134,6 +121,9 @@ async function fetchRequests(
 
     if (department) {
       q = q.ilike('department', department)
+    }
+    if (siteId) {
+      q = q.eq('site_id', siteId)
     }
 
     const { data, error } = await q
@@ -144,6 +134,48 @@ async function fetchRequests(
     from += pageSize
   }
   return all
+}
+
+function groupKey(value: string | null | undefined, fallback: string) {
+  const trimmed = (value || '').trim()
+  return trimmed || fallback
+}
+
+function buildGroupedSummaries(
+  requests: RequestRow[],
+  items: ItemRow[],
+  orders: OrderRow[],
+  invoices: InvoiceRow[],
+  keyOfRequest: (req: RequestRow) => string
+): DepartmentSpendingSummary[] {
+  const byKey = new Map<string, { requests: RequestRow[]; items: ItemRow[]; invoices: InvoiceRow[] }>()
+  for (const req of requests) {
+    const key = keyOfRequest(req)
+    if (!byKey.has(key)) byKey.set(key, { requests: [], items: [], invoices: [] })
+    byKey.get(key)!.requests.push(req)
+  }
+  const requestKey = new Map(requests.map((r) => [r.id, keyOfRequest(r)]))
+  for (const item of items) {
+    const key = requestKey.get(item.purchase_request_id) || 'Belirtilmemiş'
+    if (!byKey.has(key)) byKey.set(key, { requests: [], items: [], invoices: [] })
+    byKey.get(key)!.items.push(item)
+  }
+  const orderKey = new Map(
+    orders.map((o) => [o.id, requestKey.get(o.purchase_request_id) || 'Belirtilmemiş'])
+  )
+  for (const inv of invoices) {
+    const key = orderKey.get(inv.order_id) || 'Belirtilmemiş'
+    if (!byKey.has(key)) byKey.set(key, { requests: [], items: [], invoices: [] })
+    byKey.get(key)!.invoices.push(inv)
+  }
+
+  return [...byKey.entries()]
+    .map(([label, bucket]) => buildSummary(label, bucket.requests, bucket.items, bucket.invoices))
+    .sort((a, b) => {
+      const aSum = a.totalsByCurrency.reduce((s, c) => s + c.amount, 0)
+      const bSum = b.totalsByCurrency.reduce((s, c) => s + c.amount, 0)
+      return bSum - aSum
+    })
 }
 
 function buildSummary(
@@ -172,19 +204,22 @@ function buildSummary(
 
 export async function GET(request: NextRequest) {
   try {
-    const auth = await requireAdmin()
+    const auth = await requireReportsAdmin()
     if ('error' in auth && auth.error) return auth.error
     const { supabase } = auth as { supabase: Supabase }
 
     const sp = request.nextUrl.searchParams
     const filters: DepartmentSpendingFilters = {
       department: sp.get('department'),
+      site: sp.get('site'),
       month: sp.get('month'),
       dateFrom: sp.get('dateFrom'),
       dateTo: sp.get('dateTo'),
     }
     const { dateFrom, dateTo } = resolveReportDateRange(filters)
     const department = filters.department?.trim() || null
+    const siteId = filters.site?.trim() || null
+    const dimension = (sp.get('dimension') || '').trim()
 
     if (sp.get('meta') === 'departments') {
       const { data: deps, error: depErr } = await supabase
@@ -204,7 +239,21 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ departments: unique })
     }
 
-    const requests = await fetchRequests(supabase, dateFrom, dateTo, department)
+    if (sp.get('meta') === 'sites') {
+      const { data: sites, error: siteErr } = await supabase
+        .from('sites')
+        .select('id, name')
+        .order('name', { ascending: true })
+      if (siteErr) throw siteErr
+      return NextResponse.json({
+        sites: (sites || []).map((s) => ({
+          id: s.id,
+          name: titleCaseTr(s.name),
+        })),
+      })
+    }
+
+    const requests = await fetchRequests(supabase, dateFrom, dateTo, department, siteId)
     const requestIds = requests.map((r) => r.id)
     const items: ItemRow[] = []
     const orders: OrderRow[] = []
@@ -265,6 +314,15 @@ export async function GET(request: NextRequest) {
 
     const requestById = new Map(requests.map((r) => [r.id, r]))
 
+    const siteIds = [...new Set(requests.map((r) => r.site_id).filter((id): id is string => Boolean(id)))]
+    const siteNameById = new Map<string, string>()
+    if (siteIds.length > 0) {
+      const { data: siteRows } = await supabase.from('sites').select('id, name').in('id', siteIds)
+      for (const site of siteRows || []) {
+        siteNameById.set(site.id, titleCaseTr(site.name))
+      }
+    }
+
     const fx = await fetchEurFx()
 
     const lines: DepartmentSpendingLine[] = items.map((item) => {
@@ -288,7 +346,7 @@ export async function GET(request: NextRequest) {
         requestNumber: req?.request_number || item.purchase_request_id.slice(0, 8),
         requestCreatedAt: req?.created_at || '',
         department: req?.department || '—',
-        siteName: req?.site_name || null,
+        siteName: req?.site_name || (req?.site_id ? siteNameById.get(req.site_id) : null) || null,
         itemId: item.id,
         itemName: item.item_name || 'İsimsiz kalem',
         purpose: (item.purpose || '').trim() || null,
@@ -302,45 +360,32 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    const byDept = new Map<string, { requests: RequestRow[]; items: ItemRow[]; invoices: InvoiceRow[] }>()
-    for (const req of requests) {
-      const key = (req.department || 'Belirtilmemiş').trim() || 'Belirtilmemiş'
-      if (!byDept.has(key)) byDept.set(key, { requests: [], items: [], invoices: [] })
-      byDept.get(key)!.requests.push(req)
-    }
-    const requestDept = new Map(
-      requests.map((r) => [r.id, (r.department || 'Belirtilmemiş').trim() || 'Belirtilmemiş'])
+    const departmentBreakdown = buildGroupedSummaries(requests, items, orders, invoices, (req) =>
+      groupKey(req.department, 'Belirtilmemiş')
     )
-    for (const item of items) {
-      const key = requestDept.get(item.purchase_request_id) || 'Belirtilmemiş'
-      if (!byDept.has(key)) byDept.set(key, { requests: [], items: [], invoices: [] })
-      byDept.get(key)!.items.push(item)
-    }
-    const orderDept = new Map(
-      orders.map((o) => [o.id, requestDept.get(o.purchase_request_id) || 'Belirtilmemiş'])
+    const siteBreakdown = buildGroupedSummaries(requests, items, orders, invoices, (req) =>
+      groupKey(req.site_name || (req.site_id ? siteNameById.get(req.site_id) : null), 'Belirtilmemiş')
     )
-    for (const inv of invoices) {
-      const key = orderDept.get(inv.order_id) || 'Belirtilmemiş'
-      if (!byDept.has(key)) byDept.set(key, { requests: [], items: [], invoices: [] })
-      byDept.get(key)!.invoices.push(inv)
-    }
 
-    const departmentBreakdown = [...byDept.entries()]
-      .map(([dept, bucket]) => buildSummary(dept, bucket.requests, bucket.items, bucket.invoices))
-      .sort((a, b) => {
-        const aSum = a.totalsByCurrency.reduce((s, c) => s + c.amount, 0)
-        const bSum = b.totalsByCurrency.reduce((s, c) => s + c.amount, 0)
-        return bSum - aSum
-      })
+    const selectedSiteName = siteId
+      ? siteNameById.get(siteId) ||
+        requests.find((r) => r.site_id === siteId)?.site_name ||
+        'Seçili Şantiye'
+      : null
 
-    const summaryRaw = department
-      ? buildSummary(department, requests, items, invoices)
-      : buildSummary('Tüm departmanlar', requests, items, invoices)
+    const summaryLabel = department
+      ? department
+      : selectedSiteName
+        ? selectedSiteName
+        : siteId
+          ? 'Seçili Şantiye'
+          : dimension === 'site'
+            ? 'Tüm Şantiyeler'
+            : 'Tüm Departmanlar'
 
-    const summary = attachUsdTotals(
-      summaryRaw || emptySummary(department || 'Tüm departmanlar'),
-      fx
-    )
+    const summaryRaw = buildSummary(summaryLabel, requests, items, invoices)
+
+    const summary = attachUsdTotals(summaryRaw || emptySummary(summaryLabel), fx)
 
     const departmentBreakdownWithUsd = departmentBreakdown.map((row) =>
       attachUsdTotals(row, fx)
@@ -382,10 +427,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    const siteBreakdownWithUsd = siteBreakdown.map((row) => attachUsdTotals(row, fx))
+
     const report: DepartmentSpendingReport = {
-      filters: { department, dateFrom, dateTo },
+      filters: { department, site: siteId, dateFrom, dateTo },
       summary,
       departmentBreakdown: departmentBreakdownWithUsd,
+      siteBreakdown: siteBreakdownWithUsd,
       departmentManagers,
       insights,
       lines,

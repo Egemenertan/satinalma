@@ -352,7 +352,7 @@ export function MaterialDetailModal({
               cell: "relative p-0 text-center text-sm focus-within:relative focus-within:z-20 w-full aspect-square",
               day: "h-12 w-12 mx-auto p-0 font-medium rounded-full hover:bg-gray-100 transition-colors flex items-center justify-center text-base",
               day_range_end: "day-range-end",
-              day_selected: "!bg-gray-900 !text-white hover:!bg-gray-800 focus:!bg-gray-900 !font-semibold",
+              day_selected: "!bg-navy !text-white hover:!bg-navy-700 focus:!bg-navy !font-semibold",
               day_today: "bg-blue-50 text-blue-600 font-semibold",
               day_outside: "text-gray-300 opacity-50",
               day_disabled: "text-gray-300 opacity-50 cursor-not-allowed",
@@ -389,7 +389,7 @@ export function MaterialDetailModal({
         <div className="px-6 pb-6 space-y-6">
           {contractOptions.length > 0 && (
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4 space-y-3">
-              <p className="text-xs font-semibold uppercase tracking-wider text-emerald-700">
+              <p className="text-xs font-semibold text-emerald-700">
                 Toplu alım sözleşmesi
               </p>
               {contractOptions.length === 1 ? (
@@ -403,7 +403,7 @@ export function MaterialDetailModal({
                     <label
                       key={option.contract_item_id}
                       className={`flex cursor-pointer items-start gap-3 rounded-xl border p-3 text-sm ${
-                        selectedContractId === option.contract_item_id
+            selectedContractId === option.contract_item_id
                           ? 'border-emerald-400 bg-white'
                           : 'border-transparent bg-white/70'
                       }`}
@@ -438,7 +438,7 @@ export function MaterialDetailModal({
 
           {/* Miktar Seçici - Apple Style */}
           <div className="bg-gray-50 rounded-2xl p-4">
-            <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 block">
+            <Label className="text-xs font-medium text-gray-500 mb-3 block">
               Miktar <span className="text-red-500">*</span>
             </Label>
             <div className="flex items-center justify-between">
@@ -473,7 +473,7 @@ export function MaterialDetailModal({
           <div className="bg-gray-50 rounded-2xl divide-y divide-gray-200/60">
             {/* Birim */}
             <div className="p-4">
-              <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+              <Label className="text-xs font-medium text-gray-500 mb-2 block">
                 Birim <span className="text-red-500">*</span>
               </Label>
               <Select
@@ -513,7 +513,7 @@ export function MaterialDetailModal({
 
             {/* Teslimat Tarihi */}
             <div className="p-4">
-              <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+              <Label className="text-xs font-medium text-gray-500 mb-2 block">
                 Teslimat Tarihi <span className="text-red-500">*</span>
               </Label>
               <button
@@ -533,7 +533,7 @@ export function MaterialDetailModal({
 
             {/* Kullanım Amacı */}
             <div className="p-4">
-              <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+              <Label className="text-xs font-medium text-gray-500 mb-2 block">
                 Kullanim Amaci <span className="text-red-500">*</span>
               </Label>
               <Input
@@ -548,7 +548,7 @@ export function MaterialDetailModal({
           {/* Opsiyonel Alanlar */}
           <div className="bg-gray-50 rounded-2xl divide-y divide-gray-200/60">
             <div className="p-4">
-              <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+              <Label className="text-xs font-medium text-gray-500 mb-2 block">
                 Marka (opsiyonel)
               </Label>
               <Input
@@ -560,7 +560,7 @@ export function MaterialDetailModal({
             </div>
 
             <div className="p-4">
-              <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2 block">
+              <Label className="text-xs font-medium text-gray-500 mb-2 block">
                 Notlar (opsiyonel)
               </Label>
               <Textarea
@@ -574,7 +574,7 @@ export function MaterialDetailModal({
 
           {/* Fotoğraf Yükleme */}
           <div className="bg-gray-50 rounded-2xl p-4">
-            <Label className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-3 block">
+            <Label className="text-xs font-medium text-gray-500 mb-3 block">
               Fotograflar (opsiyonel)
             </Label>
             
@@ -630,8 +630,8 @@ export function MaterialDetailModal({
               onClick={handleSubmit}
               disabled={!isFormValid()}
               className={`w-full h-14 rounded-2xl text-base font-semibold transition-all ${
-                isFormValid() 
-                  ? 'bg-gray-900 hover:bg-gray-800 text-white shadow-lg active:scale-[0.98]' 
+        isFormValid() 
+                  ? 'bg-navy text-white hover:bg-navy-700 shadow-lg active:scale-[0.98]' 
                   : 'bg-gray-200 text-gray-400 cursor-not-allowed'
               }`}
             >

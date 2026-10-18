@@ -109,7 +109,7 @@ function DeltaPill({ value }: { value: number | null }) {
     <div
       className={cn(
         'flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
-        up ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-600'
+        up ? 'bg-navy/10 text-navy' : 'bg-coral/15 text-coral-700'
       )}
     >
       {up ? <TrendingUp className="mr-0.5 h-3 w-3" /> : <TrendingDown className="mr-0.5 h-3 w-3" />}
@@ -234,48 +234,48 @@ export function OrdersInsightsSection({
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Teslim edildi
             </span>
             <DeltaPill value={volumeTrend} />
           </div>
-          <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{snapshot.delivered}</span>
+          <span className="text-4xl font-bold tracking-tight text-elegant-black dark:text-white">{snapshot.delivered}</span>
           <SparkBars heightsPct={sparkHeights} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.35)]" />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Kısmi teslim
             </span>
           </div>
-          <span className="text-3xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
+          <span className="text-4xl font-bold tracking-tight text-amber-700 dark:text-amber-400">
             {snapshot.partiallyDelivered}
           </span>
           <SparkBars
             heightsPct={sparkHeights.map(h => Math.round(h * 0.85))}
-            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
+            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(83,19,30,0.35)]"
           />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               İade edildi
             </span>
           </div>
-          <span className="text-3xl font-bold tracking-tight text-red-600 dark:text-red-400">{snapshot.returned}</span>
+          <span className="text-4xl font-bold tracking-tight text-red-600 dark:text-red-400">{snapshot.returned}</span>
           <SparkBars heightsPct={sparkHeights.map(h => Math.round(h * 0.55))} accentClass="bg-red-500/90" />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Toplam (filtreli)
             </span>
             <DeltaPill value={volumeTrend} />
           </div>
-          <span className="font-mono text-3xl font-bold tracking-tight text-elegant-black dark:text-white">
+          <span className="font-mono text-4xl font-bold tracking-tight text-elegant-black dark:text-white">
             {snapshot.totalCount}
           </span>
           <div className="mt-5 flex items-center gap-3">
@@ -327,9 +327,9 @@ export function OrdersInsightsSection({
                   type="button"
                   onClick={() => setChartRange(d)}
                   className={cn(
-                    'rounded-lg px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors',
+                    'rounded-lg px-4 py-2 text-[11px] font-bold transition-colors',
                     chartRange === d
-                      ? 'bg-white text-elegant-black shadow-sm dark:bg-elegant-gray-800 dark:text-white'
+                      ? 'bg-navy text-white shadow-sm dark:bg-elegant-gray-800 dark:text-white'
                       : 'text-elegant-gray-500 hover:text-elegant-black dark:hover:text-white'
                   )}
                 >
@@ -377,7 +377,7 @@ export function OrdersInsightsSection({
                         role="tooltip"
                         className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[min(220px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-elegant-gray-700 bg-elegant-black px-3 py-2 text-left shadow-xl dark:border-elegant-gray-300 dark:bg-white"
                       >
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-white/70 dark:text-elegant-gray-600">
+                        <p className="text-[10px] font-medium text-white/70 dark:text-elegant-gray-600">
                           {chartSlice.labels[i]}
                         </p>
                         <p className="mt-0.5 text-sm font-bold tabular-nums text-white dark:text-elegant-black">
@@ -409,7 +409,7 @@ export function OrdersInsightsSection({
           <p className="mt-2 text-center text-[11px] text-elegant-gray-500 dark:text-elegant-gray-400">
             Günlük adedi görmek için çubuğa tıklayın · dışarı tıklayınca veya Esc ile kapanır
           </p>
-          <div className="mt-4 flex justify-between border-t border-elegant-gray-100 pt-3 font-mono text-[10px] uppercase tracking-widest text-elegant-gray-400 dark:border-elegant-gray-800">
+          <div className="mt-4 flex justify-between border-t border-elegant-gray-100 pt-3 font-mono text-[10px] text-elegant-gray-400 dark:border-elegant-gray-800">
             <span>{chartSlice.labels[0] ?? '—'}</span>
             <span>{chartSlice.labels[Math.floor(chartSlice.labels.length / 2)] ?? ''}</span>
             <span>{chartSlice.labels[chartSlice.labels.length - 1] ?? '—'}</span>
@@ -418,7 +418,7 @@ export function OrdersInsightsSection({
 
         <div className="flex flex-col gap-4 lg:col-span-4">
           <div className="flex flex-1 flex-col rounded-xl border border-elegant-gray-200 bg-white p-6 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
-            <h4 className="mb-6 text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">
+            <h4 className="mb-6 text-[11px] font-bold text-elegant-gray-500">
               Tutar özeti (TRY)
             </h4>
             <div className="space-y-8">

@@ -199,7 +199,7 @@ export default function SettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-normal text-gray-900">Ayarlar</h1>
+          <h1 className="text-4xl font-normal text-gray-900">Ayarlar</h1>
           <p className="text-gray-600 mt-2">Hesap ve sistem ayarlarınızı yönetin</p>
         </div>
       </div>

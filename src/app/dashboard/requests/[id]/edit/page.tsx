@@ -106,15 +106,15 @@ const getIconForClass = (className: string) => {
 
 const getColorForClass = (className: string) => {
   const colorMap: Record<string, string> = {
-    'İş Araçları': '#f59e0b',
-    'Mimari Malzemeler': '#8b5cf6',
-    'Kaba İnşaat': '#ef4444',
-    'Mobilyasyon': '#06b6d4',
-    'Mekanik': '#10b981',
-    'Elektrik': '#f59e0b',
-    'Temizlik': '#ec4899',
-    'İş Güvenliği': '#6366f1',
-    'Boyalar': '#84cc16'
+    'İş Araçları': '#53131E',
+    'Mimari Malzemeler': '#004777',
+    'Kaba İnşaat': '#FF5E5B',
+    'Mobilyasyon': '#0A0A0A',
+    'Mekanik': '#53131E',
+    'Elektrik': '#004777',
+    'Temizlik': '#FF5E5B',
+    'İş Güvenliği': '#0A0A0A',
+    'Boyalar': '#FF5E5B'
   }
   
   for (const [key, color] of Object.entries(colorMap)) {
@@ -1313,7 +1313,7 @@ export default function EditPurchaseRequestPage() {
                       <button
                         onClick={() => setCurrentMaterialIndex(index)}
                         className={`px-3 py-2 rounded-lg text-xs font-medium transition-all pr-8 ${
-                          index === currentMaterialIndex
+             index === currentMaterialIndex
                             ? 'bg-orange-600 text-white'
                             : 'bg-white/50 text-gray-700 hover:bg-white/70'
                         }`}
@@ -1330,9 +1330,9 @@ export default function EditPurchaseRequestPage() {
                             handleRemoveMaterial(index)
                           }}
                           className={`absolute top-0 right-0 w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all opacity-0 group-hover:opacity-100 ${
-                            index === currentMaterialIndex
-                              ? 'bg-red-500 hover:bg-red-600 text-white'
-                              : 'bg-red-500 hover:bg-red-600 text-white'
+              index === currentMaterialIndex
+                              ? 'bg-red-500 hover:bg-red-400 text-black'
+                              : 'bg-red-500 hover:bg-red-400 text-black'
                           }`}
                           title="Malzemeyi kaldır"
                         >
@@ -1734,7 +1734,7 @@ export default function EditPurchaseRequestPage() {
                 <Button 
                   type="submit" 
                   disabled={loading || !isFormValid()}
-                  className="w-full h-12 lg:h-14 px-6 lg:px-8 rounded-lg lg:rounded-xl font-medium bg-black hover:bg-gray-900 text-white shadow-lg hover:shadow-xl transition-all duration-200 text-base lg:text-lg"
+                  className="w-full h-12 lg:h-14 px-6 lg:px-8 rounded-lg lg:rounded-xl font-medium bg-bordeaux text-white hover:bg-bordeaux-700 shadow-lg hover:shadow-xl transition-all duration-200 text-base lg:text-lg"
                 >
                   {loading ? (
                     <>
@@ -1792,7 +1792,7 @@ export default function EditPurchaseRequestPage() {
         <div className="pt-0 lg:pt-4">
           <div>
             <div>
-              <h1 className="text-2xl lg:text-4xl font-normal text-gray-900">Satın Alma Talebi Düzenleme</h1>
+              <h1 className="text-3xl lg:text-4xl font-normal text-gray-900">Satın Alma Talebi Düzenleme</h1>
               <p className="text-gray-600 mt-0 lg:mt-0 text-sm lg:text-lg font-light">Mevcut talep bilgilerini güncelleyin</p>
             </div>
             <div className="mt-3 lg:mt-4">

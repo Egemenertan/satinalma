@@ -85,8 +85,9 @@ export function WarehouseGmoPurchaseRequestAlerts() {
     const run = async () => {
       const supabase = createClient()
       const {
-        data: { user }
-      } = await supabase.auth.getUser()
+        data: { session }
+      } = await supabase.auth.getSession()
+      const user = session?.user
       if (!user || cancelled) return
 
       const { data: profile } = await supabase

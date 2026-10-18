@@ -521,7 +521,7 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-normal text-gray-900">Tedarikçi Düzenle</h1>
+          <h1 className="text-4xl font-normal text-gray-900">Tedarikçi Düzenle</h1>
           <p className="text-gray-600 mt-2">
             <span className="font-medium text-gray-800">{supplier.name}</span> tedarikçisinin bilgilerini düzenleyin
           </p>
@@ -781,7 +781,7 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
                           <label
                             key={item}
                             className={`flex items-center space-x-3 p-2 rounded hover:bg-gray-50 cursor-pointer transition-colors ${
-                              selectedItems.includes(item) ? 'bg-gray-50' : ''
+               selectedItems.includes(item) ? 'bg-gray-50' : ''
                             }`}
                           >
                             <input
@@ -804,7 +804,7 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
                   type="button"
                   onClick={addMaterials}
                   disabled={!selectedClass || !selectedGroup || selectedItems.length === 0}
-                  className="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 text-white"
+                  className="flex items-center space-x-2 bg-navy text-white hover:bg-navy-700"
                   size="sm"
                 >
                   <Plus className="h-4 w-4" />
@@ -841,9 +841,9 @@ export default function EditSupplierPage({ params }: { params: { id: string } })
               type="submit"
               disabled={loading || !formData.company_name || !formData.contact_name || !formData.email || !formData.phone || !formData.tax_number || !formData.address}
               className={`flex items-center space-x-2 min-w-[140px] font-medium transition-all duration-200 ${
-                loading || !formData.company_name || !formData.contact_name || !formData.email || !formData.phone || !formData.tax_number || !formData.address
+        loading || !formData.company_name || !formData.contact_name || !formData.email || !formData.phone || !formData.tax_number || !formData.address
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                  : 'bg-black hover:bg-gray-900 text-white shadow-lg hover:shadow-xl'
+                  : 'bg-bordeaux text-white hover:bg-bordeaux-700 shadow-lg hover:shadow-xl'
               }`}
             >
               {loading && <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>}

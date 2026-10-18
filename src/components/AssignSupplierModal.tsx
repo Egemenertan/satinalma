@@ -920,7 +920,7 @@ export default function AssignSupplierModal({
                 })
                 router.push(`/dashboard/suppliers/create?${params.toString()}`)
               }}
-              className="px-6 bg-gray-900 hover:bg-black text-white"
+              className="px-6 bg-navy text-white hover:bg-navy-700"
             >
               <Plus className="h-4 w-4 mr-2" />
               Yeni Tedarikçi Ekle

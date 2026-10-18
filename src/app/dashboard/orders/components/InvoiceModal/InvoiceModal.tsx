@@ -194,7 +194,7 @@ export function InvoiceModal({
                
                 <div>
                   <DialogTitle className={`text-4xl font-semibold tracking-tight ${
-                    !editingInvoiceGroupId && !selectedOrderId ? 'text-red-600' : 'text-gray-900'
+          !editingInvoiceGroupId && !selectedOrderId ? 'text-red-600' : 'text-gray-900'
                   }`}>
                     {getModalTitle()}
                   </DialogTitle>
@@ -380,14 +380,14 @@ function OrderInfoCard({ order }: { order: any }) {
             {/* Sol Kolon */}
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Malzeme</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Malzeme</div>
                 <div className="text-base font-semibold text-gray-900">
                   {order.purchase_request_items?.item_name || 'Belirtilmemiş'}
                 </div>
               </div>
               
               <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Tedarikçi</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Tedarikçi</div>
                 <div className="text-base font-medium text-gray-900">
                   {order.suppliers?.name || 'Belirtilmemiş'}
                 </div>
@@ -395,7 +395,7 @@ function OrderInfoCard({ order }: { order: any }) {
               
               {order.purchase_request_items?.brand && (
                 <div>
-                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Marka</div>
+                  <div className="text-xs font-medium text-gray-500 mb-1">Marka</div>
                   <div className="text-base font-medium text-gray-900">
                     {order.purchase_request_items.brand}
                   </div>
@@ -406,14 +406,14 @@ function OrderInfoCard({ order }: { order: any }) {
             {/* Sağ Kolon */}
             <div className="space-y-3">
               <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Miktar</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Miktar</div>
                 <div className="text-base font-semibold text-gray-900">
                   {order.quantity} {order.purchase_request_items?.unit || 'adet'}
                 </div>
               </div>
               
               <div>
-                <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Sipariş Tutarı</div>
+                <div className="text-xs font-medium text-gray-500 mb-1">Sipariş Tutarı</div>
                 <div className="text-base font-semibold text-gray-900">
                   {order.amount?.toLocaleString('tr-TR', { minimumFractionDigits: 2 })} {order.currency}
                 </div>
@@ -421,7 +421,7 @@ function OrderInfoCard({ order }: { order: any }) {
               
               {order.delivery_date && (
                 <div>
-                  <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Teslimat Tarihi</div>
+                  <div className="text-xs font-medium text-gray-500 mb-1">Teslimat Tarihi</div>
                   <div className="text-base font-medium text-gray-900">
                     {new Date(order.delivery_date).toLocaleDateString('tr-TR')}
                   </div>
@@ -432,7 +432,7 @@ function OrderInfoCard({ order }: { order: any }) {
           
           {order.purchase_request_items?.description && (
             <div className="pt-3 border-t border-blue-200">
-              <div className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Açıklama</div>
+              <div className="text-xs font-medium text-gray-500 mb-1">Açıklama</div>
               <div className="text-sm text-gray-700">
                 {order.purchase_request_items.description}
               </div>
@@ -574,7 +574,7 @@ function MultipleOrdersInvoice({
               
               {/* Tutar Input - Düzgün ve temiz */}
               <div className="col-span-4">
-                <Label className="text-xs font-medium text-gray-600 mb-2 block uppercase tracking-wide">Fatura Tutarı</Label>
+                <Label className="text-xs font-medium text-gray-600 mb-2 block">Fatura Tutarı</Label>
                 <Input
                   type="text"
                   placeholder="0,00"
@@ -594,7 +594,7 @@ function MultipleOrdersInvoice({
               
               {/* Para Birimi */}
               <div className="col-span-2">
-                <Label className="text-xs font-medium text-gray-600 mb-2 block uppercase tracking-wide">Para Birimi</Label>
+                <Label className="text-xs font-medium text-gray-600 mb-2 block">Para Birimi</Label>
                 <Select 
                   value={orderCurrencies[order.id] || 'TRY'} 
                   onValueChange={(currency) => onCurrencyChange(order.id, currency)}
@@ -724,7 +724,7 @@ function InvoiceSummary({
                 <div className="grid grid-cols-2 gap-4">
                   {/* Ara Toplam */}
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    <Label className="text-xs font-medium text-gray-600">
                       Ara Toplam
                     </Label>
                     <div className="flex gap-2">
@@ -750,7 +750,7 @@ function InvoiceSummary({
                   
                   {/* İndirim */}
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    <Label className="text-xs font-medium text-gray-600">
                       İndirim <span className="text-gray-400 normal-case">(Opsiyonel)</span>
                     </Label>
                     <div className="flex gap-2">
@@ -777,7 +777,7 @@ function InvoiceSummary({
                   
                   {/* KDV */}
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    <Label className="text-xs font-medium text-gray-600">
                       KDV <span className="text-gray-400 normal-case">(Opsiyonel)</span>
                     </Label>
                     <div className="flex gap-2">
@@ -804,7 +804,7 @@ function InvoiceSummary({
                   
                   {/* Genel Toplam - Otomatik */}
                   <div className="space-y-2">
-                    <Label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    <Label className="text-xs font-medium text-gray-600">
                       Genel Toplam <span className="text-gray-400 normal-case">(Otomatik)</span>
                     </Label>
                     <div className="flex gap-2">
@@ -863,7 +863,7 @@ function InvoiceSummary({
         <div className="space-y-6">
           {/* Ara Toplam */}
           <div className="space-y-2">
-            <Label htmlFor="invoice-subtotal" className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+            <Label htmlFor="invoice-subtotal" className="text-xs font-medium text-gray-600">
               Ara Toplam
             </Label>
             <div className="flex gap-3">
@@ -901,7 +901,7 @@ function InvoiceSummary({
 
           {/* İndirim */}
           <div className="space-y-2">
-            <Label htmlFor="invoice-discount" className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+            <Label htmlFor="invoice-discount" className="text-xs font-medium text-gray-600">
               İndirim <span className="text-gray-400 normal-case">(Opsiyonel)</span>
             </Label>
             <div className="flex gap-3">
@@ -932,7 +932,7 @@ function InvoiceSummary({
         <div className="space-y-6">
           {/* KDV */}
           <div className="space-y-2">
-            <Label htmlFor="invoice-tax" className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+            <Label htmlFor="invoice-tax" className="text-xs font-medium text-gray-600">
               KDV <span className="text-gray-400 normal-case">(Opsiyonel)</span>
             </Label>
             <div className="flex gap-3">
@@ -960,7 +960,7 @@ function InvoiceSummary({
 
           {/* Genel Toplam - Vurgulu */}
           <div className="space-y-2">
-            <Label htmlFor="invoice-grand-total" className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+            <Label htmlFor="invoice-grand-total" className="text-xs font-medium text-gray-600">
               Genel Toplam <span className="text-gray-400 normal-case">(Otomatik)</span>
             </Label>
             <div className="flex gap-3">
@@ -1048,7 +1048,7 @@ function InvoicePhotos({
       {/* Fotoğraf Önizlemeleri - Modern Grid */}
       {invoicePhotos.length > 0 && (
         <div className="space-y-3">
-          <Label className="text-xs text-gray-500 uppercase tracking-wide">
+          <Label className="text-xs text-gray-500">
             Yüklenen Fotoğraflar ({invoicePhotos.length})
           </Label>
           <div className="grid grid-cols-4 gap-4">
@@ -1076,7 +1076,7 @@ function InvoicePhotos({
                     e.stopPropagation()
                     onPhotoRemove(index)
                   }}
-                  className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-red-600 hover:scale-110 transition-all shadow-lg z-10"
+                  className="absolute -top-2 -right-2 bg-red-500 text-black rounded-full w-7 h-7 flex items-center justify-center hover:bg-red-600 hover:scale-110 transition-all shadow-lg z-10"
                   type="button"
                 >
                   <X className="w-4 h-4" />

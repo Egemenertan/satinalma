@@ -32,14 +32,14 @@ export const requestDetailLayout = StyleSheet.create({
     marginHorizontal: 20,
     marginTop: 12,
     padding: 16,
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#d1fae5',
+    borderColor: '#E8E8E8',
   },
   itBannerText: {
     fontSize: 14,
-    color: '#047857',
+    color: '#0A0A0A',
     lineHeight: 20,
   },
 })

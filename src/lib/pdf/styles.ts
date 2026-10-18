@@ -78,47 +78,78 @@ export const getPDFStyles = (): string => `
     color: #333;
   }
 
-  /* Timeline Grid */
-  .timeline-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 12px;
-    margin-top: 10px;
+  /* Process stepper */
+  .process-section {
+    margin-bottom: 14px;
   }
 
-  .timeline-card {
-    padding: 12px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
-    background: #fafafa;
-    page-break-inside: avoid;
+  .process-stepper {
+    display: flex;
+    align-items: flex-start;
+    width: 100%;
+    margin-top: 4px;
   }
 
-  .timeline-role {
-    font-size: 8pt;
-    color: #666;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    margin-bottom: 4px;
-    font-weight: 600;
+  .process-step {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
   }
 
-  .timeline-person {
-    font-size: 11pt;
+  .process-step-track {
+    display: flex;
+    align-items: center;
+    height: 16px;
+    margin-bottom: 5px;
+  }
+
+  .process-step-track::before,
+  .process-step-track::after {
+    content: '';
+    flex: 1;
+    height: 2px;
+    background: #111;
+  }
+
+  .process-step:first-child .process-step-track::before,
+  .process-step:last-child .process-step-track::after {
+    background: transparent;
+  }
+
+  .process-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #111;
+    color: #fff;
+    font-size: 7pt;
+    font-weight: 700;
+    line-height: 1;
+    flex-shrink: 0;
+  }
+
+  .process-name {
+    font-size: 8.5pt;
     font-weight: 700;
     color: #000;
-    margin-bottom: 6px;
+    line-height: 1.2;
+    margin-bottom: 1px;
+    overflow-wrap: anywhere;
   }
 
-  .timeline-action {
-    font-size: 9pt;
-    color: #555;
-    margin-bottom: 4px;
+  .process-action {
+    font-size: 7.5pt;
+    color: #444;
+    line-height: 1.2;
   }
 
-  .timeline-date {
-    font-size: 8pt;
-    color: #999;
+  .process-date {
+    font-size: 7pt;
+    color: #777;
+    margin-top: 1px;
   }
 
   /* Orders Table */
@@ -207,8 +238,8 @@ export const getPDFStyles = (): string => `
   
   /* Toplu Fatura Stili */
   .invoice-group-item {
-    background: #f0f8ff;
-    border: 2px solid #4a90e2;
+    background: #E8F2F8;
+    border: 2px solid #004777;
   }
   
   .invoice-materials {

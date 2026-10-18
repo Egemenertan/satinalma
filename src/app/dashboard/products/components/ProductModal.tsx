@@ -44,7 +44,9 @@ interface ProductModalProps {
   canOperateStock?: boolean
   /** Depo yöneticisi: Stok İşlemleri sekmesinde yalnızca stok girişi. */
   inboundOnly?: boolean
-  /** inboundOnly iken giriş yapılabilecek depolar. */
+  /** Operasyon rolü: giriş, düzeltme, zimmet ve teslim. */
+  depotOperate?: boolean
+  /** inboundOnly veya depotOperate iken işlem yapılacak depolar. */
   inboundWarehouseIds?: string[]
   /** Depoya bağlı kullanıcı: stok durumu yalnızca bu depolarla sınırlı */
   scopeWarehouseIds?: string[]
@@ -63,6 +65,7 @@ export function ProductModal({
   defaultWarehouseId,
   canOperateStock = true,
   inboundOnly = false,
+  depotOperate = false,
   inboundWarehouseIds,
   scopeWarehouseIds,
 }: ProductModalProps) {
@@ -156,10 +159,22 @@ export function ProductModal({
     if (!isWarehouseScopedUser) return true
     return Boolean(stock.warehouse_id && warehouseScope.includes(stock.warehouse_id))
   })
-  const scopedFreeQty = scopedProductStocks
-    .filter((stock) => stock.user_id == null)
-    .reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
-  const totalStock = isWarehouseScopedUser ? scopedFreeQty : product?.total_stock || 0
+  const scopedShelfByWarehouse = new Map<string, number>()
+  for (const stock of scopedProductStocks) {
+    if (stock.user_id != null || !stock.warehouse_id) continue
+    scopedShelfByWarehouse.set(
+      stock.warehouse_id,
+      (scopedShelfByWarehouse.get(stock.warehouse_id) || 0) + (Number(stock.quantity) || 0)
+    )
+  }
+  const zimmetByWarehouse = product?.zimmet_by_warehouse || {}
+  let scopedFreeQty = 0
+  for (const [warehouseId, shelf] of scopedShelfByWarehouse) {
+    scopedFreeQty += Math.max(0, shelf - (Number(zimmetByWarehouse[warehouseId]) || 0))
+  }
+  const totalStock = isWarehouseScopedUser
+    ? scopedFreeQty
+    : product?.available_stock ?? product?.total_stock ?? 0
   const hasLowStock = scopedProductStocks.some(
     (stock) => stock.min_stock_level && stock.quantity <= stock.min_stock_level
   )
@@ -175,7 +190,7 @@ export function ProductModal({
 
   const stockStatus = getStockStatus()
   const StockIcon = stockStatus.icon
-  const showMovements = canOperateStock || inboundOnly
+  const showMovements = canOperateStock || inboundOnly || depotOperate
   const showHistory = canOperateStock
   const visibleTab =
     (!showMovements && activeTab === 'movements') || (!showHistory && activeTab === 'history')
@@ -186,7 +201,12 @@ export function ProductModal({
   const showForm = mode === 'edit' || mode === 'create'
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog
+      open={isOpen}
+      onOpenChange={(next) => {
+        if (!next) onClose()
+      }}
+    >
       <DialogContent
         showCloseButton={false}
         className="!max-w-[1200px] !max-h-[90vh] h-[90vh] !bg-white p-0 rounded-3xl w-[90vw] sm:!max-w-[1200px] border border-gray-200 shadow-2xl gap-0"
@@ -274,14 +294,14 @@ export function ProductModal({
               <TabsList className="w-full justify-start px-8 py-6 bg-gray-50 border-b border-gray-100 gap-3 flex-shrink-0">
                 <TabsTrigger 
                   value="info" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px]"
+                  className="gap-2.5 data-[state=active]:bg-bordeaux data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px]"
                 >
                   <Info className="w-5 h-5" />
                   <span>Bilgiler</span>
                 </TabsTrigger>
                 <TabsTrigger 
                   value="images" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-bordeaux data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <ImageIcon className="w-5 h-5" />
@@ -289,7 +309,7 @@ export function ProductModal({
                 </TabsTrigger>
                 <TabsTrigger 
                   value="stock" 
-                  className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                  className="gap-2.5 data-[state=active]:bg-bordeaux data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                   disabled={showForm}
                 >
                   <Package className="w-5 h-5" />
@@ -298,7 +318,7 @@ export function ProductModal({
                 {showMovements && (
                   <TabsTrigger 
                     value="movements" 
-                    className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                    className="gap-2.5 data-[state=active]:bg-bordeaux data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                     disabled={showForm}
                   >
                     <TrendingUp className="w-5 h-5" />
@@ -308,7 +328,7 @@ export function ProductModal({
                 {showHistory && (
                   <TabsTrigger 
                     value="history" 
-                    className="gap-2.5 data-[state=active]:bg-gray-900 data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
+                    className="gap-2.5 data-[state=active]:bg-bordeaux data-[state=active]:text-white data-[state=active]:shadow-sm data-[state=inactive]:bg-white data-[state=inactive]:hover:bg-gray-100 data-[state=inactive]:border data-[state=inactive]:border-gray-200 rounded-2xl px-6 py-3.5 transition-all duration-200 font-medium text-base min-h-[48px] disabled:opacity-40 disabled:cursor-not-allowed" 
                     disabled={showForm}
                   >
                     <History className="w-5 h-5" />
@@ -368,10 +388,21 @@ export function ProductModal({
                       productId={product.id}
                       productName={product.name}
                       productUnit={product.unit}
+                      productSku={product.sku}
+                      productBrand={product.brand?.name}
+                      productType={product.product_type}
+                      unitPrice={product.unit_price}
+                      currency={product.currency}
                       defaultWarehouseId={defaultWarehouseId}
-                      allowedOperations={inboundOnly ? ['giriş', 'zimmet'] : undefined}
-                      warehouseIds={inboundOnly ? inboundWarehouseIds : undefined}
-                      zimmetMode={inboundOnly ? 'sub' : 'primary'}
+                      allowedOperations={
+                        depotOperate
+                          ? ['giriş', 'düzeltme', 'zimmet', 'teslim']
+                          : inboundOnly
+                            ? ['giriş', 'zimmet']
+                            : undefined
+                      }
+                      warehouseIds={depotOperate || inboundOnly ? inboundWarehouseIds : undefined}
+                      zimmetMode={inboundOnly && !depotOperate ? 'sub' : 'primary'}
                       onSuccess={() => {
                         // Stok güncellendiğinde diğer tabları da yenile
                         onTabChange('stock')

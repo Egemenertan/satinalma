@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/app/dashboard/orders/utils/numberFormatting'
 import type { DashboardBundle, DashboardDailyPoint } from '@/services/dashboard.service'
+import { RequestProcessModal } from '@/components/requests/RequestProcessModal'
 
 type ChartRange = 7 | 14 | 30
 
@@ -33,7 +34,7 @@ function DeltaPill({ value }: { value: number | null }) {
     <div
       className={cn(
         'flex items-center rounded-full px-2 py-0.5 text-[11px] font-bold',
-        up ? 'bg-primary/10 text-primary' : 'bg-red-500/10 text-red-600'
+        up ? 'bg-navy/10 text-navy' : 'bg-coral/15 text-coral-700'
       )}
     >
       {up ? <TrendingUp className="mr-0.5 h-3 w-3" /> : <TrendingDown className="mr-0.5 h-3 w-3" />}
@@ -112,7 +113,7 @@ function LogisticsSparkline({
 function statusBadgeClass(status: string): string {
   const s = (status || '').toLowerCase()
   if (s.includes('red') || s.includes('iptal')) return 'border-red-200 bg-red-500/10 text-red-700 dark:border-red-900 dark:text-red-400'
-  if (s.includes('onay') || s.includes('approved')) return 'border-primary/30 bg-primary/10 text-primary'
+  if (s.includes('onay') || s.includes('approved')) return 'border-navy/25 bg-navy/10 text-navy'
   if (s.includes('pending') || s.includes('bekle') || s.includes('draft')) {
     return 'border-amber-200 bg-amber-500/10 text-amber-800 dark:border-amber-900 dark:text-amber-400'
   }
@@ -122,9 +123,15 @@ function statusBadgeClass(status: string): string {
 function statusLabel(status: string): string {
   const s = (status || '').toLowerCase()
   if (s === 'pending') return 'Beklemede'
-  if (s === 'approved') return 'Onaylandı'
-  if (s === 'rejected') return 'Reddedildi'
-  if (s === 'cancelled') return 'İptal'
+  if (s === 'approved' || s === 'onaylandı') return 'Onaylandı'
+  if (s === 'rejected' || s === 'reddedildi') return 'Reddedildi'
+  if (s === 'cancelled' || s === 'iptal') return 'İptal'
+  if (s === 'depoda mevcut değil') return 'Depoda mevcut değil'
+  if (s === 'ana depoda yok') return 'Ana depoda yok'
+  if (s === 'satın almaya gönderildi') return 'Satın almaya gönderildi'
+  if (s === 'departman_onayı_bekliyor') return 'Departman onayı'
+  if (s === 'it_incelemesinde') return 'IT incelemesinde'
+  if (s === 'it_onaylandi') return 'IT onaylandı'
   return status || '—'
 }
 
@@ -137,6 +144,7 @@ interface DashboardInsightsProps {
 export function DashboardInsights({ bundle, loading, error }: DashboardInsightsProps) {
   const [chartRange, setChartRange] = useState<ChartRange>(14)
   const [chartTooltipIdx, setChartTooltipIdx] = useState<number | null>(null)
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null)
   const chartAreaRef = useRef<HTMLDivElement>(null)
   const gidAmount = useId()
   const gidRequests = useId()
@@ -240,7 +248,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
     <div className="space-y-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-elegant-black dark:text-white md:text-3xl">
+          <h1 className="text-4xl font-bold tracking-tight text-elegant-black dark:text-white">
             Panel özeti
           </h1>
           <p className="mt-1 text-sm text-elegant-gray-600 dark:text-elegant-gray-400">
@@ -259,60 +267,60 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Toplam talep
             </span>
             <DeltaPill value={volumeTrend} />
           </div>
-          <span className="text-3xl font-bold tracking-tight text-elegant-black dark:text-white">{stats.totalRequests}</span>
-          <p className="mt-1 text-xs text-elegant-gray-500">Kayıtlı satın alma talepleri</p>
+          <span className="text-4xl font-bold tracking-tight text-elegant-black dark:text-white">{stats.totalRequests}</span>
+          <p className="mt-1 text-sm text-elegant-gray-500">Kayıtlı satın alma talepleri</p>
           <SparkBars heightsPct={sparkHeights} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.35)]" />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Bekleyen / taslak
             </span>
           </div>
-          <span className="text-3xl font-bold tracking-tight text-amber-700 dark:text-amber-400">{stats.pendingRequests}</span>
-          <p className="mt-1 text-xs text-elegant-gray-500">Onay veya teklif aşamasında</p>
+          <span className="text-4xl font-bold tracking-tight text-amber-700 dark:text-amber-400">{stats.pendingRequests}</span>
+          <p className="mt-1 text-sm text-elegant-gray-500">Onay veya teklif aşamasında</p>
           <SparkBars
             heightsPct={pendingSpark.map(h => Math.round(h * 0.9))}
-            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(245,158,11,0.35)]"
+            accentClass="bg-amber-500 shadow-[0_0_10px_rgba(83,19,30,0.35)]"
           />
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Şantiye · Tedarikçi
             </span>
           </div>
-          <p className="mb-4 text-xs text-elegant-gray-500">Kayıtlı lokasyon ve iş ortağı sayısı</p>
+          <p className="mb-4 text-sm text-elegant-gray-500">Kayıtlı lokasyon ve iş ortağı sayısı</p>
           <div className="grid grid-cols-2 gap-2 text-center">
             <div className="rounded-lg bg-elegant-gray-50 py-2 dark:bg-elegant-gray-800/80">
-              <div className="text-lg font-bold text-elegant-black dark:text-white">{stats.totalSites}</div>
-              <div className="text-[10px] font-medium uppercase tracking-wide text-elegant-gray-500">Şantiye</div>
+              <div className="text-2xl font-bold text-elegant-black dark:text-white">{stats.totalSites}</div>
+              <div className="text-xs font-medium text-elegant-gray-500">Şantiye</div>
             </div>
             <div className="rounded-lg bg-elegant-gray-50 py-2 dark:bg-elegant-gray-800/80">
-              <div className="text-lg font-bold text-elegant-black dark:text-white">{stats.totalSuppliers}</div>
-              <div className="text-[10px] font-medium uppercase tracking-wide text-elegant-gray-500">Tedarikçi</div>
+              <div className="text-2xl font-bold text-elegant-black dark:text-white">{stats.totalSuppliers}</div>
+              <div className="text-xs font-medium text-elegant-gray-500">Tedarikçi</div>
             </div>
           </div>
         </div>
 
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <span className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+            <span className="text-sm font-semibold text-elegant-gray-500">
               Talep tutarı (toplam)
             </span>
             <DeltaPill value={amountTrend} />
           </div>
-          <span className="font-mono text-2xl font-bold tracking-tight text-elegant-black dark:text-white">
+          <span className="font-mono text-3xl font-bold tracking-tight text-elegant-black dark:text-white">
             {formatCurrency(stats.totalAmount, 'TRY')}
           </span>
-          <p className="mt-1 text-xs text-elegant-gray-500">Tüm taleplerdeki tutar alanları</p>
+          <p className="mt-1 text-sm text-elegant-gray-500">Tüm taleplerdeki tutar alanları</p>
           <SparkBars heightsPct={amountSpark} accentClass="bg-[#01E884] shadow-[0_0_12px_rgba(1,232,132,0.3)]" />
         </div>
       </div>
@@ -340,9 +348,9 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                   type="button"
                   onClick={() => setChartRange(d)}
                   className={cn(
-                    'rounded-lg px-4 py-2 text-[11px] font-bold uppercase tracking-wider transition-colors',
+                    'rounded-lg px-4 py-2 text-[11px] font-bold transition-colors',
                     chartRange === d
-                      ? 'bg-white text-elegant-black shadow-sm dark:bg-elegant-gray-800 dark:text-white'
+                      ? 'bg-navy text-white shadow-sm dark:bg-elegant-gray-800 dark:text-white'
                       : 'text-elegant-gray-500 hover:text-elegant-black dark:hover:text-white'
                   )}
                 >
@@ -387,7 +395,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                         role="tooltip"
                         className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 w-max max-w-[min(220px,calc(100vw-2rem))] -translate-x-1/2 rounded-xl border border-elegant-gray-700 bg-elegant-black px-3 py-2 text-left shadow-xl dark:border-elegant-gray-300 dark:bg-white"
                       >
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-white/70 dark:text-elegant-gray-600">
+                        <p className="text-[10px] font-medium text-white/70 dark:text-elegant-gray-600">
                           {chartSlice.labels[i]}
                         </p>
                         <p className="mt-0.5 text-sm font-bold tabular-nums text-white dark:text-elegant-black">
@@ -419,7 +427,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
           <p className="mt-2 text-center text-[11px] text-elegant-gray-500 dark:text-elegant-gray-400">
             Günlük adedi görmek için çubuğa tıklayın · dışarı veya Esc ile kapanır
           </p>
-          <div className="mt-4 flex justify-between border-t border-elegant-gray-100 pt-3 font-mono text-[10px] uppercase tracking-widest text-elegant-gray-400 dark:border-elegant-gray-800">
+          <div className="mt-4 flex justify-between border-t border-elegant-gray-100 pt-3 font-mono text-[10px] text-elegant-gray-400 dark:border-elegant-gray-800">
             <span>{chartSlice.labels[0] ?? '—'}</span>
             <span>{chartSlice.labels[Math.floor(chartSlice.labels.length / 2)] ?? ''}</span>
             <span>{chartSlice.labels[chartSlice.labels.length - 1] ?? '—'}</span>
@@ -428,7 +436,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
 
         <div className="flex flex-col lg:col-span-4">
           <div className="flex flex-1 flex-col rounded-xl border border-elegant-gray-200 bg-white p-6 shadow-sm dark:border-elegant-gray-800 dark:bg-elegant-gray-900">
-            <h4 className="mb-6 text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">
+            <h4 className="mb-6 text-[11px] font-bold text-elegant-gray-500">
               Operasyon özeti
             </h4>
             <div className="space-y-10">
@@ -466,7 +474,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
         <div className="flex items-center justify-between border-b border-elegant-gray-100 px-6 py-5 dark:border-elegant-gray-800">
           <div>
             <h3 className="text-lg font-semibold text-elegant-black dark:text-white">Son talepler</h3>
-            <p className="text-sm text-elegant-gray-500">En güncel kayıtlar</p>
+            <p className="text-sm text-elegant-gray-500">Satıra tıklayınca talep sürecini görün</p>
           </div>
           <Button variant="ghost" size="sm" className="text-primary hover:text-primary/90" asChild>
             <Link href="/dashboard/requests">Tümünü gör</Link>
@@ -476,19 +484,19 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
           <table className="w-full min-w-[640px] text-left">
             <thead>
               <tr className="border-b border-elegant-gray-100 bg-elegant-gray-50/80 dark:border-elegant-gray-800 dark:bg-elegant-gray-800/40">
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                   Talep
                 </th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                   Şantiye
                 </th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                   Durum
                 </th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                   Tutar
                 </th>
-                <th className="px-6 py-3 text-[10px] font-bold uppercase tracking-widest text-elegant-gray-500">
+                <th className="px-6 py-3 text-[10px] font-bold text-elegant-gray-500">
                   Tarih
                 </th>
               </tr>
@@ -497,14 +505,24 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
               {(bundle?.recentRequests ?? []).map(row => (
                 <tr
                   key={row.id}
-                  className="transition-colors hover:bg-elegant-gray-50/80 dark:hover:bg-elegant-gray-800/40"
+                  className="cursor-pointer transition-colors hover:bg-elegant-gray-50/80 dark:hover:bg-elegant-gray-800/40"
+                  onClick={() => setSelectedRequestId(row.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedRequestId(row.id)
+                    }
+                  }}
+                  tabIndex={0}
+                  aria-haspopup="dialog"
+                  aria-label={`${row.title} talep sürecini gör`}
                 >
                   <td className="max-w-[220px] truncate px-6 py-4 text-sm font-medium text-elegant-black dark:text-white">
                     {row.title}
                   </td>
                   <td className="px-6 py-4 text-sm text-elegant-gray-600 dark:text-elegant-gray-300">{row.site_name}</td>
                   <td className="px-6 py-4">
-                    <Badge variant="outline" className={cn('border font-semibold uppercase tracking-tight', statusBadgeClass(row.status))}>
+                    <Badge variant="outline" className={cn('border font-semibold', statusBadgeClass(row.status))}>
                       {statusLabel(row.status)}
                     </Badge>
                   </td>
@@ -523,6 +541,14 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
           )}
         </div>
       </div>
+
+      <RequestProcessModal
+        requestId={selectedRequestId}
+        open={Boolean(selectedRequestId)}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) setSelectedRequestId(null)
+        }}
+      />
     </div>
   )
 }

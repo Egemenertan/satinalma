@@ -148,7 +148,7 @@ function calculateMaterialDeliveryStatus(request: PurchaseRequestListRow): Deliv
   })
 
   if (deliveredMaterials === totalMaterials) {
-    return { type: 'full', label: 'Tamamı Teslim Alındı', bg: '#2C5444', color: '#ffffff' }
+    return { type: 'full', label: 'Tamamı Teslim Alındı', bg: '#0A0A0A', color: '#ffffff' }
   } else if (deliveredMaterials > 0 || partialMaterials > 0) {
     return { type: 'partial', label: 'Kısmen Teslim Alındı', bg: '#fef2f2', color: '#991b1b' }
   }
@@ -1167,15 +1167,15 @@ const styles = StyleSheet.create({
   bannerDangerTitle: { fontFamily: statsFont.bold, fontSize: 14, color: stats.error },
   bannerDangerBody: { marginTop: 4, ...statsType.bodyMd, color: stats.onErrorContainer },
   bannerInfo: {
-    backgroundColor: '#eff6ff',
+    backgroundColor: '#E8F2F8',
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.22)',
     borderRadius: 24,
     padding: 14,
     ...(stats.shadowSm ?? {}),
   },
-  bannerInfoTitle: { fontFamily: statsFont.bold, fontSize: 14, color: '#1d4ed8' },
-  bannerInfoBody: { marginTop: 4, ...statsType.bodyMd, color: '#1e40af' },
+  bannerInfoTitle: { fontFamily: statsFont.bold, fontSize: 14, color: '#004777' },
+  bannerInfoBody: { marginTop: 4, ...statsType.bodyMd, color: '#004777' },
   bannerButton: {
     backgroundColor: '#111827',
     borderRadius: 12,
@@ -1336,7 +1336,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#f0fdf4',
+    borderColor: '#F4F4F4',
   },
   searchInput: {
     flex: 1,

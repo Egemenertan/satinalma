@@ -2,80 +2,71 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { usePathname, useRouter } from 'next/navigation'
+import useSWR from 'swr'
 import Sidebar from '@/components/Sidebar'
-import DashboardHeader from '@/components/DashboardHeader'
 import NotificationPanel from '@/components/NotificationPanel'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
 import { Menu, X } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
 import { canAccessPage } from '@/lib/roles'
-import { fetchMyWarehouseAccessScope } from '@/lib/warehouse-access'
-import { ensureProfile, getRedirectPath, getSessionUser } from '@/lib/auth'
-import type { UserRole } from '@/lib/types'
+import {
+  WAREHOUSE_ACCESS_SWR_KEY,
+  fetchMyWarehouseAccessScope,
+} from '@/lib/warehouse-access'
+import { getRedirectPath } from '@/lib/auth'
+import { useCurrentProfile } from '@/lib/auth/current-profile'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false)
-  const [userRole, setUserRole] = useState<UserRole | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
   const [accessCheck, setAccessCheck] = useState<'loading' | 'allow' | 'deny'>('loading')
   const [isHeaderVisible, setIsHeaderVisible] = useState(true)
   const lastScrollY = useRef(0)
   const ticking = useRef(false)
-  
+  const redirectedRef = useRef(false)
+
   const pathname = usePathname()
   const router = useRouter()
-  const supabase = createClient()
+  const { data: profile, error: profileError, isLoading: profileLoading } = useCurrentProfile()
+  const userRole = profile?.role ?? null
 
-  // Auth ve rol kontrolü
+  const isProductsPage =
+    pathname === '/dashboard/products' || pathname.startsWith('/dashboard/products/')
+  const needsWarehouseScope = userRole === 'site_manager' && isProductsPage
+
+  const { data: warehouseScope } = useSWR(
+    needsWarehouseScope ? WAREHOUSE_ACCESS_SWR_KEY : null,
+    fetchMyWarehouseAccessScope,
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: true,
+      dedupingInterval: 60_000,
+    }
+  )
+
   useEffect(() => {
-    let mounted = true
-    
-    const checkAuth = async () => {
-      try {
-        const user = await getSessionUser(supabase)
-        
-        if (!mounted) return
-        
-        // Oturum gerçekten yoksa login'e yönlendir.
-        // Geçici bir okuma hatası burada düşmez; getSessionUser bir kez daha dener.
-        if (!user) {
-          window.location.href = '/auth/login'
-          return
-        }
-
-        // Profil okunamazsa oturumu kapatma. Rol veritabanında durur,
-        // bir sonraki yüklemede tekrar okunur.
-        const role = await ensureProfile(
-          supabase,
-          user.id,
-          user.email,
-          user.user_metadata?.full_name
-        )
-
-        if (!mounted) return
-
-        setUserRole(role)
-        setIsLoading(false)
-      } catch (error) {
-        console.error('Profil okunamadı, oturum korunuyor:', error)
-        if (mounted) setIsLoading(false)
+    if (profileLoading) return
+    if (!profile) {
+      if (!profileError && !redirectedRef.current) {
+        redirectedRef.current = true
+        window.location.href = '/auth/login'
       }
     }
+  }, [profile, profileLoading, profileError])
 
-    checkAuth()
-    return () => { mounted = false }
-  }, [supabase])
-
-  // Sayfa erişim kontrolü. Site manager, belirli bir depoda manage ise ürünler sayfasını da açar.
   useEffect(() => {
-    if (isLoading || !userRole) return
-    let cancelled = false
+    if (profileLoading) return
+
+    if (!userRole) {
+      if (profileError) {
+        setAccessCheck('allow')
+        return
+      }
+      setAccessCheck('loading')
+      return
+    }
 
     const roleAllowed = canAccessPage(userRole, pathname)
-    const isProductsPage =
-      pathname === '/dashboard/products' || pathname.startsWith('/dashboard/products/')
 
     if (roleAllowed) {
       setAccessCheck('allow')
@@ -83,35 +74,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
 
     if (userRole === 'site_manager' && isProductsPage) {
-      setAccessCheck('loading')
-      fetchMyWarehouseAccessScope()
-        .then((scope) => {
-          if (cancelled) return
-          setAccessCheck(scope.manageWarehouseIds.length > 0 ? 'allow' : 'deny')
-        })
-        .catch(() => {
-          if (!cancelled) setAccessCheck('deny')
-        })
-      return () => {
-        cancelled = true
+      if (!warehouseScope) {
+        setAccessCheck('loading')
+        return
       }
+      setAccessCheck(warehouseScope.manageWarehouseIds.length > 0 ? 'allow' : 'deny')
+      return
     }
 
     setAccessCheck('deny')
-  }, [pathname, userRole, isLoading])
+  }, [pathname, userRole, profileLoading, profileError, isProductsPage, warehouseScope])
 
   useEffect(() => {
     if (accessCheck !== 'deny' || !userRole) return
     router.push(getRedirectPath(userRole))
   }, [accessCheck, userRole, router])
 
-  // Scroll kontrolü
   const handleScroll = useCallback(() => {
     if (!ticking.current) {
       window.requestAnimationFrame(() => {
         const currentScrollY = window.scrollY
         const scrollDelta = currentScrollY - lastScrollY.current
-        
+
         if (isMobileMenuOpen || isNotificationPanelOpen) {
           setIsHeaderVisible(true)
         } else if (currentScrollY < 10) {
@@ -121,7 +105,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         } else if (scrollDelta < -8) {
           setIsHeaderVisible(true)
         }
-        
+
         lastScrollY.current = currentScrollY
         ticking.current = false
       })
@@ -144,7 +128,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setIsMobileMenuOpen(open)
   }
 
-  if (isLoading || accessCheck === 'loading') {
+  if (profileLoading || accessCheck === 'loading' || (!profile && !profileError)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <Loading size="lg" text="Yükleniyor..." />
@@ -173,7 +157,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="relative min-h-screen bg-gray-50">
-      {/* Mobile Header */}
       <header className={`fixed top-0 inset-x-0 h-[4.5rem] w-full bg-white border-b border-gray-100 shadow-sm z-50 lg:hidden transition-all duration-300 ${isHeaderVisible ? 'translate-y-0 opacity-100' : '-translate-y-full opacity-0'}`}>
         <div className="flex items-center justify-between h-full px-4">
           <button onClick={() => router.push('/dashboard/requests')} className="flex items-center hover:opacity-80">
@@ -189,21 +172,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </header>
 
       <Sidebar isMobileOpen={isMobileMenuOpen} setIsMobileOpen={handleSidebarMobileChange} />
-      <DashboardHeader />
-      
+
       <div className="hidden lg:block">
         <NotificationPanel isOpen={isNotificationPanelOpen} onOpenChange={handleNotificationPanelChange} />
       </div>
-      
-      <main className="min-h-screen transition-all duration-500 hidden lg:block lg:pl-[5.5rem]">
-        <div className="h-full overflow-y-auto">
-          <div className="px-10 pt-20 pb-10">{children}</div>
-        </div>
-      </main>
 
-      <main className="min-h-screen pt-[4.5rem] lg:hidden">
-        <div className="min-h-[calc(100vh-4.5rem)]">
-          <div className="w-full px-4 py-6 sm:px-6">{children}</div>
+      <main className="min-h-screen pt-[4.5rem] lg:pt-0 lg:pl-[5.5rem]">
+        <div className="w-full px-4 py-6 sm:px-6 lg:px-10 lg:pt-8 lg:pb-10">
+          {children}
         </div>
       </main>
     </div>

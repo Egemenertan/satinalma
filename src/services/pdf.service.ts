@@ -55,10 +55,10 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
   }
 
   const conditionColors: Record<string, string> = {
-    'yeni': '#10b981',
-    'kullanılmış': '#f97316',
-    'hek': '#3b82f6',
-    'arızalı': '#ef4444'
+    'yeni': '#007944',
+    'kullanılmış': '#53131E',
+    'hek': '#004777',
+    'arızalı': '#C2322F'
   }
 
   // Logo için tam URL oluştur
@@ -116,7 +116,7 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
       align-items: center;
       margin-bottom: 20px;
       padding-bottom: 15px;
-      border-bottom: 2px solid #11402E;
+      border-bottom: 2px solid #0A0A0A;
     }
     .logo {
       width: 80px;
@@ -130,7 +130,7 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
     .title {
       font-size: 18pt;
       font-weight: 600;
-      color: #11402E;
+      color: #0A0A0A;
       letter-spacing: 0.5px;
       line-height: 1.2;
     }
@@ -156,7 +156,7 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
       font-weight: 400;
     }
     .warehouse-info .value {
-      color: #11402E;
+      color: #0A0A0A;
       font-weight: 600;
       margin-left: 8px;
     }
@@ -166,7 +166,7 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
       margin-bottom: 15px;
     }
     thead {
-      background-color: #11402E;
+      background-color: #0A0A0A;
       color: white;
     }
     th {
@@ -189,12 +189,12 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
     }
     .quantity {
       font-weight: 600;
-      color: #11402E;
+      color: #0A0A0A;
       font-size: 10pt;
     }
     .status-badge {
       display: inline-block;
-      background-color: #11402E;
+      background-color: #0A0A0A;
       color: white;
       padding: 3px 10px;
       border-radius: 4px;
@@ -207,7 +207,7 @@ export async function generateStockMovementPDF(data: StockMovementPDFData) {
     }
     .section-title {
       font-size: 9pt;
-      color: #11402E;
+      color: #0A0A0A;
       font-weight: 500;
       margin-bottom: 6px;
     }
@@ -400,10 +400,10 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
   }
 
   const statusColors: Record<string, string> = {
-    'active': '#10b981',
-    'returned': '#3b82f6',
-    'lost': '#ef4444',
-    'damaged': '#f97316'
+    'active': '#007944',
+    'returned': '#004777',
+    'lost': '#C2322F',
+    'damaged': '#53131E'
   }
 
   const logoUrl = `${window.location.origin}/d.png`
@@ -460,7 +460,7 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
       align-items: center;
       margin-bottom: 20px;
       padding-bottom: 15px;
-      border-bottom: 2px solid #11402E;
+      border-bottom: 2px solid #0A0A0A;
     }
     .logo {
       width: 80px;
@@ -474,7 +474,7 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
     .title {
       font-size: 18pt;
       font-weight: 600;
-      color: #11402E;
+      color: #0A0A0A;
       letter-spacing: 0.5px;
       line-height: 1.2;
     }
@@ -497,7 +497,7 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
     }
     .section-title {
       font-size: 9pt;
-      color: #11402E;
+      color: #0A0A0A;
       font-weight: 500;
       margin-bottom: 6px;
     }
@@ -513,12 +513,12 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
       font-weight: 400;
     }
     .info-value {
-      color: #11402E;
+      color: #0A0A0A;
       font-weight: 600;
     }
     .status-badge {
       display: inline-block;
-      background-color: #11402E;
+      background-color: #0A0A0A;
       color: white;
       padding: 3px 10px;
       border-radius: 4px;
@@ -531,7 +531,7 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
       margin-bottom: 15px;
     }
     thead {
-      background-color: #11402E;
+      background-color: #0A0A0A;
       color: white;
     }
     th {
@@ -554,7 +554,7 @@ export async function generateInventoryAssignmentPDF(data: InventoryAssignmentPD
     }
     .quantity {
       font-weight: 600;
-      color: #11402E;
+      color: #0A0A0A;
       font-size: 10pt;
     }
     .notes-box {

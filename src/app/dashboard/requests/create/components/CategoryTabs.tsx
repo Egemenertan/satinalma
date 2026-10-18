@@ -114,20 +114,20 @@ export function CategoryTabs({
                 aria-pressed={isSelected}
                 onClick={() => onCategorySelect(category.name)}
                 className={`
-                  group/tile flex w-[156px] shrink-0 flex-col items-center justify-center gap-2.5
+         group/tile flex w-[156px] shrink-0 flex-col items-center justify-center gap-2.5
                   rounded-[22px] px-3.5 py-4 text-center
                   transition-[background-color,transform] duration-200 ease-out
                   active:scale-[0.98]
                   focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d1d1f]/25 focus-visible:ring-offset-2
                   ${isSelected
-                    ? 'bg-[#1d1d1f] text-white'
+                    ? 'bg-navy text-white'
                     : 'bg-white text-[#1d1d1f] ring-1 ring-black/[0.06] hover:bg-[#f5f5f7]'
                   }
                 `}
               >
                 <span
                   className={`flex h-9 w-9 items-center justify-center rounded-[12px] ${
-                    isSelected ? 'bg-white/10' : 'bg-[#f5f5f7] group-hover/tile:bg-white'
+          isSelected ? 'bg-white/10' : 'bg-[#f5f5f7] group-hover/tile:bg-white'
                   }`}
                 >
                   <IconComponent className="h-[18px] w-[18px] stroke-[1.75]" />
@@ -188,7 +188,7 @@ function groupChipClass(isSelected: boolean) {
     active:scale-[0.98]
     focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#1d1d1f]/25 focus-visible:ring-offset-2
     ${isSelected
-      ? 'bg-[#1d1d1f] text-white'
+      ? 'bg-bordeaux text-white'
       : 'bg-[#efeff4] text-[#1d1d1f] hover:bg-[#e5e5ea]'
     }
   `

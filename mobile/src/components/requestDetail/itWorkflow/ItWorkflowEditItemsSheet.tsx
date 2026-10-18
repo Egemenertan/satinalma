@@ -347,7 +347,7 @@ const styles = StyleSheet.create({
   extraCard: {
     borderWidth: 1,
     borderColor: '#86efac',
-    backgroundColor: '#f0fdf4',
+    backgroundColor: '#F4F4F4',
   },
   extraMeta: {
     ...statsType.bodyMd,

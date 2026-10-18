@@ -116,7 +116,7 @@ function buildSvgPaths(input: SiteFinanceChartPrintInput, gradientId: string): s
     })
     .join('')
 
-  const orderLine = `<path d="${smoothPath(ordPts)}" fill="none" stroke="#6366f1" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" />`
+  const orderLine = `<path d="${smoothPath(ordPts)}" fill="none" stroke="#004777" stroke-width="2.35" stroke-linecap="round" stroke-linejoin="round" />`
 
   const xLabels = labPad
     .map((lbl, i) => {
@@ -130,8 +130,8 @@ function buildSvgPaths(input: SiteFinanceChartPrintInput, gradientId: string): s
 <svg viewBox="0 0 ${W} ${H}" width="100%" height="260" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet">
   <defs>
     <linearGradient id="${safeGradId}" x1="0" x2="0" y1="0" y2="1">
-      <stop offset="0%" stop-color="#6366f1" stop-opacity="0.16"/>
-      <stop offset="100%" stop-color="#6366f1" stop-opacity="0"/>
+      <stop offset="0%" stop-color="#004777" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#004777" stop-opacity="0"/>
     </linearGradient>
     <linearGradient id="finance-grid-pdf" x1="0" x2="1" y1="0" y2="0">
       <stop offset="0%" stop-color="#e5e7eb" stop-opacity="0"/>

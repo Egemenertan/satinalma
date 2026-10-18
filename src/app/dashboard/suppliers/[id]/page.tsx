@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import useSWR from 'swr'
 import { useRouter } from 'next/navigation'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -15,6 +16,12 @@ const supabase = createClient()
 import { useToast } from '@/components/ui/toast'
 import FullScreenImageViewer from '@/components/FullScreenImageViewer'
 import { SupplierContractsPanel } from '@/components/contracts/SupplierContractsPanel'
+import { fetchSupplierLiveMetrics } from '@/services/supplier-performance.service'
+import {
+  emptySupplierMetrics,
+  formatInvoiceTotals,
+  formatMonthlyAvg,
+} from '@/lib/supplier-performance'
 import { 
   Star,
   Calendar,
@@ -132,6 +139,12 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
   
   // Report generation state
   const [generatingPDF, setGeneratingPDF] = useState<string | null>(null)
+  const { data: liveMetrics } = useSWR(
+    params.id ? `supplier_live_metrics/${params.id}` : null,
+    () => fetchSupplierLiveMetrics(params.id),
+    { revalidateOnFocus: false, dedupingInterval: 120_000 }
+  )
+  const metrics = liveMetrics ?? emptySupplierMetrics(params.id)
 
   // Erişim kontrolü
   useEffect(() => {
@@ -617,7 +630,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
       <div className="rounded-xl border border-elegant-gray-200 bg-white p-10 text-center shadow-sm">
         <h2 className="text-xl font-semibold tracking-tight text-elegant-black">Tedarikçi bulunamadı</h2>
         <p className="mt-2 text-sm text-elegant-gray-600">İstediğiniz kayda ulaşılamadı.</p>
-        <Button onClick={() => router.back()} className="mt-5 rounded-2xl bg-black text-white hover:bg-gray-900">
+        <Button onClick={() => router.back()} className="mt-5 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700">
           Geri dön
         </Button>
       </div>
@@ -636,45 +649,95 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             <ArrowLeft className="h-4 w-4" />
             Tedarikçiler
           </button>
-          <h1 className="text-2xl font-bold tracking-tight text-elegant-black md:text-3xl">
+          <h1 className="text-3xl font-bold tracking-tight text-elegant-black md:text-4xl">
             {supplier.name}
           </h1>
           <p className="mt-1 text-sm text-elegant-gray-600">
-            İletişim, malzemeler, sözleşmeler ve sipariş geçmişi
+            Canlı sipariş, fatura ve teslim performans özeti
           </p>
         </div>
         <Button
           onClick={() => router.push(`/dashboard/suppliers/${params.id}/edit`)}
-          className="shrink-0 rounded-2xl bg-black text-white hover:bg-gray-900"
+          className="shrink-0 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
         >
           Düzenle
         </Button>
       </div>
 
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-elegant-gray-500">Sipariş</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-elegant-black tabular-nums">
+            {metrics.orderCount.toLocaleString('tr-TR')}
+          </p>
+          <p className="mt-1 text-sm text-elegant-gray-500">{metrics.requestCount} talep kalemi</p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-elegant-gray-500">Fatura / ödeme</p>
+          <p className="mt-2 text-2xl font-bold tracking-tight text-elegant-black tabular-nums">
+            {formatInvoiceTotals(metrics.invoiceTotals)}
+          </p>
+          <p className="mt-1 text-sm text-elegant-gray-500">
+            {metrics.invoiceCount > 0 ? `${metrics.invoiceCount} fatura · bugüne kadar` : 'Henüz fatura yok'}
+          </p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-elegant-gray-500">Aylık talep</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-elegant-black tabular-nums">
+            {metrics.thisMonthRequestCount}
+          </p>
+          <p className="mt-1 text-sm text-elegant-gray-500">
+            Bu ay karşılandı · ort. {formatMonthlyAvg(metrics.monthlyRequestAvg)} / ay
+          </p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-elegant-gray-500">Teslim puanı</p>
+          <p className="mt-2 text-4xl font-bold tracking-tight text-elegant-black tabular-nums">
+            {metrics.score ?? '—'}
+          </p>
+          <p className="mt-1 text-sm text-elegant-gray-500">{metrics.scoreLabel}</p>
+        </div>
+        <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
+          <p className="text-sm font-semibold text-elegant-gray-500">Zamanında / eksik</p>
+          <p className="mt-2 text-lg font-bold tracking-tight text-elegant-black">
+            {metrics.scoredOrderCount > 0
+              ? `%${Math.round((metrics.onTimeRate || 0) * 100)} zamanında`
+              : 'Henüz skor yok'}
+          </p>
+          <p className="mt-1 text-sm text-elegant-gray-500">
+            {metrics.lateCount} geç · {metrics.incompleteCount} eksik · {metrics.problemCount} iade / sorun
+          </p>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">İletişim</p>
+          <p className="text-sm font-semibold text-elegant-gray-500">İletişim</p>
           <p className="mt-3 text-sm font-medium text-elegant-black break-all">{supplier.email || '—'}</p>
           <p className="mt-1 text-sm text-elegant-gray-600">{supplier.phone || '—'}</p>
         </div>
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Adres</p>
+          <p className="text-[11px] font-bold text-elegant-gray-500">Adres</p>
           <p className="mt-3 text-sm font-medium leading-relaxed text-elegant-black">
             {supplier.address || '—'}
           </p>
         </div>
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Vergi / vade</p>
+          <p className="text-[11px] font-bold text-elegant-gray-500">Vergi / vade</p>
           <p className="mt-3 text-lg font-bold tracking-tight text-elegant-black">{supplier.tax_number || '—'}</p>
           <p className="mt-1 text-xs text-elegant-gray-500">{supplier.payment_terms || 0} gün ödeme vadesi</p>
         </div>
         <div className="rounded-xl border border-elegant-gray-200 bg-white p-5 shadow-sm">
           <div className="mb-3 flex items-start justify-between gap-2">
-            <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Durum</p>
+            <p className="text-[11px] font-bold text-elegant-gray-500">Durum</p>
             {getStatusBadge(supplier.is_approved)}
           </div>
-          <div className="flex items-center gap-1">{getRatingStars(supplier.rating)}</div>
-          <p className="mt-2 text-xs text-elegant-gray-500">{supplier.rating || 0}/5 değerlendirme</p>
+          <div className="flex items-center gap-1">{getRatingStars(metrics.score != null ? Math.round(metrics.score / 20) : supplier.rating)}</div>
+          <p className="mt-2 text-xs text-elegant-gray-500">
+            {metrics.score != null
+              ? `${metrics.score}/100 teslim puanı`
+              : `${supplier.rating || 0}/5 kayıtlı puan`}
+          </p>
         </div>
       </div>
 
@@ -684,19 +747,19 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             <TabsList className="grid h-auto w-full grid-cols-3 rounded-xl bg-elegant-gray-50 p-1">
               <TabsTrigger
                 value="contracts"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-navy data-[state=active]:text-white data-[state=active]:shadow-sm"
               >
                 Sözleşmeler
               </TabsTrigger>
               <TabsTrigger
                 value="orders"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-navy data-[state=active]:text-white data-[state=active]:shadow-sm"
               >
                 Siparişler
               </TabsTrigger>
               <TabsTrigger
                 value="materials"
-                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-white data-[state=active]:text-elegant-black data-[state=active]:shadow-sm"
+                className="rounded-lg px-3 py-2 text-sm font-medium text-elegant-gray-600 data-[state=active]:bg-navy data-[state=active]:text-white data-[state=active]:shadow-sm"
               >
                 Malzemeler
               </TabsTrigger>
@@ -758,7 +821,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                         : material.price_range_max?.toLocaleString('tr-TR')}
                                     {' '}{material.currency || 'TRY'}
                                   </p>
-                                  <p className="text-[11px] uppercase tracking-wide text-elegant-gray-500">Fiyat aralığı</p>
+                                  <p className="text-[11px] text-elegant-gray-500">Fiyat aralığı</p>
                                 </div>
                               )}
                             </div>
@@ -913,7 +976,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     {order.invoices && order.invoices.length > 0 ? (
                                       <Button 
                                         onClick={() => handleOpenInvoiceModal(order.id)}
-                                        className="rounded-2xl bg-black text-white hover:bg-gray-900"
+                                        className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
                                         size="sm"
                                       >
                                         <Receipt className="w-4 h-4 mr-2" />
@@ -922,7 +985,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                                     ) : (
                                       <Button 
                                         onClick={() => handleOpenInvoiceModal(order.id)}
-                                        className="rounded-2xl bg-black text-white hover:bg-gray-900"
+                                        className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
                                         size="sm"
                                       >
                                         <Receipt className="w-4 h-4 mr-2" />
@@ -1149,7 +1212,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
           <div className="shrink-0 border-b border-elegant-gray-200 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
             <div className="flex items-start justify-between gap-3">
               <DialogHeader className="space-y-1 text-left">
-                <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">Sipariş</p>
+                <p className="text-[11px] font-bold text-elegant-gray-500">Sipariş</p>
                 <DialogTitle className="text-xl font-semibold tracking-tight text-elegant-black">
                   Fatura ekle
                 </DialogTitle>
@@ -1166,7 +1229,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
           <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5 sm:px-6">
             <div>
-              <Label htmlFor="amount" className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+              <Label htmlFor="amount" className="mb-1.5 block text-[11px] font-bold text-elegant-gray-500">
                 Fatura tutarı
               </Label>
               <div className="flex gap-2">
@@ -1194,7 +1257,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
             </div>
 
             <div>
-              <Label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+              <Label className="mb-1.5 block text-[11px] font-bold text-elegant-gray-500">
                 Fatura fotoğrafları
               </Label>
               <div className="flex gap-2">
@@ -1231,7 +1294,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
 
             {invoicePhotos.length > 0 && (
               <div>
-                <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                <p className="mb-2 text-[11px] font-bold text-elegant-gray-500">
                   Yüklenenler ({invoicePhotos.length})
                 </p>
                 <div className="grid grid-cols-3 gap-2">
@@ -1270,7 +1333,7 @@ export default function SupplierDetailPage({ params }: { params: { id: string } 
                 type="button"
                 onClick={handleSubmitInvoice}
                 disabled={isUploadingInvoice || !invoiceAmount || invoicePhotos.length === 0}
-                className="h-12 flex-1 rounded-2xl bg-black text-white hover:bg-gray-900"
+                className="h-12 flex-1 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
               >
                 {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura ekle'}
               </Button>

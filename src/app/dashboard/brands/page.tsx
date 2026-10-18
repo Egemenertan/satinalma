@@ -94,7 +94,7 @@ export default function BrandsPage() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-semibold text-gray-900">Marka Yönetimi</h1>
+          <h1 className="text-4xl font-semibold text-gray-900">Marka Yönetimi</h1>
           <p className="text-gray-600 mt-2 text-lg font-light">
             Tüm markaları görüntüleyin ve yönetin
           </p>
@@ -105,7 +105,7 @@ export default function BrandsPage() {
           </Badge>
           <Button
             onClick={() => handleOpenModal()}
-            className="px-6 py-5 rounded-2xl font-light text-md bg-black text-white hover:bg-gray-900 hover:shadow-lg transition-all duration-200"
+            className="px-6 py-5 rounded-2xl font-light text-md bg-bordeaux text-white hover:bg-bordeaux-700 hover:shadow-lg transition-all duration-200"
           >
             <Plus className="w-5 h-5 mr-2" />
             Yeni Marka Ekle
@@ -160,7 +160,7 @@ export default function BrandsPage() {
               </p>
               <Button
                 onClick={() => handleOpenModal()}
-                className="rounded-2xl bg-black text-white hover:bg-gray-900"
+                className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
               >
                 <Plus className="w-4 h-4 mr-2" />
                 İlk Markayı Ekle

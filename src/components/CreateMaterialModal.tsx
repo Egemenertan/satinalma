@@ -329,7 +329,7 @@ export function CreateMaterialModal({
             <Button 
               onClick={handleCreate}
               disabled={isCreating || !formData.class || !formData.group || !formData.item_name}
-              className="flex-1 h-12 bg-gray-900 hover:bg-gray-800 text-white rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
+              className="flex-1 h-12 bg-navy text-white hover:bg-navy-700 rounded-xl transition-all duration-200 font-medium shadow-lg hover:shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {isCreating ? (
                 <>

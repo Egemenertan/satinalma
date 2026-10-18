@@ -33,6 +33,12 @@ export type ZimmetAssignmentListPdfPayload = {
   warehouseScopeLine: string
   rowCountNote: string
   rows: ZimmetAssignmentListRow[]
+  heading?: string
+  signLeftRole?: string
+  signRightRole?: string
+  signRightNote?: string
+  footerNote?: string
+  declaration?: string
 }
 
 function esc(raw: string): string {
@@ -45,9 +51,12 @@ function esc(raw: string): string {
 
 const extraCss = `
 <style>
-  body { background: #fff; }
+  body { background: #fff; width: 794px; }
   .container {
-    padding: 16px 18px 24px;
+    width: 794px;
+    max-width: 794px;
+    box-sizing: border-box;
+    padding: 16px 14px 24px;
     background: #fff;
   }
   .zim-assignment-accent {
@@ -118,27 +127,27 @@ const extraCss = `
     border-collapse: collapse;
     table-layout: fixed;
     font-family: Arial, Helvetica, sans-serif;
-    font-size: 9pt;
-    line-height: 1.35;
+    font-size: 7.5pt;
+    line-height: 1.3;
     letter-spacing: 0;
     page-break-inside: auto;
   }
   table.zim-data th {
     background: #111;
     color: #fff;
-    padding: 8px 6px;
+    padding: 5px 3px;
     text-align: left;
     font-weight: 700;
-    font-size: 8pt;
-    line-height: 1.25;
+    font-size: 6.5pt;
+    line-height: 1.2;
     letter-spacing: 0;
     text-transform: none;
     border: 1px solid #000;
     vertical-align: middle;
-    white-space: nowrap;
+    white-space: normal;
   }
   table.zim-data td {
-    padding: 7px 6px;
+    padding: 5px 3px;
     border: 1px solid #d1d5db;
     vertical-align: middle;
     text-align: left;
@@ -153,7 +162,7 @@ const extraCss = `
   table.zim-data th.zim-money,
   table.zim-data td.zim-money {
     text-align: right;
-    white-space: nowrap;
+    white-space: normal;
   }
   table.zim-data th.zim-center,
   table.zim-data td.zim-center {
@@ -239,7 +248,7 @@ const extraCss = `
   .zim-sign-role {
     font-size: 8pt;
     font-weight: 700;
-    color: #059669;
+    color: #0A0A0A;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     margin-bottom: 8px;
@@ -254,6 +263,26 @@ const extraCss = `
   .zim-sign-line {
     border-bottom: 2px solid #374151;
     min-height: 26px;
+  }
+  .zim-declaration {
+    margin-top: 18px;
+    padding: 14px 16px;
+    border: 1px solid #e5e7eb;
+    border-left: 3px solid #111;
+    border-radius: 6px;
+    background: #f9fafb;
+    font-size: 10pt;
+    line-height: 1.55;
+    color: #111827;
+    page-break-inside: avoid;
+  }
+  .zim-declaration-label {
+    font-size: 8pt;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #374151;
+    margin-bottom: 6px;
   }
   @media print {
     body { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
@@ -411,20 +440,20 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
     </div>
 
     <div class="zim-assign-doc-block">
-      <div class="zim-assign-heading">Zimmet kalemleri</div>
+      <div class="zim-assign-heading">${esc(payload.heading || 'Zimmet kalemleri')}</div>
       <div class="zim-table-wrap">
         <table class="zim-data">
           <colgroup>
-            <col style="width:44px" />
-            <col />
-            <col style="width:118px" />
-            <col style="width:96px" />
-            <col style="width:58px" />
-            <col style="width:58px" />
-            <col style="width:112px" />
-            <col style="width:88px" />
-            <col style="width:120px" />
-            <col style="width:88px" />
+            <col style="width:6%" />
+            <col style="width:18%" />
+            <col style="width:12%" />
+            <col style="width:10%" />
+            <col style="width:7%" />
+            <col style="width:7%" />
+            <col style="width:11%" />
+            <col style="width:10%" />
+            <col style="width:11%" />
+            <col style="width:8%" />
           </colgroup>
           <thead>
             <tr>
@@ -446,24 +475,34 @@ function buildHtml(payload: ZimmetAssignmentListPdfPayload, logoSrc: string): st
       </div>
     </div>
 
+    ${
+      payload.declaration
+        ? `<div class="zim-declaration"><div class="zim-declaration-label">Beyan</div>${esc(payload.declaration)}</div>`
+        : ''
+    }
+
     <div class="zim-sign-wrap">
       <div class="zim-sign-card">
-        <div class="zim-sign-role">Raporu çıkartan</div>
+        <div class="zim-sign-role">${esc(payload.signLeftRole || 'Raporu çıkartan')}</div>
         <div class="zim-sign-person">${esc(payload.exportedByDisplayName)}</div>
         <div class="zim-sign-contact">${payload.exportedByEmail ? esc(payload.exportedByEmail) : '—'}</div>
         <div class="zim-sign-label">Ad soyad &amp; imza</div>
         <div class="zim-sign-line"></div>
       </div>
       <div class="zim-sign-card">
-        <div class="zim-sign-role">Zimmetli personel</div>
+        <div class="zim-sign-role">${esc(payload.signRightRole || 'Zimmetli personel')}</div>
         <div class="zim-sign-person">${esc(payload.assignedPersonName)}</div>
-        <div class="zim-sign-contact">Liste üzerindeki kalemlerin kullanımından sorumludur.</div>
+        <div class="zim-sign-contact">${esc(
+          payload.signRightNote || 'Liste üzerindeki kalemlerin kullanımından sorumludur.'
+        )}</div>
         <div class="zim-sign-label">Ad soyad &amp; imza</div>
         <div class="zim-sign-line"></div>
       </div>
     </div>
 
-    <p style="margin-top:24px;text-align:center;font-size:8pt;color:#9ca3af">Satın Alma / Envanter — Dovec</p>
+    <p style="margin-top:24px;text-align:center;font-size:8pt;color:#9ca3af">${esc(
+      payload.footerNote || 'Satın Alma / Envanter — Dovec'
+    )}</p>
   </div>
 </body>
 </html>
@@ -588,8 +627,8 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
     position: 'fixed',
     left: '-12000px',
     top: '0',
-    width: '1123px',
-    height: '794px',
+    width: '794px',
+    height: '1123px',
     border: '0',
     pointerEvents: 'none',
   })
@@ -619,7 +658,7 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
     await clampProductImages(root)
     await new Promise((r) => setTimeout(r, 80))
 
-    const contentHeight = Math.max(root.scrollHeight, root.offsetHeight, 794)
+    const contentHeight = Math.max(root.scrollHeight, root.offsetHeight, 1123)
     iframe.style.height = `${contentHeight}px`
 
     const { jsPDF } = await import('jspdf')
@@ -632,15 +671,15 @@ export async function printZimmetAssignmentListPdf(payload: ZimmetAssignmentList
       backgroundColor: '#ffffff',
       logging: false,
       imageTimeout: 8000,
-      windowWidth: 1123,
-      width: 1123,
+      windowWidth: 794,
+      width: 794,
       height: contentHeight,
       scrollX: 0,
       scrollY: 0,
     })
 
     const imgData = canvas.toDataURL('image/jpeg', 0.92)
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4', compress: true })
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true })
     const pageWidth = pdf.internal.pageSize.getWidth()
     const pageHeight = pdf.internal.pageSize.getHeight()
     const imgWidth = pageWidth

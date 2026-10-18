@@ -5,30 +5,20 @@ import { useRouter } from 'next/navigation'
 import useSWR from 'swr'
 import { createClient } from '@/lib/supabase/client'
 import { invalidateDashboardCache } from '@/lib/cache'
+import { useCurrentProfile } from '@/lib/auth/current-profile'
 import { DashboardInsights } from '@/app/dashboard/components/DashboardInsights'
 import { fetchDashboardBundle } from '@/services/dashboard.service'
 
 export default function Dashboard() {
   const router = useRouter()
   const supabase = createClient()
+  const { data: profile } = useCurrentProfile()
 
   useEffect(() => {
-    const checkUserRole = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser()
-
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
-
-        if (profile?.role === 'warehouse_manager') {
-          router.replace('/dashboard/products')
-        }
-      }
+    if (profile?.role === 'warehouse_manager') {
+      router.replace('/dashboard/products')
     }
-
-    checkUserRole()
-  }, [router, supabase])
+  }, [profile?.role, router])
 
   const { data, error, isLoading } = useSWR('dashboard_bundle', fetchDashboardBundle, {
     revalidateOnFocus: false,

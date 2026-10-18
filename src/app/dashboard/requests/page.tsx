@@ -5,6 +5,7 @@ import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
 import { useRouter } from 'next/navigation'
 import PurchaseRequestsTable from '@/components/PurchaseRequestsTable'
+import { SlidingSegmentTabs } from '@/components/SlidingSegmentTabs'
 
 import { Plus, AlertTriangle } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -17,63 +18,11 @@ import {
 } from '@/lib/it-workflow'
 import { excludeSoftDeletedRequests } from '@/lib/softDeletePurchaseRequest'
 import { fetchLateDeliveryRequestIds } from '@/lib/order-delivery'
+import { useCurrentProfile } from '@/lib/auth/current-profile'
 
 const loadSessionUser = async (supabase: ReturnType<typeof createClient>) => {
   const { data: { session } } = await supabase.auth.getSession()
   return session?.user ?? null
-}
-
-const fetchPageData = async () => {
-  const supabase = createClient()
-
-  const user = await loadSessionUser(supabase)
-  if (!user) {
-    throw new Error('Kullanıcı oturumu bulunamadı')
-  }
-
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('full_name, email, role, site_id, department')
-    .eq('id', user.id)
-    .single()
-
-  let displayName = profile?.full_name
-  if (!displayName || displayName.trim() === '') {
-    if (profile?.email) {
-      displayName = profile.email.split('@')[0]
-        .replace(/[._-]/g, ' ')
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ')
-    } else {
-      displayName = 'Kullanıcı'
-    }
-  }
-
-  const canSeeItTab = canSeeItWorkflowTab({
-    role: profile?.role,
-    department: profile?.department
-  })
-
-  return {
-    userId: user.id,
-    userInfo: { displayName, email: profile?.email },
-    role: profile?.role || '',
-    department: profile?.department ?? null,
-    canSeeItWorkflowTab: canSeeItTab,
-    stats: {
-      total: 0,
-      pending: 0,
-      approved: 0,
-      urgent: 0,
-      thisMonth: 0,
-      monthlyData: [],
-      monthChange: 0
-    },
-    siteId: profile?.site_id,
-    weeklyActivity: [],
-    mobileActivity: []
-  }
 }
 
 const fetchRequestAlerts = async () => {
@@ -219,39 +168,16 @@ export default function RequestsPage() {
     return false
   })
   
-  // Tek SWR ile tüm sayfa verisini çek - Optimize edildi!
-  const { data: pageData, error, mutate: refreshPageData } = useSWR(
-    'requests_page_data',
-    fetchPageData,
-    {
-      revalidateOnFocus: false,
-      revalidateOnReconnect: true,
-      dedupingInterval: 30000, // 30 saniye cache
-      errorRetryCount: 3,
-      fallbackData: {
-        userId: '',
-        userInfo: { displayName: 'Kullanıcı', email: '' },
-        role: '',
-        department: null,
-        canSeeItWorkflowTab: false,
-        stats: { total: 0, pending: 0, approved: 0, urgent: 0, thisMonth: 0, monthlyData: [], monthChange: 0 },
-        siteId: null,
-        weeklyActivity: [],
-        mobileActivity: []
-      }
-    }
-  )
-  
-  // Destructure page data
+  const { data: profile } = useCurrentProfile()
   const [alertsReady, setAlertsReady] = useState(false)
   useEffect(() => {
-    if (!pageData?.role) return
+    if (!profile?.role) return
     const id = window.setTimeout(() => setAlertsReady(true), 600)
     return () => window.clearTimeout(id)
-  }, [pageData?.role])
+  }, [profile?.role])
 
   const { data: alerts } = useSWR(
-    alertsReady && pageData?.role ? ['requests_page_alerts', pageData.role] : null,
+    alertsReady && profile?.role ? ['requests_page_alerts', profile.role] : null,
     fetchRequestAlerts,
     {
       revalidateOnFocus: false,
@@ -260,19 +186,21 @@ export default function RequestsPage() {
     }
   )
 
-  const userInfo = pageData?.userInfo
-  const userRole = pageData?.role || ''
+  const userInfo = { displayName: profile?.fullName || 'Kullanıcı', email: profile?.email || '' }
+  const userRole = profile?.role || ''
   const pendingOrdersCount = alerts?.pendingOrdersCount || 0
   const lateDeliveryCount = alerts?.lateDeliveryCount || 0
   const overdueDeliveriesCount = alerts?.overdueDeliveriesCount || 0
   const overdueRequestIds = alerts?.overdueRequestIds || []
-  const userSiteId = pageData?.siteId
-  const canSeeItWorkflowTabUser = pageData?.canSeeItWorkflowTab === true
+  const userSiteId = profile?.siteId
+  const canSeeItWorkflowTabUser = canSeeItWorkflowTab({
+    role: profile?.role,
+    department: profile?.department,
+  })
   const itWorkflowAttentionCount = alerts?.itWorkflowAttentionCount ?? 0
   const showItTabNotification =
     canSeeItWorkflowTabUser && itWorkflowAttentionCount > 0 && requestsListTab === 'main'
 
-  // Real-time updates için subscription - Optimize edildi
   useEffect(() => {
     const supabase = createClient()
     
@@ -285,9 +213,6 @@ export default function RequestsPage() {
           table: 'purchase_requests' 
         }, 
         () => {
-          console.log('📡 Purchase requests table update triggered')
-          // Sadece ilgili cache'i yenile
-          refreshPageData()
           invalidatePurchaseRequestsCache()
         }
       )
@@ -298,9 +223,6 @@ export default function RequestsPage() {
           table: 'shipments' 
         }, 
         () => {
-          console.log('📡 Shipments table update triggered')
-          // Sadece ilgili cache'i yenile
-          refreshPageData()
           invalidatePurchaseRequestsCache()
         }
       )
@@ -309,7 +231,7 @@ export default function RequestsPage() {
     return () => {
       subscription.unsubscribe()
     }
-  }, [refreshPageData])
+  }, [])
 
   // showUnorderedOnly değiştiğinde localStorage'a kaydet
   useEffect(() => {
@@ -339,9 +261,9 @@ export default function RequestsPage() {
   const showSiteWarning = requiresSiteId && !hasSiteAssignment
 
   return (
-    <div className="px-0 pb-6 space-y-4">
+    <div className="pb-6 space-y-6">
       {/* Welcome Message */}
-      <div className="px-4 pt-2 space-y-2">
+      <div className="pt-2 space-y-2">
         <p className="text-lg text-gray-700">
           Merhaba <span className="font-medium text-gray-900">{userInfo?.displayName}</span>, hoşgeldin! 👋
         </p>
@@ -374,7 +296,7 @@ export default function RequestsPage() {
                 if (next) setShowLateDeliveryOnly(false)
               }}
               className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-                showUnorderedOnly
+        showUnorderedOnly
                   ? 'border-gray-900 bg-gray-50'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
@@ -392,7 +314,7 @@ export default function RequestsPage() {
                 if (next) setShowUnorderedOnly(false)
               }}
               className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-                showLateDeliveryOnly
+        showLateDeliveryOnly
                   ? 'border-gray-900 bg-gray-50'
                   : 'border-gray-200 bg-white hover:border-gray-300'
               }`}
@@ -409,7 +331,7 @@ export default function RequestsPage() {
         
         {/* Teslim Alınmamış Siparişler Uyarısı - Site Manager, Santiye Depo ve Santiye Depo Yöneticisi için */}
         {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
-          <div className="flex items-center gap-3 p-4 bg-[#00E676]/5 border border-[#00E676]/20 rounded-2xl">
+          <div className="flex items-center gap-3 p-4 bg-black/[0.04] border border-black/10 rounded-2xl">
             <div className="flex-shrink-0">
              
             </div>
@@ -436,11 +358,11 @@ export default function RequestsPage() {
       </div>
 
       {/* Header */}
-      <div className="space-y-4 px-4">
+      <div className="space-y-4">
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
+            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
             <p className="text-gray-600 mt-4 text-base">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <div className="flex items-center gap-4">
@@ -459,7 +381,7 @@ export default function RequestsPage() {
         {/* Mobile: Header only */}
         <div className="sm:hidden">
           <div>
-            <h1 className="text-2xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
+            <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
             <p className="text-gray-600 mt-4 text-sm">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
             
             {/* Mobile: Create Request Button */}
@@ -478,86 +400,24 @@ export default function RequestsPage() {
         </div>
       </div>
 
-      {/* Desktop: son talepler */}
-      <div className="hidden sm:block space-y-4">
-        {/* Requests Table */}
+      <div className="space-y-5">
         {canSeeItWorkflowTabUser && (
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant={requestsListTab === 'main' ? 'default' : 'outline'}
-              className={requestsListTab === 'main' ? 'bg-[#00E676] hover:bg-[#00c46a] text-white' : ''}
-              onClick={() => setRequestsListTab('main')}
-            >
-              Talepler
-            </Button>
-            <Button
-              type="button"
-              variant={requestsListTab === 'it' ? 'default' : 'outline'}
-              className={`relative overflow-visible ${requestsListTab === 'it' ? 'bg-sky-600 hover:bg-sky-700 text-white' : ''}`}
-              onClick={() => setRequestsListTab('it')}
-              aria-label={
-                showItTabNotification
+          <SlidingSegmentTabs
+            ariaLabel="Talep görünümü"
+            value={requestsListTab}
+            onChange={(tab) => setRequestsListTab(tab === 'it' ? 'it' : 'main')}
+            items={[
+              { value: 'main', label: 'Talepler' },
+              {
+                value: 'it',
+                label: 'IT Yönetim',
+                badge: showItTabNotification,
+                ariaLabel: showItTabNotification
                   ? `IT Yönetim — ${itWorkflowAttentionCount} işlem bekleyen talep`
-                  : 'IT Yönetim'
-              }
-            >
-              IT Yönetim
-              {showItTabNotification ? (
-                <span
-                  className="pointer-events-none absolute -right-1 -top-1 z-10 h-2.5 min-w-2.5 rounded-full bg-red-500 ring-2 ring-gray-50"
-                  aria-hidden
-                />
-              ) : null}
-            </Button>
-          </div>
-        )}
-        <PurchaseRequestsTable 
-          userRole={userRole} 
-          listView={canSeeItWorkflowTabUser && requestsListTab === 'it' ? 'it' : 'main'}
-          showUnorderedOnly={requestsListTab === 'main' ? showUnorderedOnly : false}
-          onUnorderedFilterChange={setShowUnorderedOnly}
-          showLateDeliveryOnly={requestsListTab === 'main' ? showLateDeliveryOnly : false}
-          onLateDeliveryFilterChange={setShowLateDeliveryOnly}
-          showOverdueOnly={requestsListTab === 'main' ? showOverdueOnly : false}
-          onOverdueFilterChange={setShowOverdueOnly}
-          overdueRequestIds={overdueRequestIds}
-        />
-      </div>
-
-      {/* Mobile: talep listesi */}
-      <div className="sm:hidden space-y-6">
-        {/* Requests Table */}
-        {canSeeItWorkflowTabUser && (
-          <div className="flex flex-wrap gap-2 px-4">
-            <Button
-              type="button"
-              variant={requestsListTab === 'main' ? 'default' : 'outline'}
-              className={requestsListTab === 'main' ? 'bg-[#00E676] hover:bg-[#00c46a] text-white' : ''}
-              onClick={() => setRequestsListTab('main')}
-            >
-              Talepler
-            </Button>
-            <Button
-              type="button"
-              variant={requestsListTab === 'it' ? 'default' : 'outline'}
-              className={`relative overflow-visible ${requestsListTab === 'it' ? 'bg-sky-600 hover:bg-sky-700 text-white' : ''}`}
-              onClick={() => setRequestsListTab('it')}
-              aria-label={
-                showItTabNotification
-                  ? `IT Yönetim — ${itWorkflowAttentionCount} işlem bekleyen talep`
-                  : 'IT Yönetim'
-              }
-            >
-              IT Yönetim
-              {showItTabNotification ? (
-                <span
-                  className="pointer-events-none absolute -right-1 -top-1 z-10 h-2.5 min-w-2.5 rounded-full bg-red-500 ring-2 ring-white"
-                  aria-hidden
-                />
-              ) : null}
-            </Button>
-          </div>
+                  : 'IT Yönetim',
+              },
+            ]}
+          />
         )}
         <PurchaseRequestsTable 
           userRole={userRole} 

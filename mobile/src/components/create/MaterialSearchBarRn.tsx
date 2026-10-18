@@ -214,7 +214,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     marginRight: 8,
     borderWidth: 1,
-    borderColor: '#f0fdf4',
+    borderColor: '#F4F4F4',
   },
   inputSlot: {
     flex: 1,
@@ -270,7 +270,7 @@ const styles = StyleSheet.create({
     borderColor: '#01E884',
     padding: 14,
   },
-  createBtnPressed: { backgroundColor: '#f0fdf4' },
+  createBtnPressed: { backgroundColor: '#F4F4F4' },
   createTitle: { fontSize: 14, fontWeight: '700', color: '#01E884' },
   createSub: { fontSize: 13, color: '#6b7280', marginTop: 4 },
   emptyBox: { padding: 28, alignItems: 'center' },

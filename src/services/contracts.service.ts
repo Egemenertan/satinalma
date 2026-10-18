@@ -8,6 +8,7 @@ import {
   type ContractCategory,
   type ContractPartyKind,
   type CreateContractInput,
+  type UpdateContractInput,
   type RequestContractBinding,
   type SupplierContractDelivery,
   formatContractQty,
@@ -666,6 +667,130 @@ export async function createSubcontractor(input: {
   return data
 }
 
+function itemPayload(contractId: string, item: CreateContractInput['items'][number]) {
+  return {
+    contract_id: contractId,
+    material_class: item.material_class || null,
+    material_group: item.material_group || null,
+    material_item: item.material_item,
+    unit: item.unit,
+    unit_price: item.unit_price,
+    currency: item.currency || 'TRY',
+    contracted_quantity: item.contracted_quantity,
+  }
+}
+
+export async function updateSupplierContract(contractId: string, input: UpdateContractInput): Promise<void> {
+  const supabase = createClient()
+
+  const { data: existingItems, error: existingError } = await supabase
+    .from('supplier_contract_items')
+    .select('id, material_item, contracted_quantity')
+    .eq('contract_id', contractId)
+
+  if (existingError) throw existingError
+
+  const existingIds = (existingItems || []).map((row) => row.id)
+  const incomingIds = new Set(input.items.map((item) => item.id).filter(Boolean) as string[])
+  const removedIds = existingIds.filter((id) => !incomingIds.has(id))
+
+  if (removedIds.length > 0) {
+    const [{ data: linked, error: linkedError }, { data: deliveries, error: deliveryError }] = await Promise.all([
+      supabase.from('purchase_request_items').select('id').in('contract_item_id', removedIds).limit(1),
+      supabase.from('supplier_contract_deliveries').select('id').in('contract_item_id', removedIds).limit(1),
+    ])
+    if (linkedError) throw linkedError
+    if (deliveryError) throw deliveryError
+    if ((linked && linked.length > 0) || (deliveries && deliveries.length > 0)) {
+      throw new Error('Bağlı talep veya irsaliyesi olan kalem silinemez')
+    }
+  }
+
+  if (existingIds.length > 0) {
+    const activity = await loadContractActivity(existingIds.map((id) => ({ id, contract_id: contractId })))
+    for (const item of input.items) {
+      if (!item.id) continue
+      const delivered = activity.deliveredByItem.get(item.id) || 0
+      if (item.contracted_quantity + 1e-9 < delivered) {
+        const name = item.material_item || 'Kalem'
+        throw new Error(`${name}: miktar teslim edilenin (${delivered}) altına inemez`)
+      }
+    }
+  }
+
+  const { error: updateError } = await supabase
+    .from('supplier_contracts')
+    .update({
+      title: input.title?.trim() || null,
+      contract_no: input.contract_no?.trim() || null,
+      start_date: input.start_date || null,
+      end_date: input.end_date || null,
+      notes: input.notes?.trim() || null,
+      budget_amount: input.budget_amount,
+      budget_currency: input.budget_currency || 'TRY',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', contractId)
+
+  if (updateError) throw updateError
+
+  if (removedIds.length > 0) {
+    const { error: deleteError } = await supabase
+      .from('supplier_contract_items')
+      .delete()
+      .in('id', removedIds)
+    if (deleteError) throw deleteError
+  }
+
+  const toUpdate = input.items.filter((item) => item.id)
+  const toInsert = input.items.filter((item) => !item.id)
+
+  for (const item of toUpdate) {
+    const { error: itemError } = await supabase
+      .from('supplier_contract_items')
+      .update({
+        material_class: item.material_class || null,
+        material_group: item.material_group || null,
+        material_item: item.material_item,
+        unit: item.unit,
+        unit_price: item.unit_price,
+        currency: item.currency || 'TRY',
+        contracted_quantity: item.contracted_quantity,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', item.id)
+    if (itemError) throw itemError
+  }
+
+  if (toInsert.length > 0) {
+    const { error: insertError } = await supabase
+      .from('supplier_contract_items')
+      .insert(toInsert.map((item) => itemPayload(contractId, item)))
+    if (insertError) throw insertError
+  }
+
+  invalidateContractsCache()
+}
+
+export async function updateContractDates(
+  contractId: string,
+  startDate: string | null,
+  endDate: string | null
+): Promise<void> {
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('supplier_contracts')
+    .update({
+      start_date: startDate,
+      end_date: endDate,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', contractId)
+
+  if (error) throw error
+  invalidateContractsCache()
+}
+
 export async function updateContractBudget(
   contractId: string,
   budgetAmount: number,
@@ -683,6 +808,63 @@ export async function updateContractBudget(
 
   if (error) throw error
   invalidateContractsCache()
+}
+
+export async function fetchContractInclusions(contractId: string): Promise<string[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('supplier_contract_inclusions')
+    .select('request_key')
+    .eq('contract_id', contractId)
+
+  if (error) throw error
+  return (data || []).map((row) => row.request_key)
+}
+
+export async function fetchContractInclusionsMap(contractIds: string[]): Promise<Record<string, string[]>> {
+  const map: Record<string, string[]> = {}
+  if (contractIds.length === 0) return map
+  const supabase = createClient()
+  const { data, error } = await supabase
+    .from('supplier_contract_inclusions')
+    .select('contract_id, request_key')
+    .in('contract_id', contractIds)
+
+  if (error) throw error
+  for (const row of data || []) {
+    const list = map[row.contract_id] || []
+    list.push(row.request_key)
+    map[row.contract_id] = list
+  }
+  return map
+}
+
+export async function includeContractRequests(
+  contractId: string,
+  rows: Array<{ requestKey: string; itemName: string }>
+): Promise<void> {
+  if (rows.length === 0) return
+  const supabase = createClient()
+  const { error } = await supabase.from('supplier_contract_inclusions').upsert(
+    rows.map((row) => ({
+      contract_id: contractId,
+      request_key: row.requestKey,
+      item_name: row.itemName,
+    })),
+    { onConflict: 'contract_id,request_key' }
+  )
+  if (error) throw error
+}
+
+export async function excludeContractRequests(contractId: string, requestKeys: string[]): Promise<void> {
+  if (requestKeys.length === 0) return
+  const supabase = createClient()
+  const { error } = await supabase
+    .from('supplier_contract_inclusions')
+    .delete()
+    .eq('contract_id', contractId)
+    .in('request_key', requestKeys)
+  if (error) throw error
 }
 
 export async function cancelSupplierContract(contractId: string): Promise<void> {

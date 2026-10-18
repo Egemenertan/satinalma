@@ -5,19 +5,13 @@
 import { effectiveInvoiceAmount } from '@/lib/site-invoice-aggregation'
 import { isPazarlamaDepartment } from '@/lib/it-workflow'
 import { aggregateCurrencyTotalsViaEurCross } from '@/lib/fx/convertViaEurRates'
+import { titleCaseTr } from '@/lib/reports/titleCase'
+
+export { titleCaseTr }
 
 /** Her kelimenin baş harfi büyük (TR) */
 export function titleCaseDepartmentName(raw: string): string {
-  return raw
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean)
-    .map((word) => {
-      if (word.toLocaleLowerCase('tr-TR') === 'it') return 'IT'
-      const lower = word.toLocaleLowerCase('tr-TR')
-      return lower.charAt(0).toLocaleUpperCase('tr-TR') + lower.slice(1)
-    })
-    .join(' ')
+  return titleCaseTr(raw)
 }
 
 /** PDF header’daki departman adı — Pazarlama → IT - Pazarlama */
@@ -31,6 +25,7 @@ export function formatDepartmentPdfLabel(department: string): string {
 
 export type DepartmentSpendingFilters = {
   department?: string | null
+  site?: string | null
   /** YYYY-MM (aylık) */
   month?: string | null
   dateFrom?: string | null
@@ -115,11 +110,13 @@ export type DepartmentSpendingInsights = {
 export type DepartmentSpendingReport = {
   filters: {
     department: string | null
+    site: string | null
     dateFrom: string
     dateTo: string
   }
   summary: DepartmentSpendingSummary
   departmentBreakdown: DepartmentSpendingSummary[]
+  siteBreakdown: DepartmentSpendingSummary[]
   /** Seçili departmanın site_manager kayıtları (Departman yöneticisi) */
   departmentManagers: DepartmentManagerInfo[]
   insights: DepartmentSpendingInsights

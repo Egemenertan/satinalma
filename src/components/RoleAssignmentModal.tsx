@@ -354,7 +354,7 @@ export default function RoleAssignmentModal({ isOpen, onClose, onSuccess }: Role
           <Button
             onClick={handleAssignRole}
             disabled={!selectedUserId || loading || users.length === 0}
-            className="w-full sm:w-auto bg-gray-900 hover:bg-gray-800 text-white rounded-xl px-6 py-2.5 font-medium shadow-lg hover:shadow-xl transition-all duration-200"
+            className="w-full sm:w-auto bg-navy text-white hover:bg-navy-700 rounded-xl px-6 py-2.5 font-medium shadow-lg hover:shadow-xl transition-all duration-200"
           >
             {loading ? (
               <>

@@ -8,38 +8,48 @@
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { Search, X, Filter } from 'lucide-react'
+import { Search, X } from 'lucide-react'
+import { ZimmetOwnerFilter } from './ZimmetOwnerFilter'
 import { useBrandsWithProductCount } from '@/app/dashboard/brands/hooks'
 import type { StatusFilter } from '@/services/products.service'
 
 interface ProductFiltersProps {
   searchTerm: string
+  zimmetOwner: string
   brandId: string
   statusFilter: StatusFilter
   onSearchChange: (value: string) => void
+  onZimmetOwnerChange: (value: string) => void
   onBrandChange: (value: string) => void
   onStatusFilterChange: (value: StatusFilter) => void
   onClearFilters: () => void
   hasActiveFilters: boolean
+  searching?: boolean
+  warehouseIds?: string[]
 }
 
 export function ProductFilters({
   searchTerm,
+  zimmetOwner,
   brandId,
   statusFilter,
   onSearchChange,
+  onZimmetOwnerChange,
   onBrandChange,
   onStatusFilterChange,
   onClearFilters,
   hasActiveFilters,
+  searching = false,
+  warehouseIds,
 }: ProductFiltersProps) {
   const { data: brands } = useBrandsWithProductCount()
 
   return (
-    <div className="flex flex-col sm:flex-row gap-4">
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-col sm:flex-row gap-3">
       {/* Search */}
       <div className="relative flex-1">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+        <Search className={`absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 ${searching ? 'text-gray-700 animate-pulse' : 'text-gray-400'}`} />
         <Input
           type="text"
           placeholder="Ürün adı veya SKU ile ara..."
@@ -48,6 +58,12 @@ export function ProductFilters({
           className="pl-10 rounded-2xl border-gray-200 bg-white"
         />
       </div>
+
+      <ZimmetOwnerFilter
+        value={zimmetOwner}
+        onChange={onZimmetOwnerChange}
+        warehouseIds={warehouseIds}
+      />
 
       {/* Brand Filter */}
       <Select value={brandId} onValueChange={onBrandChange}>
@@ -91,6 +107,7 @@ export function ProductFilters({
           Temizle
         </Button>
       )}
+      </div>
     </div>
   )
 }

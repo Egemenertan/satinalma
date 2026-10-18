@@ -1523,9 +1523,9 @@ DOVEC GROUP
                     type="button"
                     onClick={selectAllMaterials}
                     className={`inline-flex h-9 items-center gap-1.5 rounded-full px-4 text-sm font-medium transition-colors ${
-                      allSelected
+           allSelected
                         ? 'border border-gray-300 bg-white text-gray-800 hover:bg-gray-50'
-                        : 'bg-gray-900 text-white shadow-sm hover:bg-black'
+                        : 'bg-navy text-white shadow-sm hover:bg-navy-700'
                     }`}
                   >
                     <Check className="h-3.5 w-3.5" strokeWidth={2.5} />
@@ -1553,7 +1553,7 @@ DOVEC GROUP
                     <div 
                       key={item.id} 
                       className={`bg-white border border-gray-200 rounded-3xl p-5 transition-all cursor-pointer ${
-                        selectedMaterials.has(item.id) 
+            selectedMaterials.has(item.id) 
                           ? 'border-gray-400 shadow-sm' 
                           : 'hover:border-gray-300'
                       }`}
@@ -1565,8 +1565,8 @@ DOVEC GROUP
                           <div className="flex items-center justify-center pt-1">
                             <div 
                               className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-colors ${
-                                selectedMaterials.has(item.id)
-                                  ? 'bg-gray-900 border-gray-900'
+                selectedMaterials.has(item.id)
+                                  ? 'bg-navy border-navy'
                                   : 'border-gray-300 hover:border-gray-400'
                               }`}
                             >
@@ -1676,7 +1676,7 @@ DOVEC GROUP
                                 e.stopPropagation()
                                 handleExportMaterialPDF(item)
                               }}
-                              className="h-8 px-3 text-xs bg-white hover:bg-gray-900 hover:text-white hover:border-gray-900 border-gray-200 text-gray-700 shadow-sm transition-colors"
+                              className="h-8 px-3 text-xs bg-white hover:bg-bordeaux hover:text-white hover:border-bordeaux border-gray-200 text-gray-700 shadow-sm transition-colors"
                               title="Satın Alma Talep Formu PDF Export"
                             >
                               <Download className="h-3 w-3 mr-1" />
@@ -1773,7 +1773,7 @@ DOVEC GROUP
                                         })
                                         setIsEditOrderModalOpen(true)
                                       }}
-                                      className="text-sm bg-gray-900 text-white hover:bg-black font-medium px-3 py-1.5 rounded-lg"
+                                      className="text-sm bg-navy text-white hover:bg-navy-700 font-medium px-3 py-1.5 rounded-lg"
                                     >
                                       Düzenle
                                     </button>
@@ -1822,7 +1822,7 @@ DOVEC GROUP
                               >
                                 <h6 className="text-sm font-medium text-gray-700">Mevcut Tedarikçiler</h6>
                                 <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${
-                                  expandedSuppliers.has(item.id) || item.quantity > 0 ? 'rotate-180' : ''
+                 expandedSuppliers.has(item.id) || item.quantity > 0 ? 'rotate-180' : ''
                                 }`} />
                               </button>
                               {(expandedSuppliers.has(item.id) || item.quantity > 0) && (
@@ -1937,7 +1937,7 @@ DOVEC GROUP
                                             }}
                                             disabled={item.quantity <= 0}
                                             className={`text-xs ${
-                                              item.quantity <= 0 
+                       item.quantity <= 0 
                                                 ? 'bg-gray-300 text-gray-500 cursor-not-allowed' 
                                                 : supplierOrders.length > 0
                                                   ? 'bg-blue-600 hover:bg-blue-700 text-white'
@@ -1975,7 +1975,7 @@ DOVEC GROUP
                                   })
                                   setIsAssignSupplierModalOpen(true)
                                 }}
-                                className="w-full h-10 border-gray-300 text-gray-700 hover:bg-gray-900 hover:text-white hover:border-gray-900 transition-colors"
+                                className="w-full h-10 border-gray-300 text-gray-700 hover:bg-bordeaux hover:text-white hover:border-bordeaux transition-colors"
                               >
                                 <Plus className="h-4 w-4 mr-2" />
                                 Başka Tedarikçi Ekle
@@ -1998,7 +1998,7 @@ DOVEC GROUP
                                   })
                                   setIsAssignSupplierModalOpen(true)
                                 }}
-                                className="bg-black hover:bg-gray-900 text-white rounded-md"
+                                className="bg-bordeaux text-white hover:bg-bordeaux-700 rounded-md"
                               >
                                 <Building2 className="h-4 w-4 mr-2" />
                                 Tedarikçi Ata
@@ -2244,7 +2244,7 @@ DOVEC GROUP
                 
                 {/* Toplam Özet */}
                 <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 mt-4">
-                  <h5 className="text-sm font-semibold text-gray-700 mb-3 uppercase tracking-wide">
+                  <h5 className="text-sm font-semibold text-gray-700 mb-3">
                     Genel Özet
                   </h5>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -2308,7 +2308,7 @@ DOVEC GROUP
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-6">
             {existingOffers.map((offer, index) => (
               <Card key={offer.id} className={`bg-gray-50 border-0 shadow-sm hover:shadow-md transition-all duration-200 ${
-                offer.is_selected 
+        offer.is_selected 
                   ? 'ring-2 ring-green-200 bg-green-50' 
                   : ''
               }`}>
@@ -2410,9 +2410,9 @@ DOVEC GROUP
                     onClick={() => openApprovalModal(offer)}
                     disabled={approving === offer.id || request?.status === 'approved'}
                     className={`w-full h-10 font-medium rounded-lg transition-all duration-200 ${
-                      offer.is_selected 
+           offer.is_selected 
                         ? 'bg-green-600 hover:bg-green-700 text-white' 
-                        : 'bg-gray-900 hover:bg-gray-800 text-white'
+                        : 'bg-navy text-white hover:bg-navy-700'
                     } disabled:opacity-50`}
                   >
                     {approving === offer.id ? (
@@ -2508,7 +2508,7 @@ DOVEC GROUP
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* Tedarikçi Adı */}
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-gray-600 mb-3">
                     Tedarikçi Firma Adı *
                   </label>
                   <Input
@@ -2522,7 +2522,7 @@ DOVEC GROUP
                 {/* Birim Fiyat ve Para Birimi */}
                 <div className="grid grid-cols-3 gap-3">
                   <div className="col-span-2">
-                    <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                    <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3">
                       <DollarSign className="h-4 w-4 text-gray-700" />
                       Birim Fiyat *
                     </label>
@@ -2536,7 +2536,7 @@ DOVEC GROUP
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                    <label className="block text-xs font-medium text-gray-600 mb-3">
                       Para Birimi *
                     </label>
                     <Select 
@@ -2562,7 +2562,7 @@ DOVEC GROUP
 
                 {/* Toplam Fiyat (otomatik) */}
                 <div>
-                  <label className="block text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-gray-600 mb-3">
                     Toplam Fiyat
                   </label>
                   <div className="h-12 bg-gradient-to-r from-green-50/50 to-emerald-50/50 rounded-xl flex items-center px-4 shadow-sm">
@@ -2574,7 +2574,7 @@ DOVEC GROUP
 
                 {/* Teslimat Süresi */}
                 <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3">
                     <Truck className="h-4 w-4 text-gray-700" />
                     Teslimat (Gün) *
                   </label>
@@ -2589,7 +2589,7 @@ DOVEC GROUP
 
                 {/* Teslimat Tarihi (otomatik) */}
                 <div>
-                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="flex items-center gap-2 text-xs font-medium text-gray-600 mb-3">
                     <Calendar className="h-4 w-4 text-gray-700" />
                     Teslimat Tarihi
                   </label>
@@ -2602,7 +2602,7 @@ DOVEC GROUP
 
                 {/* Notlar */}
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-gray-600 mb-3">
                     Ek Notlar ve Özel Şartlar
                   </label>
                   <textarea
@@ -2615,7 +2615,7 @@ DOVEC GROUP
 
                 {/* Döküman Upload - Zorunlu */}
                 <div className="sm:col-span-2 lg:col-span-4">
-                  <label className="block text-xs font-medium text-gray-600 mb-3 uppercase tracking-wide">
+                  <label className="block text-xs font-medium text-gray-600 mb-3">
                     <span className="flex items-center gap-2">
                       <FileText className="h-4 w-4" />
                       Teklif Dökümanları *
@@ -2673,7 +2673,7 @@ DOVEC GROUP
                               variant="ghost"
                               size="sm"
                               onClick={() => removeDocument(index, docIndex)}
-                              className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-600 text-white rounded-full"
+                              className="absolute top-1 right-1 h-6 w-6 p-0 bg-red-500 hover:bg-red-400 text-black rounded-full"
                             >
                               <X className="h-3 w-3" />
                             </Button>
@@ -3203,7 +3203,7 @@ DOVEC GROUP
                   }
                 }}
                 disabled={!orderDetails.deliveryDate || !orderDetails.quantity || parseFloat(orderDetails.quantity) <= 0}
-                className="bg-gray-900 hover:bg-black text-white"
+                className="bg-navy text-white hover:bg-navy-700"
               >
                 Siparişi Oluştur
               </Button>
@@ -3681,7 +3681,7 @@ DOVEC GROUP
                   <div
                     key={index}
                     className={`w-16 h-16 rounded-lg overflow-hidden border-2 cursor-pointer transition-all duration-200 flex-shrink-0 ${
-                      index === currentImageGallery.currentIndex 
+           index === currentImageGallery.currentIndex 
                         ? 'border-white shadow-lg' 
                         : 'border-gray-500 opacity-70 hover:opacity-100'
                     }`}
@@ -3700,56 +3700,48 @@ DOVEC GROUP
         </div>
       )}
 
-      {/* Fixed Bulk Supplier Assignment Button */}
       {selectedMaterials.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-40">
-          <div className="bg-black rounded-2xl shadow-2xl border border-gray-800 p-4">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center">
-                  <Building2 className="h-5 w-5 text-black" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-white">
-                    {selectedMaterials.size} malzeme seçildi
-                  </p>
-                  <p className="text-xs text-gray-300">
-                    Toplu işlemler yapabilirsiniz
-                  </p>
-                </div>
-              </div>
-              
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearMaterialSelection}
-                  className="text-gray-300 border-gray-600 hover:bg-gray-800 hover:text-white"
-                >
-                  İptal
-                </Button>
-                <Button
-                  onClick={handleBulkSupplierAssignment}
-                  className="bg-white hover:bg-gray-100 text-black px-6 py-2 rounded-xl font-medium shadow-lg"
-                >
-                  <Building2 className="h-4 w-4 mr-2" />
-                  Tedarikçi Ata
-                </Button>
-                <Button
-                  onClick={() => handleExportMaterialPDF(null, true)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl font-medium shadow-lg"
-                >
-                  <Download className="h-4 w-4 mr-2" />
-                  PDF İndir
-                </Button>
-                <Button
-                  onClick={handleBulkOrderClick}
-                  className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl font-medium shadow-lg"
-                >
-                  <Package className="h-4 w-4 mr-2" />
-                  Toplu Sipariş Ver
-                </Button>
-              </div>
+        <div className="fixed bottom-6 left-1/2 z-50 w-[min(48rem,calc(100%-2rem))] -translate-x-1/2 lg:left-[calc(50%+2.75rem)]">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
+            <div className="flex min-w-0 items-center gap-2 pl-2">
+              <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-full bg-gray-950 px-2 text-xs font-semibold text-white">
+                {selectedMaterials.size}
+              </span>
+              <span className="truncate text-sm font-medium text-gray-900">
+                malzeme seçili
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                onClick={clearMaterialSelection}
+                className="h-10 rounded-xl text-gray-600 hover:bg-gray-100 hover:text-gray-950"
+              >
+                Temizle
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handleExportMaterialPDF(null, true)}
+                className="h-10 rounded-xl border-gray-200 bg-white"
+              >
+                <Download className="mr-2 h-4 w-4" />
+                PDF
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleBulkSupplierAssignment}
+                className="h-10 rounded-xl border-gray-200 bg-white"
+              >
+                <Building2 className="mr-2 h-4 w-4" />
+                Tedarikçi ata
+              </Button>
+              <Button
+                onClick={handleBulkOrderClick}
+                className="h-10 rounded-xl bg-neutral-950 px-4 text-white hover:bg-neutral-800"
+              >
+                <Package className="mr-2 h-4 w-4" />
+                Toplu sipariş
+              </Button>
             </div>
           </div>
         </div>

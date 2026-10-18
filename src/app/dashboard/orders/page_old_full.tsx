@@ -1632,7 +1632,7 @@ export default function OrdersPage() {
                               <div 
                                 className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                                   selectedOrders.has(order.id)
-                                    ? 'bg-gray-900 border-gray-900'
+                                    ? 'bg-navy border-navy'
                                     : 'border-gray-300 hover:border-gray-500'
                                 }`}
                               >
@@ -1868,7 +1868,7 @@ export default function OrdersPage() {
                           <div 
                             className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
                               selectedOrders.has(order.id)
-                                ? 'bg-gray-900 border-gray-900'
+                                ? 'bg-navy border-navy'
                                 : 'border-gray-300 hover:border-gray-500'
                             }`}
                           >
@@ -2115,7 +2115,7 @@ export default function OrdersPage() {
                               onClick={() => setCurrentPage(pageNum)}
                               className={`w-8 h-8 p-0 text-xs ${
                                 currentPage === pageNum 
-                                  ? 'bg-gray-900 text-white hover:bg-gray-800' 
+                                  ? 'bg-navy text-white hover:bg-navy-700' 
                                   : ''
                               }`}
                             >
@@ -2504,7 +2504,7 @@ export default function OrdersPage() {
                           {editingInvoiceId === invoice.id && (
                             <button
                               onClick={() => handleRemoveEditPhoto(photoIndex)}
-                              className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
+                              className="absolute -top-1 -right-1 bg-red-500 text-black rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600 transition-colors"
                               disabled={isUpdatingInvoice}
                             >
                               <X className="w-3 h-3" />
@@ -2871,7 +2871,7 @@ export default function OrdersPage() {
                       />
                       <button
                         onClick={() => removePhoto(index)}
-                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
+                        className="absolute -top-1 -right-1 bg-red-500 text-black rounded-full w-5 h-5 flex items-center justify-center text-xs hover:bg-red-600"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -2905,7 +2905,7 @@ export default function OrdersPage() {
                    Array.from(selectedOrders).some(orderId => !orderCurrencies[orderId]))
                 )
               }
-              className="flex-1 bg-gray-900 hover:bg-gray-800 text-white"
+              className="flex-1 bg-navy text-white hover:bg-navy-700"
             >
               {isUploadingInvoice ? 'Kaydediliyor...' : 'Fatura Ekle'}
             </Button>

@@ -40,7 +40,7 @@ export default function WarehouseAccessModal({
 }: WarehouseAccessModalProps) {
   const supabase = createClient()
   const [sites, setSites] = useState<Site[]>([])
-  const [mode, setMode] = useState<'manage_all' | 'warehouses'>('warehouses')
+  const [mode, setMode] = useState<'manage_all' | 'view' | 'manage' | 'operate'>('view')
   const [selectedSiteIds, setSelectedSiteIds] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -61,13 +61,20 @@ export default function WarehouseAccessModal({
         setSites(sitesData || [])
 
         const hasManageAll = rows.some((r) => r.warehouse_id === null && r.access_level === 'manage')
+        const depotRows = rows.filter((r) => r.warehouse_id)
         if (hasManageAll) {
           setMode('manage_all')
           setSelectedSiteIds([])
         } else {
-          setMode('warehouses')
+          setMode(
+            depotRows.some((r) => r.access_level === 'operate')
+              ? 'operate'
+              : depotRows.some((r) => r.access_level === 'manage')
+                ? 'manage'
+                : 'view'
+          )
           setSelectedSiteIds(
-            rows.map((r) => r.warehouse_id).filter((id): id is string => Boolean(id))
+            depotRows.map((r) => r.warehouse_id).filter((id): id is string => Boolean(id))
           )
         }
       } catch (e) {
@@ -95,9 +102,9 @@ export default function WarehouseAccessModal({
     const result = await replaceUserWarehouseAccess({
       userId: user.id,
       email: user.email,
-      mode,
+      mode: mode === 'manage_all' ? 'manage_all' : 'warehouses',
       warehouseIds: selectedSiteIds,
-      accessLevel: 'view',
+      accessLevel: mode === 'operate' ? 'operate' : mode === 'manage' ? 'manage' : 'view',
     })
 
     setSaving(false)
@@ -155,8 +162,8 @@ export default function WarehouseAccessModal({
                   <input
                     type="radio"
                     name="wh-mode"
-                    checked={mode === 'warehouses'}
-                    onChange={() => setMode('warehouses')}
+                    checked={mode === 'view'}
+                    onChange={() => setMode('view')}
                     className="mt-1"
                   />
                   <span>
@@ -166,10 +173,40 @@ export default function WarehouseAccessModal({
                     </span>
                   </span>
                 </label>
+                <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="wh-mode"
+                    checked={mode === 'manage'}
+                    onChange={() => setMode('manage')}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium text-sm">Seçili depolar (yönet)</span>
+                    <span className="text-xs text-gray-500">
+                      Kendi deposuna stok girişi ve alt zimmet
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-lg border p-3 cursor-pointer hover:bg-gray-50">
+                  <input
+                    type="radio"
+                    name="wh-mode"
+                    checked={mode === 'operate'}
+                    onChange={() => setMode('operate')}
+                    className="mt-1"
+                  />
+                  <span>
+                    <span className="block font-medium text-sm">Seçili depolar (operasyon)</span>
+                    <span className="text-xs text-gray-500">
+                      Yönetimin tüm yetkileri. Ürün detayında düzeltme, zimmet ve teslim
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
 
-            {mode === 'warehouses' && (
+            {mode !== 'manage_all' && (
               <div className="space-y-2">
                 <Label>Depolar</Label>
                 <div className="max-h-56 overflow-y-auto rounded-lg border divide-y">

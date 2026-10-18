@@ -210,7 +210,7 @@ export function CreateContractWizard({
         <div className="shrink-0 border-b border-elegant-gray-200 px-5 pb-4 pt-[max(1.25rem,env(safe-area-inset-top))] sm:px-6 sm:pt-6">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-elegant-gray-500">
+              <p className="text-[11px] font-bold text-elegant-gray-500">
                 Adım {step} / {STEPS.length}
               </p>
               <DialogTitle className="mt-1 text-xl font-semibold tracking-tight text-elegant-black">
@@ -294,7 +294,7 @@ export function CreateContractWizard({
 
                   <div className="space-y-3">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+                      <p className="text-[11px] font-bold text-elegant-gray-500">
                         {partyKind === 'supplier' ? 'Tedarikçiler' : 'Taşeronlar'}
                       </p>
                       {partyKind === 'subcontractor' && (
@@ -348,7 +348,7 @@ export function CreateContractWizard({
                         <div className="flex justify-end">
                           <Button
                             type="button"
-                            className="h-11 rounded-2xl bg-black text-white hover:bg-gray-900"
+                            className="h-11 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
                             onClick={handleCreateSubcontractor}
                             disabled={creatingParty}
                           >
@@ -496,7 +496,7 @@ export function CreateContractWizard({
                 </Button>
                 <Button
                   type="button"
-                  className="h-12 rounded-2xl bg-black text-white hover:bg-gray-900 sm:min-w-[180px]"
+                  className="h-12 rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700 sm:min-w-[180px]"
                   onClick={goNext}
                 >
                   {step === 2 && siteIds.length > 0 ? `Devam (${siteIds.length})` : 'Devam'}
@@ -561,7 +561,7 @@ function SelectionSummary({
 function SummaryChip({ label, value }: { label: string; value: string }) {
   return (
     <span className="inline-flex max-w-full items-center gap-2 rounded-full bg-elegant-gray-50 px-3 py-1.5 text-xs">
-      <span className="font-bold uppercase tracking-[0.08em] text-elegant-gray-500">{label}</span>
+      <span className="font-bold text-elegant-gray-500">{label}</span>
       <span className="truncate font-medium text-elegant-black">{value}</span>
     </span>
   )
@@ -608,7 +608,7 @@ function PartyKindCard({
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">
+      <span className="mb-1.5 block text-[11px] font-bold text-elegant-gray-500">
         {label}
       </span>
       {children}

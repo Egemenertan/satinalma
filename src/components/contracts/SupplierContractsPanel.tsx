@@ -1,13 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import useSWR from 'swr'
 import Link from 'next/link'
 import { Button } from '@/components/ui/button'
 import { ContractBudgetSummary } from '@/components/contracts/ContractBudgetSummary'
 import { CreateContractWizard } from '@/components/contracts/CreateContractWizard'
 import { ContractSummaryCard } from '@/components/contracts/ContractSummaryCard'
-import { fetchContractOverviews } from '@/services/contracts.service'
+import { fetchContractInclusionsMap, fetchContractOverviews } from '@/services/contracts.service'
+import { fetchSupplierPurchaseHistory } from '@/services/supplier-purchase-history.service'
+import { enrichContractWithHistory } from '@/lib/supplier-purchase-history'
 import { Plus } from 'lucide-react'
 
 interface SupplierContractsPanelProps {
@@ -28,7 +30,23 @@ export function SupplierContractsPanel({
     { revalidateOnFocus: false }
   )
 
-  const contracts = data || []
+  const { data: history } = useSWR(
+    `supplier_purchase_history/${supplierId}`,
+    () => fetchSupplierPurchaseHistory(supplierId),
+    { revalidateOnFocus: false }
+  )
+  const { data: inclusions } = useSWR(
+    data?.length ? `supplier_contracts/inclusions/${data.map((row) => row.id).join(',')}` : null,
+    () => fetchContractInclusionsMap((data || []).map((row) => row.id)),
+    { revalidateOnFocus: false }
+  )
+  const contracts = useMemo(
+    () =>
+      (data || []).map((contract) =>
+        enrichContractWithHistory(contract, history, inclusions?.[contract.id] || [])
+      ),
+    [data, history, inclusions]
+  )
 
   return (
     <div className="space-y-5">
@@ -41,7 +59,7 @@ export function SupplierContractsPanel({
         </div>
         <Button
           onClick={() => setOpen(true)}
-          className="rounded-2xl bg-black text-white hover:bg-gray-900"
+          className="rounded-2xl bg-bordeaux text-white hover:bg-bordeaux-700"
         >
           <Plus className="mr-2 h-4 w-4" />
           Sözleşme ekle
@@ -63,11 +81,12 @@ export function SupplierContractsPanel({
             <div key={contract.id} className="space-y-3">
               <ContractBudgetSummary
                 contract={contract}
+                invoicedAmount={contract.invoiced_amounts[0]?.amount || 0}
                 showToast={showToast}
                 onBudgetSaved={() => mutate()}
               />
               {contract.items.map((item) => (
-                <ContractSummaryCard key={item.id} contract={contract} item={item} />
+                <ContractSummaryCard key={item.id} contract={contract} item={item} usageFromHistory />
               ))}
               <Link
                 href={`/dashboard/contracts/${contract.id}`}

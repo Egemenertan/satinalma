@@ -21,7 +21,7 @@ export function DateFilter({ dateRange, onChange, onClear, popoverModal = false 
         <button
           type="button"
           className={`h-10 md:h-11 px-4 text-sm md:text-base sm:w-auto w-full inline-flex items-center justify-start gap-2 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 transition-colors ${
-            (dateRange.from || dateRange.to) ? 'border-gray-900 text-gray-900' : 'text-gray-700'
+      (dateRange.from || dateRange.to) ? 'border-gray-900 text-gray-900' : 'text-gray-700'
           }`}
         >
           <CalendarIcon className="h-4 w-4" />

@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LogOut, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { clearCurrentProfileCache, useCurrentProfile } from '@/lib/auth/current-profile'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,39 +15,15 @@ import {
 } from '@/components/ui/dropdown-menu'
 
 export default function DashboardHeader() {
-  const [userName, setUserName] = useState<string>('')
-  const [userEmail, setUserEmail] = useState<string>('')
   const router = useRouter()
   const supabase = createClient()
-
-  useEffect(() => {
-    const fetchUserData = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (user) {
-        setUserEmail(user.email || '')
-        
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('full_name')
-          .eq('id', user.id)
-          .single()
-        
-        if (profile?.full_name) {
-          setUserName(profile.full_name)
-        } else if (user.email) {
-          const nameFromEmail = user.email.split('@')[0]
-          setUserName(nameFromEmail.charAt(0).toUpperCase() + nameFromEmail.slice(1))
-        }
-      }
-    }
-    
-    fetchUserData()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  const { data: profile } = useCurrentProfile()
+  const userName = profile?.fullName || 'Kullanıcı'
+  const userEmail = profile?.email || ''
 
   const handleLogout = async () => {
     try {
+      clearCurrentProfileCache()
       await supabase.auth.signOut()
       router.push('/auth/login')
     } catch (error) {
@@ -75,7 +51,7 @@ export default function DashboardHeader() {
               >
                 <div className="text-right">
                   <div className="text-sm font-medium text-gray-900">
-                    {userName || 'Kullanıcı'}
+                    {userName}
                   </div>
                   <div className="text-xs text-gray-500">
                     {userEmail}
@@ -83,7 +59,7 @@ export default function DashboardHeader() {
                 </div>
                 <div className="w-9 h-9 bg-[#00E676] rounded-full flex items-center justify-center">
                   <span className="text-sm font-medium text-white">
-                    {userName ? userName.charAt(0).toUpperCase() : 'U'}
+                    {userName.charAt(0).toUpperCase()}
                   </span>
                 </div>
               </Button>
@@ -91,7 +67,7 @@ export default function DashboardHeader() {
             <DropdownMenuContent align="end" side="bottom" sideOffset={8} className="w-56 z-[100]">
               <DropdownMenuLabel>
                 <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{userName || 'Kullanıcı'}</p>
+                  <p className="text-sm font-medium leading-none">{userName}</p>
                   <p className="text-xs leading-none text-muted-foreground">
                     {userEmail}
                   </p>

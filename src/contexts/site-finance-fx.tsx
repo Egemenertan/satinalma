@@ -94,7 +94,7 @@ export function SiteFinanceFxToolbar({ className }: { className?: string }) {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-[0.12em] text-elegant-gray-500">Görüntü birimi</p>
+          <p className="text-xs font-semibold text-elegant-gray-500">Görüntü birimi</p>
           <p className="mt-0.5 text-xs text-elegant-gray-500 dark:text-elegant-gray-400">
             Orijinal: her döviz ayrı kart / satır. TRY·EUR·USD·GBP: Frankfurter (ECB) günlük kuru ile yaklaşık tek toplam.
             {rateDate ? ` · Kur günü: ${rateDate}` : null}

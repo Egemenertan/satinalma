@@ -1,507 +1,244 @@
 /**
  * usePDFExport Hook
- * PDF export işlemleri state yönetimi
- * Updated to use new modular PDF generator
+ * PDF export işlemleri — tek timeline isteği, ekstra client sorgusu yok.
  */
 
 import { useState } from 'react'
 import { generatePDFReport } from '@/lib/pdf'
 import type { OrderData } from '../types'
 
+const TIMELINE_TIMEOUT_MS = 20_000
+
+function getInvoiceGroupId(order?: OrderData | null): string | null {
+  return order?.invoices?.find((invoice) => invoice.invoice_group_id)?.invoice_group_id ?? null
+}
+
+async function fetchTimelineForPdf(params: {
+  requestId: string
+  invoiceGroupId?: string | null
+  orderIds?: string[]
+}) {
+  const apiUrl = new URL('/api/reports/timeline', window.location.origin)
+  apiUrl.searchParams.set('requestId', params.requestId)
+  apiUrl.searchParams.set('purpose', 'pdf')
+
+  if (params.orderIds && params.orderIds.length > 0) {
+    apiUrl.searchParams.set('orderIds', params.orderIds.join(','))
+  } else if (params.invoiceGroupId) {
+    apiUrl.searchParams.set('invoiceGroupId', params.invoiceGroupId)
+  }
+
+  const response = await fetch(apiUrl.toString(), {
+    signal: AbortSignal.timeout(TIMELINE_TIMEOUT_MS),
+  })
+
+  if (!response.ok) {
+    throw new Error('Timeline verileri alınamadı')
+  }
+
+  return response.json()
+}
+
+function filterTimeline(
+  timeline: any[] | undefined,
+  orders: any[],
+  invoices: any[]
+) {
+  return (timeline || []).filter((item: any) => {
+    if (item.type === 'order' && item.order_data) {
+      return orders.some(
+        (order: any) =>
+          item.order_data.supplier_name === order.suppliers?.name &&
+          item.order_data.item_name === order.purchase_request_items?.item_name
+      )
+    }
+    if (item.type === 'invoice' && item.invoice_data) {
+      return invoices.some(
+        (invoice: any) =>
+          invoice.id === item.invoice_data.id ||
+          (invoice.amount === item.invoice_data.amount &&
+            invoice.currency === item.invoice_data.currency &&
+            new Date(invoice.created_at).getTime() === new Date(item.invoice_data.created_at).getTime())
+      )
+    }
+    if (item.type === 'order' || item.type === 'shipment') {
+      return !item.order_id || orders.some((order: any) => order.id === item.order_id)
+    }
+    if (item.type === 'invoice') {
+      return !item.invoice?.order_id || invoices.some((invoice: any) => invoice.order_id === item.invoice.order_id)
+    }
+    return ['creation', 'approval', 'shipment'].includes(item.type) || item.type === 'delivery'
+  })
+}
+
 export function usePDFExport() {
   const [isGeneratingReport, setIsGeneratingReport] = useState(false)
   const [loadingPDFOrders, setLoadingPDFOrders] = useState<Set<string>>(new Set())
-  
-  // PDF Invoice Selection Modal state
+
   const [isPDFInvoiceSelectionOpen, setIsPDFInvoiceSelectionOpen] = useState(false)
   const [pdfOrderContext, setPDFOrderContext] = useState<OrderData | null>(null)
   const [selectedPDFInvoices, setSelectedPDFInvoices] = useState<Set<string>>(new Set())
 
-  /**
-   * Tek sipariş için PDF export
-   */
   const exportSingleOrder = async (
     order: OrderData,
     selectedInvoiceIds?: string[]
   ): Promise<void> => {
-    // Eğer birden fazla fatura varsa ve henüz seçim yapılmadıysa, seçim modalını aç
     if (!selectedInvoiceIds && order.invoices && order.invoices.length > 1) {
       setPDFOrderContext(order)
-      // Varsayılan olarak tüm faturaları seç
-      setSelectedPDFInvoices(new Set(order.invoices.map(inv => inv.id)))
+      setSelectedPDFInvoices(new Set(order.invoices.map((invoice) => invoice.id)))
       setIsPDFInvoiceSelectionOpen(true)
       return
     }
-    
-    // Loading state'i başlat
-    setLoadingPDFOrders(prev => new Set([...prev, order.id]))
-    
+
+    setLoadingPDFOrders((prev) => new Set([...prev, order.id]))
+
     try {
-      console.log('📋 PDF Export başlatılıyor:', {
-        orderId: order.id,
+      const invoiceGroupId = getInvoiceGroupId(order)
+      const timelineData = await fetchTimelineForPdf({
         requestId: order.purchase_request_id,
-        supplierName: order.suppliers?.name,
-        itemName: order.purchase_request_items?.item_name
+        invoiceGroupId,
+        orderIds: invoiceGroupId ? undefined : [order.id],
       })
 
-      // Önce invoice_group_id'yi al (eğer varsa)
-      const { createClient: createClientEarly } = await import('@/lib/supabase/client')
-      const supabaseEarly = createClientEarly()
-      
-      let specificInvoiceGroupId = null
-      if (order.invoices && order.invoices.length > 0) {
-        const { data: invoiceWithGroup } = await supabaseEarly
-          .from('invoices')
-          .select('invoice_group_id')
-          .eq('order_id', order.id)
-          .single()
-        
-        specificInvoiceGroupId = invoiceWithGroup?.invoice_group_id || null
-      }
+      const relatedOrderIds = invoiceGroupId
+        ? (timelineData.orders || []).map((item: any) => item.id)
+        : [order.id]
 
-      // Timeline API'sini kullan - invoice_group_id'yi de gönder
-      const apiUrl = new URL(`/api/reports/timeline`, window.location.origin)
-      apiUrl.searchParams.set('requestId', order.purchase_request_id)
-      if (specificInvoiceGroupId) {
-        apiUrl.searchParams.set('invoiceGroupId', specificInvoiceGroupId)
-      }
-      
-      const response = await fetch(apiUrl.toString())
-      
-      if (!response.ok) {
-        throw new Error('Timeline verileri alınamadı')
-      }
-      
-      const timelineData = await response.json()
+      const specificOrders =
+        (timelineData.orders || []).filter((item: any) => relatedOrderIds.includes(item.id))
 
-      console.log('📊 Timeline API Response:', {
-        hasStatistics: !!timelineData.statistics,
-        statistics: timelineData.statistics,
-        invoicesCount: timelineData.invoices?.length || 0,
-        ordersCount: timelineData.orders?.length || 0,
-        debug: timelineData.debug
-      })
+      let specificInvoices =
+        (timelineData.invoices || []).filter((invoice: any) => relatedOrderIds.includes(invoice.order_id))
 
-      console.log('💰 Invoice Group Data from API:', {
-        hasInvoiceGroup: timelineData.debug?.hasInvoiceGroup,
-        invoiceGroupData: timelineData.debug?.invoiceGroupData,
-        subtotal: timelineData.statistics?.subtotal,
-        discount: timelineData.statistics?.discount,
-        tax: timelineData.statistics?.tax,
-        grandTotal: timelineData.statistics?.grandTotal
-      })
-
-      // Bu siparişin faturasının invoice_group_id'sini kontrol et
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      
-      let relatedOrderIds = [order.id]
-      let invoiceGroupId = null
-      
-      console.log('🔍 PDF Export başlangıç:', {
-        orderId: order.id,
-        orderIdShort: order.id.substring(0, 8),
-        supplierName: order.suppliers?.name,
-        itemName: order.purchase_request_items?.item_name,
-        orderHasInvoices: !!(order.invoices && order.invoices.length > 0),
-        invoicesCount: order.invoices?.length || 0,
-        invoiceIds: order.invoices?.map(inv => inv.id.substring(0, 8))
-      })
-      
-      // Eğer sipariş faturası varsa, invoice group'u kontrol et
-      if (order.invoices && order.invoices.length > 0) {
-        // ÖNEMLİ: .single() yerine .limit(1) kullan - birden fazla fatura olabilir
-        const { data: invoiceWithGroup, error: invoiceError } = await supabase
-          .from('invoices')
-          .select('invoice_group_id, order_id')
-          .eq('order_id', order.id)
-          .limit(1)
-          .single()
-        
-        if (invoiceError) {
-          console.error('❌ Fatura sorgu hatası:', {
-            orderId: order.id,
-            error: invoiceError
-          })
-        }
-        
-        console.log('🔍 Invoice group kontrolü:', {
-          orderId: order.id,
-          hasInvoiceGroup: !!invoiceWithGroup?.invoice_group_id,
-          invoiceGroupId: invoiceWithGroup?.invoice_group_id
-        })
-        
-        if (invoiceWithGroup?.invoice_group_id) {
-          invoiceGroupId = invoiceWithGroup.invoice_group_id
-          
-          // Aynı group'taki tüm invoice'ları ve order'ları bul
-          const { data: groupInvoices } = await supabase
-            .from('invoices')
-            .select('order_id')
-            .eq('invoice_group_id', invoiceGroupId)
-          
-          if (groupInvoices && groupInvoices.length > 0) {
-            relatedOrderIds = groupInvoices.map(inv => inv.order_id)
-            console.log('📦 Toplu fatura grubu bulundu:', {
-              groupId: invoiceGroupId,
-              currentOrderId: order.id,
-              relatedOrdersCount: relatedOrderIds.length,
-              relatedOrderIds,
-              WARNING: relatedOrderIds.length > 1 ? 'Bu sipariş bir invoice group\'a ait - tüm grup siparişleri dahil ediliyor!' : null
-            })
-          }
-        }
-      }
-
-      // İlgili tüm siparişleri filtrele
-      const specificOrders = timelineData.orders?.filter((o: any) => 
-        relatedOrderIds.includes(o.id)
-      ) || []
-      
-      // İlgili tüm faturaları filtrele
-      let specificInvoices = timelineData.invoices?.filter((inv: any) => 
-        relatedOrderIds.includes(inv.order_id)
-      ) || []
-      
-      // Eğer belirli faturalar seçildiyse, sadece onları dahil et
       if (selectedInvoiceIds && selectedInvoiceIds.length > 0) {
-        console.log('🎯 Kullanıcı tarafından seçilen faturalar:', {
-          selectedCount: selectedInvoiceIds.length,
-          totalAvailable: specificInvoices.length,
-          selectedIds: selectedInvoiceIds
-        })
-        specificInvoices = specificInvoices.filter((inv: any) => selectedInvoiceIds.includes(inv.id))
+        specificInvoices = specificInvoices.filter((invoice: any) => selectedInvoiceIds.includes(invoice.id))
       }
-      
-      // Timeline'dan gelen invoices'ları kontrol et
-      console.log('🔍 Timeline\'dan gelen faturalar (notes kontrolü):', {
-        count: specificInvoices.length,
-        invoices: specificInvoices.map((inv: any) => ({
-          id: inv.id?.substring(0, 8),
-          amount: inv.amount,
-          hasNotesFromTimeline: !!inv.notes,
-          notesFromTimeline: inv.notes
-        }))
-      })
-      
-      // Seçilen faturaların detaylı bilgilerini Supabase'den çek (subtotal, discount, tax, grand_total, notes)
-      if (specificInvoices.length > 0) {
-        const invoiceIds = specificInvoices.map((inv: any) => inv.id)
-        const { data: detailedInvoices } = await supabase
-          .from('invoices')
-          .select('id, subtotal, discount, tax, grand_total, notes')
-          .in('id', invoiceIds)
-        
-        console.log('🔍 Supabase\'den gelen detaylı faturalar (notes kontrolü):', {
-          count: detailedInvoices?.length || 0,
-          invoices: detailedInvoices?.map((inv: any) => ({
-            id: inv.id?.substring(0, 8),
-            hasNotes: !!inv.notes,
-            notes: inv.notes
-          }))
-        })
-        
-        if (detailedInvoices) {
-          // Detayları mevcut invoice'lara ekle
-          specificInvoices = specificInvoices.map((inv: any) => {
-            const details = detailedInvoices.find(d => d.id === inv.id)
-            const finalNotes = details?.notes || inv.notes
-            
-            console.log(`🔍 Fatura ${inv.id?.substring(0, 8)} notes birleştirme:`, {
-              fromTimeline: inv.notes,
-              fromSupabase: details?.notes,
-              final: finalNotes
-            })
-            
-            return {
-              ...inv,
-              subtotal: details?.subtotal,
-              discount: details?.discount,
-              tax: details?.tax,
-              grand_total: details?.grand_total,
-              notes: finalNotes
-            }
-          })
-          
-          console.log('📋 Fatura detayları eklendi:', {
-            invoicesCount: specificInvoices.length,
-            hasBreakdowns: specificInvoices.filter((inv: any) => inv.subtotal !== null).length,
-            hasNotes: specificInvoices.filter((inv: any) => inv.notes).length,
-            finalInvoices: specificInvoices.map((inv: any) => ({
-              id: inv.id?.substring(0, 8),
-              hasNotes: !!inv.notes,
-              notes: inv.notes
-            }))
-          })
-        }
-      }
-      
-      console.log('📋 PDF için seçilen siparişler:', {
-        ordersCount: specificOrders.length,
-        invoicesCount: specificInvoices.length,
-        hasInvoiceGroup: !!invoiceGroupId,
-        selectedInvoiceIds: selectedInvoiceIds || 'Tümü'
-      })
 
-      // Timeline'ı ilgili siparişler için filtrele
-      const filteredTimeline = timelineData.timeline?.filter((item: any) => {
-        if (item.type === 'order' && item.order_data) {
-          // İlgili siparişlerden birinin supplier ve item bilgisiyle eşleşiyorsa dahil et
-          return specificOrders.some((o: any) => 
-            item.order_data.supplier_name === o.suppliers?.name &&
-            item.order_data.item_name === o.purchase_request_items?.item_name
-          )
-        }
-        if (item.type === 'invoice' && item.invoice_data) {
-          return specificInvoices.some((inv: any) => 
-            inv.id === item.invoice_data.id ||
-            (inv.amount === item.invoice_data.amount &&
-             inv.currency === item.invoice_data.currency &&
-             new Date(inv.created_at).getTime() === new Date(item.invoice_data.created_at).getTime())
-          )
-        }
-        return ['creation', 'approval', 'shipment'].includes(item.type)
-      }) || []
+      const totalAmount =
+        specificInvoices.length > 0
+          ? specificInvoices.reduce((sum: number, invoice: any) => sum + (invoice.grand_total || invoice.amount), 0)
+          : specificOrders.reduce((sum: number, item: any) => sum + item.amount, 0)
 
-      // Toplam tutar ve para birimi hesapla - grand_total varsa onu kullan
-      const totalAmount = specificInvoices.length > 0 
-        ? specificInvoices.reduce((sum: number, inv: any) => sum + (inv.grand_total || inv.amount), 0)
-        : specificOrders.reduce((sum: number, o: any) => sum + o.amount, 0)
-      
-      const invoiceCurrency = specificInvoices.length > 0 
-        ? specificInvoices[0].currency 
-        : (specificOrders.length > 0 ? specificOrders[0].currency : 'TRY')
+      const invoiceCurrency =
+        specificInvoices.length > 0
+          ? specificInvoices[0].currency
+          : specificOrders.length > 0
+            ? specificOrders[0].currency
+            : 'TRY'
 
-      // ÖNEMLİ: Statistics'i SADECE invoice group varsa kullan
-      // Çünkü statistics tüm request'teki faturaların toplamını içeriyor
-      // Invoice group yoksa, bu sipariş için yanlış KDV/İndirim bilgisi gösterilir!
-      const shouldUseStatistics = !!invoiceGroupId && (
-        !selectedInvoiceIds || 
-        selectedInvoiceIds.length === 0 || 
-        selectedInvoiceIds.length > 1
-      )
-      
-      console.log('📊 Statistics kullanımı:', {
-        shouldUseStatistics,
-        selectedInvoiceIds: selectedInvoiceIds || 'none',
-        hasInvoiceGroup: !!invoiceGroupId,
-        invoicesCount: specificInvoices.length,
-        WARNING: !invoiceGroupId && timelineData.statistics?.subtotal 
-          ? '⚠️ Invoice group yok ama statistics var - KULLANILMAYACAK!' 
-          : null
-      })
+      const shouldUseStatistics =
+        !!invoiceGroupId &&
+        (!selectedInvoiceIds || selectedInvoiceIds.length === 0 || selectedInvoiceIds.length > 1)
 
-      // Prepare data for new PDF generator
-      const pdfApiData = {
+      await generatePDFReport({
         request: timelineData.request,
-        timeline: filteredTimeline,  // ← Timeline'ı ekle!
+        timeline: filterTimeline(timelineData.timeline, specificOrders, specificInvoices),
         orders: specificOrders.length > 0 ? specificOrders : [order],
         invoices: specificInvoices,
         statistics: {
           totalDays: Math.ceil(
-            (new Date().getTime() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
+            (Date.now() - new Date(order.created_at).getTime()) / (1000 * 60 * 60 * 24)
           ),
           totalOffers: specificOrders.length,
-          totalShipments: specificOrders.filter((o: any) => o.is_delivered).length,
+          totalShipments: specificOrders.filter((item: any) => item.is_delivered).length,
           totalInvoices: specificInvoices.length,
-          totalAmount: totalAmount,
+          totalAmount,
           currency: invoiceCurrency,
-          // Sadece grup fatura veya tüm faturalar seçildiyse statistics kullan
           subtotal: shouldUseStatistics ? timelineData.statistics?.subtotal : undefined,
           discount: shouldUseStatistics ? timelineData.statistics?.discount : undefined,
           tax: shouldUseStatistics ? timelineData.statistics?.tax : undefined,
           grandTotal: shouldUseStatistics ? timelineData.statistics?.grandTotal : undefined,
-        }
-      }
-      
-      console.log('📄 PDF Data Ready:', {
-        ordersCount: pdfApiData.orders.length,
-        invoicesCount: pdfApiData.invoices.length,
-        hasInvoiceGroupData: !!(pdfApiData.statistics.subtotal || pdfApiData.statistics.discount || pdfApiData.statistics.tax),
-        statistics: pdfApiData.statistics,
-        invoicesWithNotes: pdfApiData.invoices.filter((inv: any) => inv.notes).length,
-        invoiceNotesPreview: pdfApiData.invoices.map((inv: any) => ({
-          id: inv.id?.substring(0, 8),
-          hasNotes: !!inv.notes,
-          notes: inv.notes
-        }))
+        },
       })
-
-      // Generate PDF using new generator
-      await generatePDFReport(pdfApiData)
-      
-    } catch (error: any) {
+    } catch (error) {
       console.error('PDF export error:', error)
       throw error
     } finally {
-      setLoadingPDFOrders(prev => {
-        const newSet = new Set(prev)
-        newSet.delete(order.id)
-        return newSet
+      setLoadingPDFOrders((prev) => {
+        const next = new Set(prev)
+        next.delete(order.id)
+        return next
       })
     }
   }
 
-  /**
-   * Toplu sipariş için PDF export
-   */
   const exportMultipleOrders = async (
     orders: OrderData[],
     selectedOrderIds: string[]
   ): Promise<void> => {
     setIsGeneratingReport(true)
-    
+
     try {
       if (orders.length === 0 || selectedOrderIds.length === 0) {
         throw new Error('Seçili sipariş bulunamadı')
       }
 
-      // Seçili siparişleri al
-      const selectedOrdersData = orders.filter(order => selectedOrderIds.includes(order.id))
-      
-      console.log('📋 Toplu PDF Export başlatılıyor:', {
-        selectedOrdersCount: selectedOrdersData.length,
-        orderIds: selectedOrderIds
+      const selectedOrdersData = orders.filter((order) => selectedOrderIds.includes(order.id))
+      if (selectedOrdersData.length === 0) {
+        throw new Error('Seçili sipariş bulunamadı')
+      }
+
+      const sharedGroupIds = [
+        ...new Set(
+          selectedOrdersData
+            .map((order) => getInvoiceGroupId(order))
+            .filter((id): id is string => Boolean(id))
+        ),
+      ]
+      const invoiceGroupId = sharedGroupIds.length === 1 ? sharedGroupIds[0] : null
+
+      const timelineData = await fetchTimelineForPdf({
+        requestId: selectedOrdersData[0].purchase_request_id,
+        orderIds: selectedOrderIds,
       })
-      
-      // Önce invoice_group_id kontrolü yap (tek sipariş mantığıyla aynı)
-      const { createClient } = await import('@/lib/supabase/client')
-      const supabase = createClient()
-      
-      let invoiceGroupId = null
-      let allRelatedOrderIds = [...selectedOrderIds]
-      
-      // Seçili siparişlerden herhangi birinin invoice_group_id'si var mı kontrol et
-      if (selectedOrdersData.length > 0 && selectedOrdersData[0].invoices && selectedOrdersData[0].invoices.length > 0) {
-        const { data: invoiceWithGroup } = await supabase
-          .from('invoices')
-          .select('invoice_group_id')
-          .eq('order_id', selectedOrdersData[0].id)
-          .limit(1)
-          .single()
-        
-        if (invoiceWithGroup?.invoice_group_id) {
-          invoiceGroupId = invoiceWithGroup.invoice_group_id
-          
-          // Aynı group'taki TÜM siparişleri bul (seçili olmayanlar da dahil)
-          const { data: groupInvoices } = await supabase
-            .from('invoices')
-            .select('order_id')
-            .eq('invoice_group_id', invoiceGroupId)
-          
-          if (groupInvoices && groupInvoices.length > 0) {
-            allRelatedOrderIds = groupInvoices.map(inv => inv.order_id)
-            console.log('📦 Toplu fatura grubu tespit edildi:', {
-              groupId: invoiceGroupId,
-              selectedOrdersCount: selectedOrderIds.length,
-              totalGroupOrdersCount: allRelatedOrderIds.length,
-              WARNING: allRelatedOrderIds.length > selectedOrderIds.length 
-                ? `⚠️ Seçili ${selectedOrderIds.length} sipariş ama grup ${allRelatedOrderIds.length} sipariş içeriyor - TÜM grup dahil edilecek!` 
-                : null
-            })
-          }
-        }
-      }
-      
-      // İlk siparişin request_id'sini al
-      const firstRequestId = selectedOrdersData[0].purchase_request_id
-      
-      // Timeline verilerini çek - invoice_group_id varsa onu da gönder
-      const apiUrl = new URL(`/api/reports/timeline`, window.location.origin)
-      apiUrl.searchParams.set('requestId', firstRequestId)
-      if (invoiceGroupId) {
-        apiUrl.searchParams.set('invoiceGroupId', invoiceGroupId)
-      }
-      
-      const response = await fetch(apiUrl.toString())
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`)
-      }
 
-      const timelineData = await response.json()
-
-      // İlgili tüm siparişlerin verilerini filtrele (invoice group varsa tüm grup dahil)
-      const filteredOrders = timelineData.orders.filter((order: any) => 
-        allRelatedOrderIds.includes(order.id)
+      const apiOrders = (timelineData.orders || []).filter((order: any) =>
+        selectedOrderIds.includes(order.id)
       )
-      
-      const filteredInvoices = timelineData.invoices.filter((invoice: any) => 
-        allRelatedOrderIds.includes(invoice.order_id)
+      const missingSelected = selectedOrdersData.filter(
+        (order) => !apiOrders.some((item: any) => item.id === order.id)
+      )
+      const filteredOrders = [...apiOrders, ...missingSelected]
+      const filteredInvoices = (timelineData.invoices || []).filter((invoice: any) =>
+        selectedOrderIds.includes(invoice.order_id)
       )
 
-      console.log('📋 Filtrelenmiş veriler:', {
-        filteredOrdersCount: filteredOrders.length,
-        filteredInvoicesCount: filteredInvoices.length,
-        hasInvoiceGroup: !!invoiceGroupId
-      })
-
-      // Timeline'ı ilgili siparişlere göre filtrele
-      const filteredTimeline = timelineData.timeline.filter((item: any) => {
-        if (item.type === 'order' || item.type === 'shipment') {
-          return allRelatedOrderIds.includes(item.order_id)
-        }
-        if (item.type === 'invoice') {
-          return allRelatedOrderIds.includes(item.invoice?.order_id)
-        }
-        return true
-      })
-
-      // İstatistikleri hesapla
-      const totalAmount = filteredInvoices.length > 0
-        ? filteredInvoices.reduce((sum: number, inv: any) => sum + inv.amount, 0)
-        : filteredOrders.reduce((sum: number, order: any) => sum + order.amount, 0)
+      const totalAmount =
+        filteredInvoices.length > 0
+          ? filteredInvoices.reduce((sum: number, invoice: any) => sum + invoice.amount, 0)
+          : filteredOrders.reduce((sum: number, order: any) => sum + order.amount, 0)
 
       const totalDays = Math.ceil(
-        (new Date().getTime() - new Date(filteredOrders[filteredOrders.length - 1]?.created_at || new Date()).getTime()) / (1000 * 60 * 60 * 24)
+        (Date.now() -
+          new Date(filteredOrders[filteredOrders.length - 1]?.created_at || Date.now()).getTime()) /
+          (1000 * 60 * 60 * 24)
       )
-      
-      const invoiceCurrency = filteredInvoices.length > 0 
-        ? filteredInvoices[0].currency 
-        : (filteredOrders.length > 0 ? filteredOrders[0].currency : 'TRY')
-      
-      // ÖNEMLİ: Statistics'i SADECE invoice group varsa kullan (tek sipariş mantığıyla aynı)
-      const shouldUseStatistics = !!invoiceGroupId
-      
-      console.log('📊 Statistics kullanımı (toplu):', {
-        shouldUseStatistics,
-        hasInvoiceGroup: !!invoiceGroupId,
-        invoicesCount: filteredInvoices.length,
-        subtotal: timelineData.statistics?.subtotal,
-        discount: timelineData.statistics?.discount,
-        tax: timelineData.statistics?.tax,
-        grandTotal: timelineData.statistics?.grandTotal
-      })
 
-      // Prepare data for new PDF generator
-      const pdfApiData = {
+      const invoiceCurrency =
+        filteredInvoices.length > 0
+          ? filteredInvoices[0].currency
+          : filteredOrders.length > 0
+            ? filteredOrders[0].currency
+            : 'TRY'
+
+      await generatePDFReport({
         request: timelineData.request,
-        timeline: filteredTimeline,
+        timeline: filterTimeline(timelineData.timeline, filteredOrders, filteredInvoices),
         orders: filteredOrders,
         invoices: filteredInvoices,
         statistics: {
-          totalDays: totalDays,
+          totalDays,
           totalOffers: filteredOrders.length,
-          totalShipments: filteredOrders.filter((o: any) => o.is_delivered).length,
+          totalShipments: filteredOrders.filter((order: any) => order.is_delivered).length,
           totalInvoices: filteredInvoices.length,
-          totalAmount: totalAmount,
+          totalAmount,
           currency: invoiceCurrency,
-          // Sadece invoice group varsa statistics kullan
-          subtotal: shouldUseStatistics ? timelineData.statistics?.subtotal : undefined,
-          discount: shouldUseStatistics ? timelineData.statistics?.discount : undefined,
-          tax: shouldUseStatistics ? timelineData.statistics?.tax : undefined,
-          grandTotal: shouldUseStatistics ? timelineData.statistics?.grandTotal : undefined,
-        }
-      }
-
-      console.log('📄 Multi-Order PDF Data Ready:', {
-        ordersCount: pdfApiData.orders.length,
-        invoicesCount: pdfApiData.invoices.length,
-        statistics: pdfApiData.statistics
+          subtotal: invoiceGroupId ? timelineData.statistics?.subtotal : undefined,
+          discount: invoiceGroupId ? timelineData.statistics?.discount : undefined,
+          tax: invoiceGroupId ? timelineData.statistics?.tax : undefined,
+          grandTotal: invoiceGroupId ? timelineData.statistics?.grandTotal : undefined,
+        },
       })
-
-      // Generate PDF using new generator
-      await generatePDFReport(pdfApiData)
-      
     } catch (error) {
       console.error('Toplu PDF export error:', error)
       throw error
@@ -523,6 +260,3 @@ export function usePDFExport() {
     exportMultipleOrders,
   }
 }
-
-
-
