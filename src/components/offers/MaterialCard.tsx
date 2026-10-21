@@ -8,6 +8,7 @@ import { Package, CheckCircle, X, Truck, Clock, Check, Edit, Trash2, RotateCcw }
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
+import { isSentToPurchasingStatus } from '@/lib/request-process'
 import { useRouter } from 'next/navigation'
 
 interface MaterialCardProps {
@@ -96,6 +97,7 @@ export default function MaterialCard({
   }
 
   const handleSingleItemDepotNotAvailable = async (item: any) => {
+    if (isSentToPurchasingStatus(request?.status)) return
     if (processingDepotStatus[item.id]) {
       return
     }
@@ -195,6 +197,10 @@ export default function MaterialCard({
   }
 
   const handleSingleItemSend = async (item: any, sentQuantity: number) => {
+    if (isSentToPurchasingStatus(request?.status)) {
+      showToast('Bu talep satın almaya gönderildi. Depo gönderimi kapalı.', 'info')
+      return
+    }
     try {
       console.log('🚀 BASİT Gönderim başlıyor:', {
         itemName: item.item_name,
@@ -980,8 +986,8 @@ export default function MaterialCard({
         </div>
       )}
 
-      {/* Gönderim İşlemleri */}
-      {!shouldShowTrackingSystem() && (
+      {/* Gönderim İşlemleri — satın almaya gitmiş talepte depo aksiyonu yok */}
+      {!shouldShowTrackingSystem() && !isSentToPurchasingStatus(request?.status) && (
         <div className="p-3 sm:p-4">
           {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) && !isReturnReorderStatus() ? (
             <div className="space-y-3 sm:space-y-4">

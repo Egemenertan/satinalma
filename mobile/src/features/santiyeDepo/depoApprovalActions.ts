@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { IT_STATUS_INCELEMEDE } from '../../lib/it-workflow'
-import { requestHasItMaterialClass } from '../../lib/it-class-routing'
+import { canDivertToItReview, requestHasItMaterialClass } from '../../lib/it-class-routing'
 import { SPECIAL_GMO_SITE_ID } from './santiyeDepoRules'
 
 type ApproveResult = { ok: true; message: string; newStatus: string } | { ok: false; message: string }
@@ -21,6 +21,10 @@ export async function depoManagerApproveRequest(
   }
   const user = session?.user
   if (!user) return { ok: false, message: 'Oturum bulunamadı' }
+
+  if (currentStatus === 'satın almaya gönderildi') {
+    return { ok: true, message: 'Talep zaten satın almaya gönderildi.', newStatus: currentStatus }
+  }
 
   const { data: stockCheckData, error: stockCheckError } = await supabase.rpc('check_main_warehouse_stock', {
     request_id_param: requestId,
@@ -56,7 +60,7 @@ export async function depoManagerApproveRequest(
       : 'Şantiye depo yöneticisi / site yöneticisi tarafından satın almaya gönderildi'
 
   let itWorkflowApplies = false
-  if (newStatus === 'satın almaya gönderildi') {
+  if (newStatus === 'satın almaya gönderildi' && canDivertToItReview(currentStatus)) {
     const hasItClass = await requestHasItMaterialClass(supabase, requestId)
     if (hasItClass) {
       newStatus = IT_STATUS_INCELEMEDE

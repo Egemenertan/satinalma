@@ -35,6 +35,7 @@ import {
   IT_STATUS_ONAYLANDI
 } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
+import { isSentToPurchasingStatus } from '@/lib/request-process'
 import { deliveryCountdown, fetchLateDeliveryRequestIds, isHeadOfficeRequest } from '@/lib/order-delivery'
 import { SlidingSegmentTabs } from '@/components/SlidingSegmentTabs'
 
@@ -733,7 +734,7 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     countQuery = countQuery.neq('status', 'departman_onayı_bekliyor')
-  } else if (effectiveRole === 'santiye_depo') {
+  } else if (effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_siparis') {
     // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
     if (profile?.site_id) {
       countQuery = countQuery
@@ -842,7 +843,7 @@ const fetchPurchaseRequests = async (
   } else if (effectiveRole === 'warehouse_manager') {
     // Warehouse Manager: departman_onayı_bekliyor statusunu görmesin
     requestsQuery = requestsQuery.neq('status', 'departman_onayı_bekliyor')
-  } else if (effectiveRole === 'santiye_depo') {
+  } else if (effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_siparis') {
     // Santiye depo kullanıcıları kendi sitelerinin taleplerini görebilir ama 'onay_bekliyor' statusundakileri görmez
     if (profile?.site_id) {
       requestsQuery = requestsQuery
@@ -1034,7 +1035,7 @@ const fetchPurchaseRequests = async (
   // Teslim alınmamış sipariş sayılarını hesapla (santiye_depo, santiye_depo_yonetici için)
   let overdueDeliveriesCounts: { [key: string]: number } = {}
   
-  if ((effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_yonetici' || effectiveRole === 'site_manager') && allRequestIds.length > 0 && overdueRequestIds && overdueRequestIds.length > 0) {
+  if ((effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_siparis' || effectiveRole === 'santiye_depo_yonetici' || effectiveRole === 'site_manager') && allRequestIds.length > 0 && overdueRequestIds && overdueRequestIds.length > 0) {
     try {
       // overdueRequestIds array'inden request_id ve overdue_orders_count'u al
       // overdueRequestIds prop'u zaten count bilgisini içermiyor, sadece ID'leri içeriyor
@@ -1929,6 +1930,11 @@ export default function PurchaseRequestsTable({
         throw new Error('Talep bilgisi alınamadı.')
       }
 
+      if (isSentToPurchasingStatus(requestData.status)) {
+        showToast('Talep zaten satın almaya gönderildi.', 'success')
+        return
+      }
+
       if (requestData.status === 'ana depoda yok') {
         let newStatus = 'satın almaya gönderildi'
         let successMessage = 'Talep satın almaya gönderildi!'
@@ -1937,7 +1943,8 @@ export default function PurchaseRequestsTable({
         const hasItClass = await purchaseRequestHasItMaterialClass(supabase, requestId)
         const routed = routeItClassAwayFromPurchasing(
           { newStatus, successMessage, historyComment },
-          hasItClass
+          hasItClass,
+          requestData.status
         )
         newStatus = routed.newStatus
         successMessage = routed.successMessage
@@ -2105,7 +2112,8 @@ export default function PurchaseRequestsTable({
       const hasItClass = await purchaseRequestHasItMaterialClass(supabase, requestId)
       const routed = routeItClassAwayFromPurchasing(
         { newStatus, successMessage, historyComment },
-        hasItClass
+        hasItClass,
+        requestData.status
       )
       newStatus = routed.newStatus
       successMessage = routed.successMessage
@@ -2822,7 +2830,7 @@ export default function PurchaseRequestsTable({
                           </Badge>
                         ) : null}
                         {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
-                        {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
+                        {(userRole === 'santiye_depo' || userRole === 'santiye_depo_siparis' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
                           <Badge 
                             variant="outline" 
                             className="bg-red-600 text-white border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"
@@ -3047,7 +3055,7 @@ export default function PurchaseRequestsTable({
                             </Badge>
                           ) : null}
                           {/* Teslim alınmamış sipariş uyarısı - santiye_depo ve santiye_depo_yonetici için */}
-                          {(userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
+                          {(userRole === 'santiye_depo' || userRole === 'santiye_depo_siparis' || userRole === 'santiye_depo_yonetici' || userRole === 'site_manager') && Number(request.overdue_deliveries_count) > 0 ? (
                             <Badge 
                               variant="outline" 
                               className="bg-red-500 text-black border-0 rounded-full text-xs font-bold px-2 py-0.5 animate-pulse"

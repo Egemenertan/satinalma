@@ -115,7 +115,7 @@ const fetchRequestAlerts = async () => {
     })())
   }
 
-  if (profile?.role === 'site_manager' || profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_yonetici') {
+  if (profile?.role === 'site_manager' || profile?.role === 'santiye_depo' || profile?.role === 'santiye_depo_siparis' || profile?.role === 'santiye_depo_yonetici') {
     tasks.push((async () => {
       try {
         const userSiteIds = Array.isArray(profile.site_id) ? profile.site_id : (profile.site_id ? [profile.site_id] : [])
@@ -257,7 +257,7 @@ export default function RequestsPage() {
   const hasSiteAssignment = userSiteId && (
     Array.isArray(userSiteId) ? userSiteId.length > 0 : true
   )
-  const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(userRole)
+  const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_siparis', 'santiye_depo_yonetici'].includes(userRole)
   const showSiteWarning = requiresSiteId && !hasSiteAssignment
 
   return (
@@ -330,7 +330,7 @@ export default function RequestsPage() {
         )}
         
         {/* Teslim Alınmamış Siparişler Uyarısı - Site Manager, Santiye Depo ve Santiye Depo Yöneticisi için */}
-        {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
+        {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_siparis' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
           <div className="flex items-center gap-3 p-4 bg-black/[0.04] border border-black/10 rounded-2xl">
             <div className="flex-shrink-0">
              

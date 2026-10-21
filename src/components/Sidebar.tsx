@@ -14,7 +14,6 @@ import {
   fetchMyWarehouseAccessScope,
 } from '@/lib/warehouse-access'
 import { useCurrentProfile, clearCurrentProfileCache } from '@/lib/auth/current-profile'
-import RoleAssignmentModal from '@/components/RoleAssignmentModal'
 import {
   LayoutDashboard,
   FileText,
@@ -166,7 +165,6 @@ export default function Sidebar({
   const [isCollapsed, setIsCollapsed] = useState(true)
   const [internalIsMobileOpen, setInternalIsMobileOpen] = useState(false)
   const [expandedItems, setExpandedItems] = useState<string[]>(['Satın Alma'])
-  const [showRoleAssignmentModal, setShowRoleAssignmentModal] = useState(false)
   const [hoveredItem, setHoveredItem] = useState<string | null>(null)
 
   const isMobileOpen = externalSetIsMobileOpen ? externalIsMobileOpen : internalIsMobileOpen
@@ -432,17 +430,6 @@ export default function Sidebar({
 
   return (
     <>
-      {/* Role Assignment Modal */}
-      <RoleAssignmentModal
-        isOpen={showRoleAssignmentModal}
-        onClose={() => setShowRoleAssignmentModal(false)}
-        onSuccess={() => {
-          // Başarılı atama sonrası yapılacaklar
-          console.log('✅ Rol ataması başarılı')
-        }}
-      />
-
-
       {/* Sidebar */}
       <div 
         className={cn(
@@ -526,31 +513,6 @@ export default function Sidebar({
                   </div>
                 )}
               </div>
-              
-              {/* Site Manager için Rol Yönetimi - Icon Only */}
-              {userRole === 'site_manager' && (
-                <div className="relative">
-                  <Button 
-                    onClick={() => setShowRoleAssignmentModal(true)}
-                    onMouseEnter={() => setHoveredItem('role-management')}
-                    onMouseLeave={() => setHoveredItem(null)}
-                    variant="outline"
-                    className="w-full h-10 border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 rounded-sm flex items-center justify-center transition-all duration-200"
-                  >
-                    <UserCog className="h-4 w-4" />
-                  </Button>
-                  
-                  {/* Tooltip for Role Management */}
-                  {hoveredItem === 'role-management' && (
-                    <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 z-50 pointer-events-none">
-                      <div className="bg-black text-white px-5 py-2.5 rounded-md text-base font-medium shadow-lg whitespace-nowrap animate-in fade-in slide-in-from-left-1 duration-200">
-                        Rol Yönetimi
-                        <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-black" />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
             </div>
           ) : (
             <div className={cn("space-y-3", isMobileOpen && "grid grid-cols-2 gap-3")}>
@@ -569,26 +531,6 @@ export default function Sidebar({
                 <Plus className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4 mr-2")} />
                 <span className={cn(isMobileOpen ? "text-xs" : "text-sm")}>Hızlı Talep</span>
               </Button>
-              
-              {/* Site Manager için Rol Yönetimi Butonu */}
-              {userRole === 'site_manager' && (
-                <Button 
-                  onClick={() => {
-                    setShowRoleAssignmentModal(true)
-                    if (isMobileOpen) {
-                      setIsMobileOpen(false)
-                    }
-                  }}
-                  variant="outline"
-                  className={cn(
-                    "border-gray-300 text-gray-700 hover:bg-neutral-950 hover:text-white hover:border-neutral-950 font-medium rounded-sm transition-all duration-200",
-                    isMobileOpen ? "aspect-square w-full h-auto flex-col gap-2 p-3" : "w-full h-9 text-sm flex items-center justify-center gap-2"
-                  )}
-                >
-                  <UserCog className={cn(isMobileOpen ? "h-6 w-6" : "h-4 w-4")} />
-                  <span className={cn(isMobileOpen ? "text-xs" : "text-sm")}>Rol Yönetimi</span>
-                </Button>
-              )}
             </div>
           )}
         </div>

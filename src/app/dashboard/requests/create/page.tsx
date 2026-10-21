@@ -177,7 +177,7 @@ export default function CreatePurchaseRequestPage() {
 
         if (!profileError && profileData) {
           // KRİTİK GÜVENLİK: Site ID kontrolü
-          const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici'].includes(profileData.role)
+          const requiresSiteId = ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_siparis', 'santiye_depo_yonetici'].includes(profileData.role)
           
           if (profileData.site_id && Array.isArray(profileData.site_id) && profileData.site_id.length > 0) {
             userSiteIds = profileData.site_id

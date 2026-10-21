@@ -10,6 +10,7 @@ import { buildDovecGroupWorkEmailFromDisplayName } from '@/lib/dovec-work-email'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { NotificationService } from '@/lib/notifications'
 import { isDemirbasProductType, transferCatalogShipmentStock, type CatalogShipmentTransfer } from '@/services/stock.service'
+import { isSentToPurchasingStatus, isWarehouseDepotActionAllowed } from '@/lib/request-process'
 
 interface WarehouseManagerMaterialCardProps {
   item: any
@@ -57,8 +58,15 @@ export default function WarehouseManagerMaterialCard({
   )
   const sanayiQty = sanayiStock?.quantity ?? 0
 
+  const depotActionsAllowed = isWarehouseDepotActionAllowed(request.status)
+
   const handleSend = async () => {
     try {
+      if (!isWarehouseDepotActionAllowed(request.status)) {
+        showToast('Bu talep satın alma sürecinde. Depo bu aşamada gönderim yapamaz.', 'info')
+        return
+      }
+
       const quantity = parseFloat(sendQuantity)
       
       if (!sendQuantity.trim() || quantity <= 0) {
@@ -223,6 +231,10 @@ export default function WarehouseManagerMaterialCard({
 
   const handleDepotNotAvailable = async () => {
     if (processingDepotStatus) return
+    if (!isWarehouseDepotActionAllowed(request.status)) {
+      showToast('Bu talep satın alma sürecinde. Depo statusü geri alınamaz.', 'info')
+      return
+    }
     
     setProcessingDepotStatus(true)
     try {
@@ -347,6 +359,13 @@ export default function WarehouseManagerMaterialCard({
             console.error('❌ Status güncelleme hatası:', statusError)
           } else {
             console.log('✅ Talep statusu "ana depoda yok" olarak güncellendi')
+
+            await supabase.from('approval_history').insert({
+              purchase_request_id: request.id,
+              action: 'updated',
+              performed_by: user.id,
+              comments: 'Warehouse Manager — ana depoda yok olarak işaretlendi',
+            })
             
             // Site manager'a push notification gönder - sadece ilk kez
             try {
@@ -589,8 +608,22 @@ export default function WarehouseManagerMaterialCard({
         </div>
       )}
 
-      {/* Gönderim İşlemleri */}
-      {!isShipped && remainingQuantity > 0 && !isDepotUnavailable ? (
+      {/* Gönderim İşlemleri — satın almaya gitmiş talepte Gönder / Ana depoda yok yok */}
+      {isSentToPurchasingStatus(request.status) ? null : !depotActionsAllowed ? (
+        <div className="p-4 bg-slate-50">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center">
+              <FileText className="h-5 w-5 text-slate-600" />
+            </div>
+            <div className="flex-1">
+              <h6 className="text-sm font-semibold text-slate-800">Depo işlemi kapalı</h6>
+              <p className="text-xs text-slate-600 mt-1">
+                Bu talep depo kontrolünden çıktı. Ana depoda yok işaretlemesi statusü geri alamaz.
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : !isShipped && remainingQuantity > 0 && !isDepotUnavailable ? (
         <div className="p-4">
           <div className="space-y-3">
             {/* Condition Seçimi */}

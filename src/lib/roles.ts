@@ -10,6 +10,7 @@ export const roleLabels: Record<UserRole, string> = {
   warehouse_manager: 'Depo Yöneticisi',
   purchasing_officer: 'Satın Alma Sorumlusu',
   santiye_depo: 'Şantiye Depo',
+  santiye_depo_siparis: 'Şantiye Depo (Sipariş)',
   santiye_depo_yonetici: 'Şantiye Depo Yöneticisi',
   department_head: 'Departman Yöneticisi'
 }
@@ -23,6 +24,7 @@ export const roleDescriptions: Record<UserRole, string> = {
   warehouse_manager: 'Dashboard, talep, ürün ve marka yönetimi yetkisi',
   purchasing_officer: 'Dashboard, talep ve sipariş yönetimi yetkisi',
   santiye_depo: 'Tüm satın alma taleplerini görüntüleme yetkisi',
+  santiye_depo_siparis: 'Şantiye depo yetkileri ve siparişler sayfası',
   santiye_depo_yonetici: 'Depo işlemleri ve talep onaylama yetkisi (Şantiye Depo + Site Manager)',
   department_head: 'GMO departman bazlı talep onay yetkisi'
 }
@@ -55,9 +57,20 @@ export const getAllRoles = (): Array<{ value: UserRole; label: string; descripti
 export const roleGroups = {
   full_access: ['admin', 'manager'] as UserRole[], // Tüm sayfalara erişim
   basic_access: ['user'] as UserRole[], // Normal kullanıcı erişimi
-  limited_access: ['site_personnel', 'santiye_depo'] as UserRole[], // Sadece requests sayfası
+  limited_access: ['site_personnel', 'santiye_depo', 'santiye_depo_siparis'] as UserRole[], // Sadece requests sayfası
   site_management: ['site_manager', 'warehouse_manager', 'santiye_depo_yonetici'] as UserRole[], // Dashboard ve requests sayfaları + onay yetkisi
   purchasing_access: ['purchasing_officer'] as UserRole[] // Dashboard, requests, orders ve reports sayfaları
+}
+
+export function isSantiyeDepoRole(role?: string | null): boolean {
+  return role === 'santiye_depo' || role === 'santiye_depo_siparis'
+}
+
+export function normalizeAccessPath(path: string): string {
+  if (!path) return '/'
+  const clean = path.split('?')[0].split('#')[0]
+  if (clean === '/') return '/'
+  return clean.replace(/\/+$/, '') || '/'
 }
 
 // Admin kontrolü için helper
@@ -168,7 +181,7 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
   }
 
   // Santiye depo sadece requests, inventory ve products sayfasına erişebilir
-  if (userRole === 'santiye_depo') {
+  if (isSantiyeDepoRole(userRole)) {
     return page === 'requests' ||
       page === '/dashboard/requests' ||
       page.startsWith('/dashboard/requests/') ||
@@ -176,7 +189,12 @@ export const canAccessPage = (userRole: UserRole, page: string): boolean => {
       page === '/dashboard/inventory' ||
       page === 'products' ||
       page === '/dashboard/products' ||
-      page.startsWith('/dashboard/products/')
+      page.startsWith('/dashboard/products/') ||
+      (userRole === 'santiye_depo_siparis' && (
+        page === 'orders' ||
+        page === '/dashboard/orders' ||
+        page.startsWith('/dashboard/orders/')
+      ))
   }
 
   // Santiye depo yöneticisi - site_manager ile aynı yetkilere sahip
@@ -222,6 +240,10 @@ export const getAccessibleMenuItems = (userRole: UserRole) => {
 
   if (userRole === 'santiye_depo') {
     return ['requests', 'products']
+  }
+
+  if (userRole === 'santiye_depo_siparis') {
+    return ['requests', 'products', 'orders']
   }
 
   if (userRole === 'santiye_depo_yonetici') {

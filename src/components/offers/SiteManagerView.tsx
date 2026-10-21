@@ -15,6 +15,7 @@ import SitePersonnelView from './SitePersonnelView'
 import { useRouter } from 'next/navigation'
 import { departmentsMatch, IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
+import { isSentToPurchasingStatus } from '@/lib/request-process'
 
 interface SiteManagerViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'materialOrders' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   currentOrder: any
@@ -55,7 +56,24 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
-      if (request.status === IT_STATUS_ONAYLANDI && request.it_workflow_applies) {
+      const { data: latestRequest, error: latestError } = await supabase
+        .from('purchase_requests')
+        .select('status, it_workflow_applies')
+        .eq('id', request.id)
+        .single()
+
+      if (latestError || !latestRequest) {
+        throw new Error('Talep bilgisi alınamadı.')
+      }
+
+      const currentStatus = latestRequest.status
+
+      if (isSentToPurchasingStatus(currentStatus)) {
+        showToast('Talep zaten satın almaya gönderildi.', 'success')
+        return
+      }
+
+      if (currentStatus === IT_STATUS_ONAYLANDI && latestRequest.it_workflow_applies) {
         const newStatus = 'satın almaya gönderildi'
         const { error: updateError } = await supabase
           .from('purchase_requests')
@@ -82,7 +100,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         return
       }
 
-      if (request.status === 'ana depoda yok') {
+      if (currentStatus === 'ana depoda yok') {
         let newStatus = 'satın almaya gönderildi'
         let successMessage = 'Malzemeler satın almaya gönderildi!'
         let historyComment = 'Site Manager tarafından satın almaya gönderildi (Ana depoda yok)'
@@ -94,7 +112,8 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
         )
         const routed = routeItClassAwayFromPurchasing(
           { newStatus, successMessage, historyComment },
-          hasItClass
+          hasItClass,
+          currentStatus
         )
         newStatus = routed.newStatus
         successMessage = routed.successMessage
@@ -122,7 +141,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
 
         try {
           const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
-          await handlePurchaseRequestStatusChange(request.id, newStatus, request.status)
+          await handlePurchaseRequestStatusChange(request.id, newStatus, currentStatus)
         } catch (webhookError) {
           console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
         }
@@ -157,7 +176,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       // Özel site ID'si kontrolü
       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
       const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
-      const isAwaitingApproval = request?.status === 'onay_bekliyor'
+      const isAwaitingApproval = currentStatus === 'onay_bekliyor'
       
       let newStatus = 'satın almaya gönderildi'
       let successMessage = 'Malzemeler satın almaya gönderildi!'
@@ -201,7 +220,8 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       )
       const routed = routeItClassAwayFromPurchasing(
         { newStatus, successMessage, historyComment },
-        hasItClass
+        hasItClass,
+        currentStatus
       )
       newStatus = routed.newStatus
       successMessage = routed.successMessage
@@ -239,7 +259,7 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       // Teams bildirimi gönder (arka planda, hata olsa bile devam et)
       try {
         const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
-        await handlePurchaseRequestStatusChange(request.id, newStatus, request.status)
+        await handlePurchaseRequestStatusChange(request.id, newStatus, currentStatus)
       } catch (webhookError) {
         console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
       }

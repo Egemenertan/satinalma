@@ -292,6 +292,7 @@ export default function OffersPage() {
 
     switch (userRole) {
       case 'santiye_depo':
+      case 'santiye_depo_siparis':
         return (
           <SantiyeDepoView 
             {...commonProps}
@@ -478,7 +479,7 @@ export default function OffersPage() {
                 showOrderHint={['purchasing_officer', 'admin', 'manager'].includes(userRole)}
                 canUploadWaybill={
                   currentUserId === request.requested_by ||
-                  ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_yonetici', 'warehouse_manager', 'department_head'].includes(userRole)
+                  ['site_personnel', 'site_manager', 'santiye_depo', 'santiye_depo_siparis', 'santiye_depo_yonetici', 'warehouse_manager', 'department_head'].includes(userRole)
                 }
                 onUploadWaybill={setWaybillBinding}
               />

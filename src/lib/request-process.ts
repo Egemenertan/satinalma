@@ -79,6 +79,17 @@ export const SENT_TO_PURCHASING_STATUSES = new Set([
 
 const WAREHOUSE_FULFILLED_STATUSES = new Set(['onaylandı', 'gönderildi'])
 
+/** Depo yalnızca bu statuslarda "gönder / depoda yok" ile talep statusünü değiştirebilir. */
+const WAREHOUSE_DEPOT_ACTION_STATUSES = new Set([
+  'pending',
+  'onay_bekliyor',
+  'awaiting_offers',
+  'kısmen gönderildi',
+  'depoda mevcut değil',
+  'ana depoda yok',
+  'bekliyor',
+])
+
 const PURCHASING_STEP_IDS = new Set([
   'sent_to_purchasing',
   'site_manager_send',
@@ -96,6 +107,11 @@ const REJECTED_STATUSES = new Set(['reddedildi', 'rejected', 'cancelled', 'iptal
 export function isSentToPurchasingStatus(status: string | null | undefined): boolean {
   if (!status) return false
   return SENT_TO_PURCHASING_STATUSES.has(status.toLowerCase())
+}
+
+export function isWarehouseDepotActionAllowed(status: string | null | undefined): boolean {
+  if (!status) return false
+  return WAREHOUSE_DEPOT_ACTION_STATUSES.has(status.toLowerCase())
 }
 
 export function isRejectedStatus(status: string | null | undefined): boolean {
@@ -140,7 +156,7 @@ export function inferWorkflowKind(request: ProcessRequestInput): ProcessWorkflow
     return isSentToPurchasingStatus(status) ? 'direct_to_purchasing' : 'site_warehouse'
   }
 
-  if (requesterRole === 'santiye_depo' || status === 'depoda mevcut değil') {
+  if (requesterRole === 'santiye_depo' || requesterRole === 'santiye_depo_siparis' || status === 'depoda mevcut değil') {
     return 'site_warehouse'
   }
 

@@ -234,7 +234,7 @@ export async function createPurchaseRequest(data: {
     
     let initialStatus = 'pending'
     // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
-    const startInItReview = useItWorkflow && user.role !== 'santiye_depo'
+    const startInItReview = useItWorkflow && user.role !== 'santiye_depo' && user.role !== 'santiye_depo_siparis'
     
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -245,7 +245,7 @@ export async function createPurchaseRequest(data: {
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'purchasing_officer') {
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
       console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
     } else {
@@ -333,7 +333,7 @@ export async function createPurchaseRequest(data: {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
     } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (!startInItReview && user.role === 'santiye_depo') {
+    } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
       historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = 'Talep oluşturuldu (Satın Alma Sorumlusu - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
@@ -633,7 +633,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
     // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
-    const startInItReview = useItWorkflow && user.role !== 'santiye_depo'
+    const startInItReview = useItWorkflow && user.role !== 'santiye_depo' && user.role !== 'santiye_depo_siparis'
 
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -644,7 +644,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'purchasing_officer') {
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
       console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
@@ -734,7 +734,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && user.role === 'santiye_depo') {
+    } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
@@ -898,7 +898,7 @@ export async function updatePurchaseRequest(data: {
       }
       
       // Santiye Depo ve Santiye Depo Yöneticisi: pending, rejected, kısmen gönderildi, depoda mevcut değil
-      if (user.role === 'santiye_depo' || user.role === 'santiye_depo_yonetici') {
+      if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'santiye_depo_yonetici') {
         return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
       }
       

@@ -35,6 +35,7 @@ const ROLE_LABELS: Record<string, string> = {
   warehouse_manager: 'Depo Yöneticisi',
   purchasing_officer: 'Satın Alma Sorumlusu',
   santiye_depo: 'Şantiye Depo',
+  santiye_depo_siparis: 'Şantiye Depo (Sipariş)',
   santiye_depo_yonetici: 'Şantiye Depo Yöneticisi',
   department_head: 'Departman Yöneticisi',
 }
@@ -57,6 +58,7 @@ function inferStatusLabelFromComments(comments: string | null): string | null {
   if (c.includes('departman yöneticisi tarafından onaylandı')) return 'Departman onayı'
   if (c.includes('ana depoda stok mevcut') || c.includes('status: onaylandı')) return 'Onaylandı'
   if (c.includes('depoda mevcut değil')) return 'Depoda mevcut değil'
+  if (c.includes('ana depoda yok')) return 'Ana depoda yok'
   if (c.includes('it yönetim incelemesinde') || c.includes('it_incelemesinde')) {
     return 'IT incelemesine alındı'
   }

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI } from '../../lib/it-workflow'
-import { requestHasItMaterialClass } from '../../lib/it-class-routing'
+import { canDivertToItReview, requestHasItMaterialClass } from '../../lib/it-class-routing'
 
 /** Web `SiteManagerView` ile aynı — Genel Merkez Ofisi şantiye kaydı */
 export const SITE_MANAGER_SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
@@ -31,6 +31,10 @@ export async function siteManagerApproveOrSendToPurchasing(
   const user = session?.user
   if (!user) {
     throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
+  }
+
+  if (currentStatus === 'satın almaya gönderildi') {
+    return { newStatus: currentStatus, message: 'Talep zaten satın almaya gönderildi.' }
   }
 
   /** IT `it_onaylandi` sonrası her zaman satın almaya ilet (stokta olsa bile `onaylandı` olmasın). */
@@ -118,7 +122,7 @@ export async function siteManagerApproveOrSendToPurchasing(
   }
 
   let itWorkflowApplies = false
-  if (newStatus === 'satın almaya gönderildi') {
+  if (newStatus === 'satın almaya gönderildi' && canDivertToItReview(currentStatus)) {
     const hasItClass = await requestHasItMaterialClass(supabase, requestId)
     if (hasItClass) {
       newStatus = IT_STATUS_INCELEMEDE

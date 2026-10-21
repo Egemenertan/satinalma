@@ -176,6 +176,7 @@ export type Database = {
         | "warehouse_manager"
         | "purchasing_officer"
         | "santiye_depo"
+        | "santiye_depo_siparis"
         | "santiye_depo_yonetici"
     }
     CompositeTypes: {

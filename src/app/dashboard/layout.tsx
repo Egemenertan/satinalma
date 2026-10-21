@@ -8,7 +8,7 @@ import NotificationPanel from '@/components/NotificationPanel'
 import { Button } from '@/components/ui/button'
 import { Loading } from '@/components/ui/loading'
 import { Menu, X } from 'lucide-react'
-import { canAccessPage } from '@/lib/roles'
+import { canAccessPage, normalizeAccessPath } from '@/lib/roles'
 import {
   WAREHOUSE_ACCESS_SWR_KEY,
   fetchMyWarehouseAccessScope,
@@ -82,8 +82,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return
     }
 
+    const home = getRedirectPath(userRole)
+    if (normalizeAccessPath(pathname) !== normalizeAccessPath(home) && canAccessPage(userRole, home)) {
+      router.replace(home)
+      setAccessCheck('loading')
+      return
+    }
+
     setAccessCheck('deny')
-  }, [pathname, userRole, profileLoading, profileError, isProductsPage, warehouseScope])
+  }, [pathname, userRole, profileLoading, profileError, isProductsPage, warehouseScope, router])
 
   useEffect(() => {
     if (accessCheck !== 'deny' || !userRole) return

@@ -18,6 +18,7 @@ import { Label } from '@/components/ui/label'
 import { createClient } from '@/lib/supabase/client'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
+import { isSentToPurchasingStatus } from '@/lib/request-process'
 import { useRouter } from 'next/navigation'
 
 interface SantiyeDepoViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'shipmentData' | 'onRefresh' | 'showToast'> {
@@ -316,6 +317,23 @@ export default function SantiyeDepoView({
         throw new Error('Kullanıcı oturumu bulunamadı. Lütfen tekrar giriş yapın.')
       }
 
+      const { data: latestRequest, error: latestError } = await supabase
+        .from('purchase_requests')
+        .select('status')
+        .eq('id', request.id)
+        .single()
+
+      if (latestError || !latestRequest) {
+        throw new Error('Talep bilgisi alınamadı.')
+      }
+
+      const currentStatus = latestRequest.status
+
+      if (isSentToPurchasingStatus(currentStatus)) {
+        showToast('Talep zaten satın almaya gönderildi.', 'success')
+        return
+      }
+
       // Ana depoda stok kontrolü yap
       console.log('🔍 Ana depoda stok kontrolü yapılıyor...')
       const { data: stockCheckData, error: stockCheckError } = await supabase
@@ -340,7 +358,7 @@ export default function SantiyeDepoView({
       // Özel site ID'si kontrolü
       const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
       const isSpecialSite = request?.site_id === SPECIAL_SITE_ID
-      const isAwaitingApproval = request?.status === 'onay_bekliyor'
+      const isAwaitingApproval = currentStatus === 'onay_bekliyor'
       
       console.log('🔍 Şantiye Depo Yöneticisi Onay - Durum Analizi:', {
         currentStatus: request?.status,
@@ -392,7 +410,8 @@ export default function SantiyeDepoView({
       )
       const routed = routeItClassAwayFromPurchasing(
         { newStatus, successMessage, historyComment },
-        hasItClass
+        hasItClass,
+        currentStatus
       )
       newStatus = routed.newStatus
       successMessage = routed.successMessage
@@ -443,7 +462,7 @@ export default function SantiyeDepoView({
       // Teams bildirimi gönder (arka planda, hata olsa bile devam et)
       try {
         const { handlePurchaseRequestStatusChange } = await import('../../lib/teams-webhook')
-        await handlePurchaseRequestStatusChange(request.id, newStatus, request.status)
+        await handlePurchaseRequestStatusChange(request.id, newStatus, currentStatus)
       } catch (webhookError) {
         console.error('⚠️ Teams bildirimi gönderilemedi:', webhookError)
       }
@@ -672,8 +691,10 @@ export default function SantiyeDepoView({
                 {isReturnReorderStatus()
                   ? 'İade Nedeniyle Yeniden Sipariş'
                   : shouldShowTrackingSystem()
-                    ? 'Malzeme Takip Sistemi' 
-                    : 'Depo İşlemleri'
+                    ? 'Malzeme Takip Sistemi'
+                    : isSentToPurchasingStatus(request?.status)
+                      ? 'Malzemeler'
+                      : 'Depo İşlemleri'
                 }
               </CardTitle>
               <p className="text-xs sm:text-sm text-gray-600 mt-1">
@@ -681,7 +702,9 @@ export default function SantiyeDepoView({
                   ? 'Bu talep iade nedeniyle oluşturulmuştur. Gönderim işlemleri devre dışıdır ve sadece görüntüleme yapabilirsiniz.'
                   : shouldShowTrackingSystem()
                     ? 'Her malzeme için talep, gönderim ve teslimat durumu. İade sebepli yeni siparişler mor renkle işaretlenmiştir.'
-                    : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
+                    : isSentToPurchasingStatus(request?.status)
+                      ? 'Bu talep satın almaya gönderildi. Depodan gönderim ve ana depoda yok işlemi kapalı.'
+                      : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
                 }
               </p>
             </div>
