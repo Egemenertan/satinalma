@@ -690,6 +690,10 @@ export default function SantiyeDepoView({
               <CardTitle className="text-base sm:text-xl font-semibold text-gray-900">
                 {isReturnReorderStatus()
                   ? 'İade Nedeniyle Yeniden Sipariş'
+                  : request?.status === 'beklemede'
+                    ? 'Ana depo kontrolü yapılıyor'
+                  : request?.status === 'gönderildi'
+                    ? 'Ana depoda mevcut'
                   : shouldShowTrackingSystem()
                     ? 'Malzeme Takip Sistemi'
                     : isSentToPurchasingStatus(request?.status)
@@ -704,6 +708,10 @@ export default function SantiyeDepoView({
                     ? 'Her malzeme için talep, gönderim ve teslimat durumu. İade sebepli yeni siparişler mor renkle işaretlenmiştir.'
                     : isSentToPurchasingStatus(request?.status)
                       ? 'Bu talep satın almaya gönderildi. Depodan gönderim ve ana depoda yok işlemi kapalı.'
+                      : request?.status === 'beklemede'
+                      ? 'Ana depo kontrolü yapılıyor'
+                      : request?.status === 'gönderildi'
+                      ? 'Teslim almak için depoya başvurun'
                       : 'Talep edilen malzemeleri kontrol edin ve gönderim yapın'
                 }
               </p>

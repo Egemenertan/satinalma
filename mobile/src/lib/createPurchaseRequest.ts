@@ -6,6 +6,7 @@ import {
   purchaseLinesTriggerItWorkflow,
 } from './it-workflow'
 import type { ProfileRow } from './purchaseRequestsQuery'
+import { isConstructionWarehouseQueueSite } from './warehouseQueue'
 
 export type CreateMaterialLine = {
   material_name: string
@@ -67,14 +68,20 @@ export async function createMultiMaterialPurchaseRequest(
     const email = (user.email ?? '').toLowerCase()
 
     let initialStatus = 'pending'
-    const startInItReview = useItWorkflow && role !== 'santiye_depo'
+    const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+    const startInItReview = useItWorkflow
+      && role !== 'santiye_depo'
+      && role !== 'santiye_depo_siparis'
+      && !(role === 'santiye_depo_yonetici' && queueSite)
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
     } else if (email === HASAN_AUTO_APPROVE_EMAIL) {
       initialStatus = 'satın almaya gönderildi'
     } else if (role === 'santiye_depo_yonetici') {
-      initialStatus = 'satın almaya gönderildi'
-    } else if (role === 'santiye_depo' || role === 'purchasing_officer') {
+      initialStatus = queueSite ? 'beklemede' : 'satın almaya gönderildi'
+    } else if (role === 'santiye_depo' || role === 'santiye_depo_siparis') {
+      initialStatus = queueSite ? 'beklemede' : 'depoda mevcut değil'
+    } else if (role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
     } else if (role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
       initialStatus = 'departman_onayı_bekliyor'
@@ -138,9 +145,13 @@ export async function createMultiMaterialPurchaseRequest(
     if (!startInItReview && email === HASAN_AUTO_APPROVE_EMAIL) {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (!startInItReview && role === 'santiye_depo_yonetici') {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && role === 'santiye_depo') {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
+      historyComment = initialStatus === 'beklemede'
+        ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
+        : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
+    } else if (!startInItReview && (role === 'santiye_depo' || role === 'santiye_depo_siparis')) {
+      historyComment = initialStatus === 'beklemede'
+        ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo, depo kontrolü bekleniyor`
+        : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     } else if (!startInItReview && role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }

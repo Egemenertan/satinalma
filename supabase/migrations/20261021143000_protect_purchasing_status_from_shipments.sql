@@ -13,11 +13,13 @@ AS $$
     'kısmen gönderildi',
     'depoda mevcut değil',
     'ana depoda yok',
-    'bekliyor'
+    'bekliyor',
+    'beklemede'
   );
 $$;
 
-REVOKE ALL ON FUNCTION public.shipment_may_rewrite_request_status(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.shipment_may_rewrite_request_status(text) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.shipment_may_rewrite_request_status(text) TO authenticated;
 
 CREATE OR REPLACE FUNCTION public.update_purchase_request_status()
 RETURNS trigger

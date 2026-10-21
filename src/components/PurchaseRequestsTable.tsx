@@ -747,6 +747,11 @@ const fetchPurchaseRequests = async (
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
+    if (effectiveRole === 'site_manager') {
+      countQuery = countQuery.neq('status', 'beklemede')
+    } else if (effectiveRole === 'santiye_depo_yonetici') {
+      countQuery = countQuery.or(`status.neq.beklemede,requested_by.eq.${user.id}`)
+    }
   }
   }
 
@@ -855,6 +860,11 @@ const fetchPurchaseRequests = async (
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
+    }
+    if (effectiveRole === 'site_manager') {
+      requestsQuery = requestsQuery.neq('status', 'beklemede')
+    } else if (effectiveRole === 'santiye_depo_yonetici') {
+      requestsQuery = requestsQuery.or(`status.neq.beklemede,requested_by.eq.${user.id}`)
     }
   }
   }
@@ -1621,39 +1631,37 @@ export default function PurchaseRequestsTable({
     }
 
     const statusConfig = {
-      // Temel statuslar
       draft: { label: 'Taslak', className: 'bg-gray-100 text-gray-700 border-0' },
-      pending: { label: 'Beklemede', className: 'bg-yellow-100 text-yellow-800 border-0' },
-      'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
-      'onay_bekliyor': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
-      'departman_onayı_bekliyor': { label: '🔔 Departman Onayı Bekliyor', className: 'bg-amber-50 text-amber-700 border-amber-200 border' },
-      'it_incelemesinde': { label: 'IT Yönetim — İncelemede', className: 'bg-sky-50 text-sky-800 border border-sky-200' },
-      'it_onaylandi': { label: 'IT Yönetim — Onaylandı (Satın almaya hazır)', className: 'bg-emerald-50 text-emerald-800 border border-emerald-200' },
-      'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
-      'onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
-      'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' },
-      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
-      'ordered': { label: 'Sipariş Verildi', className: 'bg-green-100 text-green-800 border-0' },
-      'gönderildi': { label: 'Gönderildi', className: 'bg-emerald-100 text-emerald-800 border-0' },
-      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-red-100 text-red-800 border-0' },
-      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-red-100 text-red-800 border-0' },
-      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-red-100 text-red-800 border-0' },
-      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-red-100 text-red-800 border-0' },
-      'teslim alındı': { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
-      'iade var': { label: 'İade Var', className: 'bg-red-100 text-red-800 border-0' },
-      'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-purple-100 text-purple-800 border-0' },
-      'reddedildi': { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
-      rejected: { label: 'Reddedildi', className: 'bg-red-100 text-red-800 border-0' },
+      pending: { label: 'Beklemede', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      beklemede: { label: 'Ana depo kontrolü yapılıyor', className: 'bg-[#FACC15] text-[#422006] border-0' },
+      'onay bekliyor': { label: 'Onay Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'onay_bekliyor': { label: 'Onay Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'departman_onayı_bekliyor': { label: '🔔 Departman Onayı Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'it_incelemesinde': { label: 'IT Yönetim — İncelemede', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'it_onaylandi': { label: 'IT Yönetim — Onaylandı (Satın almaya hazır)', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'teklif bekliyor': { label: 'Teklif Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'onaylandı': { label: 'Onaylandı', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'satın almaya gönderildi': { label: 'Satın Almaya Gönderildi', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'sipariş verildi': { label: 'Sipariş Verildi', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'ordered': { label: 'Sipariş Verildi', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'gönderildi': { label: 'Ana depoda mevcut', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'kısmen gönderildi': { label: 'Kısmen Gönderildi', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'kısmen teslim alındı': { label: 'Kısmen Teslim Alındı', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'depoda mevcut değil': { label: 'Depoda Mevcut Değil', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
+      'ana depoda yok': { label: 'Ana Depoda Yok', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
+      'teslim alındı': { label: 'Teslim Alındı', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'iade var': { label: 'İade Var', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
+      'iade nedeniyle sipariş': { label: 'İade Nedeniyle Sipariş', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
+      'reddedildi': { label: 'Reddedildi', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
+      rejected: { label: 'Reddedildi', className: 'bg-[#FECACA] text-[#7F1D1D] border-0' },
       cancelled: { label: 'İptal Edildi', className: 'bg-gray-100 text-gray-600 border-0' },
-      
-      // Eski statuslar için backward compatibility
-      'şantiye şefi onayladı': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
-      awaiting_offers: { label: 'Teklif Bekliyor', className: 'bg-purple-100 text-purple-800 border-0' },
-      approved: { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
-      delivered: { label: 'Teslim Alındı', className: 'bg-green-100 text-green-800 border-0' },
-      'eksik onaylandı': { label: 'Onay Bekliyor', className: 'bg-blue-100 text-blue-800 border-0' },
-      'alternatif onaylandı': { label: 'Onaylandı', className: 'bg-green-100 text-green-800 border-0' },
-      'eksik malzemeler talep edildi': { label: 'Satın Almaya Gönderildi', className: 'bg-blue-100 text-blue-800 border-0' }
+      'şantiye şefi onayladı': { label: 'Onay Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      awaiting_offers: { label: 'Teklif Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      approved: { label: 'Onaylandı', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      delivered: { label: 'Teslim Alındı', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'eksik onaylandı': { label: 'Onay Bekliyor', className: 'bg-[#FEF08A] text-[#713F12] border-0' },
+      'alternatif onaylandı': { label: 'Onaylandı', className: 'bg-[#86EFAC] text-[#052E16] border-0' },
+      'eksik malzemeler talep edildi': { label: 'Satın Almaya Gönderildi', className: 'bg-[#86EFAC] text-[#052E16] border-0' }
     }
 
     // Database'den gelen status'u direkt kullan - trigger zaten doğru güncelliyor
@@ -1695,7 +1703,7 @@ export default function PurchaseRequestsTable({
       },
       normal: { 
         label: 'Normal', 
-        className: 'bg-blue-100 text-blue-800 border-0',
+        className: 'bg-yellow-100 text-yellow-800 border-0',
         icon: <Clock className="w-3 h-3" />
       },
       low: { 

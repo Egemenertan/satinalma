@@ -10,7 +10,7 @@ export const requestStatusTr = {
   onaylandi: 'Onaylandı',
   satin_almaya_gonderildi: 'Satın Almaya Gönderildi',
   siparis_verildi: 'Sipariş Verildi',
-  gonderildi: 'Gönderildi',
+  gonderildi: 'Ana depoda mevcut',
   kismen_gonderildi: 'Kısmen Gönderildi',
   kismen_teslim_alindi: 'Kısmen Teslim Alındı',
   depoda_mevcut_degil: 'Depoda Mevcut Değil',

@@ -11,6 +11,7 @@ import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { NotificationService } from '@/lib/notifications'
 import { isDemirbasProductType, transferCatalogShipmentStock, type CatalogShipmentTransfer } from '@/services/stock.service'
 import { isSentToPurchasingStatus, isWarehouseDepotActionAllowed } from '@/lib/request-process'
+import { isConstructionWarehouseQueueSite } from '@/lib/site-kind'
 
 interface WarehouseManagerMaterialCardProps {
   item: any
@@ -338,51 +339,76 @@ export default function WarehouseManagerMaterialCard({
         }
       }
       
-      // Status güncelleme - Warehouse Manager için "ana depoda yok" statusu
-      const newStatus = allItemsUnavailable ? 'ana depoda yok' : request.status
-      
+      const constructionSite = isConstructionWarehouseQueueSite(
+        request.site_id,
+        request.site_name || request.sites?.name
+      )
+      let creatorRole: string | null = null
+      if (constructionSite && request.requested_by) {
+        const { data: creator } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', request.requested_by)
+          .maybeSingle()
+        creatorRole = creator?.role ?? null
+      }
+      const unavailableStatus = !constructionSite
+        ? 'ana depoda yok'
+        : creatorRole === 'santiye_depo_yonetici'
+          ? 'satın almaya gönderildi'
+          : 'depoda mevcut değil'
+
       if (allItemsUnavailable || allItems.length === 1) {
-        // Status zaten "ana depoda yok" ise tekrar güncelleme ve bildirim gönderme
-        const isAlreadyUnavailable = request.status === 'ana depoda yok'
-        
+        const isAlreadyUnavailable = request.status === unavailableStatus
+
         if (!isAlreadyUnavailable) {
-          // Tüm malzemeler depoda yok veya tek malzeme varsa status'u güncelle
           const { error: statusError } = await supabase
             .from('purchase_requests')
-            .update({ 
-              status: 'ana depoda yok',
+            .update({
+              status: unavailableStatus,
               updated_at: new Date().toISOString()
             })
             .eq('id', request.id)
-          
+
           if (statusError) {
             console.error('❌ Status güncelleme hatası:', statusError)
           } else {
-            console.log('✅ Talep statusu "ana depoda yok" olarak güncellendi')
-
             await supabase.from('approval_history').insert({
               purchase_request_id: request.id,
               action: 'updated',
               performed_by: user.id,
-              comments: 'Warehouse Manager — ana depoda yok olarak işaretlendi',
+              comments:
+                unavailableStatus === 'satın almaya gönderildi'
+                  ? 'Depo yöneticisi — depoda mevcut değil. Şantiye depo yöneticisi talebi satın almaya gönderildi'
+                  : unavailableStatus === 'depoda mevcut değil'
+                    ? 'Depo yöneticisi — depoda mevcut değil'
+                    : 'Warehouse Manager — ana depoda yok olarak işaretlendi',
             })
-            
-            // Site manager'a push notification gönder - sadece ilk kez
-            try {
-              await NotificationService.notifySiteManagerDepotUnavailable(
-                request.id,
-                request.request_number || `REQ-${request.id.slice(-6)}`,
-                request.title || 'Satın Alma Talebi',
-                request.site_id,
-                request.site_name || request.sites?.name,
-                request.department
-              )
-            } catch (notifError) {
-              console.error('❌ Bildirim gönderme hatası:', notifError)
+
+            if (unavailableStatus === 'ana depoda yok') {
+              try {
+                await NotificationService.notifySiteManagerDepotUnavailable(
+                  request.id,
+                  request.request_number || `REQ-${request.id.slice(-6)}`,
+                  request.title || 'Satın Alma Talebi',
+                  request.site_id,
+                  request.site_name || request.sites?.name,
+                  request.department
+                )
+              } catch (notifError) {
+                console.error('❌ Bildirim gönderme hatası:', notifError)
+              }
+            }
+
+            if (unavailableStatus === 'satın almaya gönderildi') {
+              try {
+                const { handlePurchaseRequestStatusChange } = await import('@/lib/teams-webhook')
+                await handlePurchaseRequestStatusChange(request.id, unavailableStatus, request.status)
+              } catch {
+                /* bildirim talebi geri almaz */
+              }
             }
           }
-        } else {
-          console.log('ℹ️ Status zaten "ana depoda yok", bildirim gönderilmedi')
         }
       } else {
         // Kısmi durum - RPC ile normal güncelleme
@@ -396,7 +422,13 @@ export default function WarehouseManagerMaterialCard({
       }
       
       console.log(`✅ ${item.item_name} için ana depoda yok işlemi tamamlandı`)
-      showToast(`${item.item_name} "Ana Depoda Yok" olarak işaretlendi.`, 'info')
+      const markedLabel =
+        unavailableStatus === 'satın almaya gönderildi'
+          ? 'Satın Almaya Gönderildi'
+          : unavailableStatus === 'depoda mevcut değil'
+            ? 'Depoda Mevcut Değil'
+            : 'Ana Depoda Yok'
+      showToast(`${item.item_name} "${markedLabel}" olarak işaretlendi.`, 'info')
       await onRefresh()
       invalidatePurchaseRequestsCache()
       
@@ -760,7 +792,9 @@ export default function WarehouseManagerMaterialCard({
                 ) : (
                   <>
                     <X className="h-4 w-4 mr-2" />
-                    Ana Depoda Yok
+                    {isConstructionWarehouseQueueSite(request.site_id, request.site_name || request.sites?.name)
+                      ? 'Depoda Mevcut Değil'
+                      : 'Ana Depoda Yok'}
                   </>
                 )}
               </Button>

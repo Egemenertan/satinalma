@@ -15,6 +15,8 @@ import type { ProfileRow } from '../../../lib/purchaseRequestsQuery'
 import { SitePersonnelTrackingRn } from '../SitePersonnelTrackingRn'
 import { RequestActivityTimelineRn } from '../RequestActivityTimelineRn'
 import { DepoMaterialFooterRn } from './DepoMaterialFooterRn'
+import { RequestStatusNoticeRn, requestStatusLabel } from '../RequestStatusNoticeRn'
+import { RejectedMaterialsNoticeRn } from '../RejectedMaterialsNoticeRn'
 import { RequestSupplierDeliverySectionRn } from './RequestSupplierDeliverySectionRn'
 import { ReturnOrderModalRn } from './ReturnOrderModalRn'
 import { SwipeDismissSheet } from '../../island/SwipeDismissSheet'
@@ -207,7 +209,7 @@ export function SantiyeDepoDetailRn({
       <View style={requestDetailLayout.topMeta}>
         <Text style={requestDetailLayout.pageTitle}>{req.title || '—'}</Text>
         <Text style={requestDetailLayout.pageMeta}>
-          {rn} · {status || '—'}
+          {rn} · {requestStatusLabel(status)}
           {req.site_name ? ` · ${req.site_name}` : ''}
         </Text>
       </View>
@@ -215,6 +217,16 @@ export function SantiyeDepoDetailRn({
       <RequestActivityTimelineRn
         requestId={req.id}
         refreshKey={(req.updated_at as string | null | undefined) ?? null}
+      />
+
+      <RequestStatusNoticeRn status={status} />
+      <RejectedMaterialsNoticeRn
+        requestId={req.id}
+        requestedBy={req.requested_by}
+        currentUserId={userId}
+        items={items}
+        onRefresh={onRefresh}
+        onToast={toast}
       />
 
       {itBanner ? (
@@ -291,6 +303,7 @@ export function SantiyeDepoDetailRn({
             userId={userId}
             onRefresh={onRefresh}
             onToast={toast}
+            actorRole={profile.role}
           />
         )}
       />

@@ -56,6 +56,8 @@ function inferStatusLabelFromComments(comments: string | null): string | null {
   if (c.includes('departman yöneticisi tarafından onaylandı')) return 'Departman onayı'
   if (c.includes('ana depoda stok mevcut') || c.includes('status: onaylandı')) return 'Onaylandı'
   if (c.includes('depoda mevcut değil')) return 'Depoda mevcut değil'
+  if (c.includes('depo kontrolü bekleniyor')) return 'Ana depo kontrolü yapılıyor'
+  if (c.includes('ana depoda yok')) return 'Ana depoda yok'
   if (c.includes('it yönetim incelemesinde') || c.includes('it_incelemesinde')) {
     return 'IT incelemesine alındı'
   }

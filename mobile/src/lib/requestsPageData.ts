@@ -63,9 +63,12 @@ async function fetchWeeklyActivity(
     } else {
       query = query.eq('requested_by', userId)
     }
-  } else if (role === 'santiye_depo' || role === 'santiye_depo_yonetici' || role === 'site_manager') {
+  } else if (role === 'santiye_depo') {
     const userSiteIds = Array.isArray(siteId) ? siteId : siteId ? [siteId] : []
     if (userSiteIds.length > 0) query = query.in('site_id', userSiteIds)
+  } else if (role === 'site_manager' || role === 'santiye_depo_yonetici') {
+    const userSiteIds = Array.isArray(siteId) ? siteId : siteId ? [siteId] : []
+    if (userSiteIds.length > 0) query = query.in('site_id', userSiteIds).neq('status', 'beklemede')
   } else if (role === 'department_head') {
     const userDepartment = department || 'Genel'
     query = query.eq('site_id', GMO_SITE_ID).eq('department', userDepartment)
@@ -97,7 +100,7 @@ async function fetchWeeklyActivity(
     dailyCounts[dateKey] = 0
   }
 
-  requests?.forEach((request) => {
+  requests?.forEach((request: { created_at: string }) => {
     const requestDate = new Date(request.created_at)
     const dateKey = requestDate.toLocaleDateString('tr-TR', { day: '2-digit', month: '2-digit' })
     if (Object.prototype.hasOwnProperty.call(dailyCounts, dateKey)) {
@@ -159,12 +162,12 @@ async function fetchMonthlyBucket(
     }
   } else if (profile.role === 'warehouse_manager') {
     monthQuery = monthQuery.neq('status', 'departman_onayı_bekliyor')
-  } else if (
-    profile.role === 'santiye_depo' ||
-    profile.role === 'santiye_depo_yonetici' ||
-    profile.role === 'site_manager'
-  ) {
+  } else if (profile.role === 'santiye_depo') {
     if (profileSiteIds.length > 0) monthQuery = monthQuery.in('site_id', profileSiteIds)
+  } else if (profile.role === 'site_manager' || profile.role === 'santiye_depo_yonetici') {
+    if (profileSiteIds.length > 0) {
+      monthQuery = monthQuery.in('site_id', profileSiteIds).neq('status', 'beklemede')
+    }
   }
 
   const skipDeptMonthly =
@@ -307,12 +310,12 @@ export async function fetchRequestsPageData(
     }
   } else if (profile.role === 'warehouse_manager') {
     statsQuery = statsQuery.neq('status', 'departman_onayı_bekliyor')
-  } else if (
-    profile.role === 'santiye_depo' ||
-    profile.role === 'santiye_depo_yonetici' ||
-    profile.role === 'site_manager'
-  ) {
+  } else if (profile.role === 'santiye_depo') {
     if (profileSiteIds.length > 0) statsQuery = statsQuery.in('site_id', profileSiteIds)
+  } else if (profile.role === 'site_manager' || profile.role === 'santiye_depo_yonetici') {
+    if (profileSiteIds.length > 0) {
+      statsQuery = statsQuery.in('site_id', profileSiteIds).neq('status', 'beklemede')
+    }
   }
 
   const skipDeptFilterItWm =
@@ -405,14 +408,14 @@ export async function fetchRequestsPageData(
   const stats = {
     total: count || 0,
     pending:
-      requests?.filter((r) => r.status === 'pending' || r.status === 'onay bekliyor' || r.status === 'onay_bekliyor')
+      requests?.filter((r: { status?: string | null }) => r.status === 'pending' || r.status === 'onay bekliyor' || r.status === 'onay_bekliyor')
         .length || 0,
     approved:
-      requests?.filter((r) =>
+      requests?.filter((r: { status?: string | null }) =>
         ['onaylandı', 'sipariş verildi', 'gönderildi', 'teslim alındı'].includes(r.status as string)
       ).length || 0,
     urgent:
-      requests?.filter((r) => r.urgency_level === 'critical' || r.urgency_level === 'high').length || 0,
+      requests?.filter((r: { urgency_level?: string | null }) => r.urgency_level === 'critical' || r.urgency_level === 'high').length || 0,
     thisMonth: thisMonthCount || 0,
     monthlyData,
     monthChange: Math.round(monthChange * 10) / 10,
@@ -421,7 +424,7 @@ export async function fetchRequestsPageData(
   let pendingOrdersCount = 0
   if (profile.role === 'purchasing_officer' && requests && requests.length > 0) {
     try {
-      const requestIds = requests.map((r) => r.id)
+      const requestIds = requests.map((r: { id: string }) => r.id)
       const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
         request_ids: requestIds,
       })

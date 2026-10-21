@@ -13,6 +13,7 @@ import { fetchRequestContractBindings } from '@/services/contracts.service'
 import type { RequestContractBinding } from '@/lib/contracts'
 import { createClient } from '@/lib/supabase/client'
 import { getUrgencyColor, getStatusColor } from '@/components/offers/types'
+import { RejectedMaterialsBanner } from '@/components/offers/RejectedMaterialsBanner'
 import { SkeletonCard } from '@/components/ui/skeleton'
 import SantiyeDepoView from '@/components/offers/SantiyeDepoView'
 import SitePersonnelView from '@/components/offers/SitePersonnelView'
@@ -388,14 +389,15 @@ export default function OffersPage() {
                  request.urgency_level === 'high' ? 'Yüksek' :
                  request.urgency_level === 'normal' ? 'Normal' : 'Düşük'}
               </Badge>
-              <Badge className={`border ${getStatusColor(request.status)} text-xs px-2 py-1`}>
+              <Badge variant="outline" className={`border ${getStatusColor(request.status)} text-xs px-2 py-1`}>
                 {request.status === 'pending' ? 'Beklemede' :
+                 request.status === 'beklemede' ? 'Ana depo kontrolü yapılıyor' :
                  request.status === 'it_incelemesinde' ? 'IT Yönetim — İncelemede' :
                  request.status === 'it_onaylandi' ? 'IT Yönetim — Onaylandı' :
                  request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
                  request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
                  request.status === 'sipariş verildi' ? 'Sipariş Verildi' :
-                 request.status === 'gönderildi' ? 'Gönderildi' :
+                 request.status === 'gönderildi' ? 'Ana depoda mevcut' :
                  request.status === 'kısmen gönderildi' ? 'Kısmen Gönderildi' :
                  request.status === 'depoda mevcut değil' ? 'Depoda Mevcut Değil' :
                  request.status === 'ana depoda yok' ? 'Ana Depoda Yok' :
@@ -429,14 +431,15 @@ export default function OffersPage() {
                    request.urgency_level === 'high' ? 'Yüksek' :
                    request.urgency_level === 'normal' ? 'Normal' : 'Düşük'}
                 </Badge>
-                <Badge className={`border ${getStatusColor(request.status)} text-[10px] px-1.5 py-0.5 truncate max-w-[150px]`}>
+                <Badge variant="outline" className={`border ${getStatusColor(request.status)} text-xs px-2 py-1 ${request.status === 'beklemede' || request.status === 'gönderildi' ? '' : 'truncate max-w-[150px]'}`}>
                   {request.status === 'pending' ? 'Beklemede' :
+                 request.status === 'beklemede' ? 'Ana depo kontrolü yapılıyor' :
                    request.status === 'it_incelemesinde' ? 'IT Yönetim — İncelemede' :
                    request.status === 'it_onaylandi' ? 'IT Yönetim — Onaylandı' :
                    request.status === 'şantiye şefi onayladı' ? 'Şantiye Şefi Onayladı' :
                    request.status === 'awaiting_offers' ? 'Onay Bekliyor' :
                    request.status === 'sipariş verildi' ? 'Sipariş Verildi' :
-                   request.status === 'gönderildi' ? 'Gönderildi' :
+                   request.status === 'gönderildi' ? 'Ana depoda mevcut' :
                    request.status === 'kısmen gönderildi' ? 'Kısmen Gönderildi' :
                    request.status === 'depoda mevcut değil' ? 'Depoda Mevcut Değil' :
                    request.status === 'ana depoda yok' ? 'Ana Depoda Yok' :
@@ -452,6 +455,25 @@ export default function OffersPage() {
       </div>
 
       <div className="mt-3 space-y-3">
+        {request.status === 'beklemede' && (
+          <div className="rounded-2xl border border-[#EAB308] bg-[#FACC15] px-5 py-5 sm:px-6 sm:py-6">
+            <p className="text-xl font-semibold tracking-tight text-[#422006] sm:text-3xl">
+              Ana depo kontrolü yapılıyor
+            </p>
+          </div>
+        )}
+
+        {request.status === 'gönderildi' && (
+          <div className="rounded-2xl border border-[#4ADE80] bg-[#86EFAC] px-5 py-5 sm:px-6 sm:py-6">
+            <p className="text-xl font-semibold tracking-tight text-[#052E16] sm:text-3xl">
+              Ana depoda mevcut
+            </p>
+            <p className="mt-2 text-base font-medium text-[#14532D] sm:text-xl">
+              Teslim almak için depoya başvurun
+            </p>
+          </div>
+        )}
+
         {request.status === 'reddedildi' && request.rejection_reason && (
           <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
             <div className="flex items-start gap-2.5">
@@ -465,6 +487,15 @@ export default function OffersPage() {
             </div>
           </div>
         )}
+
+        <RejectedMaterialsBanner
+          requestId={request.id}
+          requestedBy={request.requested_by}
+          currentUserId={currentUserId}
+          items={request.purchase_request_items || []}
+          onRefresh={refreshData}
+          showToast={showToast}
+        />
 
         <RequestProcessSection requestId={requestId} refreshKey={request.updated_at} compact />
 

@@ -23,6 +23,7 @@ export interface PurchaseRequestItem {
   original_quantity?: number  // İlk talep edilen miktar - hiç değişmez
   image_urls?: string[]  // Malzeme görselleri
   contract_item_id?: string | null
+  purchasing_rejection_reason?: string | null
 }
 
 export interface PurchaseRequest {
@@ -121,31 +122,50 @@ export const getCurrencySymbol = (currency: string) => {
 
 export const getUrgencyColor = (level: string) => {
   switch (level) {
-    case 'critical': return 'bg-red-100 text-red-700 border-red-200'
-    case 'high': return 'bg-orange-100 text-orange-700 border-orange-200'
-    case 'normal': return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'low': return 'bg-gray-100 text-gray-700 border-gray-200'
+    case 'critical': return 'bg-red-100 text-red-800 border-red-200'
+    case 'high': return 'bg-red-100 text-red-800 border-red-200'
+    case 'normal': return 'bg-yellow-100 text-yellow-800 border-yellow-200'
+    case 'low': return 'bg-green-100 text-green-800 border-green-200'
     default: return 'bg-gray-100 text-gray-700 border-gray-200'
   }
 }
 
 export const getStatusColor = (status: string) => {
   switch (status) {
-    case 'pending': return 'bg-yellow-100 text-yellow-700 border-yellow-200'
-    case 'şantiye şefi onayladı': return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'awaiting_offers': return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'approved': return 'bg-green-100 text-green-700 border-green-200'
-    case 'sipariş verildi': return 'bg-green-100 text-green-700 border-green-200'
-    case 'gönderildi': return 'bg-emerald-100 text-emerald-700 border-emerald-200'
-    case 'kısmen gönderildi': return 'bg-orange-100 text-orange-700 border-orange-200'
-    case 'depoda mevcut değil': return 'bg-red-100 text-red-700 border-red-200'
-    case 'ana depoda yok': return 'bg-orange-100 text-orange-700 border-orange-200'
-    case 'eksik onaylandı': return 'bg-blue-100 text-blue-700 border-blue-200'
-    case 'alternatif onaylandı': return 'bg-purple-100 text-purple-700 border-purple-200'
-    case 'satın almaya gönderildi': return 'bg-purple-100 text-purple-700 border-purple-200'
-    case 'eksik malzemeler talep edildi': return 'bg-indigo-100 text-indigo-700 border-indigo-200'
-    case 'it_incelemesinde': return 'bg-sky-100 text-sky-800 border-sky-200'
-    case 'it_onaylandi': return 'bg-emerald-100 text-emerald-800 border-emerald-200'
-    default: return 'bg-gray-100 text-gray-700 border-gray-200'
+    case 'beklemede':
+      return 'bg-[#FACC15] text-[#422006] border-[#EAB308]'
+    case 'pending':
+    case 'onay bekliyor':
+    case 'onay_bekliyor':
+    case 'departman_onayı_bekliyor':
+    case 'it_incelemesinde':
+    case 'teklif bekliyor':
+    case 'kısmen gönderildi':
+    case 'kısmen teslim alındı':
+    case 'şantiye şefi onayladı':
+    case 'awaiting_offers':
+    case 'eksik onaylandı':
+      return 'bg-[#FEF08A] text-[#713F12] border-[#FDE047]'
+    case 'onaylandı':
+    case 'approved':
+    case 'it_onaylandi':
+    case 'satın almaya gönderildi':
+    case 'sipariş verildi':
+    case 'ordered':
+    case 'gönderildi':
+    case 'teslim alındı':
+    case 'delivered':
+    case 'alternatif onaylandı':
+    case 'eksik malzemeler talep edildi':
+      return 'bg-[#86EFAC] text-[#052E16] border-[#4ADE80]'
+    case 'depoda mevcut değil':
+    case 'ana depoda yok':
+    case 'iade var':
+    case 'iade nedeniyle sipariş':
+    case 'reddedildi':
+    case 'rejected':
+      return 'bg-[#FECACA] text-[#7F1D1D] border-[#FCA5A5]'
+    default:
+      return 'bg-gray-100 text-gray-700 border-gray-200'
   }
 }

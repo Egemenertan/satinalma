@@ -772,10 +772,10 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   siteCardImageFull: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   siteCardPlaceholderBg: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#9ca3af',
     justifyContent: 'center',
     alignItems: 'center',

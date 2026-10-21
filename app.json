@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "996c5e0d-aa8f-4033-af0a-aa4a9d2d6c53"
+      }
+    },
+    "android": {
+      "package": "com.egemenertan.satinalma"
+    }
+  }
+}

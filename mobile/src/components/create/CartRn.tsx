@@ -521,7 +521,6 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: 1,
     borderColor: stats.outlineVariant,
-    ...(stats.shadowMd ?? {}),
     elevation: 8,
     zIndex: 2000,
   },

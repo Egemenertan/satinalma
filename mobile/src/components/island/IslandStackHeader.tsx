@@ -1,5 +1,4 @@
-import { getHeaderTitle } from '@react-navigation/elements'
-import type { NativeStackHeaderProps } from '@react-navigation/native-stack'
+import type { NativeStackHeaderProps } from 'expo-router'
 import { useQuery } from '@tanstack/react-query'
 import { useRouter } from 'expo-router'
 import type { ReactNode } from 'react'
@@ -11,6 +10,14 @@ import type { ProfileRow } from '../../lib/purchaseRequestsQuery'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../providers/AuthProvider'
 import { IslandHeader } from './IslandHeader'
+
+function headerTitle(
+  options: { title?: string; headerTitle?: NativeStackHeaderProps['options']['headerTitle'] },
+  fallback: string
+): string {
+  if (typeof options.headerTitle === 'string') return options.headerTitle
+  return options.title ?? fallback
+}
 
 function profileDisplayName(profile: ProfileRow | null, t: TFunction, localeTag: string): string {
   if (!profile) return t('common.user')
@@ -33,7 +40,7 @@ export function IslandStackHeader({ navigation, route, options, back }: NativeSt
   const router = useRouter()
   const { t, i18n } = useTranslation()
   const localeTag = i18n.language.startsWith('en') ? 'en-US' : 'tr-TR'
-  const title = getHeaderTitle(options, route.name)
+  const title = headerTitle(options, route.name)
   const showBack = back != null
   const headerStyle = options.headerStyle as { backgroundColor?: string } | undefined
   const safeBg = headerStyle?.backgroundColor ?? 'transparent'

@@ -9,7 +9,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { isSentToPurchasingStatus } from '@/lib/request-process'
+import { WAREHOUSE_QUEUE_STATUS } from '@/lib/site-kind'
 import { useRouter } from 'next/navigation'
+import { PurchasingRejectionNote } from './PurchasingRejectionNote'
 
 interface MaterialCardProps {
   item: any
@@ -329,6 +331,7 @@ export default function MaterialCard({
               )}
               <h5 className="text-base sm:text-xl font-semibold text-gray-900 break-words">{item.item_name}</h5>
             </div>
+            <PurchasingRejectionNote reason={item.purchasing_rejection_reason} />
             
             {/* Malzeme Detayları */}
             <div className="grid grid-cols-1 gap-2 sm:gap-3 text-xs sm:text-sm">
@@ -987,7 +990,7 @@ export default function MaterialCard({
       )}
 
       {/* Gönderim İşlemleri — satın almaya gitmiş talepte depo aksiyonu yok */}
-      {!shouldShowTrackingSystem() && !isSentToPurchasingStatus(request?.status) && (
+      {!shouldShowTrackingSystem() && !isSentToPurchasingStatus(request?.status) && request?.status !== WAREHOUSE_QUEUE_STATUS && (
         <div className="p-3 sm:p-4">
           {!isShipped && remainingQuantity > 0 && !(itemShipments?.shipments?.some(s => s.shipped_quantity === 0)) && !isReturnReorderStatus() ? (
             <div className="space-y-3 sm:space-y-4">

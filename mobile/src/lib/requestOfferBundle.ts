@@ -62,6 +62,7 @@ export type PurchaseRequestItemRow = {
   material_group_code?: string | null
   material_class?: string | null
   material_item_name?: string | null
+  purchasing_rejection_reason?: string | null
 }
 
 /**
@@ -92,7 +93,8 @@ export async function fetchRequestOfferBundle(
         material_group,
         material_group_code,
         material_class,
-        material_item_name
+        material_item_name,
+        purchasing_rejection_reason
       )
     `
     )

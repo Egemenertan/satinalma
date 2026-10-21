@@ -11,6 +11,10 @@ import {
   shouldHideDepotItemStructureButtons,
   shouldShowDepoTrackingSystem,
 } from '../../../features/santiyeDepo/santiyeDepoRules'
+import {
+  canShowDepotActionButtons,
+  isConstructionWarehouseQueueSite,
+} from '../../../lib/warehouseQueue'
 import type { BundleOrderRow, PurchaseRequestItemRow, RequestOfferBundle, ShipmentInfo } from '../../../lib/requestOfferBundle'
 import { supabase } from '../../../lib/supabase'
 import { stats, statsFont, statsType } from '../../../theme/statsDesignTokens'
@@ -22,6 +26,7 @@ type Props = {
   userId: string
   onRefresh: () => void
   onToast: (message: string) => void
+  actorRole?: string | null
   /** true: sadece sipariş durumu göster (depo gönderim satırı yok) — şantiye personeli vb. */
   ordersOnly?: boolean
 }
@@ -39,6 +44,7 @@ export function DepoMaterialFooterRn({
   userId,
   onRefresh,
   onToast,
+  actorRole,
   ordersOnly = false,
 }: Props) {
   const [sendQty, setSendQty] = useState('')
@@ -95,8 +101,17 @@ export function DepoMaterialFooterRn({
     return orderOperations
   }
 
+  if (!canShowDepotActionButtons(actorRole, status)) {
+    return null
+  }
+
+  const depotMissingLabel = isConstructionWarehouseQueueSite(bundle.request.site_id, bundle.request.site_name)
+    ? 'Depoda mevcut değil'
+    : 'Ana depoda yok'
+
   const hideStructure = shouldHideDepotItemStructureButtons(shipmentData, item)
-  const canRemove = canRemoveDepotMaterial(status) && !hideStructure
+  const canRemove =
+    actorRole !== 'warehouse_manager' && canRemoveDepotMaterial(status) && !hideStructure
 
   if (hideStructure) {
     return null
@@ -134,6 +149,8 @@ export function DepoMaterialFooterRn({
                 item,
                 sentQuantity: q,
                 userId,
+                requestStatus: status,
+                actorRole,
               })
               if (!res.ok) {
                 onToast(res.message)
@@ -163,17 +180,23 @@ export function DepoMaterialFooterRn({
                 item,
                 shipmentData,
                 userId,
+                actorRole,
+                requestStatus: status,
+                siteId: bundle.request.site_id,
+                siteName: bundle.request.site_name,
+                requestedBy: bundle.request.requested_by,
+                items: bundle.request.purchase_request_items ?? [],
               })
               if (!res.ok) {
                 onToast(res.message)
                 return
               }
-              onToast('Depoda mevcut değil olarak işaretlendi.')
+              onToast(`${item.item_name} "${res.markedLabel}" olarak işaretlendi.`)
               await onRefresh()
             })
           }
         >
-          <Text style={styles.btnSecondaryText}>{busy === 'depotno' ? '…' : 'Depoda yok'}</Text>
+          <Text style={styles.btnSecondaryText}>{busy === 'depotno' ? '…' : depotMissingLabel}</Text>
         </Pressable>
         {canRemove && itemsCount > 1 ? (
           <Pressable

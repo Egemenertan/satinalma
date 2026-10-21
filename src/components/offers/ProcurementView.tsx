@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { 
   Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, 
-  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight, Trash2 
+  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight, Trash2, Ban
 } from 'lucide-react'
 import { OffersPageProps, Offer, CURRENCIES, getCurrencySymbol } from './types'
 import { createClient } from '@/lib/supabase/client'
@@ -22,6 +22,12 @@ import { softDeletePurchaseRequest } from '@/lib/softDeletePurchaseRequest'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
 import ReturnedMaterialsCard from './ReturnedMaterialsCard'
 import { formatShortDocumentNumber } from '@/app/dashboard/orders/utils'
+import { Textarea } from '@/components/ui/textarea'
+import { PurchasingRejectionNote } from './PurchasingRejectionNote'
+import {
+  purchasingRejectionReason,
+  rejectPurchaseRequestItem,
+} from '@/lib/purchasing-item-rejection'
 
 function formatTrackedOrderNumber(order: { order_number?: string | null; order_id?: string | null }) {
   const short = formatShortDocumentNumber(order.order_number)
@@ -60,7 +66,8 @@ export default function ProcurementView({
   localOrderTracking,
   setLocalOrderTracking,
   onRefresh,
-  showToast
+  showToast,
+  userRole,
 }: ProcurementViewProps) {
   const router = useRouter()
   const supabase = createClient()
@@ -77,6 +84,9 @@ export default function ProcurementView({
     { supplier_name: '', unit_price: 0, total_price: 0, delivery_days: 0, delivery_date: '', notes: '', currency: 'TRY', documents: [], documentPreviewUrls: [] }
   ])
   const [submitting, setSubmitting] = useState(false)
+  const [rejectItem, setRejectItem] = useState<{ id: string; item_name: string } | null>(null)
+  const [rejectReason, setRejectReason] = useState('')
+  const [rejecting, setRejecting] = useState(false)
   const [approving, setApproving] = useState<string | null>(null)
   const [selectedOffer, setSelectedOffer] = useState<any | null>(null)
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -182,6 +192,35 @@ export default function ProcurementView({
   const clearMaterialSelection = () => {
     setSelectedMaterials(new Set())
     setIsMultiSelectMode(false)
+  }
+
+  const confirmPurchasingReject = async () => {
+    if (!rejectItem || rejecting) return
+    setRejecting(true)
+    try {
+      const { data: auth } = await supabase.auth.getUser()
+      if (!auth.user) {
+        showToast('Oturum bulunamadı.', 'error')
+        return
+      }
+      const result = await rejectPurchaseRequestItem(supabase, {
+        requestId: request.id,
+        requestStatus: request.status,
+        item: rejectItem,
+        reason: rejectReason,
+        userId: auth.user.id,
+      })
+      if (result.ok === false) {
+        showToast(result.message, 'error')
+        return
+      }
+      showToast('Malzeme reddedildi.', 'success')
+      setRejectItem(null)
+      setRejectReason('')
+      await onRefresh()
+    } finally {
+      setRejecting(false)
+    }
   }
 
   // Malzeme silme fonksiyonları
@@ -1631,6 +1670,7 @@ DOVEC GROUP
                               )}
                               <h4 className="text-base font-semibold text-gray-900">{item.item_name}</h4>
                             </div>
+                            <PurchasingRejectionNote reason={item.purchasing_rejection_reason} />
                             {item.brand && (
                               <div className="flex items-center gap-2 mb-2">
                                 <span className="text-sm font-medium text-gray-700">Marka:</span>
@@ -1683,6 +1723,27 @@ DOVEC GROUP
                               PDF
                             </Button>
                             
+                            {userRole === 'purchasing_officer' &&
+                              !purchasingRejectionReason(item) &&
+                              (request.status === 'satın almaya gönderildi' ||
+                                request.status === 'eksik malzemeler talep edildi' ||
+                                (request.status === 'reddedildi' &&
+                                  (request.purchase_request_items || []).some((row) => purchasingRejectionReason(row)))) && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setRejectReason('')
+                                  setRejectItem({ id: item.id, item_name: item.item_name })
+                                }}
+                                className="h-8 px-3 text-xs bg-white hover:bg-red-50 border-red-200 text-red-700"
+                              >
+                                <Ban className="h-3 w-3 mr-1" />
+                                Reddet
+                              </Button>
+                            )}
+
                             {/* Kaldır Butonu */}
                             <Button
                               variant="outline"
@@ -3449,6 +3510,31 @@ DOVEC GROUP
       )}
 
       {/* Sipariş Düzenleme Modal - Tedarikçi Değiştir */}
+      <Dialog open={Boolean(rejectItem)} onOpenChange={(open) => { if (!open && !rejecting) setRejectItem(null) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Malzemeyi reddet</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-gray-600">
+            {rejectItem?.item_name} için reddedilme nedenini yazın. Talep reddedildi durumuna geçer.
+          </p>
+          <Textarea
+            value={rejectReason}
+            onChange={(event) => setRejectReason(event.target.value)}
+            placeholder="Reddedilme nedeni"
+            rows={4}
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" disabled={rejecting} onClick={() => setRejectItem(null)}>
+              Vazgeç
+            </Button>
+            <Button type="button" disabled={rejecting || !rejectReason.trim()} onClick={() => void confirmPurchasingReject()}>
+              {rejecting ? 'Kaydediliyor...' : 'Reddet'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <AssignSupplierModal
         isOpen={isEditOrderModalOpen}
         onClose={() => {

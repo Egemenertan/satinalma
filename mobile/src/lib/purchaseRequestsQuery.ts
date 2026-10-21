@@ -134,7 +134,8 @@ export async function fetchPurchaseRequestsPage(
       `description.ilike.%${t}%`,
     ].join(',')
     const { data: searchRows } = await excludeSoftDeletedRequests(supabase.from('purchase_requests').select('id')).or(searchScope)
-    const searchIds = [...new Set((searchRows ?? []).map((r) => r.id))]
+    const matchedIds = ((searchRows ?? []) as { id: string }[]).map((row) => row.id)
+    const searchIds = [...new Set(matchedIds)]
     const { data: itemRows } = await supabase
       .from('purchase_request_items')
       .select('purchase_request_id')
@@ -171,7 +172,7 @@ export async function fetchPurchaseRequestsPage(
       const { data: allRequests } = await tempQuery
       if (allRequests?.length) {
         const { data: unorderedData } = await supabase.rpc('get_unordered_materials_count', {
-          request_ids: allRequests.map((r) => r.id),
+          request_ids: allRequests.map((r: { id: string }) => r.id),
         })
         const withUnordered =
           unorderedData?.filter((item: { unordered_count: number }) => item.unordered_count > 0).map(
@@ -425,11 +426,24 @@ function applyRoleScope(query: any, effectiveRole: string, userId: string, profi
   if (effectiveRole === 'warehouse_manager') {
     return query.neq('status', 'departman_onayı_bekliyor')
   }
-  if (effectiveRole === 'santiye_depo') {
+  if (effectiveRole === 'santiye_depo' || effectiveRole === 'santiye_depo_siparis') {
     if (userSiteIds.length > 0) {
       return query.in('site_id', userSiteIds).neq('status', 'onay_bekliyor')
     }
-    // Site ataması olmayan santiye_depo sadece kendi taleplerini görebilir
+    return query.eq('requested_by', userId)
+  }
+  if (effectiveRole === 'site_manager') {
+    if (userSiteIds.length > 0) {
+      return query.in('site_id', userSiteIds).neq('status', 'beklemede')
+    }
+    return query.eq('requested_by', userId)
+  }
+  if (effectiveRole === 'santiye_depo_yonetici') {
+    if (userSiteIds.length > 0) {
+      return query
+        .in('site_id', userSiteIds)
+        .or(`status.neq.beklemede,requested_by.eq.${userId}`)
+    }
     return query.eq('requested_by', userId)
   }
   if (userSiteIds.length > 0) {

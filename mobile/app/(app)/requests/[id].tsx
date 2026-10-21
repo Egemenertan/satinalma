@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from 'react-native'
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams } from 'expo-router'
 import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
@@ -15,6 +15,9 @@ import {
 import { SiteManagerActionsRn } from '../../../src/components/requestDetail/siteManager/SiteManagerActionsRn'
 import { SitePersonnelTrackingRn } from '../../../src/components/requestDetail/SitePersonnelTrackingRn'
 import { RequestActivityTimelineRn } from '../../../src/components/requestDetail/RequestActivityTimelineRn'
+import { RequestStatusNoticeRn, requestStatusLabel } from '../../../src/components/requestDetail/RequestStatusNoticeRn'
+import { RejectedMaterialsNoticeRn } from '../../../src/components/requestDetail/RejectedMaterialsNoticeRn'
+import { rejectPurchaseRequestItem } from '../../../src/lib/purchasingItemRejection'
 import { allowEditForRequest } from '../../../src/lib/editPermissions'
 import { IT_WORKFLOW_STATUSES } from '../../../src/lib/it-workflow'
 import type { ProfileRow } from '../../../src/lib/purchaseRequestsQuery'
@@ -40,6 +43,7 @@ type RequestDetail = Record<string, unknown> & {
     purpose?: string | null
     material_class?: string | null
     material_group?: string | null
+    purchasing_rejection_reason?: string | null
   }>
 }
 
@@ -77,6 +81,7 @@ export default function RequestDetailScreen() {
 
   const isSitePersonnel = userRole === 'site_personnel'
   const isSiteManager = userRole === 'site_manager'
+  const isWarehouseManager = userRole === 'warehouse_manager'
   const isDepotOfferRole = userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici'
   /** IT Yönetim + web offers ile uyum: department_head ve üst roller tam bundle görür */
   const useOfferBundle =
@@ -86,11 +91,15 @@ export default function RequestDetailScreen() {
     userRole === 'department_head' ||
     userRole === 'admin' ||
     userRole === 'super_admin' ||
-    userRole === 'manager'
+    userRole === 'manager' ||
+    isWarehouseManager
 
   const [returnOpen, setReturnOpen] = useState(false)
   const [returnOrder, setReturnOrder] = useState<BundleOrderRow | null>(null)
   const [returnMaterial, setReturnMaterial] = useState<PurchaseRequestItemRow | null>(null)
+  const [poRejectItem, setPoRejectItem] = useState<{ id: string; item_name: string } | null>(null)
+  const [poRejectReason, setPoRejectReason] = useState('')
+  const [poRejecting, setPoRejecting] = useState(false)
 
   const toastSite = useCallback((msg: string) => Alert.alert(t('common.info'), msg), [t])
 
@@ -159,7 +168,7 @@ export default function RequestDetailScreen() {
     })
   }, [bundle?.request, profile])
 
-  const { data: legacyData, isLoading: legacyLoading, error: legacyError } = useQuery({
+  const { data: legacyData, isLoading: legacyLoading, error: legacyError, refetch: refetchLegacy } = useQuery({
     queryKey: ['purchase_request', requestId, 'legacy'],
     enabled: Boolean(requestId && user?.id && !useOfferBundle),
     staleTime: 2 * 60_000,
@@ -231,7 +240,7 @@ export default function RequestDetailScreen() {
       )
     }
 
-    if (isDepotOfferRole && profile && user?.id) {
+    if ((isDepotOfferRole || isWarehouseManager) && profile && user?.id) {
       return (
         <SantiyeDepoDetailRn
           bundle={bundle}
@@ -260,13 +269,22 @@ export default function RequestDetailScreen() {
         <View style={requestDetailLayout.topMeta}>
           <Text style={requestDetailLayout.pageTitle}>{req.title || '—'}</Text>
           <Text style={requestDetailLayout.pageMeta}>
-            {formatRequestNumber((req.request_number as string) ?? null, req.id)} · {req.status || '—'}
+            {formatRequestNumber((req.request_number as string) ?? null, req.id)} · {requestStatusLabel(req.status)}
             {req.site_name ? ` · ${req.site_name}` : ''}
           </Text>
         </View>
         <RequestActivityTimelineRn
           requestId={req.id}
           refreshKey={(req.updated_at as string | null | undefined) ?? null}
+        />
+        <RequestStatusNoticeRn status={req.status} />
+        <RejectedMaterialsNoticeRn
+          requestId={req.id}
+          requestedBy={req.requested_by}
+          currentUserId={user?.id}
+          items={(req.purchase_request_items ?? []) as PurchaseRequestItemRow[]}
+          onRefresh={() => void refetchBundle()}
+          onToast={toastSite}
         />
         <RequestSupplierDeliverySectionRn 
           bundle={bundle} 
@@ -387,7 +405,7 @@ export default function RequestDetailScreen() {
       <View style={requestDetailLayout.topMeta}>
         <Text style={requestDetailLayout.pageTitle}>{data.title || '—'}</Text>
         <Text style={requestDetailLayout.pageMeta}>
-          {formatRequestNumber(data.request_number, data.id)} · {data.status}
+          {formatRequestNumber(data.request_number, data.id)} · {requestStatusLabel(data.status)}
           {data.site_name ? ` · ${data.site_name}` : ''}
         </Text>
       </View>
@@ -395,6 +413,15 @@ export default function RequestDetailScreen() {
       <RequestActivityTimelineRn
         requestId={data.id}
         refreshKey={(data.updated_at as string | null | undefined) ?? null}
+      />
+      <RequestStatusNoticeRn status={data.status} />
+      <RejectedMaterialsNoticeRn
+        requestId={data.id}
+        requestedBy={(data.requested_by as string | null) ?? null}
+        currentUserId={user?.id}
+        items={items}
+        onRefresh={() => void refetchLegacy()}
+        onToast={toastSite}
       />
 
       <View style={styles.legacyBody}>
@@ -416,11 +443,76 @@ export default function RequestDetailScreen() {
             {it.purpose ? (
               <Text style={styles.purpose}>{t('requestDetail.purposeLabel', { purpose: it.purpose })}</Text>
             ) : null}
+            {it.purchasing_rejection_reason?.trim() ? (
+              <Text style={styles.rejectReason}>Red nedeni: {it.purchasing_rejection_reason}</Text>
+            ) : null}
+            {userRole === 'purchasing_officer' &&
+            !it.purchasing_rejection_reason?.trim() &&
+            (data.status === 'satın almaya gönderildi' ||
+              data.status === 'eksik malzemeler talep edildi' ||
+              (data.status === 'reddedildi' &&
+                items.some((row) => row.purchasing_rejection_reason?.trim()))) ? (
+              <Pressable
+                style={styles.rejectBtn}
+                onPress={() => {
+                  setPoRejectReason('')
+                  setPoRejectItem({ id: it.id, item_name: it.item_name })
+                }}
+              >
+                <Text style={styles.rejectBtnText}>Reddet</Text>
+              </Pressable>
+            ) : null}
           </View>
         ))}
 
         {!items.length ? <Text style={styles.empty}>{t('requestDetail.noItems')}</Text> : null}
       </View>
+      <Modal visible={Boolean(poRejectItem)} transparent animationType="fade" onRequestClose={() => setPoRejectItem(null)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>{poRejectItem?.item_name} reddedilsin</Text>
+            <TextInput
+              style={styles.modalInput}
+              value={poRejectReason}
+              onChangeText={setPoRejectReason}
+              placeholder="Reddedilme nedeni"
+              multiline
+            />
+            <View style={styles.modalActions}>
+              <Pressable onPress={() => setPoRejectItem(null)}>
+                <Text style={styles.modalCancel}>Vazgeç</Text>
+              </Pressable>
+              <Pressable
+                style={styles.modalSave}
+                disabled={poRejecting}
+                onPress={() => {
+                  if (!poRejectItem || !user?.id || !data) return
+                  setPoRejecting(true)
+                  void rejectPurchaseRequestItem(supabase, {
+                    requestId: data.id,
+                    requestStatus: data.status,
+                    itemId: poRejectItem.id,
+                    itemName: poRejectItem.item_name,
+                    reason: poRejectReason,
+                    userId: user.id,
+                  }).then((result) => {
+                    setPoRejecting(false)
+                    if (!result.ok) {
+                      toastSite(result.message)
+                      return
+                    }
+                    setPoRejectItem(null)
+                    toastSite('Malzeme reddedildi.')
+                    void refetchLegacy()
+                  })
+                }}
+              >
+                <Text style={styles.modalSaveText}>{poRejecting ? '...' : 'Reddet'}</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   )
 }
@@ -467,5 +559,30 @@ const styles = StyleSheet.create({
   itemName: { fontSize: 16, fontWeight: '600', color: '#111827' },
   itemMeta: { marginTop: 6, fontSize: 14, color: '#6b7280' },
   purpose: { marginTop: 10, fontSize: 14, color: '#374151', lineHeight: 20 },
+  rejectReason: {
+    marginTop: 8,
+    color: '#7F1D1D',
+    backgroundColor: '#FECACA',
+    borderRadius: 12,
+    padding: 8,
+    fontWeight: '600',
+  },
+  rejectBtn: {
+    marginTop: 10,
+    alignSelf: 'flex-start',
+    backgroundColor: '#7F1D1D',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+  },
+  rejectBtnText: { color: '#fff', fontWeight: '700' },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', padding: 24 },
+  modalCard: { backgroundColor: '#fff', borderRadius: 20, padding: 16 },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 12, color: '#111827' },
+  modalInput: { borderWidth: 1, borderColor: '#E5E7EB', borderRadius: 12, padding: 10, minHeight: 90 },
+  modalActions: { flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginTop: 12, alignItems: 'center' },
+  modalCancel: { color: '#374151', fontWeight: '600' },
+  modalSave: { backgroundColor: '#7F1D1D', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 },
+  modalSaveText: { color: '#fff', fontWeight: '700' },
   empty: { marginTop: 16, fontSize: 15, color: '#6b7280' },
 })

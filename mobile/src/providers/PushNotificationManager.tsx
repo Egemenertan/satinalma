@@ -1,21 +1,40 @@
 import Constants from 'expo-constants'
 import * as Device from 'expo-device'
-import * as Notifications from 'expo-notifications'
 import { useEffect, useRef } from 'react'
 import { Platform } from 'react-native'
 import i18n from '../i18n/i18n'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthProvider'
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-})
+type NotificationsModule = typeof import('expo-notifications')
+
+/**
+ * Expo Go Android, SDK 57'nin `ExpoTopicSubscriptionModule` parçasını içermiyor.
+ * Statik import bu yüzden açılışta tüm uygulamayı düşürür. Geliştirme ve mağaza
+ * derlemelerinde modül vardır; orada bildirimler normal çalışır.
+ */
+function loadNotifications(): NotificationsModule | null {
+  try {
+    return require('expo-notifications') as NotificationsModule
+  } catch (error) {
+    console.warn('Bildirim modülü yüklenemedi. Yerel bildirimler bu oturumda kapalı.', error)
+    return null
+  }
+}
+
+const notifications = loadNotifications()
+
+if (notifications) {
+  notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  })
+}
 
 /**
  * Oturum açıkken: bildirim izni, Expo push token kaydı (expo_push_tokens),
@@ -41,28 +60,28 @@ export function PushNotificationManager() {
     const uid = user.id
 
     const run = async () => {
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
+      if (notifications && Platform.OS === 'android') {
+        await notifications.setNotificationChannelAsync(ANDROID_CHANNEL_ID, {
           name: 'Genel',
-          importance: Notifications.AndroidImportance.HIGH,
+          importance: notifications.AndroidImportance.HIGH,
           sound: 'default',
           vibrationPattern: [0, 250, 250, 250],
           enableVibrate: true,
           enableLights: true,
           bypassDnd: false,
-          lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
+          lockscreenVisibility: notifications.AndroidNotificationVisibility.PUBLIC,
           audioAttributes: {
-            usage: Notifications.AndroidAudioUsage.NOTIFICATION,
-            contentType: Notifications.AndroidAudioContentType.SONIFICATION,
+            usage: notifications.AndroidAudioUsage.NOTIFICATION,
+            contentType: notifications.AndroidAudioContentType.SONIFICATION,
           },
         })
       }
 
-      if (Device.isDevice) {
-        const { status: existing } = await Notifications.getPermissionsAsync()
+      if (notifications && Device.isDevice) {
+        const { status: existing } = await notifications.getPermissionsAsync()
         let next = existing
         if (existing !== 'granted') {
-          const { status } = await Notifications.requestPermissionsAsync()
+          const { status } = await notifications.requestPermissionsAsync()
           next = status
         }
 
@@ -74,8 +93,8 @@ export function PushNotificationManager() {
 
           try {
             const tokenRes = projectId
-              ? await Notifications.getExpoPushTokenAsync({ projectId })
-              : await Notifications.getExpoPushTokenAsync()
+              ? await notifications.getExpoPushTokenAsync({ projectId })
+              : await notifications.getExpoPushTokenAsync()
             const expoPushToken = tokenRes.data
             await supabase.from('expo_push_tokens').upsert({
               user_id: uid,
@@ -102,13 +121,14 @@ export function PushNotificationManager() {
             filter: `user_id=eq.${uid}`,
           },
           (payload) => {
+            if (!notifications) return
             const row = payload.new as { title?: string; message?: string }
-            void Notifications.scheduleNotificationAsync({
+            void notifications.scheduleNotificationAsync({
               content: {
                 title: row.title ?? i18n.t('push.defaultTitle'),
                 body: row.message ?? '',
                 sound: 'default',
-                priority: Notifications.AndroidNotificationPriority.HIGH,
+                priority: notifications.AndroidNotificationPriority.HIGH,
                 vibrate: [0, 250, 250, 250],
                 ...(Platform.OS === 'android'
                   ? { android: { channelId: ANDROID_CHANNEL_ID } }

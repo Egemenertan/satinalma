@@ -113,9 +113,7 @@ export default function SetupOrganizationScreen() {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}
+      <KeyboardAvoidingView style={styles.flex}
         keyboardVerticalOffset={0}
       >
         <ScrollView

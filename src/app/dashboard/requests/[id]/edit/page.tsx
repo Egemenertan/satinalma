@@ -957,18 +957,18 @@ export default function EditPurchaseRequestPage() {
       // Role-based status validation
       const canEditByRole = (currentStatus: string, role: string) => {
         if (role === 'site_personnel') {
-          return currentStatus === 'pending'
+          return ['pending', 'reddedildi'].includes(currentStatus)
         }
         if (role === 'site_manager') {
-          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
+          return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
         }
         if (role === 'santiye_depo' || role === 'santiye_depo_siparis' || role === 'santiye_depo_yonetici') {
-          return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
+          return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
         }
         if (role === 'admin') {
           return true
         }
-        return ['pending', 'rejected'].includes(currentStatus)
+        return ['pending', 'rejected', 'reddedildi'].includes(currentStatus)
       }
 
       const { data: currentRequest } = await supabase

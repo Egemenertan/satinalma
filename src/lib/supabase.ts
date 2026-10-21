@@ -237,6 +237,9 @@ export type Database = {
           unit_price: number
           updated_at: string | null
           contract_item_id: string | null
+          purchasing_rejection_reason: string | null
+          purchasing_rejected_at: string | null
+          purchasing_rejected_by: string | null
         }
         Insert: {
           brand?: string | null
@@ -263,6 +266,9 @@ export type Database = {
           unit_price: number
           updated_at?: string | null
           contract_item_id?: string | null
+          purchasing_rejection_reason?: string | null
+          purchasing_rejected_at?: string | null
+          purchasing_rejected_by?: string | null
         }
         Update: {
           brand?: string | null
@@ -289,6 +295,9 @@ export type Database = {
           unit_price?: number
           updated_at?: string | null
           contract_item_id?: string | null
+          purchasing_rejection_reason?: string | null
+          purchasing_rejected_at?: string | null
+          purchasing_rejected_by?: string | null
         }
       }
       sites: {

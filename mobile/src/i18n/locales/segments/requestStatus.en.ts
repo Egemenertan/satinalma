@@ -9,7 +9,7 @@ export const requestStatusEn = {
   onaylandi: 'Approved',
   satin_almaya_gonderildi: 'Sent to purchasing',
   siparis_verildi: 'Ordered',
-  gonderildi: 'Sent',
+  gonderildi: 'Available at main warehouse',
   kismen_gonderildi: 'Partially sent',
   kismen_teslim_alindi: 'Partially received',
   depoda_mevcut_degil: 'Not available in warehouse',

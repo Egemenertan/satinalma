@@ -112,6 +112,7 @@ function LogisticsSparkline({
 
 function statusBadgeClass(status: string): string {
   const s = (status || '').toLowerCase()
+  if (s === 'beklemede') return 'border-[#EAB308] bg-[#FACC15] text-[#422006]'
   if (s.includes('red') || s.includes('iptal')) return 'border-red-200 bg-red-500/10 text-red-700 dark:border-red-900 dark:text-red-400'
   if (s.includes('onay') || s.includes('approved')) return 'border-navy/25 bg-navy/10 text-navy'
   if (s.includes('pending') || s.includes('bekle') || s.includes('draft')) {
@@ -127,6 +128,9 @@ function statusLabel(status: string): string {
   if (s === 'rejected' || s === 'reddedildi') return 'Reddedildi'
   if (s === 'cancelled' || s === 'iptal') return 'İptal'
   if (s === 'depoda mevcut değil') return 'Depoda mevcut değil'
+  if (s === 'beklemede') return 'Ana depo kontrolü yapılıyor'
+  if (s === 'gönderildi') return 'Ana depoda mevcut'
+  if (s === 'pending') return 'Beklemede'
   if (s === 'ana depoda yok') return 'Ana depoda yok'
   if (s === 'satın almaya gönderildi') return 'Satın almaya gönderildi'
   if (s === 'departman_onayı_bekliyor') return 'Departman onayı'

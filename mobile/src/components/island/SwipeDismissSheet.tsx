@@ -254,7 +254,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   topOverlayHost: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 2000,
     ...Platform.select({
       android: { elevation: 24 },

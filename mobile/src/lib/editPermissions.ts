@@ -5,15 +5,15 @@ export function canEditPurchaseRequest(
   status: string,
   userRole: string
 ): boolean {
-  if (userRole === 'site_personnel') return status === 'pending'
+  if (userRole === 'site_personnel') return ['pending', 'reddedildi'].includes(status)
   if (userRole === 'site_manager') {
-    return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
+    return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
   }
   if (userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') {
-    return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
+    return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
   }
   if (userRole === 'admin') return true
-  return ['pending', 'rejected'].includes(status)
+  return ['pending', 'rejected', 'reddedildi'].includes(status)
 }
 
 export function canEditItWorkflowRequest(

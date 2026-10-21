@@ -8,6 +8,7 @@ import { Check, Truck, Clock, Edit, ImageIcon } from 'lucide-react'
 import { OffersPageProps } from './types'
 import DeliveryConfirmationModal from '@/components/DeliveryConfirmationModal'
 import { useRouter } from 'next/navigation'
+import { PurchasingRejectionNote } from './PurchasingRejectionNote'
 
 interface SitePersonnelViewProps extends Pick<OffersPageProps, 'request' | 'materialSuppliers' | 'shipmentData' | 'onRefresh' | 'showToast'> {
   materialOrders: any[]
@@ -192,6 +193,7 @@ export default function SitePersonnelView({
                         )}
                         <h4 className="text-base sm:text-xl font-semibold text-gray-900 tracking-tight break-words">{item.item_name}</h4>
                       </div>
+                      <PurchasingRejectionNote reason={item.purchasing_rejection_reason} />
                       
                       <div className="space-y-1.5 sm:space-y-2 ml-0 sm:ml-10">
                         {item.brand && (

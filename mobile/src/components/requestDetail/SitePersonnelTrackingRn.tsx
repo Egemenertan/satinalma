@@ -419,6 +419,9 @@ export function SitePersonnelTrackingRn({
                   ) : null}
                   <Text style={styles.itemTitle}>{item.item_name}</Text>
                 </View>
+                {item.purchasing_rejection_reason?.trim() ? (
+                  <Text style={styles.rejectReason}>Red nedeni: {item.purchasing_rejection_reason}</Text>
+                ) : null}
 
                 <DetailSection title="Ürün bilgileri">
                   {productRows.map((row, ri) => (
@@ -682,6 +685,16 @@ const styles = StyleSheet.create({
     color: '#111827',
     flex: 1,
   },
+  rejectReason: {
+    marginTop: 8,
+    color: '#7F1D1D',
+    backgroundColor: '#FECACA',
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontSize: 13,
+    fontWeight: '600',
+  },
   imgSection: { marginTop: 16 },
   imgLabel: {
     fontSize: 12,
@@ -797,7 +810,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   fullscreenBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   fullscreenImageContainer: {
     justifyContent: 'center',

@@ -27,6 +27,9 @@ function statusLabel(status: string | null | undefined): string {
   if (value === 'pending') return 'Beklemede'
   if (value === 'departman_onayı_bekliyor') return 'Departman onayı bekliyor'
   if (value === 'depoda mevcut değil') return 'Depoda mevcut değil'
+  if (value === 'beklemede') return 'Ana depo kontrolü yapılıyor'
+  if (value === 'gönderildi') return 'Ana depoda mevcut'
+  if (value === 'pending') return 'Beklemede'
   if (value === 'ana depoda yok') return 'Ana depoda yok'
   if (value === 'satın almaya gönderildi') return 'Satın almaya gönderildi'
   if (value === 'it_incelemesinde') return 'IT incelemesinde'
@@ -87,7 +90,14 @@ export function RequestProcessModal({
                 <span className="text-elegant-gray-500">· {data.request.site_name}</span>
               )}
               {data?.request.status && (
-                <Badge variant="outline" className="border-elegant-gray-200 font-semibold">
+                <Badge
+                  variant="outline"
+                  className={
+                    (data.request.status || '').toLowerCase() === 'beklemede'
+                      ? 'border-[#EAB308] bg-[#FACC15] font-semibold text-[#422006]'
+                      : 'border-elegant-gray-200 font-semibold'
+                  }
+                >
                   {statusLabel(data.request.status)}
                 </Badge>
               )}

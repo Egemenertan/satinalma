@@ -1,6 +1,7 @@
 import { createClient } from './supabase/client';
 import { SPECIAL_SITE_ID } from './constants';
 import { normalizeMaterialGroupToken } from './it-workflow';
+import { isConstructionWarehouseQueueSite } from './site-kind';
 
 // EmailService artık API route üzerinden çağrılıyor (nodemailer client-side'da çalışmaz)
 
@@ -209,11 +210,19 @@ export class NotificationService {
 
     // Department head talep oluşturduğunda site_manager'a bildirim gönderme
     // Not: "Ana depoda yok" durumunda notifySiteManagerDepotUnavailable ayrıca çağrılacak
-    if (siteId && creatorRole !== 'department_head') {
+    const queueForMainWarehouse =
+      (creatorRole === 'santiye_depo' || creatorRole === 'santiye_depo_siparis' || creatorRole === 'santiye_depo_yonetici') &&
+      isConstructionWarehouseQueueSite(siteId, siteName)
+
+    if (siteId && creatorRole !== 'department_head' && !queueForMainWarehouse) {
       console.log(`🏗️ Site ID: ${siteId}, site_manager emailleri ekleniyor...`);
       const siteManagerEmails = await this.getUserEmailsByRoles(['site_manager'], siteId);
       console.log(`📧 Site manager emailler: ${siteManagerEmails.join(', ') || 'YOK'}`);
       userEmails = [...userEmails, ...siteManagerEmails];
+    } else if (queueForMainWarehouse) {
+      const wmEmails = await this.getUserEmailsByRoles(['warehouse_manager']);
+      console.log(`📧 Şantiye depo kuyruğu — warehouse_manager emailler: ${wmEmails.join(', ') || 'YOK'}`);
+      userEmails = [...userEmails, ...wmEmails];
     } else if (siteId && creatorRole === 'department_head') {
       console.log(`⚠️ Department head talebi - site_manager bildirimi atlandı (ana depoda yok durumunda ayrıca gönderilecek)`);
     }

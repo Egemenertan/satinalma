@@ -6,11 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/dlxx.png",
     "userInterfaceStyle": "light",
-    "newArchEnabled": true,
     "scheme": "com.dlx",
-    "splash": {
-      "backgroundColor": "#01E884"
-    },
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.dlx",
@@ -19,7 +15,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "İade ve teslim süreçlerinde fotoğraf çekmek için kamera erişimi gerekir.",
         "NSPhotoLibraryUsageDescription": "Talep eklerken malzeme görsellerini seçebilmek için fotoğraf galerinize erişim gerekir.",
-        "NSPhotoLibraryAddUsageDescription": "Çekilen fotoğrafları kaydetmek için galeri erişimi gerekir."
+        "NSPhotoLibraryAddUsageDescription": "Çekilen fotoğrafları kaydetmek için galeri erişimi gerekir.",
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -30,7 +27,6 @@
         "foregroundImage": "./assets/dlxx.png",
         "backgroundColor": "#01E884"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -50,10 +46,12 @@
       [
         "expo-navigation-bar",
         {
-          "backgroundColor": "#ffffff",
-          "barStyle": "dark"
+          "style": "dark"
         }
       ],
+      "expo-localization",
+      "expo-secure-store",
+      "expo-status-bar",
       "expo-web-browser",
       [
         "expo-notifications",

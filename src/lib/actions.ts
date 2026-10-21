@@ -17,6 +17,7 @@ import {
   isPersistedPurchaseRequestItemId,
   syncPurchaseRequestItemsIncremental
 } from './purchaseRequestItemSync'
+import { isConstructionWarehouseQueueSite, WAREHOUSE_QUEUE_STATUS } from './site-kind'
 
 
 
@@ -233,8 +234,12 @@ export async function createPurchaseRequest(data: {
     })
     
     let initialStatus = 'pending'
-    // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
-    const startInItReview = useItWorkflow && user.role !== 'santiye_depo' && user.role !== 'santiye_depo_siparis'
+    const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+    // Şantiye depo talebi önce depo kontrolüne gider. Şantiye depo yöneticisi yalnızca bu şantiyelerde bekler.
+    const startInItReview = useItWorkflow
+      && user.role !== 'santiye_depo'
+      && user.role !== 'santiye_depo_siparis'
+      && !(user.role === 'santiye_depo_yonetici' && queueSite)
     
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -243,11 +248,16 @@ export async function createPurchaseRequest(data: {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
-      initialStatus = 'satın almaya gönderildi'
-      console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'purchasing_officer') {
+      initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
+      console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis') {
+      initialStatus = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+        ? WAREHOUSE_QUEUE_STATUS
+        : 'depoda mevcut değil'
+      console.log('✅ Status:', initialStatus, '(santiye_depo)')
+    } else if (user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
-      console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
+      console.log('✅ Status: depoda mevcut değil (purchasing_officer)')
     } else {
       console.log('⚠️ Status: pending (default - rol:', user.role, ')')
     }
@@ -332,9 +342,13 @@ export async function createPurchaseRequest(data: {
     if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
     } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
-      historyComment = 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
+      historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
+        ? 'Talep oluşturuldu (Şantiye Depo Yöneticisi — depo kontrolü bekleniyor)'
+        : 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
     } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
-      historyComment = 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
+      historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
+        ? 'Talep oluşturuldu (Şantiye Depo — depo kontrolü bekleniyor)'
+        : 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = 'Talep oluşturuldu (Satın Alma Sorumlusu - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
     }
@@ -632,8 +646,11 @@ export async function createMultiMaterialPurchaseRequest(data: {
     
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
-    // Şantiye depo talebi önce site manager onayına gider; IT sınıfı onaydan sonra incelemeye alınır.
-    const startInItReview = useItWorkflow && user.role !== 'santiye_depo' && user.role !== 'santiye_depo_siparis'
+    const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+    const startInItReview = useItWorkflow
+      && user.role !== 'santiye_depo'
+      && user.role !== 'santiye_depo_siparis'
+      && !(user.role === 'santiye_depo_yonetici' && queueSite)
 
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -642,11 +659,16 @@ export async function createMultiMaterialPurchaseRequest(data: {
       initialStatus = 'satın almaya gönderildi'
       console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
-      initialStatus = 'satın almaya gönderildi'
-      console.log('✅ Status: satın almaya gönderildi (santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'purchasing_officer') {
+      initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
+      console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
+    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis') {
+      initialStatus = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+        ? WAREHOUSE_QUEUE_STATUS
+        : 'depoda mevcut değil'
+      console.log('✅ Status:', initialStatus, '(santiye_depo)')
+    } else if (user.role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
-      console.log('✅ Status: depoda mevcut değil (santiye_depo veya purchasing_officer)')
+      console.log('✅ Status: depoda mevcut değil (purchasing_officer)')
     } else if (user.role === 'site_personnel' && data.site_id === SPECIAL_SITE_ID) {
       // GMO için departman onayı gerekli
       initialStatus = 'departman_onayı_bekliyor'
@@ -733,9 +755,13 @@ export async function createMultiMaterialPurchaseRequest(data: {
     if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
+      historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
+        ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
+        : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
     } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
+      historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
+        ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo, depo kontrolü bekleniyor`
+        : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     } else if (!startInItReview && user.role === 'purchasing_officer') {
       historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Satın Alma Sorumlusu tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
     }
@@ -889,17 +915,17 @@ export async function updatePurchaseRequest(data: {
 
       // Site Personnel: sadece pending durumunda
       if (user.role === 'site_personnel') {
-        return existingRequest.status === 'pending'
+        return ['pending', 'reddedildi'].includes(existingRequest.status)
       }
       
       // Site Manager: pending, rejected, kısmen gönderildi, depoda mevcut değil
       if (user.role === 'site_manager') {
-        return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
+        return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
       }
       
       // Santiye Depo ve Santiye Depo Yöneticisi: pending, rejected, kısmen gönderildi, depoda mevcut değil
       if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'santiye_depo_yonetici') {
-        return ['pending', 'rejected', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
+        return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
       }
       
       // Admin: her durumda düzenleyebilir
@@ -908,7 +934,7 @@ export async function updatePurchaseRequest(data: {
       }
       
       // Diğer roller: sadece pending ve rejected
-      return ['pending', 'rejected'].includes(existingRequest.status)
+      return ['pending', 'rejected', 'reddedildi'].includes(existingRequest.status)
     }
 
     if (!canEditByRole()) {

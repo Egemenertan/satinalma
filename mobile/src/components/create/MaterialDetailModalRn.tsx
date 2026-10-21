@@ -885,11 +885,11 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   subModalBackdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   subModalSheetHost: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     justifyContent: 'flex-end',
     alignItems: 'stretch',
   },

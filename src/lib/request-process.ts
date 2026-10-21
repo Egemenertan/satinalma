@@ -88,6 +88,7 @@ const WAREHOUSE_DEPOT_ACTION_STATUSES = new Set([
   'depoda mevcut değil',
   'ana depoda yok',
   'bekliyor',
+  'beklemede',
 ])
 
 const PURCHASING_STEP_IDS = new Set([
@@ -394,7 +395,7 @@ export function buildRequestProcess(
     if (!template.some((step) => step.id === 'warehouse_shipped')) {
       template.push({
         id: 'warehouse_shipped',
-        title: status === 'gönderildi' ? 'Depodan gönderildi' : 'Depodan karşılandı',
+        title: status === 'gönderildi' ? 'Ana depoda mevcut' : 'Depodan karşılandı',
         roleLabel: 'Depo',
         assigneeName: formatPeopleNames(assignees.warehouseManagers),
       })
