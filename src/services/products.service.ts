@@ -234,8 +234,8 @@ async function pagedIds(
   return ids
 }
 
-/** Hiçbir depoda miktarı 0'dan büyük olmayan ürünler. */
-async function productIdsWithNoPositiveStock(
+/** Hiçbir depoda stok satırı olmayan ürünler. */
+async function productIdsNeverStocked(
   supabase: ReturnType<typeof createClient>
 ): Promise<string[]> {
   const stocked = new Set(
@@ -243,17 +243,16 @@ async function productIdsWithNoPositiveStock(
       const { data, error } = await supabase
         .from('warehouse_stock')
         .select('product_id')
-        .gt('quantity', 0)
         .range(from, to)
       if (error) {
-        console.error('Stoklu ürünler okunamadı:', error)
+        console.error('Stok satırları okunamadı:', error)
         return []
       }
       return (data || []).map((row) => row.product_id).filter(Boolean)
     })
   )
 
-  const unstocked = await pagedIds(async (from, to) => {
+  return pagedIds(async (from, to) => {
     const { data, error } = await supabase
       .from('products')
       .select('id')
@@ -265,8 +264,6 @@ async function productIdsWithNoPositiveStock(
     }
     return (data || []).map((row) => row.id).filter((id): id is string => Boolean(id) && !stocked.has(id))
   })
-
-  return unstocked
 }
 
 /**
@@ -281,7 +278,7 @@ async function productIdsInDepot(
 ): Promise<string[]> {
   const touchedIds = await productIdsTouchedInDepot(supabase, warehouseIds)
   const zimmetIds = includeZimmet ? await productIdsZimmettedAt(supabase, warehouseIds) : []
-  const unstockedIds = includeUnstocked ? await productIdsWithNoPositiveStock(supabase) : []
+  const unstockedIds = includeUnstocked ? await productIdsNeverStocked(supabase) : []
   return [...new Set([...touchedIds, ...zimmetIds, ...unstockedIds])]
 }
 
@@ -544,8 +541,111 @@ function sanitizeSearchTerm(value: string) {
   return value.replace(/[%_,()"]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
-function emptyProductPage(page: number) {
-  return { products: [] as ProductWithDetails[], totalCount: 0, totalPages: 0, currentPage: page }
+function emptyProductPage(page: number, totalCount = 0) {
+  return {
+    products: [] as ProductWithDetails[],
+    totalCount,
+    totalPages: Math.ceil(totalCount / 20),
+    currentPage: page,
+  }
+}
+
+const PRODUCT_IN_CHUNK = 80
+
+function chunkIds(ids: string[], size = PRODUCT_IN_CHUNK) {
+  const chunks: string[][] = []
+  for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size))
+  return chunks
+}
+
+function applyProductCatalogFilters<T extends { eq: Function; gte: Function; lte: Function }>(
+  query: T,
+  filters?: ProductFilters
+): T {
+  let next = query
+  if (filters?.brandId) next = next.eq('brand_id', filters.brandId)
+  if (filters?.categoryId) next = next.eq('category_id', filters.categoryId)
+  if (filters?.productType) next = next.eq('product_type', filters.productType)
+  if (filters?.statusFilter === 'available') next = next.eq('is_active', true)
+  else if (filters?.isActive !== undefined) next = next.eq('is_active', filters.isActive)
+  if (filters?.minPrice !== undefined) next = next.gte('unit_price', filters.minPrice)
+  if (filters?.maxPrice !== undefined) next = next.lte('unit_price', filters.maxPrice)
+  return next
+}
+
+async function fetchProductsPageByIds(
+  supabase: ReturnType<typeof createClient>,
+  ids: string[],
+  filters: ProductFilters | undefined,
+  page: number,
+  pageSize: number,
+  idsOnly: boolean,
+  searchTerm?: string
+) {
+  const uniqueIds = [...new Set(ids.filter(Boolean))]
+  if (uniqueIds.length === 0) return emptyProductPage(page)
+
+  const safe = searchTerm ? sanitizeSearchTerm(searchTerm) : ''
+  const pattern = safe ? `%${safe}%` : ''
+  const meta: { id: string; created_at: string | null }[] = []
+
+  for (const chunk of chunkIds(uniqueIds)) {
+    let query = supabase.from('products').select('id, created_at').in('id', chunk)
+    query = applyProductCatalogFilters(query, filters)
+    if (pattern) query = query.or(`name.ilike."${pattern}",sku.ilike."${pattern}"`)
+    const { data, error } = await query
+    if (error) {
+      console.error('Ürün kimlikleri okunamadı:', error)
+      throw error
+    }
+    meta.push(...((data || []) as { id: string; created_at: string | null }[]))
+  }
+
+  meta.sort((a, b) => {
+    const left = a.created_at ? Date.parse(a.created_at) : 0
+    const right = b.created_at ? Date.parse(b.created_at) : 0
+    return right - left
+  })
+
+  const totalCount = meta.length
+  const from = (page - 1) * pageSize
+  const pageIds = meta.slice(from, from + pageSize).map((row) => row.id)
+  if (pageIds.length === 0) {
+    return {
+      products: [] as ProductWithDetails[],
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      currentPage: page,
+    }
+  }
+
+  if (idsOnly) {
+    return {
+      products: pageIds.map((id) => ({ id }) as ProductWithDetails),
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      currentPage: page,
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('products')
+    .select(PRODUCT_LIST_SELECT)
+    .in('id', pageIds)
+  if (error) {
+    console.error('Ürün sayfası okunamadı:', error)
+    throw error
+  }
+
+  const byId = new Map((data || []).map((row: { id: string }) => [row.id, row]))
+  const ordered = pageIds.map((id) => byId.get(id)).filter(Boolean)
+  const products = await attachInventoryTotals(supabase, ordered, filters)
+  return {
+    products: products as ProductWithDetails[],
+    totalCount,
+    totalPages: Math.ceil(totalCount / pageSize),
+    currentPage: page,
+  }
 }
 
 async function attachInventoryTotals(
@@ -607,9 +707,27 @@ async function fetchProductsByTextSearch(
     Boolean(filters?.includeUnstockedCatalog) &&
     filters?.statusFilter !== 'available' &&
     !filters?.zimmetOwner?.trim()
+
+  if (includeUnstocked && warehouseIds.length > 0) {
+    const visibleIds = await productIdsInDepot(
+      supabase,
+      warehouseIds,
+      Boolean(filters?.useDepotZimmetQty),
+      true
+    )
+    return fetchProductsPageByIds(
+      supabase,
+      visibleIds,
+      filters,
+      page,
+      pageSize,
+      idsOnly,
+      searchTerm
+    )
+  }
+
   const constrainStock =
     !filters?.zimmetOwner?.trim() &&
-    !includeUnstocked &&
     (warehouseIds.length > 0 || filters?.statusFilter === 'available')
   const select = idsOnly
     ? constrainStock
@@ -625,16 +743,7 @@ async function fetchProductsByTextSearch(
     .or(orParts.join(','))
     .order('created_at', { ascending: false })
 
-  if (includeUnstocked && warehouseIds.length > 0) {
-    const visibleIds = await productIdsInDepot(
-      supabase,
-      warehouseIds,
-      Boolean(filters?.useDepotZimmetQty),
-      true
-    )
-    if (visibleIds.length === 0) return emptyProductPage(page)
-    query = query.in('id', visibleIds)
-  } else if (warehouseIds.length === 1) {
+  if (warehouseIds.length === 1) {
     query = query.eq('warehouse_stocks.warehouse_id', warehouseIds[0])
   } else if (warehouseIds.length > 1) {
     query = query.in('warehouse_stocks.warehouse_id', warehouseIds)
@@ -804,6 +913,17 @@ export async function fetchProducts(
     }
   }
 
+  if (siteProductIds) {
+    return fetchProductsPageByIds(
+      supabase,
+      siteProductIds,
+      filters,
+      page,
+      pageSize,
+      idsOnly
+    )
+  }
+
   let query = supabase
     .from('products')
     .select(
@@ -822,37 +942,7 @@ export async function fetchProducts(
     )
     .order('created_at', { ascending: false })
 
-  // Site veya available filtresi uygula (varsa)
-  if (siteProductIds) {
-    query = query.in('id', siteProductIds)
-  }
-
-  if (filters?.brandId) {
-    query = query.eq('brand_id', filters.brandId)
-  }
-
-  if (filters?.categoryId) {
-    query = query.eq('category_id', filters.categoryId)
-  }
-
-  if (filters?.productType) {
-    query = query.eq('product_type', filters.productType)
-  }
-
-  // isActive filtresi - "available" modunda aktif ürünleri göster
-  if (filters?.statusFilter === 'available') {
-    query = query.eq('is_active', true)
-  } else if (filters?.isActive !== undefined) {
-    query = query.eq('is_active', filters.isActive)
-  }
-
-  if (filters?.minPrice !== undefined) {
-    query = query.gte('unit_price', filters.minPrice)
-  }
-
-  if (filters?.maxPrice !== undefined) {
-    query = query.lte('unit_price', filters.maxPrice)
-  }
+  query = applyProductCatalogFilters(query, filters)
 
   // Pagination
   const from = (page - 1) * pageSize

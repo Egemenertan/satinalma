@@ -6,7 +6,6 @@ import useSWR, { mutate } from 'swr'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Loading } from '@/components/ui/loading'
 import { 
   Dialog,
@@ -2237,19 +2236,19 @@ export default function PurchaseRequestsTable({
           <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
             <div className="flex items-center gap-3 flex-wrap">
               {/* Arama */}
-              <div className="flex-1 min-w-[200px] relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                <Input
+              <div className="flex flex-1 min-w-[200px] items-center gap-1.5 rounded-full bg-brand-grayBg pl-3 pr-2">
+                <Search className="h-4 w-4 shrink-0 text-brand-subtext" />
+                <input
                   type="text"
                   placeholder="Talep ara... (malzeme adı, başlık, talep no)"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10 pr-10 h-10 border-gray-200 focus:border-blue-500 focus:ring-blue-500"
+                  className="w-full bg-transparent px-2 py-2.5 text-sm text-brand-dark placeholder-brand-subtext outline-none"
                 />
                 {searchTerm && (
                   <button
                     onClick={() => setSearchTerm('')}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-brand-subtext transition-colors hover:bg-white hover:text-brand-dark"
                   >
                     <X className="w-4 h-4" />
                   </button>
