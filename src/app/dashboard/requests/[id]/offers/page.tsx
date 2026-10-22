@@ -293,7 +293,28 @@ export default function OffersPage() {
 
     switch (userRole) {
       case 'santiye_depo':
+        return (
+          <SantiyeDepoView 
+            {...commonProps}
+            currentOrder={currentOrder}
+          />
+        )
+
       case 'santiye_depo_siparis':
+        // Talep "satın almaya gönderildi" durumundaysa, santiye_depo_siparis kullanıcısı
+        // purchasing_officer gibi tedarikçi atayıp sipariş verebilsin (ProcurementView)
+        if (request.status === 'satın almaya gönderildi') {
+          return (
+            <ProcurementView
+              {...commonProps}
+              existingOffers={existingOffers}
+              userRole={userRole}
+              currentOrder={currentOrder}
+              localOrderTracking={localOrderTracking}
+              setLocalOrderTracking={setLocalOrderTracking}
+            />
+          )
+        }
         return (
           <SantiyeDepoView 
             {...commonProps}
