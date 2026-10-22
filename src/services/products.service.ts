@@ -573,6 +573,84 @@ function applyProductCatalogFilters<T extends { eq: Function; gte: Function; lte
   return next
 }
 
+async function fetchWarehouseScopeProductPage(
+  supabase: ReturnType<typeof createClient>,
+  filters: ProductFilters | undefined,
+  page: number,
+  pageSize: number,
+  idsOnly: boolean,
+  searchTerm?: string
+) {
+  const warehouseIds = (filters?.siteId
+    ? [filters.siteId]
+    : filters?.allowedWarehouseIds || []
+  ).filter(Boolean)
+  if (warehouseIds.length === 0) return emptyProductPage(page)
+
+  const search = sanitizeSearchTerm(searchTerm || filters?.search || '')
+  const includeNever =
+    Boolean(filters?.includeUnstockedCatalog) &&
+    filters?.statusFilter !== 'available' &&
+    !filters?.zimmetOwner?.trim()
+
+  const { data, error } = await supabase.rpc('warehouse_scope_product_page', {
+    p_warehouse_ids: warehouseIds,
+    p_include_never_stocked: includeNever,
+    p_search: search || null,
+    p_is_active:
+      filters?.statusFilter === 'available' ? true : filters?.isActive ?? null,
+    p_brand_id: filters?.brandId || null,
+    p_product_type: filters?.productType || null,
+    p_offset: Math.max(0, (page - 1) * pageSize),
+    p_limit: Math.max(1, pageSize),
+  })
+
+  if (error) {
+    console.error('Depo ürün listesi okunamadı:', error)
+    throw error
+  }
+
+  const rows = data || []
+  const totalCount = Number(rows[0]?.total_count || 0)
+  const pageIds = rows.map((row) => row.product_id).filter(Boolean)
+  if (pageIds.length === 0) {
+    return {
+      products: [] as ProductWithDetails[],
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize) || 0,
+      currentPage: page,
+    }
+  }
+
+  if (idsOnly) {
+    return {
+      products: pageIds.map((id) => ({ id }) as ProductWithDetails),
+      totalCount,
+      totalPages: Math.ceil(totalCount / pageSize),
+      currentPage: page,
+    }
+  }
+
+  const { data: products, error: productsError } = await supabase
+    .from('products')
+    .select(PRODUCT_LIST_SELECT)
+    .in('id', pageIds)
+  if (productsError) {
+    console.error('Ürün sayfası okunamadı:', productsError)
+    throw productsError
+  }
+
+  const byId = new Map((products || []).map((row: { id: string }) => [row.id, row]))
+  const ordered = pageIds.map((id) => byId.get(id)).filter(Boolean)
+  const withTotals = await attachInventoryTotals(supabase, ordered, filters)
+  return {
+    products: withTotals as ProductWithDetails[],
+    totalCount,
+    totalPages: Math.ceil(totalCount / pageSize),
+    currentPage: page,
+  }
+}
+
 async function fetchProductsPageByIds(
   supabase: ReturnType<typeof createClient>,
   ids: string[],
@@ -703,21 +781,10 @@ async function fetchProductsByTextSearch(
   const warehouseIds = filters?.siteId
     ? [filters.siteId]
     : filters?.allowedWarehouseIds || []
-  const includeUnstocked =
-    Boolean(filters?.includeUnstockedCatalog) &&
-    filters?.statusFilter !== 'available' &&
-    !filters?.zimmetOwner?.trim()
 
-  if (includeUnstocked && warehouseIds.length > 0) {
-    const visibleIds = await productIdsInDepot(
+  if (isDepotScopedList(filters) && !filters?.zimmetOwner?.trim()) {
+    return fetchWarehouseScopeProductPage(
       supabase,
-      warehouseIds,
-      Boolean(filters?.useDepotZimmetQty),
-      true
-    )
-    return fetchProductsPageByIds(
-      supabase,
-      visibleIds,
       filters,
       page,
       pageSize,
@@ -823,6 +890,21 @@ export async function fetchProducts(
     return { products: [], totalCount: 0, totalPages: 0, currentPage: page }
   }
   
+  if (
+    isDepotScopedList(filters) &&
+    !filters?.zimmetOwner?.trim() &&
+    filters?.statusFilter !== 'available'
+  ) {
+    return fetchWarehouseScopeProductPage(
+      supabase,
+      filters,
+      page,
+      pageSize,
+      idsOnly,
+      searchTerm
+    )
+  }
+
   if (searchTerm) {
     return fetchProductsByTextSearch(supabase, filters, searchTerm, page, pageSize, idsOnly)
   }

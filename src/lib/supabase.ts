@@ -1008,6 +1008,19 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      warehouse_scope_product_page: {
+        Args: {
+          p_warehouse_ids: string[]
+          p_include_never_stocked: boolean
+          p_search: string | null
+          p_is_active: boolean | null
+          p_brand_id: string | null
+          p_product_type: string | null
+          p_offset: number
+          p_limit: number
+        }
+        Returns: { product_id: string; total_count: number }[]
+      }
       transfer_stock_into_operated_warehouse: {
         Args: {
           p_product_id: string
