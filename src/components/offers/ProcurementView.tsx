@@ -79,6 +79,44 @@ export default function ProcurementView({
     )
   }, [request?.purchase_request_items, materialOrders, localOrderTracking])
 
+  const resolvedMaterialSuppliers = React.useMemo(() => {
+    const merged: typeof materialSuppliers = { ...materialSuppliers }
+    const add = (itemId: string | undefined, supplier: any) => {
+      if (!itemId || !supplier?.id) return
+      const current = merged[itemId] || { isRegistered: false, suppliers: [] }
+      if (current.suppliers.some((row) => row.id === supplier.id)) {
+        merged[itemId] = current
+        return
+      }
+      merged[itemId] = {
+        isRegistered: true,
+        suppliers: [
+          ...current.suppliers,
+          {
+            id: supplier.id,
+            name: supplier.name || 'Tedarikçi',
+            contact_person: supplier.contact_person || '',
+            phone: supplier.phone || '',
+            email: supplier.email || '',
+          },
+        ],
+      }
+    }
+
+    if (Array.isArray(materialOrders)) {
+      for (const order of materialOrders) {
+        add(order.material_item_id, order.supplier || order.suppliers)
+      }
+    }
+    for (const order of Object.values(localOrderTracking || {})) {
+      add(order?.material_item_id, {
+        id: order?.supplier_id,
+        name: order?.supplier_name,
+      })
+    }
+    return merged
+  }, [materialSuppliers, materialOrders, localOrderTracking])
+
   // Local state
   const [newOffers, setNewOffers] = useState<Offer[]>([
     { supplier_name: '', unit_price: 0, total_price: 0, delivery_days: 0, delivery_date: '', notes: '', currency: 'TRY', documents: [], documentPreviewUrls: [] }
@@ -461,7 +499,7 @@ export default function ProcurementView({
     // Her malzeme için tedarikçi kontrolü
     const materialSupplierMap = new Map()
     selectedMaterialsData.forEach(material => {
-      const suppliers = materialSuppliers[material.id]?.suppliers || []
+      const suppliers = resolvedMaterialSuppliers[material.id]?.suppliers || []
       materialSupplierMap.set(material.id, suppliers)
     })
 
@@ -1137,7 +1175,7 @@ export default function ProcurementView({
 
       } else {
         // Tekli malzeme için PDF oluştur (mevcut kod)
-        const materialSupplier = materialSuppliers[material.id] || { isRegistered: false, suppliers: [] }
+        const materialSupplier = resolvedMaterialSuppliers[material.id] || { isRegistered: false, suppliers: [] }
         
         const pdfData: MaterialPurchaseRequest = {
           request: {
@@ -1382,7 +1420,7 @@ DOVEC GROUP
       <ReturnedMaterialsCard
         request={request}
         materialOrders={materialOrders}
-        materialSuppliers={materialSuppliers}
+        materialSuppliers={resolvedMaterialSuppliers}
         setCurrentImageGallery={setCurrentImageGallery}
         setIsImageGalleryOpen={setIsImageGalleryOpen}
         onReorder={(item, returnedQuantity, supplierInfo) => {
@@ -1586,7 +1624,7 @@ DOVEC GROUP
                 </div>
               ) : (
                 listItems.map((item, index) => {
-                  const materialSupplier = materialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
+                  const materialSupplier = resolvedMaterialSuppliers[item.id] || { isRegistered: false, suppliers: [] }
                   
                   return (
                     <div 

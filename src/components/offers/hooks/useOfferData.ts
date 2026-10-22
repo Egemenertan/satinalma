@@ -3,11 +3,46 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
-import { PurchaseRequest, MaterialSupplier, OrderInfo, ShipmentInfo, SupplierInfo } from '../types'
+import { PurchaseRequest, MaterialSupplier, ShipmentInfo, SupplierInfo } from '../types'
 import {
   isProfileDepartmentIt,
   purchaseRequestHasItWarehouseVisibleItem
 } from '@/lib/warehouse-it-material-filter'
+
+function normalizeMaterialName(value: string | null | undefined): string {
+  return (value || '').trim().replace(/\s+/g, ' ').toLocaleLowerCase('tr-TR')
+}
+
+function asSupplierInfo(value: unknown): SupplierInfo | null {
+  const row = Array.isArray(value) ? value[0] : value
+  if (!row || typeof row !== 'object') return null
+  const supplier = row as Partial<SupplierInfo>
+  if (!supplier.id || !supplier.name) return null
+  return {
+    id: supplier.id,
+    name: supplier.name,
+    contact_person: supplier.contact_person || '',
+    phone: supplier.phone || '',
+    email: supplier.email || '',
+  }
+}
+
+function addSupplierToMap(
+  target: { [itemId: string]: MaterialSupplier },
+  itemId: string,
+  supplier: SupplierInfo | null
+) {
+  if (!itemId || !supplier) return
+  const current = target[itemId] || { isRegistered: false, suppliers: [] }
+  if (current.suppliers.some((row) => row.id === supplier.id)) {
+    target[itemId] = current
+    return
+  }
+  target[itemId] = {
+    isRegistered: true,
+    suppliers: [...current.suppliers, supplier],
+  }
+}
 
 export function useOfferData(requestId: string) {
   const [request, setRequest] = useState<PurchaseRequest | null>(null)
@@ -71,7 +106,7 @@ export function useOfferData(requestId: string) {
         if ((data as { deleted_at?: string | null }).deleted_at) {
           setError('Bu talep kaldırılmış (gizlenmiş).')
           setRequest(null)
-          return
+          return null
         }
 
         // Items artık data içinde geliyor, ayrı sorguya gerek yok
@@ -92,7 +127,7 @@ export function useOfferData(requestId: string) {
           if (itWmRestricted && !purchaseRequestHasItWarehouseVisibleItem(items)) {
             setError('Bu talebi görüntüleme yetkiniz bulunmuyor.')
             setRequest(null)
-            return
+            return null
           }
         }
 
@@ -165,8 +200,10 @@ export function useOfferData(requestId: string) {
       }
       
       setRequest(data)
+      return data as PurchaseRequest
     } catch (error) {
       console.error('Error fetching request:', error)
+      return null
     }
   }
 
@@ -188,12 +225,11 @@ export function useOfferData(requestId: string) {
 
   const fetchMaterialSuppliers = async (requestItems?: any[]) => {
     try {
-      // Eğer requestItems parametre olarak gelmediyse, request'ten al
       let items = requestItems
-      if (!items) {
+      if (!items?.length) {
         const { data: requestData, error: requestError } = await supabase
           .from('purchase_requests')
-          .select('purchase_request_items(id, item_name)')
+          .select('purchase_request_items(id, item_name, material_item_name)')
           .eq('id', requestId)
           .single()
 
@@ -204,49 +240,51 @@ export function useOfferData(requestId: string) {
         items = requestData?.purchase_request_items || []
       }
 
-      if (items && items.length > 0) {
-        const materialSuppliersData: {[itemId: string]: MaterialSupplier} = {}
-        
-        // 🚀 OPTIMIZASYON: Tüm material isimleri için tek sorguda supplier-materials al
-        const materialNames = items.map(item => item.item_name)
-        
-        const { data: supplierMaterialsAll, error: materialsError } = await supabase
-          .from('supplier_materials')
-          .select(`
-            id,
-            supplier_id,
-            material_item,
-            supplier:suppliers(
-              id, name, contact_person, phone, email
-            )
-          `)
-          .in('material_item', materialNames)
-
-        // Her malzeme için tedarikçi bilgilerini organize et
-        for (const item of items) {
-          const itemSuppliers = supplierMaterialsAll?.filter(sm => sm.material_item === item.item_name) || []
-          
-          if (itemSuppliers.length > 0) {
-            const suppliers = itemSuppliers
-              .map(sm => sm.supplier)
-              .filter(supplier => supplier !== null) as unknown as SupplierInfo[]
-            
-            materialSuppliersData[item.id] = {
-              isRegistered: true,
-              suppliers: suppliers
-            }
-          } else {
-            materialSuppliersData[item.id] = {
-              isRegistered: false,
-              suppliers: []
-            }
-          }
-        }
-
+      const materialSuppliersData: { [itemId: string]: MaterialSupplier } = {}
+      if (!items.length) {
         setMaterialSuppliers(materialSuppliersData)
+        return materialSuppliersData
       }
+
+      const materialNames = [...new Set(
+        items.flatMap((item: any) => [item.item_name, item.material_item_name]).filter(Boolean)
+      )] as string[]
+
+      const { data: supplierMaterialsAll, error: materialsError } = await supabase
+        .from('supplier_materials')
+        .select(`
+          id,
+          supplier_id,
+          material_item,
+          supplier:suppliers(
+            id, name, contact_person, phone, email
+          )
+        `)
+        .in('material_item', materialNames)
+
+      if (materialsError) {
+        console.error('❌ supplier_materials sorgu hatası:', materialsError)
+      }
+
+      for (const item of items) {
+        const itemKey = normalizeMaterialName(item.item_name)
+        const altKey = normalizeMaterialName(item.material_item_name)
+        const itemSuppliers = (supplierMaterialsAll || []).filter((sm) => {
+          const assigned = normalizeMaterialName(sm.material_item)
+          return assigned === itemKey || (altKey && assigned === altKey)
+        })
+
+        materialSuppliersData[item.id] = { isRegistered: false, suppliers: [] }
+        for (const row of itemSuppliers) {
+          addSupplierToMap(materialSuppliersData, item.id, asSupplierInfo(row.supplier))
+        }
+      }
+
+      setMaterialSuppliers(materialSuppliersData)
+      return materialSuppliersData
     } catch (error: any) {
       console.error('Error fetching material suppliers:', error)
+      return {}
     }
   }
 
@@ -333,12 +371,15 @@ export function useOfferData(requestId: string) {
         })
 
         setMaterialOrders(ordersArray)
-      } else {
-        setMaterialOrders([])
+        return ordersArray
       }
+
+      setMaterialOrders([])
+      return []
     } catch (error) {
       console.error('Error fetching material orders:', error)
       setMaterialOrders([])
+      return []
     }
   }
 
@@ -433,29 +474,36 @@ export function useOfferData(requestId: string) {
   }
 
   const refreshData = async () => {
+    const isInitialLoad = !request
     try {
-      setLoading(true)
+      if (isInitialLoad) setLoading(true)
       setError(null)
-      
-      // 🚀 OPTIMIZASYON: İlk request'i al ve items'ı dahil et
-      const requestPromise = fetchRequestData()
-      
-      // Request'i bekle ki items bilgisini diğer fonksiyonlara aktarabiliriz  
-      await requestPromise
-      
-      // Geriye kalan işlemleri paralel çalıştır
-      await Promise.all([
+
+      const freshRequest = await fetchRequestData()
+
+      const [, suppliersMap, orders] = await Promise.all([
         fetchExistingOffers(),
-        fetchMaterialSuppliers(request?.purchase_request_items),
+        fetchMaterialSuppliers(freshRequest?.purchase_request_items),
         fetchMaterialOrders(),
         fetchShipmentData(),
         fetchOrderDetails()
       ])
+
+      // Siparişteki tedarikçi, supplier_materials satırı gelmese bile kartta görünsün
+      const merged = { ...(suppliersMap || {}) }
+      for (const order of orders || []) {
+        addSupplierToMap(
+          merged,
+          order.material_item_id,
+          asSupplierInfo(order.supplier || order.suppliers)
+        )
+      }
+      setMaterialSuppliers(merged)
     } catch (err) {
       console.error('Data refresh error:', err)
       setError(err instanceof Error ? err.message : 'Veriler yüklenirken bir hata oluştu')
     } finally {
-      setLoading(false)
+      if (isInitialLoad) setLoading(false)
     }
   }
 

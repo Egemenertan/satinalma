@@ -301,24 +301,18 @@ export default function OffersPage() {
         )
 
       case 'santiye_depo_siparis':
-        // Talep "satın almaya gönderildi" durumundaysa, santiye_depo_siparis kullanıcısı
-        // purchasing_officer gibi tedarikçi atayıp sipariş verebilsin (ProcurementView)
-        if (request.status === 'satın almaya gönderildi') {
-          return (
-            <ProcurementView
-              {...commonProps}
-              existingOffers={existingOffers}
-              userRole={userRole}
-              currentOrder={currentOrder}
-              localOrderTracking={localOrderTracking}
-              setLocalOrderTracking={setLocalOrderTracking}
-            />
-          )
-        }
+        // santiye_depo_siparis, purchasing_officer gibi her zaman ProcurementView görür:
+        // tedarikçi atayabilir ve sipariş verebilir. Sipariş verildikten sonra talebin
+        // durumu değişse bile (ör. "sipariş verildi") az önce oluşturduğu sipariş bu
+        // görünümde görünmeye devam eder; SantiyeDepoView'e atlayıp kaybolmaz.
         return (
-          <SantiyeDepoView 
+          <ProcurementView
             {...commonProps}
+            existingOffers={existingOffers}
+            userRole={userRole}
             currentOrder={currentOrder}
+            localOrderTracking={localOrderTracking}
+            setLocalOrderTracking={setLocalOrderTracking}
           />
         )
       

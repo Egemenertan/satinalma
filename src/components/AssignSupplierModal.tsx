@@ -348,6 +348,7 @@ export default function AssignSupplierModal({
       if (existingAssignment) {
         showToast(`${supplierName} zaten bu ürün için kayıtlı.`, 'info')
         onClose()
+        if (onSuccess) onSuccess()
         return
       }
 
