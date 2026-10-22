@@ -714,9 +714,9 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-grayBg text-xs font-semibold text-brand-subtext">
                   {(row.requester_name || row.site_name || row.title || '?').trim().charAt(0).toUpperCase()}
                 </div>
-                <div className="min-w-0 flex-1 space-y-1">
-                  {/* Üst satır: başlık + durum rozeti ................ tarih */}
-                  <div className="flex items-start justify-between gap-2">
+                <div className="grid min-w-0 flex-1 grid-cols-[1fr_auto_auto] items-center gap-3">
+                  {/* Kolon 1: başlık/durum, talep eden/departman, talep no/kalem — sol blok */}
+                  <div className="min-w-0 space-y-1">
                     <div className="flex min-w-0 items-center gap-2">
                       <span className="truncate text-sm font-bold text-brand-dark">{row.title}</span>
                       <Badge variant="outline" className={cn('shrink-0 border text-[10px] font-semibold', statusBadgeClass(row.status))}>
@@ -728,20 +728,13 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                         </Badge>
                       )}
                     </div>
-                    <span className="shrink-0 text-[11px] text-brand-subtext">{formatRelativeDateTime(row.created_at)}</span>
-                  </div>
 
-                  {/* Orta satır: talep eden · şantiye · departman */}
-                  <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-brand-subtext">
-                    {row.requester_name && <span className="font-medium text-brand-dark/80">{row.requester_name}</span>}
-                    {row.requester_name && (row.site_name || row.department) && <span className="text-brand-border">•</span>}
-                    {row.site_name && <span>{row.site_name}</span>}
-                    {row.site_name && row.department && <span className="text-brand-border">•</span>}
-                    {row.department && <span>{row.department}</span>}
-                  </div>
+                    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs text-brand-subtext">
+                      {row.requester_name && <span className="font-medium text-brand-dark/80">{row.requester_name}</span>}
+                      {row.requester_name && row.department && <span className="text-brand-border">•</span>}
+                      {row.department && <span>{row.department}</span>}
+                    </div>
 
-                  {/* Alt satır: talep no + kalem sayısı ................ tutar */}
-                  <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-1.5 text-[11px] text-brand-subtext">
                       {row.request_number && (
                         <span className="rounded-md bg-brand-grayBg px-1.5 py-0.5 font-mono text-[10px] text-brand-dark/70">
@@ -752,9 +745,26 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
                         {itemCount > 0 ? `${itemCount.toLocaleString('tr-TR')} kalem` : 'Kalem bilgisi yok'}
                       </span>
                     </div>
-                    <span className="font-mono text-xs font-semibold text-brand-dark">
-                      {formatCurrency(row.total_amount, 'TRY')}
-                    </span>
+                  </div>
+
+                  {/* Kolon 2: şantiye — kendi başına ayrı, ortada bir kolon */}
+                  <div className="flex h-full shrink-0 items-center justify-center px-2">
+                    {row.site_name && (
+                      <span className="flex items-center gap-1 whitespace-nowrap text-xs font-bold text-blue-600">
+                        <Building2 className="h-3.5 w-3.5" />
+                        {row.site_name}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Kolon 3: tarih + tutar — en sağ */}
+                  <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                    <span className="text-[11px] text-brand-subtext">{formatRelativeDateTime(row.created_at)}</span>
+                    {row.total_amount > 0 && (
+                      <span className="font-mono text-xs font-semibold text-brand-dark">
+                        {formatCurrency(row.total_amount, 'TRY')}
+                      </span>
+                    )}
                   </div>
                 </div>
               </button>
@@ -769,7 +779,7 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
             value={activitySearch}
             onChange={e => setActivitySearch(e.target.value)}
             placeholder="Talep veya şantiye adına göre filtrele"
-            className="w-full bg-transparent px-2 py-2 text-sm text-brand-dark placeholder-brand-subtext outline-none"
+            className="w-full rounded-full bg-transparent px-2 py-2 text-sm text-brand-dark placeholder-brand-subtext outline-none"
           />
           <Link
             href="/dashboard/requests/create"

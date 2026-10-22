@@ -129,22 +129,72 @@ function formatVisibleRequestNumber(requestNumber?: string | null, fallbackId?: 
   return requestNumber
 }
 
-const SEARCH_PAGE_SIZE = 1000
+function sanitizeRequestSearch(value: string) {
+  return value.replace(/[%_,()"]/g, ' ').replace(/\s+/g, ' ').trim()
+}
 
-async function fetchAllPages<T>(
-  loadPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
-): Promise<T[]> {
-  const rows: T[] = []
-  for (let from = 0; ; from += SEARCH_PAGE_SIZE) {
-    const { data, error } = await loadPage(from, from + SEARCH_PAGE_SIZE - 1)
-    if (error) {
-      throw new Error(error.message)
-    }
-    const batch = data ?? []
-    rows.push(...batch)
-    if (batch.length < SEARCH_PAGE_SIZE) break
+async function searchPurchaseRequestIds(
+  supabase: ReturnType<typeof createClient>,
+  searchTerm: string
+): Promise<string[]> {
+  const raw = sanitizeRequestSearch(searchTerm)
+  if (!raw) return []
+
+  const pattern = `%${raw}%`
+  const compact = raw.replace(/[\s-]/g, '')
+  const ids = new Set<string>()
+
+  const requestOr = [
+    `request_number.ilike."${pattern}"`,
+    `title.ilike."${pattern}"`,
+    `description.ilike."${pattern}"`,
+    `site_name.ilike."${pattern}"`,
+  ]
+  if (compact.length >= 3 && compact !== raw) {
+    requestOr.push(`request_number.ilike."%${compact}%"`)
   }
-  return rows
+
+  const [{ data: requests, error: requestError }, { data: items, error: itemError }, { data: people, error: peopleError }] =
+    await Promise.all([
+      supabase
+        .from('purchase_requests')
+        .select('id')
+        .is('deleted_at', null)
+        .or(requestOr.join(','))
+        .limit(400),
+      supabase
+        .from('purchase_request_items')
+        .select('purchase_request_id')
+        .ilike('item_name', pattern)
+        .limit(400),
+      supabase
+        .from('profiles')
+        .select('id')
+        .or(`full_name.ilike."${pattern}",email.ilike."${pattern}"`)
+        .limit(40),
+    ])
+
+  if (requestError) throw new Error(requestError.message)
+  if (itemError) throw new Error(itemError.message)
+  if (peopleError) console.warn('Talep araması (kişi):', peopleError)
+
+  for (const row of requests || []) ids.add(row.id)
+  for (const row of items || []) {
+    if (row.purchase_request_id) ids.add(row.purchase_request_id)
+  }
+
+  if (people?.length) {
+    const { data: byUser, error: byUserError } = await supabase
+      .from('purchase_requests')
+      .select('id')
+      .is('deleted_at', null)
+      .in('requested_by', people.map((person) => person.id))
+      .limit(400)
+    if (byUserError) console.warn('Talep araması (talep eden):', byUserError)
+    for (const row of byUser || []) ids.add(row.id)
+  }
+
+  return [...ids]
 }
 
 function RequestMaterialsCell({
@@ -347,107 +397,9 @@ const fetchPurchaseRequests = async (
   // Özel site ID'si için ek statuslar
   const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
   
-  // Gelişmiş arama: purchase_requests ve purchase_request_items içinde arama yap
   let matchingRequestIds: string[] | null = null
   if (searchTerm && searchTerm.trim().length > 0) {
-    // Türkçe karakterleri normalize et
-    const normalizeTurkish = (text: string): string => {
-      return text
-        .toLowerCase()
-        .replace(/ı/g, 'i')
-        .replace(/İ/g, 'i')
-        .replace(/ş/g, 's')
-        .replace(/Ş/g, 's')
-        .replace(/ğ/g, 'g')
-        .replace(/Ğ/g, 'g')
-        .replace(/ü/g, 'u')
-        .replace(/Ü/g, 'u')
-        .replace(/ö/g, 'o')
-        .replace(/Ö/g, 'o')
-        .replace(/ç/g, 'c')
-        .replace(/Ç/g, 'c')
-    }
-    
-    const normalizedSearch = normalizeTurkish(searchTerm.trim())
-
-    // Varsayılan API limiti 1000 satır. Sayfalama olmadan arama, limitin dışındaki
-    // talepleri (ör. tabloda QW-3955 görünen REQ-...-CUB2QW-3955) kaçırır.
-    const requestsData = await fetchAllPages<{
-      id: string
-      request_number: string | null
-      title: string | null
-      description: string | null
-      profiles: { full_name?: string | null; email?: string | null } | { full_name?: string | null; email?: string | null }[] | null
-    }>((from, to) =>
-      supabase
-        .from('purchase_requests')
-        .select(`
-          id, 
-          request_number, 
-          title, 
-          description,
-          requested_by,
-          profiles:requested_by (
-            full_name,
-            email
-          )
-        `)
-        .is('deleted_at', null)
-        .order('id', { ascending: true })
-        .range(from, to)
-    )
-
-    const itemsData = await fetchAllPages<{ purchase_request_id: string; item_name: string | null }>((from, to) =>
-      supabase
-        .from('purchase_request_items')
-        .select('purchase_request_id, item_name')
-        .order('id', { ascending: true })
-        .range(from, to)
-    )
-    
-    // Client-side filtreleme ile Türkçe karakter desteği
-    const matchingIds = new Set<string>()
-    
-    // Requests'lerde ara (request_number, title, description + talep eden ismi)
-    if (requestsData) {
-      requestsData.forEach((req: any) => {
-        // Profile bilgisini al (Supabase bazen array döndürebilir)
-        let profileFullName = ''
-        let profileEmail = ''
-        if (req.profiles) {
-          const profile = Array.isArray(req.profiles) ? req.profiles[0] : req.profiles
-          profileFullName = profile?.full_name || ''
-          profileEmail = profile?.email || ''
-        }
-        
-        const searchableText = [
-          req.request_number || '',
-          formatVisibleRequestNumber(req.request_number, req.id),
-          req.title || '',
-          req.description || '',
-          profileFullName,
-          profileEmail
-        ].join(' ')
-        
-        if (normalizeTurkish(searchableText).includes(normalizedSearch)) {
-          matchingIds.add(req.id)
-        }
-      })
-    }
-    
-    // Items'larda ara
-    if (itemsData) {
-      itemsData.forEach(item => {
-        if (normalizeTurkish(item.item_name || '').includes(normalizedSearch)) {
-          matchingIds.add(item.purchase_request_id)
-        }
-      })
-    }
-    
-    matchingRequestIds = Array.from(matchingIds)
-    if (matchingRequestIds.length === 0) {
-      matchingRequestIds = []
-    }
+    matchingRequestIds = await searchPurchaseRequestIds(supabase, searchTerm)
   }
   
   // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
@@ -2233,7 +2185,7 @@ export default function PurchaseRequestsTable({
         <div className="space-y-3">
           {/* Header - Desktop Only */}
           {/* Gelişmiş Arama ve Filtre Bölümü */}
-          <div className="bg-white rounded-2xl border border-gray-200 p-4 mb-4">
+          <div className="bg-white rounded-2xl p-4 mb-4">
             <div className="flex items-center gap-3 flex-wrap">
               {/* Arama */}
               <div className="flex flex-1 min-w-[200px] items-center gap-1.5 rounded-full bg-brand-grayBg pl-3 pr-2">
@@ -2243,7 +2195,7 @@ export default function PurchaseRequestsTable({
                   placeholder="Talep ara... (malzeme adı, başlık, talep no)"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full bg-transparent px-2 py-2.5 text-sm text-brand-dark placeholder-brand-subtext outline-none"
+                  className="w-full rounded-full bg-transparent px-2 py-2.5 text-sm text-brand-dark placeholder-brand-subtext outline-none"
                 />
                 {searchTerm && (
                   <button
