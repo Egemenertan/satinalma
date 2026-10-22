@@ -264,13 +264,13 @@ export default function RequestsPage() {
     <div className="pb-6 space-y-6">
       {/* Welcome Message */}
       <div className="pt-2 space-y-2">
-        <p className="text-lg text-gray-700">
-          Merhaba <span className="font-medium text-gray-900">{userInfo?.displayName}</span>, hoşgeldin! 👋
+        <p className="text-lg text-brand-subtext">
+          Merhaba <span className="font-medium text-brand-dark">{userInfo?.displayName}</span>, hoşgeldin! 👋
         </p>
         
         {/* Site Ataması Yapılmamış Uyarısı - KRİTİK */}
         {showSiteWarning && (
-          <div className="flex items-start gap-3 p-4 bg-red-50 border-2 border-red-200 rounded-2xl">
+          <div className="flex items-start gap-3 p-4 bg-red-50 border-2 border-red-200 rounded-3xl">
             <div className="flex-shrink-0 mt-0.5">
               <AlertTriangle className="w-6 h-6 text-red-600" />
             </div>
@@ -295,15 +295,15 @@ export default function RequestsPage() {
                 setShowUnorderedOnly(next)
                 if (next) setShowLateDeliveryOnly(false)
               }}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              className={`rounded-2xl border px-4 py-3 text-left shadow-card transition-colors ${
         showUnorderedOnly
-                  ? 'border-gray-900 bg-gray-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-brand-dark bg-brand-grayBg'
+                  : 'border-brand-border bg-white hover:border-brand-dark/40'
               }`}
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-900">Siparişi verilmemiş talepler</span>
-                <span className="text-sm tabular-nums text-gray-500">{pendingOrdersCount}</span>
+                <span className="text-sm font-medium text-brand-dark">Siparişi verilmemiş talepler</span>
+                <span className="text-sm tabular-nums text-brand-subtext">{pendingOrdersCount}</span>
               </div>
             </button>
             <button
@@ -313,15 +313,15 @@ export default function RequestsPage() {
                 setShowLateDeliveryOnly(next)
                 if (next) setShowUnorderedOnly(false)
               }}
-              className={`rounded-xl border px-4 py-3 text-left transition-colors ${
+              className={`rounded-2xl border px-4 py-3 text-left shadow-card transition-colors ${
         showLateDeliveryOnly
-                  ? 'border-gray-900 bg-gray-50'
-                  : 'border-gray-200 bg-white hover:border-gray-300'
+                  ? 'border-brand-dark bg-brand-grayBg'
+                  : 'border-brand-border bg-white hover:border-brand-dark/40'
               }`}
             >
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm font-medium text-gray-900">Teslimat tarihi geçen talepler</span>
-                <span className={`text-sm tabular-nums ${lateDeliveryCount > 0 ? 'font-medium text-red-600' : 'text-gray-500'}`}>
+                <span className="text-sm font-medium text-brand-dark">Teslimat tarihi geçen talepler</span>
+                <span className={`text-sm tabular-nums ${lateDeliveryCount > 0 ? 'font-medium text-red-600' : 'text-brand-subtext'}`}>
                   {lateDeliveryCount}
                 </span>
               </div>
@@ -331,17 +331,17 @@ export default function RequestsPage() {
         
         {/* Teslim Alınmamış Siparişler Uyarısı - Site Manager, Santiye Depo ve Santiye Depo Yöneticisi için */}
         {(userRole === 'site_manager' || userRole === 'santiye_depo' || userRole === 'santiye_depo_siparis' || userRole === 'santiye_depo_yonetici') && overdueDeliveriesCount > 0 && (
-          <div className="flex items-center gap-3 p-4 bg-black/[0.04] border border-black/10 rounded-2xl">
+          <div className="flex items-center gap-3 p-4 bg-brand-grayBg border border-brand-border rounded-3xl">
             <div className="flex-shrink-0">
              
             </div>
             <div className="flex-1">
-              <p className="text-lg font-medium text-[#00E676]">
+              <p className="text-lg font-medium text-brand-dark">
                 {overdueDeliveriesCount === 1 
                   ? 'Teslim alınmamış 1 siparişin var!' 
                   : `Teslim alınmamış ${overdueDeliveriesCount} siparişin var!`}
               </p>
-              <p className="text-md text-gray-600 mt-0.5">
+              <p className="text-md text-brand-subtext mt-0.5">
                 Lütfen teslim aldığınız siparişlerin irsaliye girişini yapın. 
                 Eğer teslim gecikti ise satın almayı bilgilendirin.
               </p>
@@ -349,7 +349,7 @@ export default function RequestsPage() {
             <Button
               onClick={() => setShowOverdueOnly(true)}
               size="sm"
-              className="flex-shrink-0 bg-white hover:bg-[#00E676] text-[#00E676] border border-[#00E676] hover:text-white rounded-2xl px-12 py-2 text-xs font-medium transition-all"
+              className="flex-shrink-0 bg-white hover:bg-brand-green text-brand-dark border border-brand-border hover:text-black hover:border-brand-green rounded-full px-12 py-2 text-xs font-medium shadow-sm transition-all"
             >
               Göz At
             </Button>
@@ -362,14 +362,14 @@ export default function RequestsPage() {
         {/* Desktop: Header with button on right */}
         <div className="hidden sm:flex items-center justify-between">
           <div>
-            <h1 className="text-4xl font-semibold text-gray-900 pb-3 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
-            <p className="text-gray-600 mt-4 text-base">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
+            <h1 className="text-4xl font-bold tracking-tight text-brand-dark pb-3 border-b-2 border-brand-green inline-block">Talep İşlemleri</h1>
+            <p className="text-brand-subtext mt-4 text-base">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
           </div>
           <div className="flex items-center gap-4">
             <Button 
               onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
               disabled={showSiteWarning}
-              className="px-8 py-5 rounded-2xl text-md bg-[#00E676] text-white hover:bg-[#00c46a] hover:shadow-lg transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+              className="px-8 py-5 rounded-full text-md bg-brand-green text-black hover:bg-brand-dark hover:text-white hover:shadow-lg transition-all duration-200 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
               title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
             >
               
@@ -381,15 +381,15 @@ export default function RequestsPage() {
         {/* Mobile: Header only */}
         <div className="sm:hidden">
           <div>
-            <h1 className="text-3xl font-semibold text-gray-900 pb-2 border-b-2 border-[#00E676] inline-block">Talep İşlemleri</h1>
-            <p className="text-gray-600 mt-4 text-sm">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
+            <h1 className="text-3xl font-bold tracking-tight text-brand-dark pb-2 border-b-2 border-brand-green inline-block">Talep İşlemleri</h1>
+            <p className="text-brand-subtext mt-4 text-sm">Tüm satın alma taleplerini görüntüleyin ve yönetin</p>
             
             {/* Mobile: Create Request Button */}
             <div className="mt-4">
               <Button 
                 onClick={() => !showSiteWarning && router.push('/dashboard/requests/create')}
                 disabled={showSiteWarning}
-                className="w-1/2 h-12 rounded-2xl text-sm font-medium bg-[#00E676] text-white hover:bg-[#00c46a] hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
+                className="w-1/2 h-12 rounded-full text-sm font-medium bg-brand-green text-black hover:bg-brand-dark hover:text-white hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:bg-gray-300 disabled:cursor-not-allowed disabled:opacity-50"
                 title={showSiteWarning ? 'Şantiye ataması yapılmadan talep oluşturamazsınız' : ''}
               >
                 <Plus className="w-5 h-5" />

@@ -25,11 +25,16 @@ export interface DashboardStats {
 
 export interface DashboardRecentRequest {
   id: string
+  request_number?: string | null
   title: string
   status: string
   created_at: string
   total_amount: number
   site_name?: string
+  requester_name?: string | null
+  department?: string | null
+  urgency_level?: string | null
+  item_count?: number
 }
 
 export interface DashboardBundle {
@@ -92,11 +97,16 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle> {
       .select(
         `
       id,
+      request_number,
       title,
       status,
       created_at,
       total_amount,
-      sites(name)
+      department,
+      urgency_level,
+      sites(name),
+      profiles!purchase_requests_requested_by_fkey(full_name),
+      purchase_request_items(count)
     `
       )
       .is('deleted_at', null)
@@ -187,11 +197,16 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle> {
 
   const recentRequests: DashboardRecentRequest[] = (recentRes.data ?? []).map((req: any) => ({
     id: req.id,
+    request_number: req.request_number ?? null,
     title: req.title,
     status: req.status,
     created_at: req.created_at,
     total_amount: parseFloat(String(req.total_amount)) || 0,
     site_name: req.sites?.name ?? '—',
+    requester_name: req.profiles?.full_name ?? null,
+    department: req.department ?? null,
+    urgency_level: req.urgency_level ?? null,
+    item_count: Array.isArray(req.purchase_request_items) ? req.purchase_request_items[0]?.count ?? 0 : 0,
   }))
 
   return { stats, dailyPoints, recentRequests }

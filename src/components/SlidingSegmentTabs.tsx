@@ -59,13 +59,13 @@ export function SlidingSegmentTabs<const T extends string>({
       role="tablist"
       aria-label={ariaLabel}
       className={cn(
-        'relative flex w-fit items-center rounded-xl border border-gray-200 bg-white p-1.5',
+        'relative flex w-fit items-center rounded-xl border border-brand-border bg-white p-1.5',
         className
       )}
     >
       <span
         aria-hidden
-        className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-lg bg-bordeaux shadow-sm transition-[left,width] duration-300 ease-out"
+        className="pointer-events-none absolute top-1.5 bottom-1.5 rounded-lg bg-brand-dark shadow-sm transition-[left,width] duration-300 ease-out"
         style={{ left: indicator.left, width: indicator.width }}
       />
       {items.map((item, index) => {
@@ -83,7 +83,7 @@ export function SlidingSegmentTabs<const T extends string>({
             onClick={() => onChange(item.value)}
             className={cn(
               'relative z-10 rounded-lg px-5 py-3 text-base font-semibold transition-colors duration-300',
-              selected ? 'text-white' : 'text-bordeaux hover:text-bordeaux-700'
+              selected ? 'text-white' : 'text-brand-subtext hover:text-brand-dark'
             )}
           >
             {item.label}

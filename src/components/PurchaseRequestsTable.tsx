@@ -1390,7 +1390,8 @@ export default function PurchaseRequestsTable({
     if (deliveredMaterials === totalMaterials) {
       return { type: 'full', label: 'Tamamı Teslim Alındı', className: 'text-white', style: { backgroundColor: '#0A0A0A' }, rounded: 'rounded-xl' }
     } else if (deliveredMaterials > 0 || partialMaterials > 0) {
-      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-red-100 text-red-800', rounded: 'rounded-full' }
+      // Kısmen teslim alınan = hâlâ beklemede sayılır, uygulamanın her yerinde olduğu gibi sarı gösterilmeli
+      return { type: 'partial', label: 'Kısmen Teslim Alındı', className: 'bg-yellow-100 text-yellow-800', rounded: 'rounded-full' }
     }
     
     return null
@@ -3171,7 +3172,7 @@ export default function PurchaseRequestsTable({
                         onClick={() => setCurrentPage(pageNum)}
                         className={`w-8 h-8 p-0 rounded-xl ${
              currentPage === pageNum 
-                            ? 'bg-[#00E676] text-white' 
+                            ? 'bg-brand-green text-white' 
                             : 'border-gray-200 hover:bg-gray-50'
                         }`}
                       >

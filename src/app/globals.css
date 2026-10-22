@@ -4,15 +4,6 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Akkurat Font Family */
-@font-face {
-  font-family: 'Akkurat';
-  src: url('/fonts/Akkurat.ttf') format('truetype');
-  font-weight: 400;
-  font-style: normal;
-  font-display: swap;
-}
-
 @layer utilities {
   .line-clamp-2 {
     overflow: hidden;
@@ -39,8 +30,6 @@
     margin: 0;
   }
 }
-
-/* Helvetica Neue system font fallback */
 
 @layer base {
   :root {
@@ -76,7 +65,7 @@
     --sidebar-accent-foreground: #0a0a0a;
     --sidebar-border: #e5e5e5;
     --sidebar-ring: #00E676;
-    --font-sans: Geist, sans-serif;
+    --font-sans: var(--font-plus-jakarta-sans), sans-serif;
     --font-serif: Georgia, serif;
     --font-mono: Geist Mono, monospace;
     --radius: 0.75rem;
@@ -125,7 +114,7 @@
     --sidebar-accent-foreground: #ffffff;
     --sidebar-border: #333333;
     --sidebar-ring: #a4a4a4;
-    --font-sans: Geist, sans-serif;
+    --font-sans: var(--font-plus-jakarta-sans), sans-serif;
     --font-serif: Georgia, serif;
     --font-mono: Geist Mono, monospace;
     --radius: 0.5rem;
@@ -410,7 +399,7 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --font-sans: Geist, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
   --font-mono: Geist Mono, monospace;
   --font-serif: Georgia, serif;
 
@@ -522,7 +511,7 @@
   --sidebar-accent-foreground: oklch(0.1000 0 0);
   --sidebar-border: oklch(0.9300 0 0);
   --sidebar-ring: #00E676;
-  --font-sans: Geist, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Geist Mono, monospace;
   --shadow-color: hsl(0 0% 0%);
@@ -578,7 +567,7 @@
   --sidebar-accent-foreground: oklch(1 0 0);
   --sidebar-border: oklch(0.3200 0 0);
   --sidebar-ring: oklch(0.7200 0 0);
-  --font-sans: Geist, sans-serif;
+  --font-sans: var(--font-plus-jakarta-sans), sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Geist Mono, monospace;
   --shadow-color: hsl(0 0% 0%);

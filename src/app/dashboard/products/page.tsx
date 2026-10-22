@@ -114,6 +114,7 @@ export default function ProductsPage() {
       // Görüntüleme yetkisinde liste, zimmeti olan ürünleri de kapsar.
       // Depoyu yöneten kullanıcı tabloda fiziksel stok adedini görür.
       useDepotZimmetQty: true,
+      includeUnstockedCatalog: warehouseAccess.operateWarehouseIds.length > 0,
     }
   }, [baseFilters, warehouseAccess])
 

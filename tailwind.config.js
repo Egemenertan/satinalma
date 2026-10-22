@@ -91,8 +91,10 @@ module.exports = {
       },
     },
     extend: {
+      /** design.md mockup'ındaki "Plus Jakarta Sans" — tüm projenin tek yazı tipi */
       fontFamily: {
-        'helvetica-neue': ['Akkurat', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'],
+        sans: ['var(--font-plus-jakarta-sans)', 'system-ui', 'sans-serif'],
+        'helvetica-neue': ['var(--font-plus-jakarta-sans)', 'system-ui', 'sans-serif'],
       },
       fontWeight: {
         'light': '300',
@@ -123,6 +125,17 @@ module.exports = {
         coral,
         bordeaux,
         ink,
+        /** Dashboard "Overview Panel" mockup paleti (design.md ile birebir) */
+        brand: {
+          green: '#20e277',
+          neon: '#25eb7e',
+          lightGreen: '#45f18c',
+          dark: '#111315',
+          grayBg: '#f2f4f7',
+          border: '#eaedf1',
+          subtext: '#8a94a6',
+          cardBg: '#ffffff',
+        },
         blue: navy,
         sky: navy,
         cyan: navy,
@@ -186,6 +199,10 @@ module.exports = {
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
         '4xl': '2rem',
+      },
+      boxShadow: {
+        card: '0 10px 30px -10px rgba(0, 0, 0, 0.04), 0 2px 6px -1px rgba(0, 0, 0, 0.02)',
+        floating: '0 20px 40px -15px rgba(34, 197, 94, 0.25)',
       },
       keyframes: {
         "accordion-down": {

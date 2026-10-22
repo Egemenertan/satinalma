@@ -1,10 +1,19 @@
 import type { Metadata } from "next";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { ToastProvider } from "@/components/ui/toast";
 import { NotificationManager } from "@/components/NotificationManager";
 import { WarehouseGmoPurchaseRequestAlerts } from "@/components/WarehouseGmoPurchaseRequestAlerts";
 import { Providers } from "./providers";
 import { AuthSessionSync } from "@/components/AuthSessionSync";
+
+/** design.md mockup'ındaki Google Font — projenin tek, tutarlı yazı tipi */
+const plusJakartaSans = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  variable: "--font-plus-jakarta-sans",
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "Satın Alma Talebi Yönetim Sistemi",
@@ -56,8 +65,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="tr">
-      <body className="font-helvetica-neue">
+    <html lang="tr" className={plusJakartaSans.variable}>
+      <body className="font-sans">
         <Providers>
           <AuthSessionSync />
           <ToastProvider>
