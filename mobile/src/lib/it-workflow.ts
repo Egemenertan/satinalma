@@ -5,6 +5,15 @@ export const IT_WORKFLOW_DEPARTMENT_LABEL = 'Pazarlama'
 export const IT_STATUS_INCELEMEDE = 'it_incelemesinde' as const
 export const IT_STATUS_ONAYLANDI = 'it_onaylandi' as const
 
+/** IT incelemesini onaylayan Pazarlama departman yöneticisi */
+export const IT_APPROVER_EMAIL = 'mert.turk@dovecgroup.com'
+/** IT malzemelerinde satın almaya gönderen kişi — başka isim yazılmaz */
+export const IT_PURCHASING_SENDER_EMAIL = 'fatih.keskin@dovecgroup.com'
+
+export function isItPurchasingSenderEmail(email: string | null | undefined): boolean {
+  return (email || '').trim().toLowerCase() === IT_PURCHASING_SENDER_EMAIL
+}
+
 export const IT_WORKFLOW_STATUSES = [IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI] as const
 
 export type ItWorkflowStatus = (typeof IT_WORKFLOW_STATUSES)[number]

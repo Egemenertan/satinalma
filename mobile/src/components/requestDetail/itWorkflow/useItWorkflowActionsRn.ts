@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Alert } from 'react-native'
 import { useQueryClient } from '@tanstack/react-query'
 import { itWorkflowConfirmSendGonderildi } from '../../../features/itWorkflow/itWorkflowDepartmentSend'
@@ -13,6 +13,7 @@ import {
   IT_STATUS_INCELEMEDE,
   IT_STATUS_ONAYLANDI,
   IT_WORKFLOW_STATUSES,
+  isItPurchasingSenderEmail,
   isItWorkflowElevatedRole,
   isPazarlamaDepartment,
 } from '../../../lib/it-workflow'
@@ -51,14 +52,20 @@ export function useItWorkflowActionsRn({
   const [editOpen, setEditOpen] = useState(false)
   const [sendOpen, setSendOpen] = useState(false)
 
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setUserEmail(data.session?.user?.email ?? null)
+    })
+  }, [])
+
   const isDeptHeadPazarlama =
     userRole === 'department_head' && isPazarlamaDepartment(userDepartment)
-  const isSiteMgrPazarlama =
-    userRole === 'site_manager' && isPazarlamaDepartment(userDepartment)
   const elevated = isItWorkflowElevatedRole(userRole)
 
   const canStage1 = isDeptHeadPazarlama || elevated
-  const canStage2 = isSiteMgrPazarlama || elevated
+  const canStage2 = isItPurchasingSenderEmail(userEmail) || elevated
 
   const visible = useMemo(() => {
     if (!itWorkflowApplies || !status) return false

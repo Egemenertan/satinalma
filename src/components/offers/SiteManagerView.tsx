@@ -13,7 +13,7 @@ import { Database } from '@/lib/supabase'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import SitePersonnelView from './SitePersonnelView'
 import { useRouter } from 'next/navigation'
-import { departmentsMatch, IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
+import { departmentsMatch, isItPurchasingSenderEmail, IT_STATUS_ONAYLANDI } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 import { isSentToPurchasingStatus } from '@/lib/request-process'
 
@@ -74,6 +74,9 @@ export default function SiteManagerView(props: SiteManagerViewProps) {
       }
 
       if (currentStatus === IT_STATUS_ONAYLANDI && latestRequest.it_workflow_applies) {
+        if (!isItPurchasingSenderEmail(user.email)) {
+          throw new Error('IT malzemelerini satın almaya yalnızca Fatih Keskin gönderebilir.')
+        }
         const newStatus = 'satın almaya gönderildi'
         const { error: updateError } = await supabase
           .from('purchase_requests')

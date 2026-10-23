@@ -1,4 +1,4 @@
-import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
+import { IT_APPROVER_EMAIL, IT_PURCHASING_SENDER_EMAIL, IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 import { createClient } from '@/lib/supabase/client'
 import { loadRequestActivities } from '@/lib/request-activity'
 import {
@@ -134,13 +134,14 @@ export async function fetchRequestProcess(requestId: string): Promise<RequestPro
     request.it_workflow_applies === true ||
     (IT_WORKFLOW_STATUSES as readonly string[]).includes(status)
 
-  const [history, warehouseManagers, siteManagers, siteWarehouseLeads, departmentHeads, itApprover] = await Promise.all([
+  const [history, warehouseManagers, siteManagers, siteWarehouseLeads, departmentHeads, itApprover, itPurchasingSender] = await Promise.all([
     loadRequestActivities(supabase, requestId),
     fetchPeopleByRole(supabase, 'warehouse_manager'),
     request.site_id ? fetchPeopleByRole(supabase, 'site_manager', request.site_id) : Promise.resolve([]),
     request.site_id ? fetchPeopleByRole(supabase, 'santiye_depo_yonetici', request.site_id) : Promise.resolve([]),
     fetchPeopleByRole(supabase, 'department_head', request.site_id),
-    isItRequest ? fetchPersonByEmail(supabase, 'mert.turk@dovecgroup.com') : Promise.resolve(null),
+    isItRequest ? fetchPersonByEmail(supabase, IT_APPROVER_EMAIL) : Promise.resolve(null),
+    isItRequest ? fetchPersonByEmail(supabase, IT_PURCHASING_SENDER_EMAIL) : Promise.resolve(null),
   ])
 
   const laIslaSiteId = 'e8e66dc0-108a-463e-b461-b6d5b08d3beb'
@@ -160,6 +161,7 @@ export async function fetchRequestProcess(requestId: string): Promise<RequestPro
     siteWarehouseLeads: request.site_id === laIslaSiteId ? [] : siteWarehouseLeads,
     departmentHeads,
     itApprover,
+    itPurchasingSender,
   }
 
   return buildRequestProcess(request, assignees, history)

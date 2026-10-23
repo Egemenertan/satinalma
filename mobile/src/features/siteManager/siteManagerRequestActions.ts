@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI } from '../../lib/it-workflow'
+import { isItPurchasingSenderEmail, IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI } from '../../lib/it-workflow'
 import { canDivertToItReview, requestHasItMaterialClass } from '../../lib/it-class-routing'
 
 /** Web `SiteManagerView` ile aynı — Genel Merkez Ofisi şantiye kaydı */
@@ -39,6 +39,9 @@ export async function siteManagerApproveOrSendToPurchasing(
 
   /** IT `it_onaylandi` sonrası her zaman satın almaya ilet (stokta olsa bile `onaylandı` olmasın). */
   if (currentStatus === IT_STATUS_ONAYLANDI) {
+    if (!isItPurchasingSenderEmail(user.email)) {
+      throw new Error('IT malzemelerini satın almaya yalnızca Fatih Keskin gönderebilir.')
+    }
     const newStatus = 'satın almaya gönderildi'
     const successMessage = 'Malzemeler satın almaya gönderildi!'
     const historyComment = 'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi'

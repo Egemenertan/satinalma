@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -23,6 +23,7 @@ import { useRouter } from 'next/navigation'
 import {
   IT_STATUS_INCELEMEDE,
   IT_STATUS_ONAYLANDI,
+  isItPurchasingSenderEmail,
   isPazarlamaDepartment
 } from '@/lib/it-workflow'
 
@@ -57,15 +58,20 @@ export default function ItWorkflowView({
   const [rejectReason, setRejectReason] = useState('')
   const [sendDialogOpen, setSendDialogOpen] = useState(false)
   const [sendQuantities, setSendQuantities] = useState<Record<string, string>>({})
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setUserEmail(data.user?.email ?? null)
+    })
+  }, [supabase])
 
   const isDeptHeadPazarlama =
     userRole === 'department_head' && isPazarlamaDepartment(userDepartment)
-  const isSiteMgrPazarlama =
-    userRole === 'site_manager' && isPazarlamaDepartment(userDepartment)
   const isElevated = userRole === 'admin' || userRole === 'manager'
 
   const canStage1 = isDeptHeadPazarlama || isElevated
-  const canStage2 = isSiteMgrPazarlama || isElevated
+  const canStage2 = isItPurchasingSenderEmail(userEmail) || isElevated
 
   const handleEdit = () => {
     router.push(`/dashboard/requests/${request.id}/edit`)
@@ -310,6 +316,7 @@ export default function ItWorkflowView({
 
   const handleSendToPurchasing = async () => {
     if (!canStage2 || request.status !== IT_STATUS_ONAYLANDI) return
+    if (!isElevated && !isItPurchasingSenderEmail(userEmail)) return
     setStage2Busy(true)
     try {
       const {

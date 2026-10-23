@@ -29,6 +29,7 @@ import {
 import {
   canSeeItWorkflowTab,
   departmentsMatch,
+  isItPurchasingSenderEmail,
   isItWorkflowElevatedRole,
   isPazarlamaDepartment,
   IT_STATUS_ONAYLANDI
@@ -1117,6 +1118,7 @@ export default function PurchaseRequestsTable({
   // Kullanıcı site bilgisi
   const [userSiteIds, setUserSiteIds] = useState<string[]>([])
   const [viewerDepartment, setViewerDepartment] = useState<string | null>(null)
+  const [viewerEmail, setViewerEmail] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
 
   // Kullanıcı site bilgisini çek
@@ -1127,9 +1129,10 @@ export default function PurchaseRequestsTable({
         const { data: { user } } = await supabase.auth.getUser()
         if (user) {
           setCurrentUserId(user.id)
+          setViewerEmail(user.email ?? null)
           const { data: profile } = await supabase
             .from('profiles')
-            .select('site_id, department')
+            .select('site_id, department, email')
             .eq('id', user.id)
             .single()
           
@@ -1141,6 +1144,7 @@ export default function PurchaseRequestsTable({
               ? String(profile.department).trim()
               : null
           )
+          if (profile?.email) setViewerEmail(profile.email)
         }
       } catch (error) {
         console.error('Kullanıcı site bilgisi alınamadı:', error)
@@ -1225,8 +1229,7 @@ export default function PurchaseRequestsTable({
     }
 
     if (
-      userRole === 'site_manager' &&
-      isPazarlamaDepartment(viewerDepartment) &&
+      isItPurchasingSenderEmail(viewerEmail) &&
       request.it_workflow_applies === true &&
       request.status === IT_STATUS_ONAYLANDI
     ) {
@@ -1958,6 +1961,9 @@ export default function PurchaseRequestsTable({
       }
 
       if (requestData.status === IT_STATUS_ONAYLANDI) {
+        if (!isItPurchasingSenderEmail(user.email) && !isItPurchasingSenderEmail(viewerEmail)) {
+          throw new Error('IT malzemelerini satın almaya yalnızca Fatih Keskin gönderebilir.')
+        }
         const newStatus = 'satın almaya gönderildi'
         const successMessage = 'Talep satın almaya gönderildi!'
         const historyComment = 'Pazarlama site manager — IT onayı sonrası satın almaya gönderildi'

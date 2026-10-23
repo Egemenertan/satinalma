@@ -43,6 +43,7 @@ export type ProcessAssignees = {
   siteWarehouseLeads: ProcessPerson[]
   departmentHeads: ProcessPerson[]
   itApprover: ProcessPerson | null
+  itPurchasingSender: ProcessPerson | null
 }
 
 export type RequestProcessStep = {
@@ -338,8 +339,10 @@ function buildTemplate(
       {
         id: 'site_manager_send',
         title: 'Satın almaya gönderme',
-        roleLabel: 'Şantiye Yöneticisi',
-        assigneeName: siteManagerNames,
+        roleLabel: 'Pazarlama Site Manager',
+        assigneeName: assignees.itPurchasingSender
+          ? formatPersonName(assignees.itPurchasingSender)
+          : 'Fatih Mustafa Keskin',
       },
       sent,
     ]
@@ -455,8 +458,11 @@ export function buildRequestProcess(
     }
 
     const lockItApprover = step.id === 'it_review'
+    const lockItPurchasingSender = workflowKind === 'it' && step.id === 'site_manager_send'
     const useHistoryActor =
-      !lockItApprover && (step.id === 'created' || (stepStatus === 'done' && Boolean(historyItem)))
+      !lockItApprover &&
+      !lockItPurchasingSender &&
+      (step.id === 'created' || (stepStatus === 'done' && Boolean(historyItem)))
 
     return {
       ...step,
