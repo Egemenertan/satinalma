@@ -37,6 +37,7 @@ export interface OrderData {
     unit: string
     brand?: string
     specifications?: string
+    purpose?: string | null
   } | null
   invoices?: InvoiceData[]
 }

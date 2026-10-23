@@ -10,6 +10,10 @@ import { Badge } from '@/components/ui/badge'
 import { createClient } from '@/lib/supabase/client'
 import { Upload, X, Camera, FileImage, Loader2, Package, Check, AlertCircle, Scan } from 'lucide-react'
 import DocumentScanner from '@/components/DocumentScanner'
+import { DeliveryInvoiceUpload } from '@/components/delivery/DeliveryInvoiceUpload'
+import { saveOrderInvoice } from '@/lib/invoices/saveOrderInvoice'
+import { parseToNumber } from '@/app/dashboard/orders/utils/numberFormatting'
+import { useQueryClient } from '@tanstack/react-query'
 
 interface PartialDeliveryModalProps {
   isOpen: boolean
@@ -18,6 +22,8 @@ interface PartialDeliveryModalProps {
   materialItem?: any // Malzeme bilgisi
   onSuccess: () => void
   showToast: (message: string, type: 'success' | 'error' | 'info') => void
+  /** Şantiye Depo (Sipariş): fatura yüklenirse irsaliye zorunlu olmaz */
+  allowInvoiceUpload?: boolean
 }
 
 export default function PartialDeliveryModal({
@@ -26,8 +32,10 @@ export default function PartialDeliveryModal({
   order,
   materialItem,
   onSuccess,
-  showToast
+  showToast,
+  allowInvoiceUpload = false
 }: PartialDeliveryModalProps) {
+  const queryClient = useQueryClient()
   const [deliveredQuantity, setDeliveredQuantity] = useState<string>('')
   const [deliveryNotes, setDeliveryNotes] = useState('')
   const [qualityCheck, setQualityCheck] = useState(true)
@@ -40,6 +48,17 @@ export default function PartialDeliveryModal({
   const [isScannerOpen, setIsScannerOpen] = useState(false)
   const [existingPhotoUrls, setExistingPhotoUrls] = useState<string[]>([]) // Mevcut fotoğraf URL'leri
   const [selectedDeliveryId, setSelectedDeliveryId] = useState<string | null>(null) // Düzenlenen teslimat ID'si
+  const [invoiceFiles, setInvoiceFiles] = useState<File[]>([])
+  const [invoicePreviewUrls, setInvoicePreviewUrls] = useState<string[]>([])
+  const [invoiceAmount, setInvoiceAmount] = useState('')
+  const [invoiceCurrency, setInvoiceCurrency] = useState('TRY')
+  const [existingInvoice, setExistingInvoice] = useState<{
+    amount: number
+    currency: string
+    createdAt: string | null
+  } | null>(null)
+  const [invoiceLookupDone, setInvoiceLookupDone] = useState(false)
+  const invoiceSavedRef = useRef(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const supabase = createClient()
   
@@ -52,16 +71,20 @@ export default function PartialDeliveryModal({
   // Modal açıldığında mevcut teslimatları yükle
   useEffect(() => {
     if (isOpen && order?.id) {
+      setExistingInvoice(null)
+      setInvoiceLookupDone(!allowInvoiceUpload)
       loadOrderDeliveries()
+      const currency = String(order.currency || 'TRY').toUpperCase()
+      setInvoiceCurrency(['TRY', 'USD', 'EUR'].includes(currency) ? currency : 'TRY')
     }
-  }, [isOpen, order?.id])
+  }, [isOpen, order?.id, allowInvoiceUpload])
 
   const loadOrderDeliveries = async () => {
     if (!order?.id) return
     
     try {
       setLoading(true)
-      const { data, error } = await supabase
+      const deliveriesQuery = supabase
         .from('order_deliveries')
         .select(`
           *,
@@ -72,8 +95,29 @@ export default function PartialDeliveryModal({
         .eq('order_id', order.id)
         .order('delivered_at', { ascending: false })
 
+      const invoicesQuery = allowInvoiceUpload
+        ? supabase
+            .from('invoices')
+            .select('id, amount, currency, created_at')
+            .eq('order_id', order.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+        : Promise.resolve({ data: [] as { id: string; amount: number; currency: string | null; created_at: string | null }[], error: null })
+
+      const [{ data, error }, invoicesResult] = await Promise.all([deliveriesQuery, invoicesQuery])
+
       if (error) throw error
       setOrderDeliveries(data || [])
+
+      if (allowInvoiceUpload) {
+        const invoice = invoicesResult.data?.[0]
+        setExistingInvoice(invoice ? {
+          amount: Number(invoice.amount) || 0,
+          currency: invoice.currency || 'TRY',
+          createdAt: invoice.created_at,
+        } : null)
+        setInvoiceLookupDone(true)
+      }
       
       // Edit mode ise, en son teslimatı yükle
       if (isEditMode && data && data.length > 0) {
@@ -82,6 +126,7 @@ export default function PartialDeliveryModal({
       }
     } catch (error) {
       console.error('Teslimat geçmişi yüklenirken hata:', error)
+      if (allowInvoiceUpload) setInvoiceLookupDone(true)
     } finally {
       setLoading(false)
     }
@@ -215,10 +260,26 @@ export default function PartialDeliveryModal({
         throw new Error('Geçerli bir miktar girin')
       }
 
-      // En az 1 fotoğraf zorunlu (mevcut veya yeni)
       const totalPhotos = existingPhotoUrls.length + photos.length
-      if (totalPhotos === 0) {
-        throw new Error('En az 1 irsaliye fotoğrafı olmalıdır')
+      const hasInvoicePhotos = allowInvoiceUpload && (invoiceFiles.length > 0 || invoiceSavedRef.current || Boolean(existingInvoice))
+      const draftingInvoice = allowInvoiceUpload && !existingInvoice && !invoiceSavedRef.current && (invoiceFiles.length > 0 || invoiceAmount.trim().length > 0)
+
+      if (draftingInvoice) {
+        const invoiceTotal = parseToNumber(invoiceAmount)
+        if (!(invoiceTotal > 0)) {
+          throw new Error('Fatura tutarı girin')
+        }
+        if (invoiceFiles.length === 0) {
+          throw new Error('Fatura fotoğrafı yükleyin')
+        }
+      }
+
+      if (totalPhotos === 0 && !hasInvoicePhotos) {
+        throw new Error(
+          allowInvoiceUpload
+            ? 'İrsaliye veya fatura fotoğrafı yükleyin'
+            : 'En az 1 irsaliye fotoğrafı olmalıdır'
+        )
       }
 
       // Edit mode değilse miktar kontrolü yap
@@ -230,6 +291,38 @@ export default function PartialDeliveryModal({
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) {
         throw new Error('Kullanıcı oturumu bulunamadı')
+      }
+
+      let savedInvoiceNow = false
+      if (allowInvoiceUpload && invoiceFiles.length > 0 && !invoiceSavedRef.current && !existingInvoice) {
+        const { data: alreadySaved, error: existingInvoiceError } = await supabase
+          .from('invoices')
+          .select('id')
+          .eq('order_id', order.id)
+          .limit(1)
+
+        if (existingInvoiceError) {
+          throw new Error(`Fatura kontrol edilemedi: ${existingInvoiceError.message}`)
+        }
+        if (alreadySaved && alreadySaved.length > 0) {
+          throw new Error('Bu sipariş için fatura zaten eklenmiş')
+        }
+
+        const savedAmount = parseToNumber(invoiceAmount)
+        const savedCurrency = invoiceCurrency || 'TRY'
+        await saveOrderInvoice(supabase, {
+          orderId: order.id,
+          amount: savedAmount,
+          currency: savedCurrency,
+          files: invoiceFiles,
+        })
+        invoiceSavedRef.current = true
+        savedInvoiceNow = true
+        setExistingInvoice({
+          amount: savedAmount,
+          currency: savedCurrency,
+          createdAt: new Date().toISOString(),
+        })
       }
 
       // Yeni fotoğrafları yükle
@@ -265,7 +358,12 @@ export default function PartialDeliveryModal({
           throw new Error(`Teslimat güncelleme başarısız: ${updateError.message}`)
         }
 
-        showToast('Teslimat bilgileri başarıyla güncellendi!', 'success')
+        showToast(
+          savedInvoiceNow
+            ? 'Teslimat güncellendi. Fatura siparişler sayfasına eklendi.'
+            : 'Teslimat bilgileri başarıyla güncellendi!',
+          'success'
+        )
       } else {
         // Normal mode: Yeni teslimat kaydı oluştur
         console.log('🔍 create_order_delivery parametreleri:', {
@@ -310,10 +408,11 @@ export default function PartialDeliveryModal({
           totalDelivered: result.total_delivered
         })
 
+        const invoiceNote = savedInvoiceNow ? ' Fatura siparişler sayfasına eklendi.' : ''
         showToast(
           isCompleted 
-            ? `${materialItem?.item_name || 'Sipariş'} tamamen teslim alındı!`
-            : `${quantity} ${materialItem?.unit || 'adet'} teslim alındı. Kalan: ${newRemaining} ${materialItem?.unit || 'adet'}`,
+            ? `${materialItem?.item_name || 'Sipariş'} tamamen teslim alındı!${invoiceNote}`
+            : `${quantity} ${materialItem?.unit || 'adet'} teslim alındı. Kalan: ${newRemaining} ${materialItem?.unit || 'adet'}${invoiceNote}`,
           'success'
         )
       }
@@ -346,6 +445,10 @@ export default function PartialDeliveryModal({
         console.error('Cache temizleme hatası:', error)
       }
 
+      if (hasInvoicePhotos) {
+        await queryClient.invalidateQueries({ queryKey: ['orders'] })
+      }
+
       onSuccess()
       handleClose()
       
@@ -355,6 +458,26 @@ export default function PartialDeliveryModal({
     } finally {
       setUploading(false)
     }
+  }
+
+  const clearInvoiceDraft = () => {
+    invoicePreviewUrls.forEach((url) => URL.revokeObjectURL(url))
+    setInvoicePreviewUrls([])
+    setInvoiceFiles([])
+    setInvoiceAmount('')
+    setInvoiceCurrency('TRY')
+  }
+
+  const addInvoiceFiles = (files: File[]) => {
+    const previewUrls = files.map((file) => URL.createObjectURL(file))
+    setInvoiceFiles((prev) => [...prev, ...files])
+    setInvoicePreviewUrls((prev) => [...prev, ...previewUrls])
+  }
+
+  const removeInvoiceFile = (index: number) => {
+    URL.revokeObjectURL(invoicePreviewUrls[index])
+    setInvoiceFiles((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
+    setInvoicePreviewUrls((prev) => prev.filter((_, fileIndex) => fileIndex !== index))
   }
 
   const handleClose = () => {
@@ -369,8 +492,16 @@ export default function PartialDeliveryModal({
     setOrderDeliveries([])
     setExistingPhotoUrls([])
     setSelectedDeliveryId(null)
+    invoiceSavedRef.current = false
+    setExistingInvoice(null)
+    setInvoiceLookupDone(false)
+    clearInvoiceDraft()
     onClose()
   }
+
+  const waybillCount = existingPhotoUrls.length + photos.length
+  const invoiceReplacesWaybill = allowInvoiceUpload && (invoiceFiles.length > 0 || Boolean(existingInvoice))
+  const waybillRequired = !invoiceReplacesWaybill
 
   if (!order) return null
 
@@ -550,7 +681,8 @@ export default function PartialDeliveryModal({
           {(remainingQuantity > 0 || isEditMode) && (
             <div>
                 <Label className="text-sm font-medium mb-3 block">
-                  Teslimat Fotoğrafları <span className="text-red-500">*</span>
+                  Teslimat Fotoğrafları{' '}
+                  {waybillRequired ? <span className="text-red-500">*</span> : <span className="text-xs font-normal text-gray-500">(fatura eklendiği için zorunlu değil)</span>}
                 </Label>
                 
                 <div className="grid grid-cols-2 gap-3 mb-4">
@@ -705,11 +837,30 @@ export default function PartialDeliveryModal({
                 
                 <p className="text-xs text-gray-500 mt-2">
                   {isEditMode 
-                    ? `Toplam: ${existingPhotoUrls.length + photos.length}/10 fotoğraf • En az 1 fotoğraf zorunlu`
-                    : `${photos.length}/5 fotoğraf yüklendi • En az 1 fotoğraf zorunlu`
+                    ? `Toplam: ${waybillCount}/10 fotoğraf${waybillRequired ? ' • En az 1 fotoğraf zorunlu' : ''}`
+                    : `${photos.length}/5 fotoğraf yüklendi${waybillRequired ? ' • En az 1 fotoğraf zorunlu' : ''}`
                   }
                 </p>
             </div>
+          )}
+
+          {allowInvoiceUpload && (remainingQuantity > 0 || isEditMode) && (
+            invoiceLookupDone ? (
+              <DeliveryInvoiceUpload
+                amount={invoiceAmount}
+                currency={invoiceCurrency}
+                previewUrls={invoicePreviewUrls}
+                disabled={uploading}
+                existingInvoice={existingInvoice}
+                onAmountChange={setInvoiceAmount}
+                onCurrencyChange={setInvoiceCurrency}
+                onFilesAdded={addInvoiceFiles}
+                onFileRemove={removeInvoiceFile}
+                onInvalid={(message) => showToast(message, 'error')}
+              />
+            ) : (
+              <p className="text-xs text-gray-500">Fatura bilgisi kontrol ediliyor...</p>
+            )
           )}
         </div>
 
@@ -729,7 +880,7 @@ export default function PartialDeliveryModal({
                 !deliveredQuantity || 
                 parseFloat(deliveredQuantity) <= 0 || 
                 uploading || 
-                (existingPhotoUrls.length + photos.length) === 0
+                (waybillRequired && waybillCount === 0)
               }
               className={isEditMode ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-green-600 hover:bg-green-700 text-white"}
             >

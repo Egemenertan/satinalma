@@ -227,7 +227,7 @@ export async function GET(request: NextRequest) {
         supabase.from('profiles').select('id, full_name, email, role').in('id', chunk)
       ),
       fetchInChunks(materialIds, (chunk) =>
-        supabase.from('purchase_request_items').select('id, item_name, unit').in('id', chunk)
+        supabase.from('purchase_request_items').select('id, item_name, unit, purpose').in('id', chunk)
       ),
       fetchInChunks(orderIds, (chunk) =>
         supabase
@@ -293,7 +293,7 @@ export async function GET(request: NextRequest) {
           ? { full_name: profile.full_name, email: profile.email, role: profile.role }
           : null,
         purchase_request_items: material
-          ? { item_name: material.item_name, unit: material.unit }
+          ? { item_name: material.item_name, unit: material.unit, purpose: material.purpose || null }
           : null,
         invoices: orderInvoices.map((invoice) => ({
           id: invoice.id,

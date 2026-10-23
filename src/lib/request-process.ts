@@ -136,7 +136,13 @@ export function formatPeopleNames(people: ProcessPerson[]): string {
 }
 
 export function pickByDepartment(people: ProcessPerson[], department: string | null | undefined): ProcessPerson[] {
-  const matched = people.filter((person) => departmentsMatch(person.department, department))
+  const requestDepartment = department?.trim()
+  if (!requestDepartment) return people
+  const matched = people.filter((person) => {
+    const personDepartment = person.department?.trim()
+    if (!personDepartment) return false
+    return departmentsMatch(personDepartment, requestDepartment)
+  })
   return matched.length > 0 ? matched : people
 }
 
@@ -202,7 +208,11 @@ function historyForStep(stepId: string, history: RequestActivityItem[]): Request
   }
 
   if (stepId === 'it_review') {
-    return chronological.find((item) => commentsInclude(item.comments, ['it inceleme', 'it onay', 'it yönetim']))
+    return chronological.find(
+      (item) =>
+        item.action !== 'submitted' &&
+        commentsInclude(item.comments, ['it yönetim onayı', 'it onay'])
+    )
   }
 
   if (stepId === 'warehouse_check') {
@@ -213,17 +223,9 @@ function historyForStep(stepId: string, history: RequestActivityItem[]): Request
     )
   }
 
-  if (stepId === 'site_manager_send' || stepId === 'unit_supervisor_send') {
-    return chronological.find(
-      (item) =>
-        item.action === 'approved' &&
-        commentsInclude(item.comments, ['satın almaya gönder', 'satin almaya gonder', 'site manager', 'şantiye'])
-    )
-  }
-
-  if (stepId === 'sent_to_purchasing') {
+  if (stepId === 'site_manager_send' || stepId === 'unit_supervisor_send' || stepId === 'sent_to_purchasing') {
     return chronological.find((item) =>
-      commentsInclude(item.comments, ['satın almaya gönder', 'satin almaya gonder'])
+      commentsInclude(item.comments, ['satın almaya gönderildi', 'satin almaya gonderildi'])
     )
   }
 
@@ -408,24 +410,27 @@ export function buildRequestProcess(
     const doneByHistory = Boolean(historyItem) && step.id !== 'created' ? true : step.id === 'created'
 
     let stepStatus: ProcessStepStatus = 'upcoming'
-    if (step.id === 'sent_to_purchasing' && warehouseFulfilled && !isComplete) {
-      stepStatus = 'skipped'
+    if (step.id === 'sent_to_purchasing') {
+      stepStatus = isComplete ? 'done' : warehouseFulfilled ? 'skipped' : 'upcoming'
     } else if (step.id === 'site_manager_send' || step.id === 'unit_supervisor_send') {
       if (warehouseFulfilled && !isComplete) stepStatus = 'skipped'
-      else if (isComplete || historyItem) stepStatus = 'done'
-      else if (doneByStatus) stepStatus = 'done'
+      else if (isComplete || doneByStatus) stepStatus = 'done'
     } else if (isComplete || doneByStatus || (step.id === 'created' && doneByHistory)) {
       stepStatus = 'done'
     } else if (historyItem && step.id !== 'created') {
       stepStatus = 'done'
     }
 
+    const useHistoryActor = step.id === 'created' || (stepStatus === 'done' && Boolean(historyItem))
+
     return {
       ...step,
-      assigneeName: historyItem?.actorName || step.assigneeName,
-      roleLabel: historyItem?.actorRole || step.roleLabel,
+      assigneeName: useHistoryActor ? historyItem?.actorName || step.assigneeName : step.assigneeName,
+      roleLabel: useHistoryActor ? historyItem?.actorRole || step.roleLabel : step.roleLabel,
       status: stepStatus,
-      completedAt: historyItem?.createdAt ?? (step.id === 'created' ? request.created_at : null),
+      completedAt: useHistoryActor
+        ? historyItem?.createdAt ?? (step.id === 'created' ? request.created_at : null)
+        : null,
     }
   })
 

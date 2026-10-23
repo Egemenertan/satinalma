@@ -245,6 +245,12 @@ export default function ProductsPage() {
   const canReceiveInbound =
     !warehouseAccess.canManageAll && managesViewedWarehouse && !operatesViewedWarehouse
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
+  const historySiteIds = useMemo(() => {
+    if (!warehouseAccess.loaded) return []
+    if (siteId) return [siteId]
+    if (warehouseAccess.canManageAll) return null
+    return warehouseAccess.warehouseIds
+  }, [warehouseAccess.loaded, warehouseAccess.canManageAll, warehouseAccess.warehouseIds, siteId])
 
   const handleOpenCreateModal = () => {
     setModalMode('create')
@@ -835,6 +841,7 @@ export default function ProductsPage() {
         open={showOperationsMenu}
         onOpenChange={setShowOperationsMenu}
         showToast={showToast}
+        siteIds={historySiteIds}
         onTerminate={() => {
           setShowOperationsMenu(false)
           window.setTimeout(() => setShowTerminationModal(true), 180)

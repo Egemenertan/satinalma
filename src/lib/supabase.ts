@@ -969,6 +969,7 @@ export type Database = {
           performed_by_name: string | null
           item_count: number
           snapshot: Json
+          site_id: string | null
           created_at: string
         }
         Insert: {
@@ -980,6 +981,7 @@ export type Database = {
           performed_by_name?: string | null
           item_count?: number
           snapshot: Json
+          site_id: string
           created_at?: string
         }
         Update: {
@@ -991,6 +993,7 @@ export type Database = {
           performed_by_name?: string | null
           item_count?: number
           snapshot?: Json
+          site_id?: string | null
           created_at?: string
         }
         Relationships: [

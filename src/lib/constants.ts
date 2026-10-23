@@ -19,6 +19,7 @@ export const STORAGE_URLS = {
 
 // Special Site Configuration
 export const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // Genel Merkez Ofisi
+export const LA_ISLA_MAINTENANCE_SITE_ID = 'f5b6b6f4-57b9-45a1-910f-beb9f57e45c7' // La Isla Maintenance
 export const SPECIAL_SITE_PRODUCT_CATEGORIES = [
   '2fc60d65-ff59-4872-85c4-888097d5a966', // Bilgisayar ve Bileşenleri
   '790f8c1d-c567-4e28-811f-985951fc3df1', // REKLAM

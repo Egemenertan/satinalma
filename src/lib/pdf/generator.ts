@@ -76,6 +76,7 @@ export const transformToPDFData = (apiData: any): PDFData => {
     order_number: order.order_number || '',
     supplier_name: order.suppliers?.name || 'Tedarikçi',
     item_name: order.purchase_request_items?.item_name || 'Malzeme',
+    purpose: order.purchase_request_items?.purpose || '',
     quantity: order.quantity || 0,
     unit: order.purchase_request_items?.unit || 'adet',
     amount: order.amount || 0,
@@ -94,6 +95,7 @@ export const transformToPDFData = (apiData: any): PDFData => {
     notes: invoice.notes,
     supplier_name: invoice.orders?.suppliers?.name || invoice.suppliers?.name || invoice.supplier_name || 'Tedarikçi',
     item_name: invoice.orders?.purchase_request_items?.item_name || invoice.purchase_request_items?.item_name || invoice.item_name || 'Malzeme',
+    purpose: invoice.orders?.purchase_request_items?.purpose || invoice.purchase_request_items?.purpose || invoice.purpose || '',
     added_by: invoice.orders?.profiles?.full_name || invoice.orders?.profiles?.email || invoice.added_by_user?.full_name || invoice.added_by_user?.email || invoice.added_by || 'Purchasing Officer',
     // Fatura detayları - invoices tablosundan gelen
     subtotal: invoice.subtotal,

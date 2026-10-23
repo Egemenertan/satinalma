@@ -10,13 +10,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { 
   Plus, Save, Package, Building2, Calendar, DollarSign, Truck, FileText, Check, AlertCircle, X, 
-  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight, Trash2, Ban
+  Camera, Upload, ChevronDown, ChevronUp, Phone, Mail, Download, MessageCircle, Share, ChevronLeft, ChevronRight, Trash2, Ban, RotateCcw
 } from 'lucide-react'
 import { OffersPageProps, Offer, CURRENCIES, getCurrencySymbol } from './types'
 import { createClient } from '@/lib/supabase/client'
 import { Database } from '@/lib/supabase'
 import { addOffers, updateSiteExpenses } from '@/lib/actions'
 import AssignSupplierModal from '@/components/AssignSupplierModal'
+import PartialDeliveryModal from '@/components/PartialDeliveryModal'
+import ReturnModal from '@/components/ReturnModal'
 import { invalidatePurchaseRequestsCache } from '@/lib/cache'
 import { softDeletePurchaseRequest } from '@/lib/softDeletePurchaseRequest'
 import { generateMaterialPurchaseRequest, getMaterialPurchaseHTML, type MaterialPurchaseRequest } from '@/lib/pdf-generator'
@@ -117,6 +119,38 @@ export default function ProcurementView({
     return merged
   }, [materialSuppliers, materialOrders, localOrderTracking])
 
+  const canReceiveOrders = userRole === 'santiye_depo_siparis'
+
+  const resolveDbOrder = (trackingOrder: any) => {
+    const orderId = trackingOrder?.order_id || trackingOrder?.id
+    const found = Array.isArray(materialOrders)
+      ? materialOrders.find((row: any) => row.id === orderId)
+      : null
+    if (found) return found
+    return {
+      ...trackingOrder,
+      id: orderId,
+      suppliers: { name: trackingOrder?.supplier_name },
+      supplier: { name: trackingOrder?.supplier_name },
+      total_delivered: trackingOrder?.total_delivered || 0,
+      delivered_quantity: trackingOrder?.delivered_quantity || 0,
+      returned_quantity: trackingOrder?.returned_quantity || 0,
+    }
+  }
+
+  const refreshAfterDelivery = async () => {
+    await onRefresh()
+    try {
+      invalidatePurchaseRequestsCache()
+      const { mutate } = await import('swr')
+      mutate('purchase_requests_stats')
+      mutate('pending_requests_count')
+      mutate((key) => typeof key === 'string' && key.startsWith('purchase_requests/'))
+    } catch (error) {
+      console.error('Cache temizleme hatası:', error)
+    }
+  }
+
   // Local state
   const [newOffers, setNewOffers] = useState<Offer[]>([
     { supplier_name: '', unit_price: 0, total_price: 0, delivery_days: 0, delivery_date: '', notes: '', currency: 'TRY', documents: [], documentPreviewUrls: [] }
@@ -141,6 +175,10 @@ export default function ProcurementView({
     documents: [] as File[],
     documentPreviewUrls: [] as string[]
   })
+  const [isPartialDeliveryModalOpen, setIsPartialDeliveryModalOpen] = useState(false)
+  const [selectedOrderForDelivery, setSelectedOrderForDelivery] = useState<any>(null)
+  const [isReturnModalOpen, setIsReturnModalOpen] = useState(false)
+  const [selectedOrderForReturn, setSelectedOrderForReturn] = useState<any>(null)
   const [isAssignSupplierModalOpen, setIsAssignSupplierModalOpen] = useState(false)
   const [currentMaterialForAssignment, setCurrentMaterialForAssignment] = useState<{
     id: string;
@@ -1854,12 +1892,33 @@ DOVEC GROUP
                                 }
                               })
                               
-                              return allOrders.map((order: any, orderIndex: number) => (
+                              return allOrders.map((order: any, orderIndex: number) => {
+                                const dbOrder = resolveDbOrder(order)
+                                const deliveredQuantity = Number(dbOrder.total_delivered ?? dbOrder.delivered_quantity ?? 0)
+                                const returnedQuantity = Number(dbOrder.returned_quantity ?? 0)
+                                const remainingQuantity = Number(dbOrder.quantity || order.quantity || 0) - deliveredQuantity - returnedQuantity
+                                const canDeliver = canReceiveOrders && remainingQuantity > 0
+                                const canReturn = canReceiveOrders && remainingQuantity > 0
+                                const canEditDelivery = canReceiveOrders && deliveredQuantity > 0 && remainingQuantity <= 0
+
+                                return (
                                 <div key={`${order.supplier_id}_${orderIndex}_${order.order_id}`} className="bg-white border border-green-300 rounded-2xl p-4">
                                   <div className="flex items-center justify-between mb-2">
-                                    <div className="flex items-center gap-2">
+                                    <div className="flex flex-wrap items-center gap-2">
                                       <Check className="h-4 w-4 text-green-600" />
-                                      <span className="text-sm font-semibold text-green-700">Sipariş Verildi</span>
+                                      <span className="text-sm font-semibold text-green-700">
+                                        {deliveredQuantity > 0 && remainingQuantity <= 0
+                                          ? 'Teslim Alındı'
+                                          : deliveredQuantity > 0
+                                            ? 'Kısmen Teslim Alındı'
+                                            : 'Sipariş Verildi'}
+                                      </span>
+                                      {dbOrder.has_invoice && (
+                                        <span className="inline-flex items-center gap-1 text-sm font-semibold text-gray-900">
+                                          <FileText className="h-4 w-4" />
+                                          Fatura eklendi
+                                        </span>
+                                      )}
                                     </div>
                                     <button
                                       onClick={(e) => {
@@ -1897,8 +1956,57 @@ DOVEC GROUP
                                       </span>
                                     </div>
                                   </div>
+                                  {canReceiveOrders && (
+                                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                                      {canDeliver && (
+                                        <Button
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setSelectedOrderForDelivery({ ...dbOrder, materialItem: item, isEditMode: false })
+                                            setIsPartialDeliveryModalOpen(true)
+                                          }}
+                                          className="h-9 px-4 bg-green-600 hover:bg-green-700 text-white text-xs font-medium rounded-xl"
+                                        >
+                                          <Check className="h-3.5 w-3.5 mr-1.5" />
+                                          Teslim Al
+                                        </Button>
+                                      )}
+                                      {canEditDelivery && (
+                                        <Button
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setSelectedOrderForDelivery({ ...dbOrder, materialItem: item, isEditMode: true })
+                                            setIsPartialDeliveryModalOpen(true)
+                                          }}
+                                          className="h-9 px-4 bg-blue-600 hover:bg-blue-700 text-white text-xs font-medium rounded-xl"
+                                        >
+                                          Teslimatı Düzenle
+                                        </Button>
+                                      )}
+                                      {canReturn && (
+                                        <Button
+                                          size="sm"
+                                          onClick={(e) => {
+                                            e.stopPropagation()
+                                            setSelectedOrderForReturn({ ...dbOrder, materialItem: item })
+                                            setIsReturnModalOpen(true)
+                                          }}
+                                          className="h-9 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-medium rounded-xl"
+                                        >
+                                          <RotateCcw className="h-3.5 w-3.5 mr-1.5" />
+                                          İade
+                                        </Button>
+                                      )}
+                                      {deliveredQuantity > 0 && remainingQuantity <= 0 && (
+                                        <span className="text-xs font-medium text-green-600">Teslimat tamamlandı</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
-                              ))
+                                )
+                              })
                             })()}
 
                             {/* Tedarikçi Listesi - Collapsible */}
@@ -4134,6 +4242,37 @@ DOVEC GROUP
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <PartialDeliveryModal
+        isOpen={isPartialDeliveryModalOpen}
+        onClose={() => {
+          setIsPartialDeliveryModalOpen(false)
+          setSelectedOrderForDelivery(null)
+        }}
+        order={selectedOrderForDelivery}
+        materialItem={selectedOrderForDelivery?.materialItem}
+        allowInvoiceUpload={canReceiveOrders}
+        onSuccess={async () => {
+          setSelectedOrderForDelivery(null)
+          await refreshAfterDelivery()
+        }}
+        showToast={showToast}
+      />
+
+      <ReturnModal
+        isOpen={isReturnModalOpen}
+        onClose={() => {
+          setIsReturnModalOpen(false)
+          setSelectedOrderForReturn(null)
+        }}
+        order={selectedOrderForReturn}
+        materialItem={selectedOrderForReturn?.materialItem}
+        onSuccess={async () => {
+          setSelectedOrderForReturn(null)
+          await refreshAfterDelivery()
+        }}
+        showToast={showToast}
+      />
     </>
   )
 }

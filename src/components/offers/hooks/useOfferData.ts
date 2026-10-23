@@ -331,6 +331,18 @@ export function useOfferData(requestId: string) {
       }
 
       if (orders && orders.length > 0) {
+        const invoicedOrderIds = new Set<string>()
+        const orderIds = orders.map((order) => order.id)
+        if (orderIds.length > 0) {
+          const { data: linkedInvoices } = await supabase
+            .from('invoices')
+            .select('order_id')
+            .in('order_id', orderIds)
+          for (const invoice of linkedInvoices || []) {
+            if (invoice.order_id) invoicedOrderIds.add(invoice.order_id)
+          }
+        }
+
         // Array olarak döndür, quantity field'ı dahil et
         const ordersArray = orders.map((order: any) => {
           // Toplam teslim alınan miktarı hesapla
@@ -366,7 +378,8 @@ export function useOfferData(requestId: string) {
               id: order.supplier.id,
               name: order.supplier.name
             } : null,
-            order_deliveries: order.order_deliveries || []
+            order_deliveries: order.order_deliveries || [],
+            has_invoice: invoicedOrderIds.has(order.id)
           }
         })
 

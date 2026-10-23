@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/toast'
 import { ArrowLeft, Loader2, Package } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
-import { SPECIAL_SITE_ID } from '@/lib/constants'
+import { LA_ISLA_MAINTENANCE_SITE_ID, SPECIAL_SITE_ID } from '@/lib/constants'
 import { isSharedMaterialCategory } from '@/lib/material-category-access'
 import {
   CategoryTabs,
@@ -78,6 +78,7 @@ export function RequestMaterialShopping({
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
   const [hasHygieneDefaultSite, setHasHygieneDefaultSite] = useState(false)
   const [hasMultipleSiteTypes, setHasMultipleSiteTypes] = useState(false)
+  const [includeHeadquartersCategories, setIncludeHeadquartersCategories] = useState(false)
   const hasOfficeCategoryAccess = isGenelMerkezUser || hasHygieneDefaultSite || hasMultipleSiteTypes
 
   const [categories, setCategories] = useState<MaterialCategory[]>([])
@@ -168,6 +169,7 @@ export function RequestMaterialShopping({
       }
 
       setHasHygieneDefaultSite(userSiteIds.includes(HYGIENE_DEFAULT_SITE_ID))
+      setIncludeHeadquartersCategories(userSiteIds.includes(LA_ISLA_MAINTENANCE_SITE_ID))
 
       const hasGenelMerkez = userSiteIds.includes(SPECIAL_SITE_ID)
       const hasOtherSites = userSiteIds.some((id) => id !== SPECIAL_SITE_ID)
@@ -391,7 +393,7 @@ export function RequestMaterialShopping({
     cart.some((cartItem) => cartItem.material_item_name === itemName)
 
   const filteredCategories = categories.filter((category) => {
-    if (hasMultipleSiteTypes) return true
+    if (hasMultipleSiteTypes || includeHeadquartersCategories) return true
     if (isSharedMaterialCategory(category)) return true
     if (isOfficeCategory(category.name)) return hasOfficeCategoryAccess
     return !hasOfficeCategoryAccess

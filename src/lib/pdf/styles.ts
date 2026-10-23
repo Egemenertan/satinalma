@@ -172,6 +172,20 @@ export const getPDFStyles = (): string => `
     padding: 8px;
     border: 1px solid #ddd;
     font-size: 9pt;
+    vertical-align: top;
+  }
+
+  .purpose-cell {
+    max-width: 180px;
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .invoice-materials {
+    margin-top: 6px;
+    font-size: 8.5pt;
+    color: #333;
+    line-height: 1.45;
   }
 
   .orders-table tr:nth-child(even) {
@@ -314,6 +328,14 @@ export const getPDFStyles = (): string => `
   .summary-label {
     font-weight: 500;
     font-size: 9pt;
+  }
+
+  .summary-purpose {
+    display: block;
+    margin-top: 2px;
+    font-size: 8pt;
+    font-weight: 400;
+    color: #444;
   }
 
   .summary-value {

@@ -24,7 +24,7 @@ import {
   type MaterialItemRn,
 } from '../../../src/components/create/MaterialDetailModalRn'
 import { MaterialSearchBarRn } from '../../../src/components/create/MaterialSearchBarRn'
-import { SPECIAL_SITE_ID } from '../../../src/lib/constants'
+import { LA_ISLA_MAINTENANCE_SITE_ID, SPECIAL_SITE_ID } from '../../../src/lib/constants'
 import { isSharedMaterialCategory } from '../../../src/lib/material-category-access'
 import { createMultiMaterialPurchaseRequest } from '../../../src/lib/createPurchaseRequest'
 import {
@@ -87,6 +87,7 @@ export default function CreateRequestScreen() {
   const [selectedSite, setSelectedSite] = useState<Site | null>(null)
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
   const [hasHygieneDefaultSite, setHasHygieneDefaultSite] = useState(false)
+  const [hasLaIslaMaintenanceSite, setHasLaIslaMaintenanceSite] = useState(false)
 
   const [categories, setCategories] = useState<MaterialCategory[]>([])
   const [categoriesLoading, setCategoriesLoading] = useState(true)
@@ -164,11 +165,12 @@ export default function CreateRequestScreen() {
 
   // Kullanıcı GMO'ya erişebiliyorsa (site_id listesinde varsa) TÜM kategorileri görebilir
   const userHasGmoAccess = hasHygieneDefaultSite
+  const includeHeadquartersCategories = hasLaIslaMaintenanceSite
   // Seçili site GMO ise sadece ofis kategorileri göster
   const selectedSiteIsGmo = selectedSite?.id === SPECIAL_SITE_ID || selectedSite?.name === 'Genel Merkez Ofisi'
 
   const filteredCategories = useMemo(() => {
-    if (userHasGmoAccess) {
+    if (userHasGmoAccess || includeHeadquartersCategories) {
       return categories
     }
     return categories.filter((category) => {
@@ -180,9 +182,12 @@ export default function CreateRequestScreen() {
       }
       return !selectedSiteIsGmo
     })
-  }, [categories, userHasGmoAccess, selectedSiteIsGmo])
+  }, [categories, userHasGmoAccess, includeHeadquartersCategories, selectedSiteIsGmo])
 
   const allowedSearchCategories = useMemo(() => {
+    if (includeHeadquartersCategories) {
+      return filteredCategories.map((c) => c.name)
+    }
     if (userHasGmoAccess) {
       if (selectedSiteIsGmo) {
         return filteredCategories
@@ -194,7 +199,7 @@ export default function CreateRequestScreen() {
         .map((c) => c.name)
     }
     return filteredCategories.map((c) => c.name)
-  }, [filteredCategories, userHasGmoAccess, selectedSiteIsGmo])
+  }, [filteredCategories, userHasGmoAccess, includeHeadquartersCategories, selectedSiteIsGmo])
 
   const loadSitesAndCategories = useCallback(async () => {
     if (!profile || !user) return
@@ -209,6 +214,7 @@ export default function CreateRequestScreen() {
     }
 
     setHasHygieneDefaultSite(ids.includes(SPECIAL_SITE_ID))
+    setHasLaIslaMaintenanceSite(ids.includes(LA_ISLA_MAINTENANCE_SITE_ID))
 
     if (ids.length === 1) {
       const { data } = await supabase.from('sites').select('id, name, image_url').eq('id', ids[0]).maybeSingle()

@@ -150,13 +150,26 @@ export function TerminationModal({ open, onOpenChange, showToast, onCompleted }:
         declaration:
           'İşbu tutanak ile, uhdemde bulunan ve yukarıda dökümü verilen tüm malzeme ve ürünleri eksiksiz, sağlam ve kullanıma elverişli halde ilgili birime iade ettiğimi; zimmetimde başkaca şirket malı kalmadığını beyan ve kabul ederim.',
       }
-      const { recordZimmetOperation } = await import('@/services/zimmet-operations.service')
-      await recordZimmetOperation({
-        operationType: 'termination',
-        personName: selectedEmployee.first_name || 'Çalışan',
-        personEmail: selectedEmployee.work_email,
-        snapshot: payload,
-      })
+      const { groupInventoryBySite, inventoryWarehouseName, recordZimmetOperation } = await import(
+        '@/services/zimmet-operations.service'
+      )
+      const personName = selectedEmployee.first_name || 'Çalışan'
+      for (const [siteId, group] of groupInventoryBySite(matched)) {
+        const siteRows = await assignmentRowsFromInventory(group)
+        const warehouseName = inventoryWarehouseName(group[0])
+        await recordZimmetOperation({
+          operationType: 'termination',
+          personName,
+          personEmail: selectedEmployee.work_email,
+          siteId,
+          snapshot: {
+            ...payload,
+            rows: siteRows,
+            warehouseScopeLine: `Kaynak depo: ${warehouseName}`,
+            rowCountNote: `${siteRows.length} ürün satırı iade edilmiştir`,
+          },
+        })
+      }
       const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
       await downloadZimmetAssignmentListPdf(payload)
 

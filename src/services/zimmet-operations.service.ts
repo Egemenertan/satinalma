@@ -40,12 +40,34 @@ const RETURNED_SELECT = `
   warehouse:sites!user_inventory_source_warehouse_id_fkey(name)
 `
 
+export function groupInventoryBySite<T extends object>(rows: T[]) {
+  const groups = new Map<string, T[]>()
+  for (const row of rows) {
+    const siteId = (row as { source_warehouse_id?: string | null }).source_warehouse_id
+    if (!siteId) continue
+    const list = groups.get(siteId) || []
+    list.push(row)
+    groups.set(siteId, list)
+  }
+  return groups
+}
+
+export function inventoryWarehouseName(row: object) {
+  const warehouse = (row as { warehouse?: { name?: string } | { name?: string }[] | null }).warehouse
+  const named = Array.isArray(warehouse) ? warehouse[0]?.name : warehouse?.name
+  return named?.trim() || 'Depo'
+}
+
 export async function recordZimmetOperation(input: {
   operationType: ZimmetOperationType
   personName: string
   personEmail?: string | null
+  siteId: string
   snapshot: ZimmetAssignmentListPdfPayload
 }) {
+  const siteId = input.siteId.trim()
+  if (!siteId) return
+
   const supabase = createClient()
   const { data: auth } = await supabase.auth.getUser()
   if (!auth.user) return
@@ -57,19 +79,28 @@ export async function recordZimmetOperation(input: {
     performed_by: auth.user.id,
     performed_by_name: input.snapshot.exportedByDisplayName || null,
     item_count: input.snapshot.rows.length,
+    site_id: siteId,
     snapshot: input.snapshot as unknown as Json,
   })
 
   if (error) console.error('İşlem geçmişi yazılamadı:', error)
 }
 
-export async function fetchStoredZimmetOperations(): Promise<StoredZimmetOperation[]> {
+/** siteIds null ise çağıranın tüm yetkili siteleri (RLS) döner. Boş dizi hiçbir kayıt döndürmez. */
+export async function fetchStoredZimmetOperations(siteIds?: string[] | null): Promise<StoredZimmetOperation[]> {
+  const ids = siteIds?.map((id) => id.trim()).filter(Boolean)
+  if (ids && ids.length === 0) return []
+
   const supabase = createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('zimmet_operations')
-    .select('id, operation_type, person_name, person_email, performed_by_name, item_count, snapshot, created_at')
+    .select('id, operation_type, person_name, person_email, performed_by_name, item_count, snapshot, created_at, site_id')
     .order('created_at', { ascending: false })
     .limit(100)
+
+  if (ids) query = query.in('site_id', ids)
+
+  const { data, error } = await query
 
   if (error) {
     console.error('İşlem geçmişi okunamadı:', error)
@@ -88,15 +119,22 @@ export async function fetchStoredZimmetOperations(): Promise<StoredZimmetOperati
   }))
 }
 
-export async function fetchPastTerminationRows() {
+export async function fetchPastTerminationRows(siteIds?: string[] | null) {
+  const ids = siteIds?.map((id) => id.trim()).filter(Boolean)
+  if (ids && ids.length === 0) return []
+
   const supabase = createClient()
-  const { data, error } = await supabase
+  let query = supabase
     .from('user_inventory')
     .select(RETURNED_SELECT)
     .eq('status', 'returned')
     .ilike('notes', '%İlişki kesildi%')
     .order('return_date', { ascending: false })
     .limit(2000)
+
+  if (ids) query = query.in('source_warehouse_id', ids)
+
+  const { data, error } = await query
 
   if (error) {
     console.error('Eski ilişki kesme kayıtları okunamadı:', error)

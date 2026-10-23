@@ -16,7 +16,7 @@ import {
 } from 'lucide-react'
 import { CreateMaterialModal } from '@/components/CreateMaterialModal'
 import { MaterialSearchBar } from '@/components/MaterialSearchBar'
-import { SPECIAL_SITE_ID } from '@/lib/constants'
+import { LA_ISLA_MAINTENANCE_SITE_ID, SPECIAL_SITE_ID } from '@/lib/constants'
 import { isSharedMaterialCategory } from '@/lib/material-category-access'
 import { enrichSiteImagesFromCatalog, getDPointHeroPublicUrl } from '@/lib/site-images'
 
@@ -89,6 +89,7 @@ export default function CreatePurchaseRequestPage() {
   const [isGenelMerkezUser, setIsGenelMerkezUser] = useState(false)
   const [hasHygieneDefaultSite, setHasHygieneDefaultSite] = useState(false)
   const [hasMultipleSiteTypes, setHasMultipleSiteTypes] = useState(false)
+  const [includeHeadquartersCategories, setIncludeHeadquartersCategories] = useState(false)
   const hasOfficeCategoryAccess = isGenelMerkezUser || hasHygieneDefaultSite || hasMultipleSiteTypes
   
   // Category state
@@ -187,6 +188,7 @@ export default function CreatePurchaseRequestPage() {
 
           // Belirli siteye bağlı kullanıcılar için kategori varsayılanı
           setHasHygieneDefaultSite(userSiteIds.includes(HYGIENE_DEFAULT_SITE_ID))
+          setIncludeHeadquartersCategories(userSiteIds.includes(LA_ISLA_MAINTENANCE_SITE_ID))
           
           // Kullanıcının hem Genel Merkez hem de başka sitelere erişimi var mı kontrol et
           const hasGenelMerkez = userSiteIds.includes(SPECIAL_SITE_ID)
@@ -619,7 +621,7 @@ export default function CreatePurchaseRequestPage() {
   }
 
   const filteredCategories = categories.filter((category) => {
-    if (hasMultipleSiteTypes) {
+    if (hasMultipleSiteTypes || includeHeadquartersCategories) {
       return true
     }
 

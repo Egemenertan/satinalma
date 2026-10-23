@@ -10,6 +10,7 @@ export interface PDFInvoiceData {
   notes?: string
   supplier_name: string
   item_name: string
+  purpose?: string
   added_by: string
   
   // Individual invoice breakdown
@@ -51,6 +52,7 @@ export interface PDFOrderData {
   order_number?: string
   supplier_name: string
   item_name: string
+  purpose?: string
   quantity: number
   unit: string
   amount: number

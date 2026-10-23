@@ -141,10 +141,21 @@ export async function fetchRequestProcess(requestId: string): Promise<RequestPro
     console.error('request-process history query:', historyResult.error)
   }
 
+  const laIslaSiteId = 'e8e66dc0-108a-463e-b461-b6d5b08d3beb'
+  const hasanEmail = 'hasan.oztunc@dovecgroup.com'
+  let purchasingSender = siteManagers
+  if (request.site_id === laIslaSiteId) {
+    const hasan =
+      [...siteWarehouseLeads, ...siteManagers].find(
+        (person) => person.email?.toLowerCase() === hasanEmail
+      ) ?? null
+    purchasingSender = hasan ? [hasan] : siteManagers
+  }
+
   const assignees: ProcessAssignees = {
     warehouseManagers,
-    siteManagers,
-    siteWarehouseLeads,
+    siteManagers: purchasingSender,
+    siteWarehouseLeads: request.site_id === laIslaSiteId ? [] : siteWarehouseLeads,
     departmentHeads,
   }
 

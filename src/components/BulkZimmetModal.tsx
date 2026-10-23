@@ -456,6 +456,7 @@ export default function BulkZimmetModal({
       operationType: 'delivery',
       personName: person,
       personEmail: selectedEmployee?.work_email,
+      siteId: targetWarehouseId,
       snapshot: payload,
     })
     await downloadZimmetAssignmentListPdf(payload)

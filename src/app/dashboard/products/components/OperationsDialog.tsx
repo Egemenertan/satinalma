@@ -18,6 +18,8 @@ interface OperationsDialogProps {
   onTerminate: () => void
   onReport: () => void
   showToast: (message: string, type: 'success' | 'error' | 'info') => void
+  /** null: tüm yetkili siteler. Dizi: yalnızca bu siteler. */
+  siteIds: string[] | null
 }
 
 type HistoryItem = {
@@ -81,16 +83,19 @@ export function OperationsDialog({
   onTerminate,
   onReport,
   showToast,
+  siteIds,
 }: OperationsDialogProps) {
   const [history, setHistory] = useState<HistoryItem[]>([])
   const [loading, setLoading] = useState(false)
   const [printingId, setPrintingId] = useState<string | null>(null)
+  const siteKey = siteIds === null ? '*' : siteIds.slice().sort().join(',')
 
   useEffect(() => {
     if (!open) return
     let cancelled = false
     setLoading(true)
-    Promise.all([fetchStoredZimmetOperations(), fetchPastTerminationRows()])
+    const scope = siteKey === '*' ? null : siteKey ? siteKey.split(',') : []
+    Promise.all([fetchStoredZimmetOperations(scope), fetchPastTerminationRows(scope)])
       .then(([stored, pastRows]) => {
         if (cancelled) return
         const recorded: HistoryItem[] = stored.map((item) => ({
@@ -114,7 +119,7 @@ export function OperationsDialog({
     return () => {
       cancelled = true
     }
-  }, [open])
+  }, [open, siteKey])
 
   const reprint = async (item: HistoryItem) => {
     setPrintingId(item.id)
@@ -199,7 +204,9 @@ export function OperationsDialog({
               </div>
             )}
             {!loading && history.length === 0 && (
-              <p className="px-3 py-8 text-center text-sm text-gray-500">Henüz kayıtlı işlem yok</p>
+              <p className="px-3 py-8 text-center text-sm text-gray-500">
+                {siteIds === null ? 'Henüz kayıtlı işlem yok' : 'Bu sitede kayıtlı işlem yok'}
+              </p>
             )}
             {!loading &&
               history.map((item) => (

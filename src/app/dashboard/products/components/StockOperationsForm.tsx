@@ -313,6 +313,7 @@ export function StockOperationsForm({
         operationType: 'delivery',
         personName: person,
         personEmail: input.employee.work_email,
+        siteId: input.destinationId,
         snapshot: payload,
       })
       await downloadZimmetAssignmentListPdf(payload)

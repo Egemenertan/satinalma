@@ -160,7 +160,8 @@ export function useInvoiceGroupOrders(searchTerm: string = '') {
             item_name,
             unit,
             brand,
-            specifications
+            specifications,
+            purpose
           )
         `)
         .in('id', orderIds)

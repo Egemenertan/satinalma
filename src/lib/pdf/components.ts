@@ -35,6 +35,11 @@ const formatShortDocumentNumber = (value?: string | null): string => {
   return trimmed.length > 7 ? trimmed.slice(-7) : trimmed
 }
 
+const formatPurpose = (purpose?: string | null): string => {
+  const trimmed = purpose?.trim()
+  return trimmed ? escapeHtml(trimmed) : '—'
+}
+
 const escapeHtml = (value: string): string =>
   value
     .replace(/&/g, '&amp;')
@@ -178,6 +183,7 @@ export const buildOrders = (orders: PDFOrderData[]): string => {
             <th>Sipariş No</th>
             <th>Tedarikçi</th>
             <th>Malzeme</th>
+            <th>Kullanım Amacı</th>
             <th>Miktar</th>
             <th>Sipariş Tarihi</th>
           </tr>
@@ -191,6 +197,7 @@ export const buildOrders = (orders: PDFOrderData[]): string => {
               </td>
               <td>${escapeHtml(order.supplier_name)}</td>
               <td>${escapeHtml(order.item_name)}</td>
+              <td class="purpose-cell">${formatPurpose(order.purpose)}</td>
               <td>${order.quantity} ${escapeHtml(order.unit || 'adet')}</td>
               <td>${formatDate(order.created_at)}</td>
             </tr>
@@ -276,6 +283,11 @@ export const buildInvoicesList = (invoices: PDFInvoiceData[]): string => {
                   <div class="invoice-amount">${formatNumber(totalGrandTotal)} ${currency}</div>
                 ` : ''}
                 
+                <div class="invoice-materials">
+                  ${groupInvoices.map((invoice) => `
+                    <div>${escapeHtml(invoice.item_name)} — ${formatPurpose(invoice.purpose)}</div>
+                  `).join('')}
+                </div>
                 <div class="invoice-meta">Ekleyen: ${firstInvoice.added_by}</div>
                 ${firstInvoice.notes ? `<div class="invoice-notes"><strong>Not:</strong> ${firstInvoice.notes}</div>` : ''}
                
@@ -306,6 +318,7 @@ export const buildInvoicesList = (invoices: PDFInvoiceData[]): string => {
             <div class="invoice-amount">${formatNumber(invoice.amount)} ${invoice.currency}</div>
               `}
               
+            <div class="invoice-meta">Kullanım amacı: ${formatPurpose(invoice.purpose)}</div>
             <div class="invoice-meta">Ekleyen: ${invoice.added_by}</div>
             ${invoice.notes ? `<div class="invoice-notes"><strong>Not:</strong> ${invoice.notes}</div>` : ''}
           </div>
@@ -359,7 +372,7 @@ export const buildInvoiceSummary = (invoices: PDFInvoiceData[], statistics: PDFS
         
         ${invoices.map((invoice) => `
           <div class="summary-row">
-            <span class="summary-label">${invoice.supplier_name} - ${invoice.item_name}</span>
+            <span class="summary-label">${invoice.supplier_name} - ${invoice.item_name}<span class="summary-purpose">Kullanım amacı: ${formatPurpose(invoice.purpose)}</span></span>
             <span class="summary-value">${formatNumber(invoice.amount)} ${invoice.currency}</span>
           </div>
         `).join('')}
@@ -398,7 +411,7 @@ export const buildInvoiceSummary = (invoices: PDFInvoiceData[], statistics: PDFS
       
       ${invoices.map((invoice) => `
         <div class="summary-row">
-          <span class="summary-label">${invoice.supplier_name} - ${invoice.item_name}</span>
+          <span class="summary-label">${invoice.supplier_name} - ${invoice.item_name}<span class="summary-purpose">Kullanım amacı: ${formatPurpose(invoice.purpose)}</span></span>
           <span class="summary-value">${formatNumber(invoice.grand_total || invoice.amount)} ${invoice.currency}</span>
         </div>
       `).join('')}

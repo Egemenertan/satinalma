@@ -464,13 +464,36 @@ export function ZimmetReportModal({
         rows: tableRows,
       }
       const { downloadZimmetAssignmentListPdf } = await import('@/lib/pdf/zimmetAssignmentListPdf')
-      const { recordZimmetOperation } = await import('@/services/zimmet-operations.service')
-      await recordZimmetOperation({
-        operationType: 'report',
-        personName: selectedEmployee.first_name || 'Çalışan',
-        personEmail: selectedEmployee.work_email,
-        snapshot: payload,
-      })
+      const { groupInventoryBySite, inventoryWarehouseName, recordZimmetOperation } = await import(
+        '@/services/zimmet-operations.service'
+      )
+      const personName = selectedEmployee.first_name || 'Çalışan'
+      if (sourceWarehouseId) {
+        await recordZimmetOperation({
+          operationType: 'report',
+          personName,
+          personEmail: selectedEmployee.work_email,
+          siteId: sourceWarehouseId,
+          snapshot: payload,
+        })
+      } else {
+        for (const [siteId, group] of groupInventoryBySite(matched)) {
+          const siteRows = await assignmentRowsFromInventory(group)
+          const warehouseName = inventoryWarehouseName(group[0])
+          await recordZimmetOperation({
+            operationType: 'report',
+            personName,
+            personEmail: selectedEmployee.work_email,
+            siteId,
+            snapshot: {
+              ...payload,
+              rows: siteRows,
+              warehouseScopeLine: `Kaynak depo / site filtresi: ${warehouseName}`,
+              rowCountNote: `${siteRows.length} ürün satırı listelenmiştir (aynı ürün birleştirildi)`,
+            },
+          })
+        }
+      }
       await downloadZimmetAssignmentListPdf(payload)
 
       showToast(`PDF indirildi (${tableRows.length} ürün).`, 'success')
