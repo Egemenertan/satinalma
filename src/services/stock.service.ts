@@ -463,6 +463,46 @@ export async function addStock(
   )
 }
 
+/** Operasyon/depo yöneticisi, gördüğü her ürüne yetkili deposuna giriş yapar. */
+export async function addStockIntoOperatedWarehouse(
+  productId: string,
+  warehouseId: string,
+  quantity: number,
+  reason?: string,
+  supplierName?: string,
+  productCondition?: 'yeni' | 'kullanılmış' | 'arızalı' | 'hek',
+  unitPrice?: number,
+  currency?: string,
+  invoiceFiles?: File[],
+  serialNumber?: string
+) {
+  const supabase = createClient()
+  const { data: movementId, error } = await supabase.rpc('add_stock_into_operated_warehouse', {
+    p_product_id: productId,
+    p_warehouse_id: warehouseId,
+    p_quantity: quantity,
+    p_reason: reason ?? null,
+    p_supplier_name: supplierName ?? null,
+    p_product_condition: productCondition ?? null,
+    p_unit_price: unitPrice ?? null,
+    p_currency: currency ?? 'TRY',
+    p_serial_number: serialNumber ?? null,
+  })
+  if (error) throw new Error(error.message)
+
+  if (invoiceFiles && invoiceFiles.length > 0 && movementId) {
+    try {
+      const imageUrls = await uploadInvoiceImages(invoiceFiles, String(movementId))
+      await supabase
+        .from('stock_movements')
+        .update({ invoice_images: imageUrls })
+        .eq('id', String(movementId))
+    } catch (uploadError) {
+      console.error('Invoice upload error:', uploadError)
+    }
+  }
+}
+
 /**
  * Stok çıkışı
  */
@@ -532,7 +572,8 @@ export async function transferStockIntoOperatedWarehouse(
   fromWarehouseId: string,
   toWarehouseId: string,
   quantity: number,
-  reason?: string
+  reason?: string,
+  assignedTo?: string
 ) {
   const supabase = createClient()
   const { error } = await supabase.rpc('transfer_stock_into_operated_warehouse', {
@@ -541,6 +582,7 @@ export async function transferStockIntoOperatedWarehouse(
     p_to_warehouse_id: toWarehouseId,
     p_quantity: quantity,
     p_reason: reason ?? null,
+    p_assigned_to: assignedTo ?? null,
   })
   if (error) throw new Error(error.message)
 }

@@ -12,7 +12,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, ChevronDown, Truck } from 'lucide-react'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, ChevronDown } from 'lucide-react'
 import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct, useProductsInsights } from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
@@ -55,7 +55,6 @@ export default function ProductsPage() {
   const [showBulkActions, setShowBulkActions] = useState(false)
   const [selectingAllFiltered, setSelectingAllFiltered] = useState(false)
   const [showBulkZimmetModal, setShowBulkZimmetModal] = useState(false)
-  const [showBulkTeslimModal, setShowBulkTeslimModal] = useState(false)
   const [showZimmetReportModal, setShowZimmetReportModal] = useState(false)
   const [showTerminationModal, setShowTerminationModal] = useState(false)
   const [showOperationsMenu, setShowOperationsMenu] = useState(false)
@@ -237,10 +236,7 @@ export default function ProductsPage() {
     const operated = new Set(warehouseAccess.operateWarehouseIds)
     if (operated.size === 0) return false
     if (siteId) return operated.has(siteId)
-    return (
-      warehouseAccess.warehouseIds.length > 0 &&
-      warehouseAccess.warehouseIds.every((id) => operated.has(id))
-    )
+    return true
   }, [warehouseAccess, siteId])
   const canReceiveInbound =
     !warehouseAccess.canManageAll && managesViewedWarehouse && !operatesViewedWarehouse
@@ -306,7 +302,6 @@ export default function ProductsPage() {
 
   const handleBulkZimmetSuccess = () => {
     setShowBulkZimmetModal(false)
-    setShowBulkTeslimModal(false)
     setSelectedProducts([])
     setShowBulkActions(false)
     queryClient.invalidateQueries({ queryKey: ['products'] })
@@ -799,17 +794,6 @@ export default function ProductsPage() {
                 Temizle
               </Button>
               <Button
-                variant="outline"
-                onClick={() => {
-                  if (selectedProducts.length === 0) return
-                  setShowBulkTeslimModal(true)
-                }}
-                className="h-10 rounded-xl border-gray-200 bg-white"
-              >
-                <Truck className="mr-2 h-4 w-4" />
-                Toplu teslim
-              </Button>
-              <Button
                 onClick={handleBulkStockOperations}
                 className="h-10 rounded-xl bg-neutral-950 px-4 text-white hover:bg-neutral-800"
               >
@@ -824,14 +808,6 @@ export default function ProductsPage() {
       <BulkZimmetModal
         open={showBulkZimmetModal}
         onOpenChange={setShowBulkZimmetModal}
-        onSuccess={handleBulkZimmetSuccess}
-        showToast={showToast}
-        selectedProductIds={selectedProducts}
-      />
-      <BulkZimmetModal
-        mode="teslim"
-        open={showBulkTeslimModal}
-        onOpenChange={setShowBulkTeslimModal}
         onSuccess={handleBulkZimmetSuccess}
         showToast={showToast}
         selectedProductIds={selectedProducts}

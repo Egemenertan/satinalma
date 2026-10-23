@@ -1024,6 +1024,20 @@ export type Database = {
         }
         Returns: { product_id: string; total_count: number }[]
       }
+      add_stock_into_operated_warehouse: {
+        Args: {
+          p_product_id: string
+          p_warehouse_id: string
+          p_quantity: number
+          p_reason?: string | null
+          p_supplier_name?: string | null
+          p_product_condition?: string | null
+          p_unit_price?: number | null
+          p_currency?: string | null
+          p_serial_number?: string | null
+        }
+        Returns: string
+      }
       transfer_stock_into_operated_warehouse: {
         Args: {
           p_product_id: string
@@ -1031,6 +1045,7 @@ export type Database = {
           p_to_warehouse_id: string
           p_quantity: number
           p_reason: string | null
+          p_assigned_to?: string | null
         }
         Returns: undefined
       }

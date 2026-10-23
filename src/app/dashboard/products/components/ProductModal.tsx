@@ -44,7 +44,7 @@ interface ProductModalProps {
   canOperateStock?: boolean
   /** Depo yöneticisi: Stok İşlemleri sekmesinde yalnızca stok girişi. */
   inboundOnly?: boolean
-  /** Operasyon rolü: giriş, düzeltme, zimmet ve teslim. */
+  /** Operasyon rolü: giriş, düzeltme, zimmet ve transfer. */
   depotOperate?: boolean
   /** inboundOnly veya depotOperate iken işlem yapılacak depolar. */
   inboundWarehouseIds?: string[]
@@ -396,7 +396,7 @@ export function ProductModal({
                       defaultWarehouseId={defaultWarehouseId}
                       allowedOperations={
                         depotOperate
-                          ? ['giriş', 'düzeltme', 'zimmet', 'teslim']
+                          ? ['giriş', 'düzeltme', 'zimmet', 'transfer']
                           : inboundOnly
                             ? ['giriş', 'zimmet']
                             : undefined

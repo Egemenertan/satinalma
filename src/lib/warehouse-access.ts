@@ -22,7 +22,7 @@ export type WarehouseAccessScope = {
   warehouseIds: string[]
   /** Stok işlemi yapılabilen depolar (manage veya operate) */
   manageWarehouseIds: string[]
-  /** Ürün detayında düzeltme, zimmet ve teslim yapılabilen depolar */
+  /** Ürün detayında düzeltme, zimmet ve transfer yapılabilen depolar */
   operateWarehouseIds: string[]
   /** Tek/çoklu depo ile sınırlı kullanıcı */
   isRestricted: boolean
