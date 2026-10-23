@@ -234,8 +234,9 @@ export class NotificationService {
     const startsInItReview = initialStatus === IT_STATUS_INCELEMEDE
     const queueForMainWarehouse =
       !startsInItReview &&
-      (creatorRole === 'santiye_depo' || creatorRole === 'santiye_depo_siparis' || creatorRole === 'santiye_depo_yonetici') &&
-      isConstructionWarehouseQueueSite(siteId, siteName)
+      (creatorRole === 'santiye_depo_siparis' ||
+        ((creatorRole === 'santiye_depo' || creatorRole === 'santiye_depo_yonetici') &&
+          isConstructionWarehouseQueueSite(siteId, siteName)))
 
     if (startsInItReview) {
       const itEmails = await this.getPazarlamaDepartmentHeadEmails();

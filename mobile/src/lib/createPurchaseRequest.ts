@@ -77,7 +77,9 @@ export async function createMultiMaterialPurchaseRequest(
       initialStatus = 'satın almaya gönderildi'
     } else if (role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? 'beklemede' : 'satın almaya gönderildi'
-    } else if (role === 'santiye_depo' || role === 'santiye_depo_siparis') {
+    } else if (role === 'santiye_depo_siparis') {
+      initialStatus = 'beklemede'
+    } else if (role === 'santiye_depo') {
       initialStatus = queueSite ? 'beklemede' : 'depoda mevcut değil'
     } else if (role === 'purchasing_officer') {
       initialStatus = 'depoda mevcut değil'
@@ -146,7 +148,9 @@ export async function createMultiMaterialPurchaseRequest(
       historyComment = initialStatus === 'beklemede'
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && (role === 'santiye_depo' || role === 'santiye_depo_siparis')) {
+    } else if (!startInItReview && role === 'santiye_depo_siparis') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Sipariş, ana depo kontrolü yapılıyor`
+    } else if (!startInItReview && role === 'santiye_depo') {
       historyComment = initialStatus === 'beklemede'
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`

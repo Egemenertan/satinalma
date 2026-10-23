@@ -9,8 +9,8 @@ export function canEditPurchaseRequest(
   if (userRole === 'site_manager') {
     return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
   }
-  if (userRole === 'santiye_depo' || userRole === 'santiye_depo_yonetici') {
-    return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(status)
+  if (userRole === 'santiye_depo' || userRole === 'santiye_depo_siparis' || userRole === 'santiye_depo_yonetici') {
+    return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok', 'beklemede'].includes(status)
   }
   if (userRole === 'admin') return true
   return ['pending', 'rejected', 'reddedildi'].includes(status)

@@ -226,6 +226,7 @@ export async function createPurchaseRequest(data: {
     // Kullanıcı rolüne ve email'e göre status belirle
     // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
     // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
+    // Eğer santiye_depo_siparis kullanıcısı ise otomatik olarak "beklemede" (ana depo kontrolü) ile oluştur
     // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
     console.log('🔍 Kullanıcı bilgileri:', { 
       email: user.email, 
@@ -247,7 +248,10 @@ export async function createPurchaseRequest(data: {
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
       console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis') {
+    } else if (user.role === 'santiye_depo_siparis') {
+      initialStatus = WAREHOUSE_QUEUE_STATUS
+      console.log('✅ Status:', initialStatus, '(santiye_depo_siparis)')
+    } else if (user.role === 'santiye_depo') {
       initialStatus = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
         ? WAREHOUSE_QUEUE_STATUS
         : 'depoda mevcut değil'
@@ -342,7 +346,9 @@ export async function createPurchaseRequest(data: {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? 'Talep oluşturuldu (Şantiye Depo Yöneticisi — depo kontrolü bekleniyor)'
         : 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
+    } else if (!startInItReview && user.role === 'santiye_depo_siparis') {
+      historyComment = 'Talep oluşturuldu (Şantiye Depo Sipariş — ana depo kontrolü yapılıyor)'
+    } else if (!startInItReview && user.role === 'santiye_depo') {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? 'Talep oluşturuldu (Şantiye Depo — depo kontrolü bekleniyor)'
         : 'Talep oluşturuldu (Şantiye Depo - Otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu)'
@@ -657,7 +663,10 @@ export async function createMultiMaterialPurchaseRequest(data: {
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
       console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
-    } else if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis') {
+    } else if (user.role === 'santiye_depo_siparis') {
+      initialStatus = WAREHOUSE_QUEUE_STATUS
+      console.log('✅ Status:', initialStatus, '(santiye_depo_siparis)')
+    } else if (user.role === 'santiye_depo') {
       initialStatus = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
         ? WAREHOUSE_QUEUE_STATUS
         : 'depoda mevcut değil'
@@ -754,7 +763,9 @@ export async function createMultiMaterialPurchaseRequest(data: {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis')) {
+    } else if (!startInItReview && user.role === 'santiye_depo_siparis') {
+      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Sipariş, ana depo kontrolü yapılıyor`
+    } else if (!startInItReview && user.role === 'santiye_depo') {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo tarafından otomatik olarak "Depoda Mevcut Değil" durumunda oluşturuldu`
@@ -922,7 +933,7 @@ export async function updatePurchaseRequest(data: {
       
       // Santiye Depo ve Santiye Depo Yöneticisi: pending, rejected, kısmen gönderildi, depoda mevcut değil
       if (user.role === 'santiye_depo' || user.role === 'santiye_depo_siparis' || user.role === 'santiye_depo_yonetici') {
-        return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil'].includes(existingRequest.status)
+        return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'beklemede'].includes(existingRequest.status)
       }
       
       // Admin: her durumda düzenleyebilir

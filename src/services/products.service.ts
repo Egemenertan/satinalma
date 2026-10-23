@@ -541,6 +541,27 @@ function sanitizeSearchTerm(value: string) {
   return value.replace(/[%_,()"]/g, ' ').replace(/\s+/g, ' ').trim()
 }
 
+/** Türkçe ı/I/İ ve diğer karakterleri ASCII'ye katlar — tırmık ↔ TIRMIK */
+function foldTurkishSearch(value: string) {
+  return value
+    .replace(/ı/g, 'i')
+    .replace(/İ/g, 'i')
+    .replace(/I/g, 'i')
+    .replace(/[şŞ]/g, 's')
+    .replace(/[ğĞ]/g, 'g')
+    .replace(/[üÜ]/g, 'u')
+    .replace(/[öÖ]/g, 'o')
+    .replace(/[çÇ]/g, 'c')
+    .toLocaleLowerCase('en-US')
+}
+
+function productSearchOrFilter(term: string) {
+  const variants = [...new Set([term, foldTurkishSearch(term)].filter(Boolean))]
+  return variants
+    .flatMap((value) => [`name.ilike."%${value}%"`, `sku.ilike."%${value}%"`])
+    .join(',')
+}
+
 function emptyProductPage(page: number, totalCount = 0) {
   return {
     products: [] as ProductWithDetails[],
@@ -664,13 +685,12 @@ async function fetchProductsPageByIds(
   if (uniqueIds.length === 0) return emptyProductPage(page)
 
   const safe = searchTerm ? sanitizeSearchTerm(searchTerm) : ''
-  const pattern = safe ? `%${safe}%` : ''
   const meta: { id: string; created_at: string | null }[] = []
 
   for (const chunk of chunkIds(uniqueIds)) {
     let query = supabase.from('products').select('id, created_at').in('id', chunk)
     query = applyProductCatalogFilters(query, filters)
-    if (pattern) query = query.or(`name.ilike."${pattern}",sku.ilike."${pattern}"`)
+    if (safe) query = query.or(productSearchOrFilter(safe))
     const { data, error } = await query
     if (error) {
       console.error('Ürün kimlikleri okunamadı:', error)
@@ -775,8 +795,7 @@ async function fetchProductsByTextSearch(
   const safe = sanitizeSearchTerm(searchTerm)
   if (!safe) return emptyProductPage(page)
 
-  const pattern = `%${safe}%`
-  const orParts = [`name.ilike."${pattern}"`, `sku.ilike."${pattern}"`]
+  const orParts = productSearchOrFilter(safe)
 
   const warehouseIds = filters?.siteId
     ? [filters.siteId]
@@ -807,7 +826,7 @@ async function fetchProductsByTextSearch(
   let query = supabase
     .from('products')
     .select(select, { count: 'exact' })
-    .or(orParts.join(','))
+    .or(orParts)
     .order('created_at', { ascending: false })
 
   if (warehouseIds.length === 1) {

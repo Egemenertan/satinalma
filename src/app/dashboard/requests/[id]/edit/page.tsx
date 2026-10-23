@@ -963,7 +963,7 @@ export default function EditPurchaseRequestPage() {
           return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
         }
         if (role === 'santiye_depo' || role === 'santiye_depo_siparis' || role === 'santiye_depo_yonetici') {
-          return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok'].includes(currentStatus)
+          return ['pending', 'rejected', 'reddedildi', 'kısmen gönderildi', 'depoda mevcut değil', 'ana depoda yok', 'beklemede'].includes(currentStatus)
         }
         if (role === 'admin') {
           return true
