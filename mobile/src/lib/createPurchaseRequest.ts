@@ -69,10 +69,8 @@ export async function createMultiMaterialPurchaseRequest(
 
     let initialStatus = 'pending'
     const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+    // Ofis ekipmanı (IT) her sitede ve rolde önce IT incelemesine gider.
     const startInItReview = useItWorkflow
-      && role !== 'santiye_depo'
-      && role !== 'santiye_depo_siparis'
-      && !(role === 'santiye_depo_yonetici' && queueSite)
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
     } else if (email === HASAN_AUTO_APPROVE_EMAIL) {

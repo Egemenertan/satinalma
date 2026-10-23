@@ -373,9 +373,9 @@ export default function WarehouseManagerMaterialCard({
           if (statusError) {
             console.error('❌ Status güncelleme hatası:', statusError)
           } else {
-            await supabase.from('approval_history').insert({
+            const { error: historyError } = await supabase.from('approval_history').insert({
               purchase_request_id: request.id,
-              action: 'updated',
+              action: 'approved',
               performed_by: user.id,
               comments:
                 unavailableStatus === 'satın almaya gönderildi'
@@ -384,6 +384,9 @@ export default function WarehouseManagerMaterialCard({
                     ? 'Depo yöneticisi — depoda mevcut değil'
                     : 'Warehouse Manager — ana depoda yok olarak işaretlendi',
             })
+            if (historyError) {
+              console.error('Depo işaretleme geçmişi yazılamadı:', historyError)
+            }
 
             if (unavailableStatus === 'ana depoda yok') {
               try {

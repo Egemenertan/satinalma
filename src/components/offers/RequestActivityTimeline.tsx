@@ -5,9 +5,8 @@ import { History, Loader2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import {
   formatActivityDateTime,
-  mapApprovalHistoryToActivity,
+  loadRequestActivities,
   type RequestActivityItem,
-  type RequestActivityRow,
 } from '@/lib/request-activity'
 
 type Props = {
@@ -29,30 +28,9 @@ export default function RequestActivityTimeline({ requestId, refreshKey }: Props
       setError(null)
       try {
         const supabase = createClient()
-        const { data, error: fetchError } = await supabase
-          .from('approval_history')
-          .select(
-            `
-            id,
-            action,
-            comments,
-            created_at,
-            performed_by,
-            profiles:performed_by (
-              full_name,
-              email,
-              role
-            )
-          `
-          )
-          .eq('purchase_request_id', requestId)
-          .order('created_at', { ascending: true })
-
-        if (fetchError) throw fetchError
+        const items = await loadRequestActivities(supabase, requestId)
         if (cancelled) return
-
-        const rows = (data || []) as unknown as RequestActivityRow[]
-        setItems(mapApprovalHistoryToActivity(rows))
+        setItems(items)
       } catch (e: unknown) {
         if (cancelled) return
         const message = e instanceof Error ? e.message : 'Geçmiş yüklenemedi'

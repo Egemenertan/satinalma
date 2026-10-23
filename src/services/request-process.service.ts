@@ -1,8 +1,6 @@
+import { IT_WORKFLOW_STATUSES } from '@/lib/it-workflow'
 import { createClient } from '@/lib/supabase/client'
-import {
-  mapApprovalHistoryToActivity,
-  type RequestActivityRow,
-} from '@/lib/request-activity'
+import { loadRequestActivities } from '@/lib/request-activity'
 import {
   buildRequestProcess,
   type ProcessAssignees,
@@ -60,6 +58,25 @@ async function fetchPeopleByRole(
   return (data || []).map((row) => toPerson(row as ProfileRow)).filter((person): person is ProcessPerson => Boolean(person))
 }
 
+async function fetchPersonByEmail(
+  supabase: ReturnType<typeof createClient>,
+  email: string
+): Promise<ProcessPerson | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, full_name, email, role, department')
+    .eq('email', email)
+    .eq('is_active', true)
+    .maybeSingle()
+
+  if (error) {
+    console.error('request-process email query:', error)
+    return null
+  }
+
+  return toPerson(data as ProfileRow | null)
+}
+
 export async function fetchRequestProcess(requestId: string): Promise<RequestProcessModel> {
   const supabase = createClient()
 
@@ -112,34 +129,19 @@ export async function fetchRequestProcess(requestId: string): Promise<RequestPro
     requester,
   }
 
-  const [historyResult, warehouseManagers, siteManagers, siteWarehouseLeads, departmentHeads] = await Promise.all([
-    supabase
-      .from('approval_history')
-      .select(
-        `
-        id,
-        action,
-        comments,
-        created_at,
-        performed_by,
-        profiles:performed_by (
-          full_name,
-          email,
-          role
-        )
-      `
-      )
-      .eq('purchase_request_id', requestId)
-      .order('created_at', { ascending: true }),
+  const status = (request.status || '').toLowerCase()
+  const isItRequest =
+    request.it_workflow_applies === true ||
+    (IT_WORKFLOW_STATUSES as readonly string[]).includes(status)
+
+  const [history, warehouseManagers, siteManagers, siteWarehouseLeads, departmentHeads, itApprover] = await Promise.all([
+    loadRequestActivities(supabase, requestId),
     fetchPeopleByRole(supabase, 'warehouse_manager'),
     request.site_id ? fetchPeopleByRole(supabase, 'site_manager', request.site_id) : Promise.resolve([]),
     request.site_id ? fetchPeopleByRole(supabase, 'santiye_depo_yonetici', request.site_id) : Promise.resolve([]),
     fetchPeopleByRole(supabase, 'department_head', request.site_id),
+    isItRequest ? fetchPersonByEmail(supabase, 'mert.turk@dovecgroup.com') : Promise.resolve(null),
   ])
-
-  if (historyResult.error) {
-    console.error('request-process history query:', historyResult.error)
-  }
 
   const laIslaSiteId = 'e8e66dc0-108a-463e-b461-b6d5b08d3beb'
   const hasanEmail = 'hasan.oztunc@dovecgroup.com'
@@ -157,8 +159,8 @@ export async function fetchRequestProcess(requestId: string): Promise<RequestPro
     siteManagers: purchasingSender,
     siteWarehouseLeads: request.site_id === laIslaSiteId ? [] : siteWarehouseLeads,
     departmentHeads,
+    itApprover,
   }
 
-  const history = mapApprovalHistoryToActivity((historyResult.data || []) as unknown as RequestActivityRow[])
   return buildRequestProcess(request, assignees, history)
 }

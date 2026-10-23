@@ -235,11 +235,8 @@ export async function createPurchaseRequest(data: {
     
     let initialStatus = 'pending'
     const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
-    // Şantiye depo talebi önce depo kontrolüne gider. Şantiye depo yöneticisi yalnızca bu şantiyelerde bekler.
+    // Ofis ekipmanı (IT) her sitede ve rolde önce IT incelemesine gider.
     const startInItReview = useItWorkflow
-      && user.role !== 'santiye_depo'
-      && user.role !== 'santiye_depo_siparis'
-      && !(user.role === 'santiye_depo_yonetici' && queueSite)
     
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -373,7 +370,8 @@ export async function createPurchaseRequest(data: {
         user.full_name || user.email || 'Bilinmeyen Kullanıcı',
         data.site_id || undefined,
         data.site_name || undefined,
-        user.role // Department head bildirimi kontrolü için
+        user.role,
+        initialStatus
       )
     } catch (notificationError) {
       console.error('Failed to send notifications:', notificationError)
@@ -647,10 +645,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
     let initialStatus = 'pending'
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7' // GMO Site ID
     const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
+    // Ofis ekipmanı (IT) her sitede ve rolde önce IT incelemesine gider.
     const startInItReview = useItWorkflow
-      && user.role !== 'santiye_depo'
-      && user.role !== 'santiye_depo_siparis'
-      && !(user.role === 'santiye_depo_yonetici' && queueSite)
 
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
@@ -805,7 +801,8 @@ export async function createMultiMaterialPurchaseRequest(data: {
       user.full_name || user.email || 'Bilinmeyen Kullanıcı',
       data.site_id || undefined,
       data.site_name || undefined,
-      user.role // Department head bildirimi kontrolü için
+      user.role,
+      initialStatus
     ).catch(notificationError => {
       console.error('❌ Bildirim gönderilemedi (arka plan):', notificationError)
     })

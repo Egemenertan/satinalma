@@ -42,6 +42,7 @@ export type ProcessAssignees = {
   siteManagers: ProcessPerson[]
   siteWarehouseLeads: ProcessPerson[]
   departmentHeads: ProcessPerson[]
+  itApprover: ProcessPerson | null
 }
 
 export type RequestProcessStep = {
@@ -219,7 +220,12 @@ function historyForStep(stepId: string, history: RequestActivityItem[]): Request
     return chronological.find(
       (item) =>
         item.actorRole === 'Depo Yöneticisi' ||
-        commentsInclude(item.comments, ['ana depoda', 'depoda mevcut', 'depo kontrol'])
+        commentsInclude(item.comments, [
+          'ana depoda yok olarak işaretlendi',
+          'warehouse manager tarafından işaretlendi',
+          'depo yöneticisi — depoda mevcut değil',
+          'depo yöneticisi — ana depoda yok',
+        ])
     )
   }
 
@@ -323,7 +329,11 @@ function buildTemplate(
         id: 'it_review',
         title: 'IT incelemesi',
         roleLabel: 'IT Yönetim',
-        assigneeName: departmentHeadNames === 'Atanacak kişi bekleniyor' ? 'IT ekibi' : departmentHeadNames,
+        assigneeName: assignees.itApprover
+          ? formatPersonName(assignees.itApprover)
+          : departmentHeadNames === 'Atanacak kişi bekleniyor'
+            ? 'IT ekibi'
+            : departmentHeadNames,
       },
       {
         id: 'site_manager_send',
@@ -392,6 +402,29 @@ export function buildRequestProcess(
 
   let template = buildTemplate(workflowKind, request, assignees)
 
+  const warehouseMark = historyForStep('warehouse_check', history)
+  if (
+    warehouseMark &&
+    !template.some((step) => step.id === 'warehouse_check' || step.id === 'warehouse_shipped')
+  ) {
+    const comment = warehouseMark.comments?.toLowerCase() || ''
+    const missedAtDepot = comment.includes('depoda mevcut değil') && !comment.includes('ana depoda yok')
+    const warehouseStep = {
+      id: 'warehouse_check',
+      title: missedAtDepot ? 'Depoda mevcut değil' : 'Ana depoda yok',
+      roleLabel: 'Depo Yöneticisi',
+      assigneeName: warehouseMark.actorName,
+    }
+    const anchor = template.findIndex((step) =>
+      step.id === 'site_manager_send' ||
+      step.id === 'unit_supervisor_send' ||
+      step.id === 'approval' ||
+      step.id === 'sent_to_purchasing'
+    )
+    if (anchor === -1) template.push(warehouseStep)
+    else template.splice(anchor, 0, warehouseStep)
+  }
+
   if (warehouseFulfilled) {
     template = template.filter((step) => !PURCHASING_STEP_IDS.has(step.id))
     if (!template.some((step) => step.id === 'warehouse_shipped')) {
@@ -421,16 +454,20 @@ export function buildRequestProcess(
       stepStatus = 'done'
     }
 
-    const useHistoryActor = step.id === 'created' || (stepStatus === 'done' && Boolean(historyItem))
+    const lockItApprover = step.id === 'it_review'
+    const useHistoryActor =
+      !lockItApprover && (step.id === 'created' || (stepStatus === 'done' && Boolean(historyItem)))
 
     return {
       ...step,
       assigneeName: useHistoryActor ? historyItem?.actorName || step.assigneeName : step.assigneeName,
       roleLabel: useHistoryActor ? historyItem?.actorRole || step.roleLabel : step.roleLabel,
       status: stepStatus,
-      completedAt: useHistoryActor
-        ? historyItem?.createdAt ?? (step.id === 'created' ? request.created_at : null)
-        : null,
+      completedAt: lockItApprover
+        ? historyItem?.createdAt ?? null
+        : useHistoryActor
+          ? historyItem?.createdAt ?? (step.id === 'created' ? request.created_at : null)
+          : null,
     }
   })
 

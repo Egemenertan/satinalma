@@ -1,6 +1,6 @@
 import { createClient } from './supabase/client';
 import { SPECIAL_SITE_ID } from './constants';
-import { normalizeMaterialGroupToken } from './it-workflow';
+import { isPazarlamaDepartment, IT_STATUS_INCELEMEDE, normalizeMaterialGroupToken } from './it-workflow';
 import { isConstructionWarehouseQueueSite } from './site-kind';
 
 // EmailService artık API route üzerinden çağrılıyor (nodemailer client-side'da çalışmaz)
@@ -167,6 +167,26 @@ export class NotificationService {
   }
 
   // Send notification when new purchase request is created (Push + Email)
+  private static async getPazarlamaDepartmentHeadEmails(): Promise<string[]> {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('email, department')
+        .eq('role', 'department_head')
+        .eq('is_active', true);
+
+      if (error) throw error;
+      return (data ?? [])
+        .filter((row) => isPazarlamaDepartment(row.department))
+        .map((row) => row.email)
+        .filter((email): email is string => Boolean(email));
+    } catch (error) {
+      console.error('Failed to get pazarlama department head emails:', error);
+      return [];
+    }
+  }
+
   static async notifyNewPurchaseRequest(
     requestId: string, 
     requestTitle: string, 
@@ -174,7 +194,8 @@ export class NotificationService {
     requesterName: string,
     siteId?: string,
     siteName?: string,
-    creatorRole?: string
+    creatorRole?: string,
+    initialStatus?: string
   ) {
     console.log(`📧 Yeni talep bildirimi gönderiliyor: ${requestNumber}`);
     console.log(`🔍 Site ID: ${siteId || 'YOK'}, Site Name: ${siteName || 'YOK'}, Creator Role: ${creatorRole || 'YOK'}`);
@@ -210,11 +231,17 @@ export class NotificationService {
 
     // Department head talep oluşturduğunda site_manager'a bildirim gönderme
     // Not: "Ana depoda yok" durumunda notifySiteManagerDepotUnavailable ayrıca çağrılacak
+    const startsInItReview = initialStatus === IT_STATUS_INCELEMEDE
     const queueForMainWarehouse =
+      !startsInItReview &&
       (creatorRole === 'santiye_depo' || creatorRole === 'santiye_depo_siparis' || creatorRole === 'santiye_depo_yonetici') &&
       isConstructionWarehouseQueueSite(siteId, siteName)
 
-    if (siteId && creatorRole !== 'department_head' && !queueForMainWarehouse) {
+    if (startsInItReview) {
+      const itEmails = await this.getPazarlamaDepartmentHeadEmails();
+      console.log(`📧 IT incelemesi — pazarlama departman yöneticisi emailler: ${itEmails.join(', ') || 'YOK'}`);
+      userEmails = [...userEmails, ...itEmails];
+    } else if (siteId && creatorRole !== 'department_head' && !queueForMainWarehouse) {
       console.log(`🏗️ Site ID: ${siteId}, site_manager emailleri ekleniyor...`);
       const siteManagerEmails = await this.getUserEmailsByRoles(['site_manager'], siteId);
       console.log(`📧 Site manager emailler: ${siteManagerEmails.join(', ') || 'YOK'}`);
@@ -228,7 +255,7 @@ export class NotificationService {
     }
 
     // Genel Merkez Ofisi talebi: depo yöneticilerine de e-posta (site filtreli profil olmasa da merkez talebi)
-    if (siteId === SPECIAL_SITE_ID) {
+    if (siteId === SPECIAL_SITE_ID && !startsInItReview) {
       const wmEmails = await this.getUserEmailsByRoles(['warehouse_manager']);
       console.log(`📧 Genel Merkez — warehouse_manager emailler: ${wmEmails.join(', ') || 'YOK'}`);
       userEmails = [...userEmails, ...wmEmails];

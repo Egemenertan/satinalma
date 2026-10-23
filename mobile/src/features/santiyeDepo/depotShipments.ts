@@ -106,9 +106,9 @@ export async function markItemDepotNotAvailable(
     if (statusError) {
       return { ok: false, message: statusError.message }
     }
-    await supabase.from('approval_history').insert({
+    const { error: historyError } = await supabase.from('approval_history').insert({
       purchase_request_id: requestId,
-      action: 'updated',
+      action: 'approved',
       performed_by: userId,
       comments:
         unavailableStatus === 'satın almaya gönderildi'
@@ -117,6 +117,9 @@ export async function markItemDepotNotAvailable(
             ? 'Depo yöneticisi — depoda mevcut değil'
             : 'Depo yöneticisi — ana depoda yok olarak işaretlendi',
     })
+    if (historyError) {
+      console.error('Depo işaretleme geçmişi yazılamadı:', historyError.message)
+    }
   } else {
     try {
       await supabase.rpc('update_purchase_request_status_manual', { request_id: requestId })
