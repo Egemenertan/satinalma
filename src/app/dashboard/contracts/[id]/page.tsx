@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { use, useMemo, useState } from 'react'
 import Link from 'next/link'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/button'
@@ -33,7 +33,8 @@ import { useToast } from '@/components/ui/toast'
 import { ArrowLeft, CalendarRange, Pencil } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
-export default function ContractDetailPage({ params }: { params: { id: string } }) {
+export default function ContractDetailPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = use(paramsPromise)
   const { showToast } = useToast()
   const [cancelling, setCancelling] = useState(false)
   const [editOpen, setEditOpen] = useState(false)

@@ -40,7 +40,7 @@ interface ChatMessage {
 export async function POST(request: NextRequest) {
   try {
     // GÜVENLİK: Önce authentication kontrolü yap
-    const authSupabase = createClient()
+    const authSupabase = await createClient()
     const { data: { user }, error: authError } = await authSupabase.auth.getUser()
     
     if (authError || !user) {

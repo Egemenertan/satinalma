@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic'
 export async function GET() {
   try {
     // Kullanıcı kontrolü
-    const supabase = createClient()
+    const supabase = await createClient()
     const { data: { user }, error: userError } = await supabase.auth.getUser()
     
     if (userError || !user) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
+import { createClient } from '@/lib/supabase/server';
 import webpush from 'web-push';
 
 // VAPID setup - only if keys are available
@@ -89,7 +88,7 @@ interface NotificationPayload {
 
 export async function POST(request: NextRequest) {
   try {
-    const supabase = createRouteHandlerClient({ cookies });
+    const supabase = await createClient();
     
     // Get current user and verify admin/manager role
     const { data: { user }, error: authError } = await supabase.auth.getUser();

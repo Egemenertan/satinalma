@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 
 export default async function HomePage() {
   // Server-side authentication kontrolü
-  const supabase = createClient()
+  const supabase = await createClient()
   
   try {
     const { data: { user }, error } = await supabase.auth.getUser()

@@ -30,7 +30,7 @@ import { isConstructionWarehouseQueueSite, WAREHOUSE_QUEUE_STATUS } from './site
 // oturumu varken işleminin ortasında atmamak için bir kez oturumu tazeleyip
 // tekrar deniyoruz.
 async function getAuthenticatedUser() {
-  const supabase = createClient()
+  const supabase = await createClient()
   let { data: { user }, error } = await supabase.auth.getUser()
 
   if (error || !user) {
@@ -178,7 +178,7 @@ Bu bildirim Satın Alma Yönetim Sistemi tarafından otomatik olarak gönderilmi
 }
 
 async function loadActiveItMaterialGroupTokens(
-  supabase: ReturnType<typeof createClient>
+  supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<Set<string>> {
   const { data } = await supabase
     .from('material_group_it_routes')
@@ -212,7 +212,7 @@ export async function createPurchaseRequest(data: {
   try {
     // Gerçek kullanıcıyı al
     const user = await getAuthenticatedUser()
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const itGroupTokens = await loadActiveItMaterialGroupTokens(supabase)
     const useItWorkflow = purchaseLinesTriggerItWorkflow(itGroupTokens, [
@@ -414,7 +414,7 @@ export async function addOffers(requestId: string, offers: Array<{
     // Gerçek kullanıcıyı al
     const user = await getAuthenticatedUser()
 
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Talep var mı kontrol et ve şantiye bilgisini al
     const { data: request, error: requestError } = await supabase
@@ -531,7 +531,7 @@ export async function createMaterialItem(data: {
     console.log('✅ Kullanıcı doğrulandı:', { id: user.id, role: user.role })
     
     // Şimdilik basit çözüm: existing check yap, yoksa manual SQL ile ekle
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Önce kontrol et - bu malzeme zaten var mı?
     console.log('🔍 Malzeme mevcut mu kontrol ediliyor...')
@@ -622,7 +622,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     const user = await getAuthenticatedUser()
     console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
 
-    const supabase = createClient()
+    const supabase = await createClient()
     const itGroupTokens = await loadActiveItMaterialGroupTokens(supabase)
     const useItWorkflow = purchaseLinesTriggerItWorkflow(
       itGroupTokens,
@@ -862,7 +862,7 @@ export async function updatePurchaseRequest(data: {
     const user = await getAuthenticatedUser()
     console.log('👤 Kullanıcı doğrulandı:', { id: user.id, role: user.role })
     
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Önce mevcut request'i kontrol et
     console.log('🔍 Request ID kontrol ediliyor:', {
@@ -1070,7 +1070,7 @@ export async function removePurchaseRequestItem(data: {
 }) {
   try {
     const user = await getAuthenticatedUser()
-    const supabase = createClient()
+    const supabase = await createClient()
 
     const { data: existingRequest, error: requestError } = await supabase
       .from('purchase_requests')
@@ -1154,7 +1154,7 @@ export async function createApproval(data: {
     // Sadece approver'lar onay verebilir
     await checkRole(user.role, ['approver'])
 
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Talep var mı ve onay bekliyor mu kontrol et
     const { data: request, error: requestError } = await supabase
@@ -1208,7 +1208,7 @@ export async function markAsOrdered(requestId: string) {
     // Sadece chief'lar sipariş işaretleyebilir
     await checkRole(user.role, ['chief'])
 
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Talep durumunu kontrol et
     const { data: request, error: requestError } = await supabase
@@ -1242,7 +1242,7 @@ export async function getPurchaseRequests() {
     // Gerçek kullanıcıyı al
     const user = await getAuthenticatedUser()
     
-    const supabase = createClient()
+    const supabase = await createClient()
     
     let query = supabase
       .from('purchase_requests')
@@ -1289,7 +1289,7 @@ export async function getOffers() {
     // Sadece chief'lar teklifleri görebilir
     await checkRole(user.role, ['chief'])
 
-    const supabase = createClient()
+    const supabase = await createClient()
     
     const { data, error } = await supabase
       .from('offers')
@@ -1312,7 +1312,7 @@ export async function getApprovals() {
     // Sadece approver'lar onayları görebilir
     await checkRole(user.role, ['approver'])
 
-    const supabase = createClient()
+    const supabase = await createClient()
     
     const { data, error } = await supabase
       .from('approvals')
@@ -1331,7 +1331,7 @@ export async function getApprovals() {
 // Şantiye harcama tutarını güncelle
 export async function updateSiteExpenses(siteId: string, approvedAmount: number) {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // Mevcut harcama tutarını al
     const { data: site, error: siteError } = await supabase
@@ -1373,7 +1373,7 @@ export async function updateSiteExpenses(siteId: string, approvedAmount: number)
 
 // Güvenlik: Kullanıcı çıkışı
 export async function signOut() {
-  const supabase = createClient()
+  const supabase = await createClient()
   await supabase.auth.signOut()
   redirect('/auth/login')
 }

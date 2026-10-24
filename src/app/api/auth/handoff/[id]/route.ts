@@ -38,7 +38,7 @@ function getServiceClient() {
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 interface RouteContext {
-  params: { id: string }
+  params: Promise<{ id: string }>
 }
 
 interface HandoffPayload {
@@ -64,7 +64,7 @@ function isValidPayload(payload: unknown): payload is HandoffPayload {
  * Popup tarafından çağrılır — token'ları kaydeder.
  */
 export async function POST(request: NextRequest, { params }: RouteContext) {
-  const id = validateHandoffId(params.id)
+  const id = validateHandoffId((await params).id)
   if (!id) {
     return NextResponse.json({ error: 'Geçersiz handoff ID' }, { status: 400 })
   }
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest, { params }: RouteContext) {
  *  - Süresi geçmişse 410 (Gone).
  */
 export async function GET(_request: NextRequest, { params }: RouteContext) {
-  const id = validateHandoffId(params.id)
+  const id = validateHandoffId((await params).id)
   if (!id) {
     return NextResponse.json({ error: 'Geçersiz handoff ID' }, { status: 400 })
   }

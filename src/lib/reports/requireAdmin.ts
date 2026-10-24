@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 export async function requireReportsAdmin() {
-  const supabase = createClient()
+  const supabase = await createClient()
   const {
     data: { user },
     error,
@@ -21,4 +21,4 @@ function titleSafe(message: string) {
   return message
 }
 
-export type ReportsSupabase = ReturnType<typeof createClient>
+export type ReportsSupabase = Awaited<ReturnType<typeof createClient>>

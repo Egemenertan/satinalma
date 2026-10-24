@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { use, useState, useEffect, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -67,7 +67,8 @@ interface SupplierMaterial {
   updated_at: string
 }
 
-export default function EditSupplierPage({ params }: { params: { id: string } }) {
+export default function EditSupplierPage({ params: paramsPromise }: { params: Promise<{ id: string }> }) {
+  const params = use(paramsPromise)
   const router = useRouter()
   const searchParams = useSearchParams()
   const { showToast } = useToast()

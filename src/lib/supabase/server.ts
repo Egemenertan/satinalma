@@ -5,8 +5,8 @@ import { cookies } from 'next/headers'
 import { Database } from '../supabase'
 import { createAuthCookieStorage } from './auth-cookie-storage'
 
-export function createClient() {
-  const cookieStore = cookies()
+export async function createClient() {
+  const cookieStore = await cookies()
   
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY

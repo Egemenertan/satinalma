@@ -31,9 +31,9 @@ async function readPriorityCriteria(request: NextRequest): Promise<string | unde
  * Analizi HTTP yanıtından bağımsız arka planda başlatır.
  * Kullanıcı sayfa/sekme değiştirse bile iş kesilmez; sonuç veritabanına yazılır.
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const comparisonId = params.id
-  const supabase = createClient()
+export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id: comparisonId } = await params
+  const supabase = await createClient()
 
   const {
     data: { user },

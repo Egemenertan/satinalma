@@ -8,7 +8,7 @@ import { createClient } from './supabase/server'
  */
 export async function fixMissingProfileNames() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     
     // 1. full_name boş olan profilleri bul
     const { data: emptyProfiles, error: fetchError } = await supabase
@@ -88,7 +88,7 @@ export async function fixMissingProfileNames() {
  */
 export async function syncAuthUsersToProfiles() {
   try {
-    const supabase = createClient()
+    const supabase = await createClient()
     
     console.log('🔄 Auth kullanıcıları profiles ile senkronize ediliyor...')
     

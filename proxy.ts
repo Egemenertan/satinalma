@@ -82,7 +82,7 @@ function stripLocalePrefix(pathname: string): { pathname: string; prefixed: bool
   return { pathname: rest.startsWith('/') ? rest : `/${rest}`, prefixed: true }
 }
 
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const { pathname, prefixed } = stripLocalePrefix(request.nextUrl.pathname)
 
   const rewriteTarget = () => {

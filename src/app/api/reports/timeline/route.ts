@@ -63,7 +63,7 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    const supabase = createClient()
+    const supabase = await createClient()
     await supabase.auth.getUser()
 
     let allRequestIds: string[] = requestId ? [requestId] : []
