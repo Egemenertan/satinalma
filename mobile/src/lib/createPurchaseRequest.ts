@@ -33,8 +33,6 @@ async function loadActiveItMaterialGroupTokens(supabase: SupabaseClient): Promis
   return set
 }
 
-const HASAN_AUTO_APPROVE_EMAIL = 'hasan.oztunc@dovecgroup.com'
-
 /**
  * Web createMultiMaterialPurchaseRequest ile aynı başlangıç durumu ve IT tetikleyici.
  * Bildirim / e-posta web sunucusunda kalır; approval_history eklenir.
@@ -65,7 +63,6 @@ export async function createMultiMaterialPurchaseRequest(
         : data.materials[0]?.material_name || 'Malzeme Talebi'
 
     const role = profile.role ?? ''
-    const email = (user.email ?? '').toLowerCase()
 
     let initialStatus = 'pending'
     const queueSite = isConstructionWarehouseQueueSite(data.site_id, data.site_name)
@@ -73,8 +70,6 @@ export async function createMultiMaterialPurchaseRequest(
     const startInItReview = useItWorkflow
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
-    } else if (email === HASAN_AUTO_APPROVE_EMAIL) {
-      initialStatus = 'satın almaya gönderildi'
     } else if (role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? 'beklemede' : 'satın almaya gönderildi'
     } else if (role === 'santiye_depo_siparis') {
@@ -142,9 +137,7 @@ export async function createMultiMaterialPurchaseRequest(
     let historyComment = startInItReview
       ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — IT Yönetim incelemesinde (tetikleyici grup)`
       : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
-    if (!startInItReview && email === HASAN_AUTO_APPROVE_EMAIL) {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && role === 'santiye_depo_yonetici') {
+    if (!startInItReview && role === 'santiye_depo_yonetici') {
       historyComment = initialStatus === 'beklemede'
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`

@@ -223,9 +223,8 @@ export async function createPurchaseRequest(data: {
     const now = new Date()
     const requestNumber = `REQ-${now.getFullYear()}${(now.getMonth() + 1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${Math.random().toString(36).substr(2, 6).toUpperCase()}`
     
-    // Kullanıcı rolüne ve email'e göre status belirle
-    // Özel durum: hasan.oztunc@dovecgroup.com kullanıcısı için otomatik olarak "satın almaya gönderildi"
-    // Eğer santiye_depo_yonetici kullanıcısı ise otomatik olarak "satın almaya gönderildi" statusu ile oluştur
+    // Kullanıcı rolüne göre status belirle
+    // Eğer santiye_depo_yonetici kullanıcısı ise kuyruk sitesinde "beklemede" (ana depo kontrolü), değilse "satın almaya gönderildi"
     // Eğer santiye_depo_siparis kullanıcısı ise otomatik olarak "beklemede" (ana depo kontrolü) ile oluştur
     // Eğer santiye_depo veya purchasing_officer kullanıcısı ise otomatik olarak "depoda mevcut değil" statusu ile oluştur
     console.log('🔍 Kullanıcı bilgileri:', { 
@@ -242,9 +241,6 @@ export async function createPurchaseRequest(data: {
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
       console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
-    } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
-      initialStatus = 'satın almaya gönderildi'
-      console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
       console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
@@ -340,9 +336,7 @@ export async function createPurchaseRequest(data: {
     let historyComment = startInItReview
       ? 'Talep oluşturuldu (IT Yönetim incelemesinde — tetikleyici malzeme grubu)'
       : 'Talep oluşturuldu'
-    if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
-      historyComment = 'Talep oluşturuldu (Hasan Öztunç - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
-    } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
+    if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? 'Talep oluşturuldu (Şantiye Depo Yöneticisi — depo kontrolü bekleniyor)'
         : 'Talep oluşturuldu (Şantiye Depo Yöneticisi - Otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu)'
@@ -657,9 +651,6 @@ export async function createMultiMaterialPurchaseRequest(data: {
     if (startInItReview) {
       initialStatus = IT_STATUS_INCELEMEDE
       console.log('✅ Status: IT Yönetim (it_incelemesinde) — tetikleyici malzeme grubu')
-    } else if (user.email === 'hasan.oztunc@dovecgroup.com') {
-      initialStatus = 'satın almaya gönderildi'
-      console.log('✅ Status: satın almaya gönderildi (hasan.oztunc)')
     } else if (user.role === 'santiye_depo_yonetici') {
       initialStatus = queueSite ? WAREHOUSE_QUEUE_STATUS : 'satın almaya gönderildi'
       console.log('✅ Status:', initialStatus, '(santiye_depo_yonetici)')
@@ -757,9 +748,7 @@ export async function createMultiMaterialPurchaseRequest(data: {
     let historyComment = startInItReview
       ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — IT Yönetim incelemesinde (tetikleyici grup)`
       : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme)`
-    if (!startInItReview && user.email === 'hasan.oztunc@dovecgroup.com') {
-      historyComment = `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Hasan Öztunç tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
-    } else if (!startInItReview && user.role === 'santiye_depo_yonetici') {
+    if (!startInItReview && user.role === 'santiye_depo_yonetici') {
       historyComment = initialStatus === WAREHOUSE_QUEUE_STATUS
         ? `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) — Şantiye Depo Yöneticisi, depo kontrolü bekleniyor`
         : `Çoklu malzeme talebi oluşturuldu (${data.materials.length} adet malzeme) - Şantiye Depo Yöneticisi tarafından otomatik olarak "Satın Almaya Gönderildi" durumunda oluşturuldu`
