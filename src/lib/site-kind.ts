@@ -7,6 +7,7 @@ export const CONSTRUCTION_WAREHOUSE_QUEUE_SITE_IDS = [
   'f3ca5e01-2260-4a5b-b861-72ccf3fc2b15', // D-Point
   'c9c2a77e-369d-4299-baf2-c52c3d69fbd3', // Natulux
   '59485505-e1d7-4756-ad96-6e8e6a47155d', // Querencia
+  '91263203-e4dc-4ef3-8e44-50562b6a87c7', // İskele Alt Geçit
   'b99e2366-82c5-43a4-9b0f-9e8b90a22f6c', // Courtyard Platinum
 ] as const
 
@@ -28,6 +29,7 @@ const CONSTRUCTION_SITE_MARKERS = [
   'la casalia',
   'natulux',
   'querencia',
+  'iskele alt geçit',
   'courtyard platinum',
   'platinum',
   'd point',
