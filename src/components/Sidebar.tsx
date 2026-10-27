@@ -13,7 +13,8 @@ import {
   WAREHOUSE_ACCESS_SWR_KEY,
   fetchMyWarehouseAccessScope,
 } from '@/lib/warehouse-access'
-import { useCurrentProfile, clearCurrentProfileCache } from '@/lib/auth/current-profile'
+import { useCurrentProfile } from '@/lib/auth/current-profile'
+import { signOutAndRedirect } from '@/lib/auth/sign-out'
 import {
   LayoutDashboard,
   FileText,
@@ -243,16 +244,8 @@ export default function Sidebar({
     setIsMobileOpen(!isMobileOpen)
   }
 
-  const supabase = createClient()
-  
-  const handleLogout = async () => {
-    try {
-      clearCurrentProfileCache()
-      await supabase.auth.signOut()
-      router.push('/auth/login')
-    } catch (error) {
-      console.error('Logout error:', error)
-    }
+  const handleLogout = () => {
+    void signOutAndRedirect()
   }
 
   const toggleExpanded = (title: string) => {

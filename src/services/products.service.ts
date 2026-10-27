@@ -6,6 +6,7 @@
 import { format, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
+import { ensureFreshSession } from '@/lib/auth/session'
 import type { Database } from '@/types/database.types'
 
 type Product = Database['public']['Tables']['products']['Row']
@@ -1507,6 +1508,12 @@ function mergeProductTrendRows(
  * Ürünler dashboard kartları + 30 günlük trend + top stok
  */
 export async function fetchProductsInsightsBundle(siteId?: string): Promise<ProductsInsightsBundle> {
+  const supabaseAuth = createClient()
+  const session = await ensureFreshSession(supabaseAuth)
+  if (!session) {
+    throw new Error('Oturumunuzun süresi doldu. Lütfen tekrar giriş yapın.')
+  }
+
   const statsBase = await fetchProductStats(siteId)
   const shell = buildProductsDailyShell()
   const supabase = createClient()

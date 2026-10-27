@@ -21,6 +21,8 @@ import { Button } from '@/components/ui/button'
 import { formatCurrency } from '@/app/dashboard/orders/utils/numberFormatting'
 import type { DashboardBundle, DashboardRecentRequest } from '@/services/dashboard.service'
 import { RequestProcessModal } from '@/components/requests/RequestProcessModal'
+import { isAuthExpiredError } from '@/lib/auth/session'
+import { signOutAndRedirect } from '@/lib/auth/sign-out'
 
 type ChartRange = 7 | 14 | 30
 type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected'
@@ -427,10 +429,22 @@ export function DashboardInsights({ bundle, loading, error }: DashboardInsightsP
   }
 
   if (error) {
+    const expired = isAuthExpiredError(error) || /oturumunuzun süresi doldu/i.test(error.message || '')
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50 px-6 py-8 text-center text-red-800">
-        <p className="font-medium">Özet yüklenemedi</p>
-        <p className="mt-1 text-sm opacity-90">{error.message}</p>
+        <p className="font-medium">{expired ? 'Oturumunuzun süresi doldu' : 'Özet yüklenemedi'}</p>
+        <p className="mt-1 text-sm opacity-90">
+          {expired ? 'Tekrar giriş yapmanız gerekiyor.' : error.message}
+        </p>
+        {expired && (
+          <Button
+            type="button"
+            onClick={() => void signOutAndRedirect()}
+            className="mt-4 rounded-xl bg-red-800 text-white hover:bg-red-900"
+          >
+            Tekrar giriş yap
+          </Button>
+        )}
       </div>
     )
   }

@@ -15,6 +15,7 @@ import {
 } from '@/lib/warehouse-access'
 import { getRedirectPath } from '@/lib/auth'
 import { useCurrentProfile } from '@/lib/auth/current-profile'
+import { isAuthExpiredError } from '@/lib/auth/session'
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
@@ -47,7 +48,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   useEffect(() => {
     if (profileLoading) return
     if (!profile) {
-      if (!profileError && !redirectedRef.current) {
+      const expired = isAuthExpiredError(profileError)
+      if ((!profileError || expired) && !redirectedRef.current) {
         redirectedRef.current = true
         window.location.href = '/auth/login'
       }

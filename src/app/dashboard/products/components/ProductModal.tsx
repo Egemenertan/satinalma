@@ -80,19 +80,32 @@ export function ProductModal({
   })
 
   // Stok hareketleri (info ve history tablarında kullanılıyor)
+  const historyWarehouseIds = (inboundWarehouseIds?.length ? inboundWarehouseIds : scopeWarehouseIds)?.filter(Boolean) ?? []
+  const canViewHistory = canOperateStock || depotOperate || inboundOnly
   const { data: movementsData } = useQuery({
-    queryKey: ['stock-movements', productId],
-    queryFn: () => (productId ? fetchStockMovements({ productId }, 1, 50) : null),
-    enabled: !!productId && canOperateStock && (activeTab === 'history' || activeTab === 'info'),
+    queryKey: ['stock-movements', productId, historyWarehouseIds.join(','), canOperateStock],
+    queryFn: () =>
+      productId
+        ? fetchStockMovements(
+            {
+              productId,
+              warehouseIds: !canOperateStock && historyWarehouseIds.length > 0 ? historyWarehouseIds : undefined,
+              includeOwnMovements: !canOperateStock,
+            },
+            1,
+            50
+          )
+        : null,
+    enabled: !!productId && canViewHistory && (activeTab === 'history' || activeTab === 'info'),
   })
 
   // Zimmet kayıtları (history tabında kullanılıyor)
   const { data: inventoryData } = useQuery({
-    queryKey: ['product-inventory', productId],
+    queryKey: ['product-inventory', productId, historyWarehouseIds.join(','), canOperateStock],
     queryFn: async () => {
       if (!productId) return null
       const supabase = (await import('@/lib/supabase/client')).createClient()
-      const { data, error } = await supabase
+      let query = supabase
         .from('user_inventory')
         .select(`
           *,
@@ -101,11 +114,17 @@ export function ProductModal({
         `)
         .eq('product_id', productId)
         .order('assigned_date', { ascending: false })
+
+      if (!canOperateStock && historyWarehouseIds.length > 0) {
+        query = query.in('source_warehouse_id', historyWarehouseIds)
+      }
+
+      const { data, error } = await query
       
       if (error) throw error
       return data
     },
-    enabled: !!productId && activeTab === 'history',
+    enabled: !!productId && canViewHistory && activeTab === 'history',
   })
 
   // Seri numaraları (info tabında kullanılıyor)
@@ -191,7 +210,7 @@ export function ProductModal({
   const stockStatus = getStockStatus()
   const StockIcon = stockStatus.icon
   const showMovements = canOperateStock || inboundOnly || depotOperate
-  const showHistory = canOperateStock
+  const showHistory = canViewHistory
   const visibleTab =
     (!showMovements && activeTab === 'movements') || (!showHistory && activeTab === 'history')
       ? 'stock'
@@ -350,7 +369,7 @@ export function ProductModal({
                   ) : product ? (
                     <ProductInfoTab
                       product={product}
-                      movementsData={canOperateStock ? movementsData : null}
+                      movementsData={canViewHistory ? movementsData : null}
                       serialNumbers={serialNumbers}
                     />
                   ) : null}

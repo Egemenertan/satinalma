@@ -3,8 +3,8 @@
 import { useRouter } from 'next/navigation'
 import { Button } from '@/components/ui/button'
 import { LogOut, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { clearCurrentProfileCache, useCurrentProfile } from '@/lib/auth/current-profile'
+import { useCurrentProfile } from '@/lib/auth/current-profile'
+import { signOutAndRedirect } from '@/lib/auth/sign-out'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -16,19 +16,12 @@ import {
 
 export default function DashboardHeader() {
   const router = useRouter()
-  const supabase = createClient()
   const { data: profile } = useCurrentProfile()
   const userName = profile?.fullName || 'Kullanıcı'
   const userEmail = profile?.email || ''
 
-  const handleLogout = async () => {
-    try {
-      clearCurrentProfileCache()
-      await supabase.auth.signOut()
-      router.push('/auth/login')
-    } catch (error) {
-      console.error('Logout error:', error)
-    }
+  const handleLogout = () => {
+    void signOutAndRedirect()
   }
 
   return (

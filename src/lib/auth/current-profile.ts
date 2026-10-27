@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import type { UserRole } from '@/lib/types'
 import { DEFAULT_ROLE } from './domain'
 import { ensureProfile } from './profile'
-import { getSessionUser } from './session'
+import { getSessionUser, isAuthExpiredError } from './session'
 
 export const CURRENT_PROFILE_KEY = 'current_profile'
 
@@ -36,7 +36,10 @@ export async function fetchCurrentProfile(): Promise<CurrentProfile | null> {
     .eq('id', user.id)
     .maybeSingle()
 
-  if (error) throw error
+  if (error) {
+    if (isAuthExpiredError(error)) return null
+    throw error
+  }
 
   let role: UserRole = (profile?.role as UserRole) || DEFAULT_ROLE
   if (!profile || profile.role === 'user') {

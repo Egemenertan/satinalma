@@ -4,6 +4,7 @@
  */
 
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth/session'
 import type { Database } from '@/types/database.types'
 import { uploadInvoiceImages } from '@/lib/utils/imageUpload'
 
@@ -16,6 +17,9 @@ type StockMovementInsert = Database['public']['Tables']['stock_movements']['Inse
 export interface StockMovementFilters {
   productId?: string
   warehouseId?: string
+  warehouseIds?: string[]
+  /** Depo kapsamı varken kullanıcının kendi hareketlerini de getir (ör. transfer hedefi). */
+  includeOwnMovements?: boolean
   movementType?: 'giriş' | 'çıkış' | 'transfer' | 'düzeltme'
   startDate?: string
   endDate?: string
@@ -133,6 +137,22 @@ export async function fetchStockMovements(
 
   if (filters?.warehouseId) {
     query = query.eq('warehouse_id', filters.warehouseId)
+  }
+
+  const scopedWarehouseIds = (filters?.warehouseIds || []).filter(Boolean)
+  if (scopedWarehouseIds.length > 0) {
+    if (filters?.includeOwnMovements) {
+      const user = await getSessionUser(supabase)
+      if (user?.id) {
+        query = query.or(
+          `warehouse_id.in.(${scopedWarehouseIds.join(',')}),created_by.eq.${user.id}`
+        )
+      } else {
+        query = query.in('warehouse_id', scopedWarehouseIds)
+      }
+    } else {
+      query = query.in('warehouse_id', scopedWarehouseIds)
+    }
   }
 
   if (filters?.movementType) {

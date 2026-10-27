@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/client'
+import { getSessionUser } from '@/lib/auth/session'
 import type { Json } from '@/lib/supabase'
 import type { ZimmetAssignmentListPdfPayload } from '@/lib/pdf/zimmetAssignmentListPdf'
 
@@ -98,7 +99,14 @@ export async function fetchStoredZimmetOperations(siteIds?: string[] | null): Pr
     .order('created_at', { ascending: false })
     .limit(100)
 
-  if (ids) query = query.in('site_id', ids)
+  if (ids) {
+    const user = await getSessionUser(supabase)
+    if (user?.id) {
+      query = query.or(`site_id.in.(${ids.join(',')}),performed_by.eq.${user.id}`)
+    } else {
+      query = query.in('site_id', ids)
+    }
+  }
 
   const { data, error } = await query
 

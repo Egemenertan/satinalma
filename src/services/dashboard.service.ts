@@ -5,6 +5,7 @@
 import { format, subDays } from 'date-fns'
 import { tr } from 'date-fns/locale'
 import { createClient } from '@/lib/supabase/client'
+import { ensureFreshSession, isAuthExpiredError } from '@/lib/auth/session'
 
 export interface DashboardDailyPoint {
   dayKey: string
@@ -62,6 +63,10 @@ function startOfPreviousMonth(now: Date): string {
 
 export async function fetchDashboardBundle(): Promise<DashboardBundle> {
   const supabase = createClient()
+  const session = await ensureFreshSession(supabase)
+  if (!session) {
+    throw new Error('Oturumunuzun süresi doldu. Lütfen tekrar giriş yapın.')
+  }
   const now = new Date()
   const seriesFrom = startOfPreviousMonth(now)
 
@@ -114,8 +119,13 @@ export async function fetchDashboardBundle(): Promise<DashboardBundle> {
       .limit(12),
   ])
 
-  if (seriesRes.error) throw seriesRes.error
-  if (recentRes.error) throw recentRes.error
+  const queryError = seriesRes.error || recentRes.error
+  if (queryError) {
+    if (isAuthExpiredError(queryError)) {
+      throw new Error('Oturumunuzun süresi doldu. Lütfen tekrar giriş yapın.')
+    }
+    throw queryError
+  }
 
   const requests = seriesRes.data ?? []
   const totalRequests = totalCountRes.count ?? requests.length

@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency } from '@/app/dashboard/orders/utils/numberFormatting'
 import type { ProductsInsightsBundle } from '@/services/products.service'
+import { Button } from '@/components/ui/button'
+import { isAuthExpiredError } from '@/lib/auth/session'
+import { signOutAndRedirect } from '@/lib/auth/sign-out'
 
 function trendPercent(series: number[]): number | null {
   if (series.length < 8) return null
@@ -100,10 +103,22 @@ export function ProductsInsights({ bundle, loading, error }: ProductsInsightsPro
   }
 
   if (error) {
+    const expired = isAuthExpiredError(error) || /oturumunuzun süresi doldu/i.test(error.message || '')
     return (
       <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center text-red-800 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
-        <p className="font-medium">Ürün özeti yüklenemedi</p>
-        <p className="mt-1 text-sm opacity-90">{error.message}</p>
+        <p className="font-medium">{expired ? 'Oturumunuzun süresi doldu' : 'Ürün özeti yüklenemedi'}</p>
+        <p className="mt-1 text-sm opacity-90">
+          {expired ? 'Tekrar giriş yapmanız gerekiyor.' : error.message}
+        </p>
+        {expired && (
+          <Button
+            type="button"
+            onClick={() => void signOutAndRedirect()}
+            className="mt-4 rounded-xl bg-red-800 text-white hover:bg-red-900"
+          >
+            Tekrar giriş yap
+          </Button>
+        )}
       </div>
     )
   }
