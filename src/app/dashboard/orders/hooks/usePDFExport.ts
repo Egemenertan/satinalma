@@ -82,12 +82,12 @@ export function usePDFExport() {
   const exportSingleOrder = async (
     order: OrderData,
     selectedInvoiceIds?: string[]
-  ): Promise<void> => {
+  ): Promise<boolean> => {
     if (!selectedInvoiceIds && order.invoices && order.invoices.length > 1) {
       setPDFOrderContext(order)
       setSelectedPDFInvoices(new Set(order.invoices.map((invoice) => invoice.id)))
       setIsPDFInvoiceSelectionOpen(true)
-      return
+      return false
     }
 
     setLoadingPDFOrders((prev) => new Set([...prev, order.id]))
@@ -150,6 +150,7 @@ export function usePDFExport() {
           grandTotal: shouldUseStatistics ? timelineData.statistics?.grandTotal : undefined,
         },
       })
+      return true
     } catch (error) {
       console.error('PDF export error:', error)
       throw error
@@ -165,7 +166,7 @@ export function usePDFExport() {
   const exportMultipleOrders = async (
     orders: OrderData[],
     selectedOrderIds: string[]
-  ): Promise<void> => {
+  ): Promise<number> => {
     setIsGeneratingReport(true)
 
     try {
@@ -187,20 +188,37 @@ export function usePDFExport() {
       ]
       const invoiceGroupId = sharedGroupIds.length === 1 ? sharedGroupIds[0] : null
 
-      const timelineData = await fetchTimelineForPdf({
-        requestId: selectedOrdersData[0].purchase_request_id,
-        orderIds: selectedOrderIds,
-      })
+      const requestIds = [
+        ...new Set(selectedOrdersData.map((order) => order.purchase_request_id).filter(Boolean)),
+      ]
+      const sharedRequestId = requestIds.length === 1 ? requestIds[0] : null
+      const loadedSameRequest = sharedRequestId
+        ? orders.filter((order) => order.purchase_request_id === sharedRequestId)
+        : []
+      // Tümünü seç: sayfadaki talebin bütün siparişleri seçiliyse fatura olmasa da
+      // talebin tüm kalemlerini tek PDF'te topla.
+      const includeEntireRequest =
+        Boolean(sharedRequestId) &&
+        loadedSameRequest.length > 0 &&
+        loadedSameRequest.every((order) => selectedOrderIds.includes(order.id))
 
-      const apiOrders = (timelineData.orders || []).filter((order: any) =>
-        selectedOrderIds.includes(order.id)
+      const timelineData = await fetchTimelineForPdf(
+        includeEntireRequest
+          ? { requestId: sharedRequestId as string }
+          : {
+              requestId: selectedOrdersData[0].purchase_request_id,
+              orderIds: selectedOrderIds,
+            }
       )
-      const missingSelected = selectedOrdersData.filter(
-        (order) => !apiOrders.some((item: any) => item.id === order.id)
-      )
+
+      const apiOrders = includeEntireRequest
+        ? timelineData.orders || []
+        : (timelineData.orders || []).filter((order: any) => selectedOrderIds.includes(order.id))
+      const includedIds = new Set(apiOrders.map((order: any) => order.id))
+      const missingSelected = selectedOrdersData.filter((order) => !includedIds.has(order.id))
       const filteredOrders = [...apiOrders, ...missingSelected]
       const filteredInvoices = (timelineData.invoices || []).filter((invoice: any) =>
-        selectedOrderIds.includes(invoice.order_id)
+        filteredOrders.some((order: any) => order.id === invoice.order_id)
       )
 
       const totalAmount =
@@ -239,6 +257,7 @@ export function usePDFExport() {
           grandTotal: invoiceGroupId ? timelineData.statistics?.grandTotal : undefined,
         },
       })
+      return filteredOrders.length
     } catch (error) {
       console.error('Toplu PDF export error:', error)
       throw error

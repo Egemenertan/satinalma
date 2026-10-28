@@ -311,9 +311,9 @@ export default function OrdersPage() {
               onViewInvoices={handleViewInvoices}
               onViewDeliveryPhotos={handleViewDeliveryPhotos}
               onExportPDF={handleExportOrderPDF}
+              onExportGroupPDF={handleExportGroupPDF}
               onPageChange={setCurrentPage}
               onOpenMultiInvoiceModal={handleOpenMultiInvoiceModal}
-              onExportMultiplePDF={handleExportMultiplePDF}
             />
           )}
         </CardContent>

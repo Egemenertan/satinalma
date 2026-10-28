@@ -315,8 +315,8 @@ export default function OrdersPage() {
     }
 
     try {
-      await exportMultipleOrders(orders, Array.from(selectedOrders))
-      showToast(`${selectedOrders.size} sipariş için PDF başarıyla oluşturuldu`, 'success')
+      const count = await exportMultipleOrders(orders, Array.from(selectedOrders))
+      showToast(`${count} sipariş için PDF başarıyla oluşturuldu`, 'success')
     } catch (error) {
       showToast('Toplu PDF oluşturulurken hata oluştu', 'error')
     }
@@ -324,8 +324,22 @@ export default function OrdersPage() {
 
   const handleExportOrderPDF = async (order: any) => {
     try {
-      await exportSingleOrder(order)
-      showToast('PDF başarıyla oluşturuldu', 'success')
+      const selectedSameRequest = getSelectedOrdersData(orders).filter(
+        (item) => item.purchase_request_id === order.purchase_request_id
+      )
+      const includesClicked = selectedSameRequest.some((item) => item.id === order.id)
+
+      if (includesClicked && selectedSameRequest.length > 1) {
+        const count = await exportMultipleOrders(
+          orders,
+          selectedSameRequest.map((item) => item.id)
+        )
+        showToast(`${count} sipariş için PDF başarıyla oluşturuldu`, 'success')
+        return
+      }
+
+      const generated = await exportSingleOrder(order)
+      if (generated) showToast('PDF başarıyla oluşturuldu', 'success')
     } catch (error: any) {
       showToast('PDF oluşturma hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
     }
@@ -337,8 +351,8 @@ export default function OrdersPage() {
     try {
       setIsPDFInvoiceSelectionOpen(false)
       const selectedIds = Array.from(selectedPDFInvoices)
-      await exportSingleOrder(pdfOrderContext, selectedIds)
-      showToast('PDF başarıyla oluşturuldu', 'success')
+      const generated = await exportSingleOrder(pdfOrderContext, selectedIds)
+      if (generated) showToast('PDF başarıyla oluşturuldu', 'success')
     } catch (error: any) {
       showToast('PDF oluşturma hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
     }
@@ -359,8 +373,8 @@ export default function OrdersPage() {
   const handleExportGroupPDF = async (groupOrders: any[]) => {
     try {
       const orderIds = groupOrders.map(o => o.id)
-      await exportMultipleOrders(orders, orderIds)
-      showToast(`${groupOrders.length} sipariş için toplu rapor başarıyla oluşturuldu`, 'success')
+      const count = await exportMultipleOrders(orders, orderIds)
+      showToast(`${count} sipariş için PDF başarıyla oluşturuldu`, 'success')
     } catch (error: any) {
       showToast('Toplu rapor oluşturma hatası: ' + (error?.message || 'Bilinmeyen hata'), 'error')
     }
@@ -1683,9 +1697,9 @@ export default function OrdersPage() {
               onViewInvoices={handleViewInvoices}
               onViewDeliveryPhotos={handleViewDeliveryPhotos}
               onExportPDF={handleExportOrderPDF}
+              onExportGroupPDF={handleExportGroupPDF}
               onPageChange={setCurrentPage}
               onOpenMultiInvoiceModal={handleOpenMultiInvoiceModal}
-              onExportMultiplePDF={handleExportMultiplePDF}
             />
           )}
         </CardContent>

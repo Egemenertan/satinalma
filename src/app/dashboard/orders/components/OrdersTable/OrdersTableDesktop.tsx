@@ -13,6 +13,8 @@ interface OrdersTableDesktopProps {
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
+  onExportGroupPDF: (orders: any[]) => void
+  isGeneratingReport: boolean
 }
 
 export function OrdersTableDesktop({
@@ -24,6 +26,8 @@ export function OrdersTableDesktop({
   onViewInvoices,
   onViewDeliveryPhotos,
   onExportPDF,
+  onExportGroupPDF,
+  isGeneratingReport,
 }: OrdersTableDesktopProps) {
   const sortedGroups = sortGroupedOrders(groupedOrders)
 
@@ -55,6 +59,8 @@ export function OrdersTableDesktop({
             onViewInvoices={onViewInvoices}
             onViewDeliveryPhotos={onViewDeliveryPhotos}
             onExportPDF={onExportPDF}
+            onExportGroupPDF={onExportGroupPDF}
+            isGeneratingReport={isGeneratingReport}
           />
         ))}
       </div>

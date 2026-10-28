@@ -1,6 +1,8 @@
 'use client'
 
+import { FileText } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { InlineLoading } from '@/components/ui/loading'
 import { OrderRow } from './OrderRow'
 import { clusterOrdersByNumber, formatShortDocumentNumber } from '../../utils'
 import type { GroupedOrder, OrderData } from '../../types'
@@ -14,6 +16,8 @@ interface OrderGroupProps {
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
+  onExportGroupPDF: (orders: OrderData[]) => void
+  isGeneratingReport: boolean
 }
 
 export function OrderGroup({
@@ -25,8 +29,11 @@ export function OrderGroup({
   onViewInvoices,
   onViewDeliveryPhotos,
   onExportPDF,
+  onExportGroupPDF,
+  isGeneratingReport,
 }: OrderGroupProps) {
   const allSelected = group.orders.every(order => selectedOrders.has(order.id))
+  const selectedInGroup = group.orders.filter((order) => selectedOrders.has(order.id))
   const clusters = clusterOrdersByNumber(group.orders)
   const materialCount = group.orders.length
 
@@ -57,6 +64,27 @@ export function OrderGroup({
             >
               {allSelected ? 'Seçimi Kaldır' : 'Tümünü Seç'}
             </Button>
+            {selectedInGroup.length > 0 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => onExportGroupPDF(selectedInGroup)}
+                disabled={isGeneratingReport}
+                className="text-xs h-7 px-2"
+              >
+                {isGeneratingReport ? (
+                  <>
+                    <InlineLoading className="mr-1" />
+                    PDF
+                  </>
+                ) : (
+                  <>
+                    <FileText className="h-3 w-3 mr-1" />
+                    PDF
+                  </>
+                )}
+              </Button>
+            )}
           </div>
         </div>
       </div>

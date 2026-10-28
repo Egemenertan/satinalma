@@ -20,9 +20,9 @@ interface OrdersTableProps {
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
+  onExportGroupPDF: (orders: any[]) => void
   onPageChange: (page: number) => void
   onOpenMultiInvoiceModal: () => void
-  onExportMultiplePDF: () => void
 }
 
 export function OrdersTable({
@@ -38,9 +38,9 @@ export function OrdersTable({
   onViewInvoices,
   onViewDeliveryPhotos,
   onExportPDF,
+  onExportGroupPDF,
   onPageChange,
   onOpenMultiInvoiceModal,
-  onExportMultiplePDF,
 }: OrdersTableProps) {
   if (orders.length === 0) {
     return (
@@ -68,6 +68,8 @@ export function OrdersTable({
         onViewInvoices={onViewInvoices}
         onViewDeliveryPhotos={onViewDeliveryPhotos}
         onExportPDF={onExportPDF}
+        onExportGroupPDF={onExportGroupPDF}
+        isGeneratingReport={isGeneratingReport}
       />
 
       {/* Mobile Table */}
@@ -80,8 +82,8 @@ export function OrdersTable({
         onViewInvoices={onViewInvoices}
         onViewDeliveryPhotos={onViewDeliveryPhotos}
         onExportPDF={onExportPDF}
+        onExportGroupPDF={onExportGroupPDF}
         onOpenMultiInvoiceModal={onOpenMultiInvoiceModal}
-        onExportMultiplePDF={onExportMultiplePDF}
         isGeneratingReport={isGeneratingReport}
       />
 

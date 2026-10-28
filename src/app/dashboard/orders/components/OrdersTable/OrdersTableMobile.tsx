@@ -18,8 +18,8 @@ interface OrdersTableMobileProps {
   onViewInvoices: (invoices: any[], index: number) => void
   onViewDeliveryPhotos: (photos: string[], index: number) => void
   onExportPDF: (order: any) => void
+  onExportGroupPDF: (orders: OrderData[]) => void
   onOpenMultiInvoiceModal: () => void
-  onExportMultiplePDF: () => void
   isGeneratingReport: boolean
 }
 
@@ -32,8 +32,8 @@ export function OrdersTableMobile({
   onViewInvoices,
   onViewDeliveryPhotos,
   onExportPDF,
+  onExportGroupPDF,
   onOpenMultiInvoiceModal,
-  onExportMultiplePDF,
   isGeneratingReport,
 }: OrdersTableMobileProps) {
   const router = useRouter()
@@ -79,7 +79,11 @@ export function OrdersTableMobile({
                         Fatura
                       </Button>
                       <Button
-                        onClick={onExportMultiplePDF}
+                        onClick={() =>
+                          onExportGroupPDF(
+                            group.orders.filter((order) => selectedOrders.has(order.id))
+                          )
+                        }
                         size="sm"
                         variant="outline"
                         disabled={isGeneratingReport}
