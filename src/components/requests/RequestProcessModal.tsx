@@ -19,17 +19,18 @@ import RequestActivityTimeline from '@/components/offers/RequestActivityTimeline
 import { RequestProcessProgress } from '@/components/requests/RequestProcessProgress'
 import { formatCurrency } from '@/app/dashboard/orders/utils/numberFormatting'
 import { cn } from '@/lib/utils'
+import { SPECIAL_SITE_ID } from '@/lib/constants'
 
 const BLOCKED_DETAIL_STATUSES = new Set(['depoda mevcut değil'])
 
-function statusLabel(status: string | null | undefined): string {
+function statusLabel(status: string | null | undefined, siteId?: string | null): string {
   const value = (status || '').toLowerCase()
+  if (value === 'pending' && siteId === SPECIAL_SITE_ID) return 'Ana Depo Kontrolü'
   if (value === 'pending') return 'Beklemede'
   if (value === 'departman_onayı_bekliyor') return 'Departman onayı bekliyor'
   if (value === 'depoda mevcut değil') return 'Depoda mevcut değil'
   if (value === 'beklemede') return 'Ana depo kontrolü yapılıyor'
   if (value === 'gönderildi') return 'Ana depoda mevcut'
-  if (value === 'pending') return 'Beklemede'
   if (value === 'ana depoda yok') return 'Ana depoda yok'
   if (value === 'satın almaya gönderildi') return 'Satın almaya gönderildi'
   if (value === 'it_incelemesinde') return 'IT incelemesinde'
@@ -93,12 +94,14 @@ export function RequestProcessModal({
                 <Badge
                   variant="outline"
                   className={
-                    (data.request.status || '').toLowerCase() === 'beklemede'
+                    (data.request.status || '').toLowerCase() === 'beklemede' ||
+                    ((data.request.status || '').toLowerCase() === 'pending' &&
+                      data.request.site_id === SPECIAL_SITE_ID)
                       ? 'border-[#EAB308] bg-[#FACC15] font-semibold text-[#422006]'
                       : 'border-elegant-gray-200 font-semibold'
                   }
                 >
-                  {statusLabel(data.request.status)}
+                  {statusLabel(data.request.status, data.request.site_id)}
                 </Badge>
               )}
             </div>

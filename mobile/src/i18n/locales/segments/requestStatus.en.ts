@@ -1,6 +1,7 @@
 export const requestStatusEn = {
   draft: 'Draft',
   pending: 'Pending',
+  ana_depo_kontrolu: 'Main warehouse check',
   onay_bekliyor: 'Awaiting approval',
   departman_onayi_bekliyor: 'Awaiting department approval',
   it_incelemesinde: 'IT — Under review',

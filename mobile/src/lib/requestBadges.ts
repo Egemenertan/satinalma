@@ -108,20 +108,14 @@ export function getStatusPresentation(
     })
   }
 
+  // Genel Merkez: pending durumu ana depo tarafından kontrol ediliyor demektir.
+  // Herkese (talep sahibi dahil depo yöneticisine) aynı, anlaşılır etiket gösterilir.
   const isSpecialSiteUser = userSiteIds.includes(SPECIAL_SITE_ID)
   if (isSpecialSiteUser && status === 'pending') {
-    if (userRole === 'warehouse_manager') {
-      return {
-        label: t('requestStatus.onaylandi'),
-        bg: '#F4F4F4',
-        color: '#0A0A0A',
-        extraBadges,
-      }
-    }
     return {
-      label: t('requestStatus.pending'),
-      bg: '#F8EEEE',
-      color: '#53131E',
+      label: t('requestStatus.ana_depo_kontrolu'),
+      bg: '#FEF9C3',
+      color: '#854D0E',
       extraBadges,
     }
   }

@@ -1507,14 +1507,13 @@ export default function PurchaseRequestsTable({
     const SPECIAL_SITE_ID = '18e8e316-1291-429d-a591-5cec97d235b7'
     const isSpecialSiteUser = userSiteIds.includes(SPECIAL_SITE_ID)
     
-    // Genel Merkez: pending depoda bekler. Depo yöneticisi bunu Onaylandı görür;
-    // talebi açan ve diğer kullanıcılar Beklemede görür.
+    // Genel Merkez: pending durumu ana depo tarafından kontrol ediliyor demektir.
+    // Herkese (talep sahibi dahil depo yöneticisine) aynı, anlaşılır etiket gösterilir.
     if (isSpecialSiteUser && status === 'pending') {
-      const waitingForWarehouse = userRole !== 'warehouse_manager'
       return (
         <div className="flex flex-col gap-1">
-          <Badge variant="outline" className={`${waitingForWarehouse ? 'bg-yellow-100 text-yellow-800' : 'bg-green-100 text-green-800'} border-0 rounded-full text-xs font-medium px-2 py-1`}>
-            {waitingForWarehouse ? 'Beklemede' : 'Onaylandı'}
+          <Badge variant="outline" className="bg-yellow-100 text-yellow-800 border-0 rounded-full text-xs font-medium px-2 py-1">
+            Ana Depo Kontrolü
           </Badge>
         {notifications && notifications.includes('iade var') && (
           <div className="flex flex-wrap gap-1">

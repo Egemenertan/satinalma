@@ -2,6 +2,7 @@
 export const requestStatusTr = {
   draft: 'Taslak',
   pending: 'Beklemede',
+  ana_depo_kontrolu: 'Ana Depo Kontrolü',
   onay_bekliyor: 'Onay Bekliyor',
   departman_onayi_bekliyor: 'Departman Onayı Bekliyor',
   it_incelemesinde: 'IT — İncelemede',
