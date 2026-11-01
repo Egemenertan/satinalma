@@ -46,6 +46,8 @@ import {
 } from '@/lib/site-invoice-aggregation'
 import { SiteFinanceFxProvider, SiteFinanceFxToolbar } from '@/contexts/site-finance-fx'
 import { SiteDetailPdfReportButton } from '@/components/finance/site-detail-pdf-report-button'
+import { LinasoftPurchaseInvoiceCard } from '@/components/finance/linasoft-purchase-invoice-card'
+import { COURTYARD_PLATINUM_SITE_ID } from '@/lib/linasoft/site-mapping'
 import type { SiteDetailPdfOrderRow } from '@/lib/pdf/site-detail-summary-pdf'
 
 function createSlug(text: string) {
@@ -1197,6 +1199,8 @@ export default function SiteDetailPage() {
           />
         </div>
       </div>
+
+      {siteMeta.id === COURTYARD_PLATINUM_SITE_ID && <LinasoftPurchaseInvoiceCard siteId={siteMeta.id} />}
 
       {/* KPI — ilk satır */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
