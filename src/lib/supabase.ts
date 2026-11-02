@@ -1024,6 +1024,13 @@ export type Database = {
         }
         Returns: { product_id: string; total_count: number }[]
       }
+      save_product_images: {
+        Args: {
+          p_product_id: string
+          p_images: string[]
+        }
+        Returns: string[] | string | null
+      }
       add_stock_into_operated_warehouse: {
         Args: {
           p_product_id: string

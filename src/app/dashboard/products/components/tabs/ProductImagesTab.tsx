@@ -6,18 +6,31 @@
 'use client'
 
 import { useState } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { Button } from '@/components/ui/button'
 import { Upload, X, ImageIcon, Trash2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import { saveProductImages } from '@/services/products.service'
 
 interface ProductImagesTabProps {
   product: any
 }
 
 export function ProductImagesTab({ product }: ProductImagesTabProps) {
+  const queryClient = useQueryClient()
   const [newImages, setNewImages] = useState<File[]>([])
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [isUploadingImages, setIsUploadingImages] = useState(false)
+  const currentImages = Array.isArray(product?.images)
+    ? product.images.filter((item: unknown): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+
+  const refreshProduct = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['product', product.id] }),
+      queryClient.invalidateQueries({ queryKey: ['products'] }),
+    ])
+  }
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || [])
@@ -74,20 +87,14 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
         uploadedUrls.push(publicUrl)
       }
 
-      const currentImages = product.images || []
-      const { error: updateError } = await supabase
-        .from('products')
-        .update({ images: [...currentImages, ...uploadedUrls] })
-        .eq('id', product.id)
-
-      if (updateError) throw updateError
+      await saveProductImages(product.id, [...currentImages, ...uploadedUrls])
 
       imagePreviewUrls.forEach(url => URL.revokeObjectURL(url))
       setNewImages([])
       setImagePreviewUrls([])
+      await refreshProduct()
       
       alert('✅ Resimler başarıyla yüklendi!')
-      window.location.reload()
       
     } catch (error: any) {
       console.error('Image upload error:', error)
@@ -114,18 +121,11 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
           .remove([filePath])
       }
 
-      const currentImages = product.images || []
-      const newImagesArray = currentImages.filter((_: any, i: number) => i !== index)
-      
-      const { error } = await supabase
-        .from('products')
-        .update({ images: newImagesArray })
-        .eq('id', product.id)
-
-      if (error) throw error
+      const nextImages = currentImages.filter((_: string, i: number) => i !== index)
+      await saveProductImages(product.id, nextImages)
+      await refreshProduct()
 
       alert('✅ Resim silindi!')
-      window.location.reload()
       
     } catch (error: any) {
       console.error('Image delete error:', error)
@@ -191,11 +191,11 @@ export function ProductImagesTab({ product }: ProductImagesTabProps) {
       )}
 
       {/* Mevcut Resimler */}
-      {product?.images && Array.isArray(product.images) && product.images.length > 0 ? (
+      {currentImages.length > 0 ? (
         <div className="grid grid-cols-3 gap-6">
-          {product.images.map((image: string, index: number) => (
+          {currentImages.map((image: string, index: number) => (
             <div
-              key={index}
+              key={`${image}-${index}`}
               className="relative group aspect-square rounded-3xl overflow-hidden bg-white/80 backdrop-blur-xl border border-gray-200/50 shadow-sm hover:shadow-md transition-all"
             >
               <img

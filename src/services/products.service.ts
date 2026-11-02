@@ -1207,6 +1207,27 @@ export async function deleteProduct(id: string, hardDelete = false): Promise<voi
   }
 }
 
+function asImageUrlList(value: unknown): string[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+}
+
+/** Ürün görsellerini kaydet (operate / depo yönetici dahil). */
+export async function saveProductImages(productId: string, images: string[]): Promise<string[]> {
+  const supabase = createClient()
+  const { data, error } = await supabase.rpc('save_product_images', {
+    p_product_id: productId,
+    p_images: images,
+  })
+
+  if (error) {
+    console.error('Product images save error:', error)
+    throw error
+  }
+
+  return asImageUrlList(data)
+}
+
 /**
  * Ürün görseli upload et
  */
