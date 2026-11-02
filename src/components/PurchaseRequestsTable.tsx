@@ -36,6 +36,10 @@ import {
 } from '@/lib/it-workflow'
 import { purchaseRequestHasItMaterialClass, routeItClassAwayFromPurchasing } from '@/lib/it-class-routing'
 import { isSentToPurchasingStatus } from '@/lib/request-process'
+import {
+  shouldApplyProfileDepartmentFilter,
+  siteManagerRequestOrFilter,
+} from '@/lib/request-list-scope'
 import { deliveryCountdown, fetchLateDeliveryRequestIds, isHeadOfficeRequest } from '@/lib/order-delivery'
 import { SlidingSegmentTabs } from '@/components/SlidingSegmentTabs'
 
@@ -403,15 +407,15 @@ const fetchPurchaseRequests = async (
     matchingRequestIds = await searchPurchaseRequestIds(supabase, searchTerm)
   }
   
-  // Departman filtresi: department_head zaten kendi blok mantığında uyguluyor.
-  // IT depo yöneticileri ise talep kalemlerine göre ayrı kısıtlanır; talep.departmanı ile sınırlanmaz.
-  // purchasing_officer: kendi site/status kapsamı zaten yukarıda ayrı filtreleniyor, departmana göre ayrıca daraltılmaz.
+  // Departman filtresi: department_head / purchasing_officer / site_manager kendi
+  // site kapsamlarında uygulanır. Profildeki "ozan" gibi kişisel değer şantiye
+  // taleplerini (Genel) gizlemesin.
   const userDepartment: string | null =
-    effectiveRole !== 'department_head' &&
-    effectiveRole !== 'purchasing_officer' &&
     profile?.department &&
-    !isItWarehouseManager &&
-    !isItWorkflowElevatedRole(effectiveRole)
+    shouldApplyProfileDepartmentFilter(effectiveRole, {
+      isItWarehouseManager,
+      isElevated: isItWorkflowElevatedRole(effectiveRole),
+    })
       ? profile.department
       : null
 
@@ -693,15 +697,22 @@ const fetchPurchaseRequests = async (
         .in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
         .neq('status', 'onay_bekliyor')
     }
+  } else if (effectiveRole === 'site_manager') {
+    const userSiteIds = Array.isArray(profile?.site_id) ? profile.site_id : (profile?.site_id ? [profile.site_id] : [])
+    if (userSiteIds.length > 0) {
+      countQuery = countQuery
+        .or(siteManagerRequestOrFilter(user.id, userSiteIds, profile?.department))
+        .neq('status', 'beklemede')
+    } else {
+      countQuery = countQuery.eq('requested_by', user.id)
+    }
   } else {
-    // Diğer roller (site_manager, santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       countQuery = countQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
-    if (effectiveRole === 'site_manager') {
-      countQuery = countQuery.neq('status', 'beklemede')
-    } else if (effectiveRole === 'santiye_depo_yonetici') {
+    if (effectiveRole === 'santiye_depo_yonetici') {
       countQuery = countQuery.or(`status.neq.beklemede,requested_by.eq.${user.id}`)
     }
   }
@@ -807,15 +818,22 @@ const fetchPurchaseRequests = async (
         .in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
         .neq('status', 'onay_bekliyor')
     }
+  } else if (effectiveRole === 'site_manager') {
+    const userSiteIds = Array.isArray(profile?.site_id) ? profile.site_id : (profile?.site_id ? [profile.site_id] : [])
+    if (userSiteIds.length > 0) {
+      requestsQuery = requestsQuery
+        .or(siteManagerRequestOrFilter(user.id, userSiteIds, profile?.department))
+        .neq('status', 'beklemede')
+    } else {
+      requestsQuery = requestsQuery.eq('requested_by', user.id)
+    }
   } else {
-    // Diğer roller (site_manager, santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
+    // Diğer roller (santiye_depo_yonetici) sadece kendi sitelerinin taleplerini görebilir
     if (profile?.site_id) {
       // site_id artık array olduğu için, kullanıcının sitelerinden herhangi biriyle eşleşenleri getir
       requestsQuery = requestsQuery.in('site_id', Array.isArray(profile.site_id) ? profile.site_id : [profile.site_id])
     }
-    if (effectiveRole === 'site_manager') {
-      requestsQuery = requestsQuery.neq('status', 'beklemede')
-    } else if (effectiveRole === 'santiye_depo_yonetici') {
+    if (effectiveRole === 'santiye_depo_yonetici') {
       requestsQuery = requestsQuery.or(`status.neq.beklemede,requested_by.eq.${user.id}`)
     }
   }

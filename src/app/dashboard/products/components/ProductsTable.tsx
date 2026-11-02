@@ -37,6 +37,7 @@ function getWarehouseName(stock: any): string {
 
 /** Ana depodaki (boşta) fiziksel stok miktarı */
 function getBostaQty(product: ProductWithStock): number {
+  if (typeof product.main_depot_free_qty === 'number') return product.main_depot_free_qty
   const stocks = (product.warehouse_stocks || []).filter(
     (stock: any) => stock.user_id == null || stock.user_id === undefined
   )
@@ -60,13 +61,57 @@ function getBostaQty(product: ProductWithStock): number {
   return 0
 }
 
+/** Seçili depoda görünen adet. Raf sıfırsa aktif zimmet adedi kullanılır. */
+function getSiteShelfQty(product: ProductWithStock, siteId?: string): number {
+  if (typeof product.site_shelf_qty === 'number') return product.site_shelf_qty
+  if (!siteId) return 0
+  const shelf = (product.warehouse_stocks || [])
+    .filter(
+      (stock) =>
+        stock.warehouse_id === siteId && (stock.user_id == null || stock.user_id === undefined)
+    )
+    .reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
+  const zimmet = Number(product.zimmet_by_warehouse?.[siteId]) || 0
+  return Math.max(shelf, zimmet)
+}
+
+function QtyPill({
+  qty,
+  unit,
+  tone,
+}: {
+  qty: number
+  unit?: string | null
+  tone: 'emerald' | 'primary'
+}) {
+  if (!(qty > 0)) {
+    return <span className="text-sm tabular-nums text-gray-400">0</span>
+  }
+  const box =
+    tone === 'emerald'
+      ? 'border-emerald-200 bg-emerald-50'
+      : 'border-primary-200 bg-primary-50'
+  const amount = tone === 'emerald' ? 'text-emerald-800' : 'text-primary-800'
+  const unitClass = tone === 'emerald' ? 'text-emerald-700' : 'text-primary-700'
+  return (
+    <span className={`inline-flex items-center gap-1.5 rounded-xl border px-2.5 py-1.5 ${box}`}>
+      <span className={`text-sm font-bold tabular-nums ${amount}`}>{qty.toLocaleString('tr-TR')}</span>
+      <span className={`text-[11px] ${unitClass}`}>{unit || 'adet'}</span>
+    </span>
+  )
+}
+
 interface ProductsTableProps {
   products: ProductWithStock[]
   isLoading: boolean
   onProductClick: (productId: string) => void
   selectedSiteId?: string
+  selectedSiteName?: string
   selectedProducts?: string[]
   onSelectionChange?: (selectedIds: string[]) => void
+  totalCount?: number
+  onSelectAllFiltered?: () => void
+  selectingAllFiltered?: boolean
   /**
    * warehouse_access ile tek/çok depoya bağlı kullanıcı.
    * Stok rozeti yerine yalnızca kendi deposundaki adet gösterilir.
@@ -98,12 +143,16 @@ export function ProductsTable({
   isLoading, 
   onProductClick, 
   selectedSiteId,
+  selectedSiteName,
   selectedProducts = [],
   onSelectionChange,
+  totalCount,
+  onSelectAllFiltered,
+  selectingAllFiltered = false,
   ownWarehouseView = false,
   ownWarehouseQuantity = 'zimmet',
 }: ProductsTableProps) {
-  const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock' | 'bosta'>('name')
+  const [sortField, setSortField] = useState<'name' | 'sku' | 'brand' | 'stock' | 'bosta' | 'site'>('name')
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc')
 
   // Loading state
@@ -155,6 +204,7 @@ export function ProductsTable({
 
   const getDisplayStock = (product: ProductWithStock) => {
     if (ownWarehouseView) return getOwnWarehouseQty(product)
+    if (isWarehouseScoped) return getSiteShelfQty(product, selectedSiteId)
     return Number(product.available_stock) || 0
   }
 
@@ -177,6 +227,9 @@ export function ProductsTable({
         break
       case 'bosta':
         comparison = getBostaQty(a) - getBostaQty(b)
+        break
+      case 'site':
+        comparison = getSiteShelfQty(a, selectedSiteId) - getSiteShelfQty(b, selectedSiteId)
         break
     }
     
@@ -226,6 +279,19 @@ export function ProductsTable({
 
     const pageIds = sortedProducts.map((product) => product.id)
     const allOnPageSelected = pageIds.length > 0 && pageIds.every((id) => selectedProducts.includes(id))
+    const hasMorePages = (totalCount || 0) > pageIds.length
+    const allFilteredSelected =
+      hasMorePages && totalCount > 0 && selectedProducts.length >= totalCount && allOnPageSelected
+
+    if (allFilteredSelected) {
+      onSelectionChange([])
+      return
+    }
+
+    if (hasMorePages && onSelectAllFiltered && !selectingAllFiltered) {
+      onSelectAllFiltered()
+      return
+    }
 
     if (allOnPageSelected) {
       onSelectionChange(selectedProducts.filter((id) => !pageIds.includes(id)))
@@ -238,9 +304,16 @@ export function ProductsTable({
   const isAllSelected = sortedProducts.length > 0 && sortedProducts.every((product) => selectedProducts.includes(product.id))
   const isSomeSelected = !isAllSelected && sortedProducts.some((product) => selectedProducts.includes(product.id))
 
+  const siteColumnLabel = selectedSiteName?.trim() || 'Bu depoda'
+
   const desktopGridColumns = (() => {
-    if (hideCrossDepotColumns) {
+    if (ownWarehouseView) {
       return showCheckboxes ? '40px 80px 2fr 1fr 1fr 1fr' : '80px 2fr 1fr 1fr 1fr'
+    }
+    if (isWarehouseScoped) {
+      return showCheckboxes
+        ? '40px 80px 2fr 1fr 1fr 1fr 0.85fr 1fr'
+        : '80px 2fr 1fr 1fr 1fr 0.85fr 1fr'
     }
     return showCheckboxes
       ? '40px 80px 2fr 1fr 1fr 1fr 1fr 200px'
@@ -293,6 +366,20 @@ export function ProductsTable({
             <SortButton field="bosta">Boşta</SortButton>
           </div>
         )}
+        {isWarehouseScoped && (
+          <div className="flex min-w-0 items-center">
+            <SortButton field="bosta">Ana depo</SortButton>
+          </div>
+        )}
+        {isWarehouseScoped && (
+          <div className="flex min-w-0 items-center">
+            <SortButton field="site">
+              <span className="max-w-[9rem] truncate" title={siteColumnLabel}>
+                {siteColumnLabel}
+              </span>
+            </SortButton>
+          </div>
+        )}
         {!hideCrossDepotColumns && (
           <div className="text-xs font-medium text-black">Depolar</div>
         )}
@@ -303,6 +390,8 @@ export function ProductsTable({
         const stockStatus = getStockStatus(product)
         const StockIcon = stockStatus.icon
         const totalStock = getDisplayStock(product)
+        const bostaQty = getBostaQty(product)
+        const siteQty = isWarehouseScoped ? getSiteShelfQty(product, selectedSiteId) : 0
         const primaryImage = product.images?.[0]
         const isSelected = selectedProducts.includes(product.id)
         const zimmetLeft: Record<string, number> = { ...(product.zimmet_by_warehouse || {}) }
@@ -431,19 +520,27 @@ export function ProductsTable({
               {/* Boşta — Ana Depo / Sanayi Depo stoğu (yalnızca Envanter) */}
               {!hideCrossDepotColumns && (
                 <div>
-                  {(() => {
-                    const bosta = getBostaQty(product)
-                    return bosta > 0 ? (
-                      <div className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-200 bg-emerald-50 px-2.5 py-1.5">
-                        <span className="text-sm font-bold tabular-nums text-emerald-800">
-                          {bosta.toLocaleString('tr-TR')}
-                        </span>
-                        <span className="text-[11px] text-emerald-700">{product.unit || 'adet'}</span>
-                      </div>
-                    ) : (
-                      <span className="text-sm text-gray-400">—</span>
-                    )
-                  })()}
+                  {bostaQty > 0 ? (
+                    <QtyPill qty={bostaQty} unit={product.unit} tone="emerald" />
+                  ) : (
+                    <span className="text-sm text-gray-400">—</span>
+                  )}
+                </div>
+              )}
+
+              {/* Seçili depo: ana depoda boşta kalan + bu deponun raftaki adedi */}
+              {isWarehouseScoped && (
+                <div>
+                  {bostaQty > 0 ? (
+                    <QtyPill qty={bostaQty} unit={product.unit} tone="emerald" />
+                  ) : (
+                    <span className="text-sm text-gray-400">—</span>
+                  )}
+                </div>
+              )}
+              {isWarehouseScoped && (
+                <div>
+                  <QtyPill qty={siteQty} unit={product.unit} tone="primary" />
                 </div>
               )}
 
@@ -570,14 +667,30 @@ export function ProductsTable({
                         <Box className="w-3 h-3 text-emerald-700" />
                       </div>
                       <span className="font-medium text-gray-800 text-xs">
-                        {(() => {
-                          const bosta = getBostaQty(product)
-                          return bosta > 0
-                            ? `${bosta.toLocaleString('tr-TR')} ${product.unit || 'adet'}`
-                            : '—'
-                        })()}
+                        {bostaQty > 0
+                          ? `${bostaQty.toLocaleString('tr-TR')} ${product.unit || 'adet'}`
+                          : '—'}
                       </span>
                     </div>
+                  </div>
+                )}
+
+                {isWarehouseScoped && (
+                  <div>
+                    <div className="text-xs text-gray-500 mb-1">Ana depo</div>
+                    {bostaQty > 0 ? (
+                      <QtyPill qty={bostaQty} unit={product.unit} tone="emerald" />
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
+                  </div>
+                )}
+                {isWarehouseScoped && (
+                  <div>
+                    <div className="mb-1 truncate text-xs text-gray-500" title={siteColumnLabel}>
+                      {siteColumnLabel}
+                    </div>
+                    <QtyPill qty={siteQty} unit={product.unit} tone="primary" />
                   </div>
                 )}
               </div>

@@ -5,6 +5,10 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { GMO_SITE_ID } from './constants'
 import { canSeeItWorkflowTab, isItWorkflowElevatedRole, isPazarlamaDepartment, IT_STATUS_INCELEMEDE, IT_STATUS_ONAYLANDI } from './it-workflow'
 import { resolveProfileSiteIds } from './profileSiteIds'
+import {
+  shouldApplyProfileDepartmentFilter,
+  siteManagerRequestOrFilter,
+} from './request-list-scope'
 import type { ProfileRow } from './purchaseRequestsQuery'
 import {
   isProfileDepartmentIt,
@@ -66,7 +70,16 @@ async function fetchWeeklyActivity(
   } else if (role === 'santiye_depo') {
     const userSiteIds = Array.isArray(siteId) ? siteId : siteId ? [siteId] : []
     if (userSiteIds.length > 0) query = query.in('site_id', userSiteIds)
-  } else if (role === 'site_manager' || role === 'santiye_depo_yonetici') {
+  } else if (role === 'site_manager') {
+    const userSiteIds = Array.isArray(siteId) ? siteId : siteId ? [siteId] : []
+    if (userSiteIds.length > 0) {
+      query = query
+        .or(siteManagerRequestOrFilter(userId, userSiteIds, department))
+        .neq('status', 'beklemede')
+    } else {
+      query = query.eq('requested_by', userId)
+    }
+  } else if (role === 'santiye_depo_yonetici') {
     const userSiteIds = Array.isArray(siteId) ? siteId : siteId ? [siteId] : []
     if (userSiteIds.length > 0) query = query.in('site_id', userSiteIds).neq('status', 'beklemede')
   } else if (role === 'department_head') {
@@ -81,10 +94,11 @@ async function fetchWeeklyActivity(
   }
 
   if (
-    role !== 'department_head' &&
     department &&
-    !(role === 'warehouse_manager' && isProfileDepartmentIt(department)) &&
-    !isItWorkflowElevatedRole(role)
+    shouldApplyProfileDepartmentFilter(role, {
+      isItWarehouseManager: role === 'warehouse_manager' && isProfileDepartmentIt(department),
+      isElevated: isItWorkflowElevatedRole(role),
+    })
   ) {
     query = query.eq('department', department)
   }
@@ -164,19 +178,26 @@ async function fetchMonthlyBucket(
     monthQuery = monthQuery.neq('status', 'departman_onayı_bekliyor')
   } else if (profile.role === 'santiye_depo') {
     if (profileSiteIds.length > 0) monthQuery = monthQuery.in('site_id', profileSiteIds)
-  } else if (profile.role === 'site_manager' || profile.role === 'santiye_depo_yonetici') {
+  } else if (profile.role === 'site_manager') {
+    if (profileSiteIds.length > 0) {
+      monthQuery = monthQuery
+        .or(siteManagerRequestOrFilter(userId, profileSiteIds, profile.department))
+        .neq('status', 'beklemede')
+    } else {
+      monthQuery = monthQuery.eq('requested_by', userId)
+    }
+  } else if (profile.role === 'santiye_depo_yonetici') {
     if (profileSiteIds.length > 0) {
       monthQuery = monthQuery.in('site_id', profileSiteIds).neq('status', 'beklemede')
     }
   }
 
-  const skipDeptMonthly =
-    profile.role === 'warehouse_manager' && isProfileDepartmentIt(profile.department)
   if (
-    profile.role !== 'department_head' &&
     profile.department &&
-    !skipDeptMonthly &&
-    !isItWorkflowElevatedRole(profile.role)
+    shouldApplyProfileDepartmentFilter(profile.role, {
+      isItWarehouseManager: profile.role === 'warehouse_manager' && isProfileDepartmentIt(profile.department),
+      isElevated: isItWorkflowElevatedRole(profile.role),
+    })
   ) {
     monthQuery = monthQuery.eq('department', profile.department)
   }
@@ -312,20 +333,26 @@ export async function fetchRequestsPageData(
     statsQuery = statsQuery.neq('status', 'departman_onayı_bekliyor')
   } else if (profile.role === 'santiye_depo') {
     if (profileSiteIds.length > 0) statsQuery = statsQuery.in('site_id', profileSiteIds)
-  } else if (profile.role === 'site_manager' || profile.role === 'santiye_depo_yonetici') {
+  } else if (profile.role === 'site_manager') {
+    if (profileSiteIds.length > 0) {
+      statsQuery = statsQuery
+        .or(siteManagerRequestOrFilter(userId, profileSiteIds, profile.department))
+        .neq('status', 'beklemede')
+    } else {
+      statsQuery = statsQuery.eq('requested_by', userId)
+    }
+  } else if (profile.role === 'santiye_depo_yonetici') {
     if (profileSiteIds.length > 0) {
       statsQuery = statsQuery.in('site_id', profileSiteIds).neq('status', 'beklemede')
     }
   }
 
-  const skipDeptFilterItWm =
-    profile.role === 'warehouse_manager' && isProfileDepartmentIt(profile.department)
-
   if (
-    profile.role !== 'department_head' &&
     profile.department &&
-    !skipDeptFilterItWm &&
-    !isItWorkflowElevatedRole(profile.role)
+    shouldApplyProfileDepartmentFilter(profile.role, {
+      isItWarehouseManager: profile.role === 'warehouse_manager' && isProfileDepartmentIt(profile.department),
+      isElevated: isItWorkflowElevatedRole(profile.role),
+    })
   ) {
     statsQuery = statsQuery.eq('department', profile.department)
   }

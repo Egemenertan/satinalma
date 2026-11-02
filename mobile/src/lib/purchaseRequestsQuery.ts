@@ -7,6 +7,10 @@ import {
   IT_STATUS_ONAYLANDI,
 } from './it-workflow'
 import { resolveProfileSiteIds } from './profileSiteIds'
+import {
+  shouldApplyProfileDepartmentFilter,
+  siteManagerRequestOrFilter,
+} from './request-list-scope'
 import { excludeSoftDeletedRequests } from './softDeletePurchaseRequest'
 import {
   fetchPurchaseRequestIdsVisibleToItWarehouseManager,
@@ -388,10 +392,16 @@ async function enrichListRows(
 }
 
 function deptFilter(role: string, profile: ProfileRow, isItWM: boolean): string | null {
-  if (role === 'department_head') return null
-  if (isItWorkflowElevatedRole(role)) return null
-  if (profile.department && !isItWM) return profile.department
-  return null
+  if (
+    !profile.department ||
+    !shouldApplyProfileDepartmentFilter(role, {
+      isItWarehouseManager: isItWM,
+      isElevated: isItWorkflowElevatedRole(role),
+    })
+  ) {
+    return null
+  }
+  return profile.department
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -434,7 +444,9 @@ function applyRoleScope(query: any, effectiveRole: string, userId: string, profi
   }
   if (effectiveRole === 'site_manager') {
     if (userSiteIds.length > 0) {
-      return query.in('site_id', userSiteIds).neq('status', 'beklemede')
+      return query
+        .or(siteManagerRequestOrFilter(userId, userSiteIds, profile.department))
+        .neq('status', 'beklemede')
     }
     return query.eq('requested_by', userId)
   }

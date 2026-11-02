@@ -4,9 +4,13 @@ import { useEffect, useMemo, useState } from 'react'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { Minus, Plus, Search, X, Loader2, UserRound, Package, Building2 } from 'lucide-react'
+import { ArrowRight, Minus, Plus, Search, X, Loader2, UserRound, Package, Building2 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
-import { assignZimmetInWarehouse } from '@/services/zimmet.service'
+import {
+  assignZimmetInWarehouse,
+  changeZimmetAssignment,
+  fetchActiveZimmetsForEmployee,
+} from '@/services/zimmet.service'
 import { transferStock } from '@/services/stock.service'
 
 interface Employee {
@@ -26,6 +30,7 @@ interface WarehouseOption {
 
 interface ProductDetail {
   id: string
+  productId: string
   name: string
   unit: string
   sku: string
@@ -36,6 +41,7 @@ interface ProductDetail {
   quantity: number
   warehouseId: string
   warehouses: WarehouseOption[]
+  inventoryIds?: string[]
 }
 
 interface BulkZimmetModalProps {
@@ -46,6 +52,8 @@ interface BulkZimmetModalProps {
   selectedProductIds: string[]
   /** teslim: stok aktarılır, zimmet açılmaz, teslim raporu iner */
   mode?: 'zimmet' | 'teslim'
+  /** Operate kullanıcısında yalnızca bu depolar */
+  allowedWarehouseIds?: string[]
 }
 
 async function rowsInChunks<T>(
@@ -86,6 +94,166 @@ function stockPlan(product: ProductDetail, targetWarehouseId: string) {
   }
 }
 
+type ProductCatalogRow = Omit<ProductDetail, 'quantity' | 'warehouseId' | 'warehouses' | 'inventoryIds'>
+
+function catalogFromProduct(product: {
+  id: string
+  name: string
+  unit: string | null
+  sku: string | null
+  product_type: string | null
+  unit_price: number | null
+  currency: string | null
+  brand: { name: string } | { name: string }[] | null
+}): ProductCatalogRow {
+  const brand = Array.isArray(product.brand) ? product.brand[0] : product.brand
+  const price = Number(product.unit_price)
+  return {
+    id: product.id,
+    productId: product.id,
+    name: product.name,
+    unit: product.unit || 'adet',
+    sku: product.sku || '',
+    brand: brand?.name || '',
+    productType: product.product_type || '',
+    unitPrice: Number.isFinite(price) && price > 0 ? price : null,
+    currency: product.currency || 'TRY',
+  }
+}
+
+function employeeResultsOf(employees: Employee[], search: string, excludeId?: string) {
+  const query = search.trim().toLocaleLowerCase('tr')
+  if (query.length < 1) return []
+  return employees
+    .filter((employee) => {
+      if (excludeId && employee.id === excludeId) return false
+      const haystack = [employee.first_name, employee.work_email, employee.department, employee.position]
+        .filter(Boolean)
+        .join(' ')
+        .toLocaleLowerCase('tr')
+      return haystack.includes(query)
+    })
+    .slice(0, 8)
+}
+
+function PersonPicker({
+  label,
+  hint,
+  selected,
+  open,
+  onToggle,
+  search,
+  onSearch,
+  results,
+  employeeCount,
+  onSelect,
+  onClear,
+  placeholder,
+  emptyLabel,
+  disabled,
+}: {
+  label: string
+  hint?: string
+  selected: Employee | undefined
+  open: boolean
+  onToggle: () => void
+  search: string
+  onSearch: (value: string) => void
+  results: Employee[]
+  employeeCount: number
+  onSelect: (employee: Employee) => void
+  onClear?: () => void
+  placeholder: string
+  emptyLabel: string
+  disabled?: boolean
+}) {
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
+          <UserRound className="h-4 w-4 text-gray-500" />
+          {label}
+        </div>
+        {selected && onClear && (
+          <button
+            type="button"
+            onClick={onClear}
+            disabled={disabled}
+            className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-50"
+          >
+            Depodan
+          </button>
+        )}
+      </div>
+
+      {selected && !open ? (
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={disabled}
+          className="w-full rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition-colors hover:border-gray-300 disabled:opacity-60"
+        >
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-950 text-sm font-medium text-white">
+              {employeeLabel(selected).charAt(0).toLocaleUpperCase('tr')}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium text-gray-950">{employeeLabel(selected)}</p>
+              <p className="truncate text-xs text-gray-500">
+                {selected.position || selected.department || selected.work_email || 'Çalışan'}
+              </p>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-gray-400">Değiştirmek için tıklayın</p>
+        </button>
+      ) : (
+        <div className="space-y-2">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+            <Input
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+              placeholder={placeholder}
+              className="h-11 rounded-xl border-gray-200 bg-white pl-9"
+              disabled={disabled}
+            />
+          </div>
+          <div className="max-h-52 overflow-y-auto rounded-2xl border border-gray-200 bg-white">
+            {search.trim().length < 1 ? (
+              <p className="px-3 py-6 text-center text-sm text-gray-500">
+                {employeeCount} çalışan içinden arayın
+              </p>
+            ) : results.length === 0 ? (
+              <p className="px-3 py-6 text-center text-sm text-gray-500">{emptyLabel}</p>
+            ) : (
+              results.map((employee) => (
+                <button
+                  key={employee.id}
+                  type="button"
+                  onClick={() => onSelect(employee)}
+                  className="flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-gray-50"
+                >
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
+                    {employeeLabel(employee).charAt(0).toLocaleUpperCase('tr')}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-gray-950">{employeeLabel(employee)}</p>
+                    <p className="truncate text-xs text-gray-500">
+                      {[employee.position, employee.department].filter(Boolean).join(' · ') ||
+                        employee.work_email}
+                    </p>
+                  </div>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+      {hint ? <p className="text-xs leading-5 text-gray-500">{hint}</p> : null}
+    </div>
+  )
+}
+
 export default function BulkZimmetModal({
   open,
   onOpenChange,
@@ -93,13 +261,18 @@ export default function BulkZimmetModal({
   showToast,
   selectedProductIds,
   mode = 'zimmet',
+  allowedWarehouseIds,
 }: BulkZimmetModalProps) {
   const isDelivery = mode === 'teslim'
+  const [fromEmployeeId, setFromEmployeeId] = useState('')
+  const [fromEmployeeOpen, setFromEmployeeOpen] = useState(true)
+  const [fromEmployeeSearch, setFromEmployeeSearch] = useState('')
   const [selectedEmployeeId, setSelectedEmployeeId] = useState('')
   const [employees, setEmployees] = useState<Employee[]>([])
   const [employeeSearch, setEmployeeSearch] = useState('')
   const [employeeOpen, setEmployeeOpen] = useState(true)
   const [productDetails, setProductDetails] = useState<ProductDetail[]>([])
+  const [catalogById, setCatalogById] = useState<Map<string, ProductCatalogRow>>(new Map())
   const [sites, setSites] = useState<{ id: string; name: string }[]>([])
   const [targetWarehouseId, setTargetWarehouseId] = useState('')
   const [managedWarehouseIds, setManagedWarehouseIds] = useState<string[]>([])
@@ -107,30 +280,40 @@ export default function BulkZimmetModal({
   const [loadingData, setLoadingData] = useState(false)
   const [doneIds, setDoneIds] = useState<string[]>([])
   const supabase = createClient()
+  const isPersonTransfer = !isDelivery && Boolean(fromEmployeeId)
 
   useEffect(() => {
     if (!open || selectedProductIds.length === 0) {
       if (!open) resetModal()
       return
     }
-    void load()
+    void loadCatalog()
   }, [open, selectedProductIds.join('|')])
 
   const resetModal = () => {
+    setFromEmployeeId('')
+    setFromEmployeeOpen(true)
+    setFromEmployeeSearch('')
     setSelectedEmployeeId('')
     setEmployeeSearch('')
     setEmployeeOpen(true)
     setProductDetails([])
+    setCatalogById(new Map())
     setSites([])
     setTargetWarehouseId('')
     setManagedWarehouseIds([])
     setDoneIds([])
   }
 
-  const load = async () => {
+  const allowedSet = useMemo(
+    () => new Set((allowedWarehouseIds || []).filter(Boolean)),
+    [allowedWarehouseIds?.join('|')]
+  )
+
+  const loadCatalog = async () => {
     setLoadingData(true)
     try {
-      const [{ data: employeeRows, error: employeeError }, products, stocks, zimmets, { data: siteRows, error: siteError }] =
+      const [{ data: employeeRows, error: employeeError }, products, { data: siteRows, error: siteError }] =
         await Promise.all([
           supabase
             .from('employees')
@@ -148,29 +331,6 @@ export default function BulkZimmetModal({
           }>(selectedProductIds, (chunk) =>
             supabase.from('products').select('id, name, unit, sku, product_type, unit_price, currency, brand:brands(name)').in('id', chunk)
           ),
-          rowsInChunks<{
-            id: string
-            product_id: string | null
-            warehouse_id: string | null
-            quantity: number | null
-            warehouse: { name: string } | { name: string }[] | null
-          }>(selectedProductIds, (chunk) =>
-            supabase
-              .from('warehouse_stock')
-              .select('id, product_id, warehouse_id, quantity, warehouse:sites!warehouse_stock_warehouse_id_fkey(name)')
-              .in('product_id', chunk)
-              .is('user_id', null)
-              .gt('quantity', 0)
-          ),
-          rowsInChunks<{ product_id: string | null; source_warehouse_id: string | null; quantity: number | null }>(
-            selectedProductIds,
-            (chunk) =>
-              supabase
-                .from('user_inventory')
-                .select('product_id, source_warehouse_id, quantity')
-                .in('product_id', chunk)
-                .eq('status', 'active')
-          ),
           supabase.from('sites').select('id, name').order('name'),
         ])
 
@@ -180,59 +340,21 @@ export default function BulkZimmetModal({
       setEmployees((employeeRows || []) as Employee[])
       setSites((siteRows || []).filter((site) => site.name))
 
-      const zimmetByKey = new Map<string, number>()
-      for (const row of zimmets || []) {
-        if (!row.product_id || !row.source_warehouse_id) continue
-        const key = `${row.product_id}:${row.source_warehouse_id}`
-        zimmetByKey.set(key, (zimmetByKey.get(key) || 0) + (Number(row.quantity) || 0))
-      }
-
-      const stocksByProduct = new Map<string, WarehouseOption[]>()
-      for (const row of stocks || []) {
-        const warehouse = Array.isArray(row.warehouse) ? row.warehouse[0] : row.warehouse
-        const warehouseId = row.warehouse_id
-        if (!row.product_id || !warehouseId) continue
-        const shelf = Number(row.quantity) || 0
-        const assigned = zimmetByKey.get(`${row.product_id}:${warehouseId}`) || 0
-        const available = Math.max(0, shelf - assigned)
-        if (available <= 0) continue
-        const list = stocksByProduct.get(row.product_id) || []
-        list.push({
-          id: row.id,
-          warehouseId,
-          name: warehouse?.name || 'Depo',
-          available,
-        })
-        stocksByProduct.set(row.product_id, list)
-      }
-
       const order = new Map(selectedProductIds.map((id, index) => [id, index]))
-      const details = (products || [])
-        .map((product) => {
-          const warehouses = (stocksByProduct.get(product.id) || []).sort((a, b) => {
-            if (isSanayiDepo(a.name) && !isSanayiDepo(b.name)) return -1
-            if (!isSanayiDepo(a.name) && isSanayiDepo(b.name)) return 1
-            return a.name.localeCompare(b.name, 'tr')
-          })
-          const brand = Array.isArray(product.brand) ? product.brand[0] : product.brand
-          const price = Number(product.unit_price)
-          return {
-            id: product.id,
-            name: product.name,
-            unit: product.unit || 'adet',
-            sku: product.sku || '',
-            brand: brand?.name || '',
-            productType: product.product_type || '',
-            unitPrice: Number.isFinite(price) && price > 0 ? price : null,
-            currency: product.currency || 'TRY',
-            quantity: 1,
-            warehouseId: defaultSourceWarehouseId(warehouses),
-            warehouses,
-          }
-        })
-        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0))
+      const catalog = new Map<string, ProductCatalogRow>()
+      for (const product of products || []) {
+        catalog.set(product.id, catalogFromProduct(product))
+      }
+      setCatalogById(catalog)
 
-      setProductDetails(details)
+      if (fromEmployeeId) {
+        const from = ((employeeRows || []) as Employee[]).find((employee) => employee.id === fromEmployeeId)
+        if (from) {
+          await applyFromEmployee(from, catalog, order)
+          return
+        }
+      }
+      await applyWarehouseStock(catalog, order)
     } catch (error) {
       console.error('Toplu zimmet verisi yüklenemedi:', error)
       showToast('Zimmet bilgileri yüklenemedi', 'error')
@@ -241,29 +363,216 @@ export default function BulkZimmetModal({
     }
   }
 
-  const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId)
+  const applyWarehouseStock = async (
+    catalog: Map<string, ProductCatalogRow>,
+    order: Map<string, number>
+  ) => {
+    const [stocks, zimmets] = await Promise.all([
+      rowsInChunks<{
+        id: string
+        product_id: string | null
+        warehouse_id: string | null
+        quantity: number | null
+        warehouse: { name: string } | { name: string }[] | null
+      }>(selectedProductIds, (chunk) => {
+        let query = supabase
+          .from('warehouse_stock')
+          .select('id, product_id, warehouse_id, quantity, warehouse:sites!warehouse_stock_warehouse_id_fkey(name)')
+          .in('product_id', chunk)
+          .is('user_id', null)
+          .gt('quantity', 0)
+        if (allowedSet.size === 1) {
+          query = query.eq('warehouse_id', [...allowedSet][0])
+        } else if (allowedSet.size > 1) {
+          query = query.in('warehouse_id', [...allowedSet])
+        }
+        return query
+      }),
+      rowsInChunks<{ product_id: string | null; source_warehouse_id: string | null; quantity: number | null }>(
+        selectedProductIds,
+        (chunk) => {
+          let query = supabase
+            .from('user_inventory')
+            .select('product_id, source_warehouse_id, quantity')
+            .in('product_id', chunk)
+            .eq('status', 'active')
+          if (allowedSet.size === 1) {
+            query = query.eq('source_warehouse_id', [...allowedSet][0])
+          } else if (allowedSet.size > 1) {
+            query = query.in('source_warehouse_id', [...allowedSet])
+          }
+          return query
+        }
+      ),
+    ])
 
-  const employeeResults = useMemo(() => {
-    const query = employeeSearch.trim().toLocaleLowerCase('tr')
-    if (query.length < 1) return []
-    return employees
-      .filter((employee) => {
-        const haystack = [employee.first_name, employee.work_email, employee.department, employee.position]
-          .filter(Boolean)
-          .join(' ')
-          .toLocaleLowerCase('tr')
-        return haystack.includes(query)
+    const zimmetByKey = new Map<string, number>()
+    for (const row of zimmets || []) {
+      if (!row.product_id || !row.source_warehouse_id) continue
+      const key = `${row.product_id}:${row.source_warehouse_id}`
+      zimmetByKey.set(key, (zimmetByKey.get(key) || 0) + (Number(row.quantity) || 0))
+    }
+
+    const stocksByProduct = new Map<string, WarehouseOption[]>()
+    for (const row of stocks || []) {
+      const warehouse = Array.isArray(row.warehouse) ? row.warehouse[0] : row.warehouse
+      const warehouseId = row.warehouse_id
+      if (!row.product_id || !warehouseId) continue
+      const shelf = Number(row.quantity) || 0
+      const assigned = zimmetByKey.get(`${row.product_id}:${warehouseId}`) || 0
+      const available = Math.max(0, shelf - assigned)
+      if (available <= 0) continue
+      const list = stocksByProduct.get(row.product_id) || []
+      list.push({
+        id: row.id,
+        warehouseId,
+        name: warehouse?.name || 'Depo',
+        available,
       })
-      .slice(0, 8)
-  }, [employees, employeeSearch])
+      stocksByProduct.set(row.product_id, list)
+    }
 
+    const details = selectedProductIds
+      .map((productId) => catalog.get(productId))
+      .filter((product): product is NonNullable<typeof product> => Boolean(product))
+      .map((product) => {
+        const warehouses = (stocksByProduct.get(product.productId) || []).sort((a, b) => {
+          if (isSanayiDepo(a.name) && !isSanayiDepo(b.name)) return -1
+          if (!isSanayiDepo(a.name) && isSanayiDepo(b.name)) return 1
+          return a.name.localeCompare(b.name, 'tr')
+        })
+        return {
+          ...product,
+          quantity: 1,
+          warehouseId: defaultSourceWarehouseId(warehouses),
+          warehouses,
+        }
+      })
+      .sort((a, b) => (order.get(a.productId) ?? 0) - (order.get(b.productId) ?? 0))
+
+    setProductDetails(details)
+  }
+
+  const applyFromEmployee = async (
+    employee: Employee,
+    catalog: Map<string, ProductCatalogRow>,
+    order: Map<string, number>
+  ) => {
+    const zimmets = await fetchActiveZimmetsForEmployee(employee, {
+      warehouseIds: allowedSet.size ? [...allowedSet] : undefined,
+    })
+    const nextCatalog = new Map(catalog)
+
+    const missingIds = [...new Set(zimmets.map((row) => row.product_id))].filter((id) => !nextCatalog.has(id))
+    if (missingIds.length > 0) {
+      const extra = await rowsInChunks<{
+        id: string
+        name: string
+        unit: string | null
+        sku: string | null
+        product_type: string | null
+        unit_price: number | null
+        currency: string | null
+        brand: { name: string } | { name: string }[] | null
+      }>(missingIds, (chunk) =>
+        supabase.from('products').select('id, name, unit, sku, product_type, unit_price, currency, brand:brands(name)').in('id', chunk)
+      )
+      for (const product of extra) {
+        nextCatalog.set(product.id, catalogFromProduct(product))
+      }
+      setCatalogById(nextCatalog)
+    }
+
+    const grouped = new Map<
+      string,
+      { productId: string; warehouseId: string; name: string; available: number; inventoryIds: string[] }
+    >()
+    for (const row of zimmets) {
+      if (!row.source_warehouse_id) continue
+      const key = `${row.product_id}:${row.source_warehouse_id}`
+      const existing = grouped.get(key)
+      if (existing) {
+        existing.available += row.quantity
+        existing.inventoryIds.push(row.id)
+        continue
+      }
+      grouped.set(key, {
+        productId: row.product_id,
+        warehouseId: row.source_warehouse_id,
+        name: row.warehouse_name || 'Depo',
+        available: row.quantity,
+        inventoryIds: [row.id],
+      })
+    }
+
+    const details: ProductDetail[] = []
+    for (const group of grouped.values()) {
+      const product = nextCatalog.get(group.productId)
+      if (!product) continue
+      details.push({
+        ...product,
+        id: `${group.productId}::${group.warehouseId}`,
+        quantity: group.available,
+        warehouseId: group.warehouseId,
+        warehouses: [
+          {
+            id: group.warehouseId,
+            warehouseId: group.warehouseId,
+            name: group.name,
+            available: group.available,
+          },
+        ],
+        inventoryIds: group.inventoryIds,
+      })
+    }
+    details.sort((a, b) => {
+      const aSel = order.has(a.productId) ? 0 : 1
+      const bSel = order.has(b.productId) ? 0 : 1
+      if (aSel !== bSel) return aSel - bSel
+      return (order.get(a.productId) ?? 0) - (order.get(b.productId) ?? 0) || a.name.localeCompare(b.name, 'tr')
+    })
+
+    setProductDetails(details)
+  }
+
+  const selectedEmployee = employees.find((employee) => employee.id === selectedEmployeeId)
+  const fromEmployee = employees.find((employee) => employee.id === fromEmployeeId)
+
+  const fromResults = useMemo(
+    () => employeeResultsOf(employees, fromEmployeeSearch, selectedEmployeeId),
+    [employees, fromEmployeeSearch, selectedEmployeeId]
+  )
+  const employeeResults = useMemo(
+    () => employeeResultsOf(employees, employeeSearch, fromEmployeeId),
+    [employees, employeeSearch, fromEmployeeId]
+  )
+
+  const visibleSites = allowedSet.size
+    ? sites.filter((site) => allowedSet.has(site.id))
+    : sites
   const targetWarehouse = sites.find((site) => site.id === targetWarehouseId)
 
-  const selectEmployee = async (employee: Employee) => {
-    setSelectedEmployeeId(employee.id)
-    setEmployeeOpen(false)
-    setEmployeeSearch('')
+  const selectFromEmployee = async (employee: Employee) => {
+    if (employee.id === selectedEmployeeId) {
+      showToast('Kimden ve kime aynı kişi olamaz', 'error')
+      return
+    }
+    setFromEmployeeId(employee.id)
+    setFromEmployeeOpen(false)
+    setFromEmployeeSearch('')
+    setLoadingData(true)
+    try {
+      const order = new Map(selectedProductIds.map((id, index) => [id, index]))
+      await applyFromEmployee(employee, catalogById, order)
+    } catch (error) {
+      console.error('Kişi zimmetleri yüklenemedi:', error)
+      showToast('Bu kişinin zimmetleri yüklenemedi', 'error')
+    } finally {
+      setLoadingData(false)
+    }
+  }
 
+  const resolveManagedWarehouse = async (employee: Employee) => {
     const email = employee.work_email?.trim()
     if (!email) {
       setManagedWarehouseIds([])
@@ -304,8 +613,42 @@ export default function BulkZimmetModal({
       .map((site) => site.id)
     const fallback = managed.filter((id) => !ordered.includes(id))
     const managedIds = [...ordered, ...fallback]
-    setManagedWarehouseIds(managedIds)
-    setTargetWarehouseId(managedIds[0] || '')
+    const scopedIds = allowedSet.size
+      ? managedIds.filter((id) => allowedSet.has(id))
+      : managedIds
+    const nextIds = scopedIds.length > 0 ? scopedIds : allowedSet.size ? [...allowedSet] : managedIds
+    setManagedWarehouseIds(nextIds)
+    setTargetWarehouseId(nextIds[0] || '')
+  }
+
+  const clearFromEmployee = async () => {
+    setFromEmployeeId('')
+    setFromEmployeeOpen(true)
+    setFromEmployeeSearch('')
+    setLoadingData(true)
+    try {
+      const order = new Map(selectedProductIds.map((id, index) => [id, index]))
+      await applyWarehouseStock(catalogById, order)
+      if (selectedEmployee) await resolveManagedWarehouse(selectedEmployee)
+    } catch (error) {
+      console.error('Depo stoku yüklenemedi:', error)
+      showToast('Depo stoku yüklenemedi', 'error')
+    } finally {
+      setLoadingData(false)
+    }
+  }
+
+  const selectEmployee = async (employee: Employee) => {
+    if (employee.id === fromEmployeeId) {
+      showToast('Kimden ve kime aynı kişi olamaz', 'error')
+      return
+    }
+    setSelectedEmployeeId(employee.id)
+    setEmployeeOpen(false)
+    setEmployeeSearch('')
+
+    if (fromEmployeeId) return
+    await resolveManagedWarehouse(employee)
   }
 
   const updateProduct = (productId: string, patch: Partial<ProductDetail>) => {
@@ -319,9 +662,13 @@ export default function BulkZimmetModal({
   }
 
   const rowIssue = (product: ProductDetail) => {
-    if (!targetWarehouseId) return isDelivery ? 'Teslim deposu seçin' : 'Zimmet deposu seçin'
-    const plan = stockPlan(product, targetWarehouseId)
-    if (!plan.source || plan.available <= 0) return 'Boş stok yok'
+    if (!isPersonTransfer && !targetWarehouseId) {
+      return isDelivery ? 'Teslim deposu seçin' : 'Zimmet deposu seçin'
+    }
+    const plan = stockPlan(product, isPersonTransfer ? product.warehouseId : targetWarehouseId)
+    if (!plan.source || plan.available <= 0) {
+      return isPersonTransfer ? 'Bu kişide zimmet yok' : 'Boş stok yok'
+    }
     if (!(product.quantity > 0)) return 'Miktar girin'
     if (product.quantity > plan.available) return `En fazla ${plan.available}`
     return null
@@ -330,14 +677,19 @@ export default function BulkZimmetModal({
   const issueCount = productDetails.filter((product) => rowIssue(product)).length
   const canSubmit =
     Boolean(selectedEmployeeId) &&
-    Boolean(targetWarehouseId) &&
+    (isPersonTransfer || Boolean(targetWarehouseId)) &&
     productDetails.length > 0 &&
     issueCount === 0 &&
-    !loadingData
+    !loadingData &&
+    fromEmployeeId !== selectedEmployeeId
 
   const handleCreateBulkZimmet = async () => {
     if (!selectedEmployee) {
       showToast(isDelivery ? 'Teslim alacak kişiyi seçin' : 'Zimmetlenecek kişiyi seçin', 'error')
+      return
+    }
+    if (isPersonTransfer && !fromEmployee) {
+      showToast('Aktarım için kaynak kişiyi seçin', 'error')
       return
     }
     const blocked = productDetails.find((product) => rowIssue(product))
@@ -350,12 +702,35 @@ export default function BulkZimmetModal({
       setLoading(true)
       setDoneIds([])
       const delivered: { detail: ProductDetail; sourceName: string }[] = []
+
+      if (isPersonTransfer && fromEmployee) {
+        for (const detail of productDetails) {
+          const ids = detail.inventoryIds || []
+          if (ids.length === 0) throw new Error(`${detail.name} için zimmet kaydı yok`)
+          await changeZimmetAssignment({
+            inventoryId: ids[0],
+            inventoryIds: ids,
+            newEmployee: selectedEmployee,
+            quantity: detail.quantity,
+          })
+          delivered.push({ detail, sourceName: detail.warehouses[0]?.name || 'Depo' })
+          setDoneIds((current) => [...current, detail.id])
+        }
+        showToast(
+          `${productDetails.length} ürün ${employeeLabel(fromEmployee)} üzerinden ${employeeLabel(selectedEmployee)} adına aktarıldı`,
+          'success'
+        )
+        onSuccess()
+        onOpenChange(false)
+        return
+      }
+
       for (const detail of productDetails) {
         const plan = stockPlan(detail, targetWarehouseId)
         if (!plan.source) throw new Error(`${detail.name} için boş stok yok`)
         if (plan.source.warehouseId !== targetWarehouseId) {
           await transferStock(
-            detail.id,
+            detail.productId,
             plan.source.warehouseId,
             targetWarehouseId,
             detail.quantity,
@@ -366,7 +741,7 @@ export default function BulkZimmetModal({
         }
         if (!isDelivery) {
           await assignZimmetInWarehouse({
-            productId: detail.id,
+            productId: detail.productId,
             productName: detail.name,
             productUnit: detail.unit,
             warehouseId: targetWarehouseId,
@@ -467,92 +842,63 @@ export default function BulkZimmetModal({
       <DialogContent className="flex max-h-[min(88vh,840px)] w-full max-w-4xl flex-col gap-0 overflow-hidden rounded-3xl bg-white p-0">
         <DialogHeader className="border-b border-gray-100 px-6 py-5 text-left">
           <DialogTitle className="text-lg font-semibold text-gray-950">
-            {isDelivery ? 'Toplu teslim' : 'Toplu zimmet'}
+            {isDelivery ? 'Toplu teslim' : isPersonTransfer ? 'Toplu zimmet aktarımı' : 'Toplu zimmet'}
           </DialogTitle>
           <p className="text-sm text-gray-500">
             {isDelivery
               ? `${selectedProductIds.length} ürün teslim edilir. Ürün başka depodaysa seçilen teslim deposuna aktarılır ve teslim raporu iner.`
-              : `${selectedProductIds.length} ürün tek kişiye yazılır. Ürün başka depodaysa seçilen zimmet deposuna aktarılır.`}
+              : isPersonTransfer
+                ? `${employeeLabel(fromEmployee!)} üzerindeki tüm zimmetler (${productDetails.length} ürün) ${selectedEmployee ? employeeLabel(selectedEmployee) : 'seçilen kişiye'} aktarılır. Depo stoğu değişmez.`
+                : `${selectedProductIds.length} ürün tek kişiye yazılır. Kimden seçerseniz o kişinin tüm zimmeti listelenir; boş bırakırsanız depo stoğundan yazılır.`}
           </p>
         </DialogHeader>
 
         <div className="grid min-h-0 flex-1 lg:grid-cols-[300px_minmax(0,1fr)]">
-          <aside className="flex min-h-0 flex-col border-b border-gray-100 bg-gray-50/70 p-5 lg:border-b-0 lg:border-r">
-            <div className="mb-3 flex items-center gap-2 text-sm font-medium text-gray-900">
-              <UserRound className="h-4 w-4 text-gray-500" />
-              Kişi
-            </div>
+          <aside className="flex min-h-0 flex-col gap-5 overflow-y-auto border-b border-gray-100 bg-gray-50/70 p-5 lg:border-b-0 lg:border-r">
+            {!isDelivery && (
+              <PersonPicker
+                label="Kimden"
+                hint="Seçilince bu kişinin tüm zimmetleri gelir, yalnızca açık sayfa değil. Boş bırakılırsa depo stoğundan yazılır."
+                selected={fromEmployee}
+                open={fromEmployeeOpen}
+                onToggle={() => setFromEmployeeOpen(true)}
+                search={fromEmployeeSearch}
+                onSearch={setFromEmployeeSearch}
+                results={fromResults}
+                employeeCount={employees.length}
+                onSelect={(employee) => void selectFromEmployee(employee)}
+                onClear={() => void clearFromEmployee()}
+                placeholder="Kaynak kişiyi ara"
+                emptyLabel="Eşleşen çalışan yok"
+                disabled={loadingData}
+              />
+            )}
 
-            {selectedEmployee && !employeeOpen ? (
-              <button
-                type="button"
-                onClick={() => setEmployeeOpen(true)}
-                className="rounded-2xl border border-gray-200 bg-white p-3 text-left shadow-sm transition-colors hover:border-gray-300"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-950 text-sm font-medium text-white">
-                    {employeeLabel(selectedEmployee).charAt(0).toLocaleUpperCase('tr')}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-medium text-gray-950">{employeeLabel(selectedEmployee)}</p>
-                    <p className="truncate text-xs text-gray-500">
-                      {selectedEmployee.position || selectedEmployee.department || selectedEmployee.work_email || 'Çalışan'}
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-gray-400">Değiştirmek için tıklayın</p>
-              </button>
-            ) : (
-              <div className="space-y-2">
-                <div className="relative">
-                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-                  <Input
-                    value={employeeSearch}
-                    onChange={(event) => setEmployeeSearch(event.target.value)}
-                    placeholder="İsim, e-posta veya departman"
-                    className="h-11 rounded-xl border-gray-200 bg-white pl-9"
-                    autoFocus
-                  />
-                </div>
-                <div className="max-h-72 overflow-y-auto rounded-2xl border border-gray-200 bg-white">
-                  {employeeSearch.trim().length < 1 ? (
-                    <p className="px-3 py-6 text-center text-sm text-gray-500">
-                      {employees.length} çalışan içinden arayın
-                    </p>
-                  ) : employeeResults.length === 0 ? (
-                    <p className="px-3 py-6 text-center text-sm text-gray-500">Eşleşen çalışan yok</p>
-                  ) : (
-                    employeeResults.map((employee) => {
-                      const active = employee.id === selectedEmployeeId
-                      return (
-                        <button
-                          key={employee.id}
-                          type="button"
-                          onClick={() => void selectEmployee(employee)}
-                          className={`flex w-full items-center gap-3 border-b border-gray-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-gray-50 ${
-                            active ? 'bg-gray-50' : ''
-                          }`}
-                        >
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-xs font-medium text-gray-700">
-                            {employeeLabel(employee).charAt(0).toLocaleUpperCase('tr')}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-950">{employeeLabel(employee)}</p>
-                            <p className="truncate text-xs text-gray-500">
-                              {[employee.position, employee.department].filter(Boolean).join(' · ') ||
-                                employee.work_email}
-                            </p>
-                          </div>
-                        </button>
-                      )
-                    })
-                  )}
-                </div>
+            {!isDelivery && fromEmployee && selectedEmployee && (
+              <div className="hidden items-center gap-2 text-xs text-gray-500 lg:flex">
+                <span className="truncate">{employeeLabel(fromEmployee)}</span>
+                <ArrowRight className="h-3.5 w-3.5 shrink-0" />
+                <span className="truncate">{employeeLabel(selectedEmployee)}</span>
               </div>
             )}
 
-            {selectedEmployee && (
-              <div className="mt-4 space-y-2">
+            <PersonPicker
+              label={isDelivery ? 'Kişi' : 'Kime'}
+              selected={selectedEmployee}
+              open={employeeOpen}
+              onToggle={() => setEmployeeOpen(true)}
+              search={employeeSearch}
+              onSearch={setEmployeeSearch}
+              results={employeeResults}
+              employeeCount={employees.length}
+              onSelect={(employee) => void selectEmployee(employee)}
+              placeholder="Hedef kişiyi ara"
+              emptyLabel="Eşleşen çalışan yok"
+              disabled={loadingData}
+            />
+
+            {selectedEmployee && !isPersonTransfer && (
+              <div className="space-y-2">
                 <div className="flex items-center gap-2 text-sm font-medium text-gray-900">
                   <Building2 className="h-4 w-4 text-gray-500" />
                   {isDelivery ? 'Teslim deposu' : 'Zimmet deposu'}
@@ -563,7 +909,7 @@ export default function BulkZimmetModal({
                   className="h-11 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-950"
                 >
                   <option value="">Depo seçin</option>
-                  {sites.map((site) => (
+                  {visibleSites.map((site) => (
                     <option key={site.id} value={site.id}>
                       {site.name}
                       {managedWarehouseIds.includes(site.id) ? ' · sorumlu' : ''}
@@ -598,32 +944,41 @@ export default function BulkZimmetModal({
                 </div>
               ) : productDetails.length === 0 ? (
                 <p className="py-12 text-center text-sm text-gray-500">
-                  {isDelivery ? 'Teslim edilecek ürün kalmadı' : 'Zimmetlenecek ürün kalmadı'}
+                  {isPersonTransfer
+                    ? 'Bu kişide seçilen ürünlerden zimmet yok'
+                    : isDelivery
+                      ? 'Teslim edilecek ürün kalmadı'
+                      : 'Zimmetlenecek ürün kalmadı'}
                 </p>
               ) : (
                 <div className="space-y-2">
                   {productDetails.map((product) => {
-                    const plan = stockPlan(product, targetWarehouseId)
+                    const plan = stockPlan(product, isPersonTransfer ? product.warehouseId : targetWarehouseId)
                     const issue = rowIssue(product)
                     const done = doneIds.includes(product.id)
+                    const showIssue = Boolean(issue && (isPersonTransfer || targetWarehouseId))
                     const subtitle = done
-                      ? isDelivery
-                        ? 'Teslim edildi'
-                        : 'Zimmet yazıldı'
-                      : !targetWarehouse
-                        ? isDelivery
-                          ? 'Teslim deposu seçilince aktarım burada görünür'
-                          : 'Zimmet deposu seçilince aktarım burada görünür'
-                        : plan.moves && plan.source
-                          ? `${plan.source.name} → ${targetWarehouse.name} · ${plan.available} ${product.unit}`
-                          : plan.source
-                            ? `${targetWarehouse.name} · ${plan.available} ${product.unit} ${isDelivery ? 'teslim edilebilir' : 'zimmetlenebilir'}`
-                            : 'Boş stok yok'
+                      ? isPersonTransfer
+                        ? 'Aktarıldı'
+                        : isDelivery
+                          ? 'Teslim edildi'
+                          : 'Zimmet yazıldı'
+                      : isPersonTransfer
+                        ? `${plan.source?.name || 'Depo'} · ${plan.available} ${product.unit} aktarılabilir`
+                        : !targetWarehouse
+                          ? isDelivery
+                            ? 'Teslim deposu seçilince aktarım burada görünür'
+                            : 'Zimmet deposu seçilince aktarım burada görünür'
+                          : plan.moves && plan.source
+                            ? `${plan.source.name} → ${targetWarehouse.name} · ${plan.available} ${product.unit}`
+                            : plan.source
+                              ? `${targetWarehouse.name} · ${plan.available} ${product.unit} ${isDelivery ? 'teslim edilebilir' : 'zimmetlenebilir'}`
+                              : 'Boş stok yok'
                     return (
                       <div
                         key={product.id}
                         className={`grid grid-cols-1 items-center gap-3 rounded-2xl border px-3 py-3 sm:grid-cols-[minmax(0,1fr)_180px_132px_28px] ${
-                          issue && targetWarehouseId ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'
+                          showIssue ? 'border-red-200 bg-red-50/40' : 'border-gray-200 bg-white'
                         }`}
                       >
                         <div className="min-w-0">
@@ -634,11 +989,11 @@ export default function BulkZimmetModal({
                         <select
                           value={product.warehouseId}
                           onChange={(event) => updateProduct(product.id, { warehouseId: event.target.value })}
-                          disabled={loading || product.warehouses.length === 0}
+                          disabled={loading || isPersonTransfer || product.warehouses.length === 0}
                           className="h-10 w-full rounded-xl border border-gray-200 bg-white px-2 text-sm text-gray-950"
                         >
                           {product.warehouses.length === 0 ? (
-                            <option value="">Depoda stok yok</option>
+                            <option value="">{isPersonTransfer ? 'Zimmet yok' : 'Depoda stok yok'}</option>
                           ) : (
                             product.warehouses.map((warehouse) => (
                               <option key={warehouse.warehouseId} value={warehouse.warehouseId}>
@@ -695,7 +1050,7 @@ export default function BulkZimmetModal({
                           <X className="h-4 w-4" />
                         </button>
 
-                        {issue && targetWarehouseId && (
+                        {showIssue && (
                           <p className="text-xs text-red-600 sm:col-span-4">{issue}</p>
                         )}
                       </div>
@@ -710,16 +1065,24 @@ export default function BulkZimmetModal({
         <DialogFooter className="border-t border-gray-100 bg-white px-6 py-4 sm:items-center sm:justify-between">
           <p className="text-sm text-gray-500">
             {!selectedEmployeeId
-              ? 'Önce kişi seçin'
-              : !targetWarehouse
-                ? isDelivery
-                  ? 'Teslim deposunu seçin'
-                  : 'Zimmet deposunu seçin'
-                : issueCount > 0
-                  ? `${issueCount} üründe miktar düzeltilmeli`
-                  : isDelivery
-                    ? `${productDetails.length} ürün ${employeeLabel(selectedEmployee!)} adına ${targetWarehouse.name} deposuna teslim`
-                    : `${productDetails.length} ürün ${employeeLabel(selectedEmployee!)} adına, ${targetWarehouse.name} deposuna`}
+              ? isDelivery
+                ? 'Önce kişi seçin'
+                : 'Önce kime seçin'
+              : isPersonTransfer
+                ? productDetails.length === 0
+                  ? 'Bu kişide aktarılacak zimmet yok'
+                  : issueCount > 0
+                    ? `${issueCount} üründe miktar düzeltilmeli`
+                    : `${productDetails.length} ürün ${employeeLabel(fromEmployee!)} → ${employeeLabel(selectedEmployee!)}`
+                : !targetWarehouse
+                  ? isDelivery
+                    ? 'Teslim deposunu seçin'
+                    : 'Zimmet deposunu seçin'
+                  : issueCount > 0
+                    ? `${issueCount} üründe miktar düzeltilmeli`
+                    : isDelivery
+                      ? `${productDetails.length} ürün ${employeeLabel(selectedEmployee!)} adına ${targetWarehouse.name} deposuna teslim`
+                      : `${productDetails.length} ürün ${employeeLabel(selectedEmployee!)} adına, ${targetWarehouse.name} deposuna`}
           </p>
           <div className="flex gap-2">
             <Button
@@ -740,8 +1103,10 @@ export default function BulkZimmetModal({
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  {isDelivery ? 'Teslim ediliyor' : 'Yazılıyor'}
+                  {isPersonTransfer ? 'Aktarılıyor' : isDelivery ? 'Teslim ediliyor' : 'Yazılıyor'}
                 </>
+              ) : isPersonTransfer ? (
+                'Aktar'
               ) : isDelivery ? (
                 'Teslim et'
               ) : (

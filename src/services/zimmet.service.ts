@@ -378,6 +378,165 @@ export async function changeZimmetAssignment(params: {
   return { ok: true, remaining: Math.max(0, totalQty - actionQty) }
 }
 
+function normOwnerEmail(value?: string | null) {
+  return (value || '').trim().toLowerCase()
+}
+
+/** employees.work_email ile zimmet owner_email eşlemesi (dovecgroup / dovecgroup.com) */
+export function employeeOwnerMatchKeys(employee: {
+  first_name?: string | null
+  work_email?: string | null
+}) {
+  const email = normOwnerEmail(employee.work_email)
+  const emails = new Set<string>()
+  if (email) {
+    emails.add(email)
+    const [local, domain] = email.split('@')
+    if (local && domain === 'dovecgroup') emails.add(`${local}@dovecgroup.com`)
+    if (local && domain === 'dovecgroup.com') emails.add(`${local}@dovecgroup`)
+  }
+  return {
+    emails: [...emails],
+    name: (employee.first_name || '').trim().toLowerCase(),
+  }
+}
+
+export function zimmetRowBelongsToEmployee(
+  row: { owner_email?: string | null; owner_name?: string | null },
+  employee: { first_name?: string | null; work_email?: string | null }
+) {
+  const keys = employeeOwnerMatchKeys(employee)
+  const email = normOwnerEmail(row.owner_email)
+  if (email && keys.emails.includes(email)) return true
+  const name = (row.owner_name || '').trim().toLowerCase()
+  return Boolean(name && keys.name && name === keys.name)
+}
+
+export type EmployeeProductZimmetRow = {
+  id: string
+  product_id: string
+  quantity: number
+  source_warehouse_id: string | null
+  owner_name: string | null
+  owner_email: string | null
+  warehouse_name: string | null
+}
+
+function employeeOwnerOrClause(employee: EmployeeOption) {
+  const keys = employeeOwnerMatchKeys(employee)
+  const orParts: string[] = []
+  for (const email of keys.emails) {
+    const escaped = email.replace(/\\/g, '\\\\').replace(/"/g, '""')
+    orParts.push(`owner_email.ilike."${escaped}"`)
+  }
+  if (keys.name) {
+    const escaped = keys.name.replace(/\\/g, '\\\\').replace(/"/g, '""')
+    orParts.push(`owner_name.ilike."${escaped}"`)
+  }
+  return orParts.length > 0 ? orParts.join(',') : null
+}
+
+function mapEmployeeZimmetRow(
+  row: {
+    id: string | null
+    product_id: string | null
+    quantity: number | null
+    source_warehouse_id: string | null
+    owner_name: string | null
+    owner_email: string | null
+    source_warehouse?: { name: string } | { name: string }[] | null
+  },
+  employee: EmployeeOption
+): EmployeeProductZimmetRow | null {
+  if (!zimmetRowBelongsToEmployee(row, employee)) return null
+  if (!row.id || !row.product_id) return null
+  const warehouse = Array.isArray(row.source_warehouse)
+    ? row.source_warehouse[0]
+    : row.source_warehouse
+  return {
+    id: row.id,
+    product_id: row.product_id,
+    quantity: Number(row.quantity) || 0,
+    source_warehouse_id: row.source_warehouse_id,
+    owner_name: row.owner_name,
+    owner_email: row.owner_email,
+    warehouse_name: warehouse?.name || null,
+  }
+}
+
+const ZIMMET_SELECT =
+  'id, product_id, quantity, source_warehouse_id, owner_name, owner_email, source_warehouse:sites!user_inventory_source_warehouse_id_fkey(name)'
+
+/** Bu çalışanın tüm aktif zimmet satırları (sayfa/ürün seçiminden bağımsız) */
+export async function fetchActiveZimmetsForEmployee(
+  employee: EmployeeOption,
+  options?: { warehouseIds?: string[] }
+): Promise<EmployeeProductZimmetRow[]> {
+  const supabase = createClient()
+  const orClause = employeeOwnerOrClause(employee)
+  const warehouseIds = (options?.warehouseIds || []).filter(Boolean)
+  const rows: EmployeeProductZimmetRow[] = []
+  const pageSize = 1000
+
+  for (let from = 0; from < 20000; from += pageSize) {
+    let query = supabase
+      .from('user_inventory')
+      .select(ZIMMET_SELECT)
+      .eq('status', 'active')
+      .gt('quantity', 0)
+      .order('id', { ascending: true })
+      .range(from, from + pageSize - 1)
+
+    if (orClause) query = query.or(orClause)
+    if (warehouseIds.length === 1) query = query.eq('source_warehouse_id', warehouseIds[0])
+    else if (warehouseIds.length > 1) query = query.in('source_warehouse_id', warehouseIds)
+
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    for (const row of data || []) {
+      const mapped = mapEmployeeZimmetRow(row, employee)
+      if (mapped) rows.push(mapped)
+    }
+    if (!data || data.length < pageSize) break
+  }
+
+  return rows
+}
+
+/** Seçili ürünlerde bu çalışanın aktif zimmet satırları */
+export async function fetchActiveZimmetsForProductsByEmployee(
+  productIds: string[],
+  employee: EmployeeOption
+): Promise<EmployeeProductZimmetRow[]> {
+  if (productIds.length === 0) return []
+  const supabase = createClient()
+  const orClause = employeeOwnerOrClause(employee)
+  const rows: EmployeeProductZimmetRow[] = []
+
+  for (let index = 0; index < productIds.length; index += 80) {
+    const chunk = productIds.slice(index, index + 80)
+    let query = supabase
+      .from('user_inventory')
+      .select(ZIMMET_SELECT)
+      .in('product_id', chunk)
+      .eq('status', 'active')
+      .gt('quantity', 0)
+
+    if (orClause) query = query.or(orClause)
+
+    const { data, error } = await query
+    if (error) throw new Error(error.message)
+
+    for (const row of data || []) {
+      const mapped = mapEmployeeZimmetRow(row, employee)
+      if (mapped) rows.push(mapped)
+    }
+  }
+
+  return rows
+}
+
 /** Depoda zimmet: stok düşülmez, sadece sorumluluk yazılır */
 export async function assignZimmetInWarehouse(params: {
   productId: string

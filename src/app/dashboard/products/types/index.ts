@@ -43,6 +43,10 @@ export interface ProductWithStock extends Omit<Product, 'category'> {
   zimmet_by_warehouse?: Record<string, number>
   /** Sorumlu depodaki aktif zimmet adedi */
   depot_quantity?: number
+  /** Ana depo / sanayi depoda zimmet düşülmüş boşta adet */
+  main_depot_free_qty?: number
+  /** Seçili depoda görünen adet: raf, raf sıfırsa o deponun aktif zimmeti */
+  site_shelf_qty?: number
 }
 
 export interface WarehouseStockWithDetails extends WarehouseStock {

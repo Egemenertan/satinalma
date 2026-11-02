@@ -238,6 +238,10 @@ export default function ProductsPage() {
     if (siteId) return operated.has(siteId)
     return true
   }, [warehouseAccess, siteId])
+  const canBulkZimmet = canOperateStock || operatesViewedWarehouse
+  const bulkWarehouseIds = warehouseAccess.canManageAll
+    ? undefined
+    : warehouseAccess.operateWarehouseIds
   const canReceiveInbound =
     !warehouseAccess.canManageAll && managesViewedWarehouse && !operatesViewedWarehouse
   const showDepotSwitcher = warehouseAccess.canManageAll || warehouseAccess.warehouseIds.length > 1
@@ -263,14 +267,6 @@ export default function ProductsPage() {
     setShowBulkActions(selectedIds.length > 0)
   }
 
-  const narrowedByFilter = Boolean(
-    searchTerm.trim() ||
-      zimmetOwner ||
-      (brandId && brandId !== 'all') ||
-      productType ||
-      statusFilter !== 'active' ||
-      (!isRestrictedView && siteId)
-  )
   const allFilteredSelected =
     totalCount > 0 &&
     selectedProducts.length === totalCount &&
@@ -672,10 +668,10 @@ export default function ProductsPage() {
               searching={isFetching && Boolean(searchTerm.trim())}
               warehouseIds={filters.siteId ? [filters.siteId] : filters.allowedWarehouseIds}
             />
-            {canOperateStock && narrowedByFilter && totalCount > 0 && (
+            {canBulkZimmet && totalCount > products.length && (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-2.5">
                 <p className="text-sm text-gray-600">
-                  Filtrede <span className="font-medium text-gray-900">{totalCount}</span> ürün var
+                  Listede <span className="font-medium text-gray-900">{totalCount}</span> ürün var
                   {allFilteredSelected ? '. Hepsi seçili.' : '.'}
                 </p>
                 <Button
@@ -698,8 +694,12 @@ export default function ProductsPage() {
             isLoading={!warehouseAccess.loaded || isLoading}
             onProductClick={handleOpenViewModal}
             selectedSiteId={siteId}
+            selectedSiteName={siteId ? sites.find((s) => s.site.id === siteId)?.site.name : undefined}
             selectedProducts={selectedProducts}
-            onSelectionChange={canOperateStock ? handleSelectionChange : undefined}
+            onSelectionChange={canBulkZimmet ? handleSelectionChange : undefined}
+            totalCount={totalCount}
+            onSelectAllFiltered={canBulkZimmet ? handleSelectAllFiltered : undefined}
+            selectingAllFiltered={selectingAllFiltered}
             ownWarehouseView={isRestrictedView}
             ownWarehouseQuantity={managesViewedWarehouse ? 'stock' : 'zimmet'}
           />
@@ -766,7 +766,7 @@ export default function ProductsPage() {
         scopeWarehouseIds={isRestrictedView ? warehouseAccess.warehouseIds : undefined}
       />
 
-      {canOperateStock && showBulkActions && (
+      {canBulkZimmet && showBulkActions && (
         <div className="fixed bottom-6 left-1/2 z-50 w-[min(48rem,calc(100%-2rem))] -translate-x-1/2 lg:left-[calc(50%+2.75rem)]">
           <div className="flex items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-3 py-2.5 shadow-[0_12px_40px_rgba(0,0,0,0.12)]">
             <div className="flex min-w-0 items-center gap-2 pl-2">
@@ -811,6 +811,7 @@ export default function ProductsPage() {
         onSuccess={handleBulkZimmetSuccess}
         showToast={showToast}
         selectedProductIds={selectedProducts}
+        allowedWarehouseIds={bulkWarehouseIds}
       />
 
       <OperationsDialog

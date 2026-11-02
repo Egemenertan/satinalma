@@ -57,6 +57,10 @@ export interface ProductWithDetails extends Omit<Product, 'category'> {
   zimmet_by_warehouse?: Record<string, number>
   /** Sorumlu depodaki aktif zimmet adedi */
   depot_quantity?: number
+  /** Ana depo / sanayi depoda zimmet düşülmüş boşta adet. Yalnızca tüm depoları gören listede. */
+  main_depot_free_qty?: number
+  /** Seçili depoda görünen adet: raf, raf sıfırsa o deponun aktif zimmeti. */
+  site_shelf_qty?: number
   warehouse_stocks?: WarehouseStock[]
 }
 
@@ -482,6 +486,71 @@ function collectZimmetByWarehouse(
   return zimmetByWarehouse
 }
 
+const ANA_DEPO_NAME_CANDIDATES = ['ana depo', 'sanayi depo']
+
+function normalizeWarehouseName(name: string | null | undefined) {
+  return (name || '').trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+function stockWarehouseName(stock: {
+  warehouse?: { name?: string | null } | { name?: string | null }[] | null
+  warehouses?: { name?: string | null } | null
+}) {
+  const warehouse = Array.isArray(stock.warehouse) ? stock.warehouse[0] : stock.warehouse
+  return warehouse?.name || stock.warehouses?.name || ''
+}
+
+/** Ana depodaki raftan, aynı depodaki zimmet düşülür. Liste “Ana depo” kolonu buna bakar. */
+function mainDepotFreeQty(
+  stocks: (Parameters<typeof stockWarehouseName>[0] & {
+    warehouse_id?: string | null
+    user_id?: string | null
+    quantity?: number | string | null
+  })[] | undefined,
+  zimmetByWarehouse: Map<string, number>
+) {
+  const shelf = (stocks || []).filter((stock) => stock.user_id == null || stock.user_id === undefined)
+  for (const candidate of ANA_DEPO_NAME_CANDIDATES) {
+    const match = shelf.filter((stock) => normalizeWarehouseName(stockWarehouseName(stock)) === candidate)
+    if (match.length === 0) continue
+    const raw = match.reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
+    const warehouseIds = new Set(match.map((stock) => stock.warehouse_id).filter(Boolean))
+    let assigned = 0
+    for (const warehouseId of warehouseIds) {
+      assigned += zimmetByWarehouse.get(warehouseId as string) || 0
+    }
+    return Math.max(0, raw - assigned)
+  }
+  return 0
+}
+
+/** Seçili deponun raftaki adedi. */
+function siteShelfQty(
+  stocks: { warehouse_id?: string | null; user_id?: string | null; quantity?: number | string | null }[] | undefined,
+  siteId: string
+) {
+  return (stocks || [])
+    .filter(
+      (stock) =>
+        stock.warehouse_id === siteId && (stock.user_id == null || stock.user_id === undefined)
+    )
+    .reduce((sum, stock) => sum + (Number(stock.quantity) || 0), 0)
+}
+
+/**
+ * Ürün detayında görünen depo adedi.
+ * Raf doluysa raf geçerlidir. Eski kayıtlarda raf sıfırlanıp adet zimmete yazıldıysa zimmet gösterilir.
+ */
+function siteVisibleQty(
+  stocks: { warehouse_id?: string | null; user_id?: string | null; quantity?: number | string | null }[] | undefined,
+  inventories: { quantity?: number | string | null; source_warehouse_id?: string | null; parent_inventory_id?: string | null }[] | null,
+  siteId: string
+) {
+  const shelf = siteShelfQty(stocks, siteId)
+  const zimmet = collectZimmetByWarehouse(inventories).get(siteId) || 0
+  return Math.max(shelf, zimmet)
+}
+
 /** Raftaki adetten, aynı depodaki zimmet düşülür. 4 adetten 1’i zimmetliyse stokta 3 kalır. */
 function availableStockQty(
   product: any,
@@ -770,13 +839,27 @@ async function attachInventoryTotals(
 
   return products.map((product) => {
     const productInventories = byProduct.get(product.id) || []
+    const zimmetByWarehouse = collectZimmetByWarehouse(productInventories)
+    const seesAllWarehouses = !filters?.allowedWarehouseIds?.length && !filters?.useDepotZimmetQty
     return {
       ...product,
       warehouse_stocks: scopeWarehouseStocks(product.warehouse_stocks, filters),
       total_stock: totalStockForProductList(product, productInventories, filters),
       available_stock: availableStockQty(product, productInventories, filters),
-      zimmet_by_warehouse: Object.fromEntries(collectZimmetByWarehouse(productInventories)),
+      zimmet_by_warehouse: Object.fromEntries(zimmetByWarehouse),
       depot_quantity: sumDepotZimmetQty(productInventories, filters),
+      ...(seesAllWarehouses
+        ? { main_depot_free_qty: mainDepotFreeQty(product.warehouse_stocks, zimmetByWarehouse) }
+        : {}),
+      ...(filters?.siteId
+        ? {
+            site_shelf_qty: siteVisibleQty(
+              product.warehouse_stocks,
+              productInventories,
+              filters.siteId
+            ),
+          }
+        : {}),
     }
   })
 }
