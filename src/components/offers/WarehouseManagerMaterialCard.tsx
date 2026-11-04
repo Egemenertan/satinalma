@@ -12,6 +12,7 @@ import { NotificationService } from '@/lib/notifications'
 import { isDemirbasProductType, transferCatalogShipmentStock, type CatalogShipmentTransfer } from '@/services/stock.service'
 import { isSentToPurchasingStatus, isWarehouseDepotActionAllowed } from '@/lib/request-process'
 import { isConstructionWarehouseQueueSite } from '@/lib/site-kind'
+import { IT_STATUS_INCELEMEDE, matchesOfisEkipmanlariItTrigger } from '@/lib/it-workflow'
 
 interface WarehouseManagerMaterialCardProps {
   item: any
@@ -352,11 +353,17 @@ export default function WarehouseManagerMaterialCard({
           .maybeSingle()
         creatorRole = creator?.role ?? null
       }
-      const unavailableStatus = !constructionSite
+      const depotStatus = !constructionSite
         ? 'ana depoda yok'
         : creatorRole === 'santiye_depo_yonetici'
           ? 'satın almaya gönderildi'
           : 'depoda mevcut değil'
+      const itReview =
+        depotStatus === 'ana depoda yok' &&
+        allItems.some((line: { material_class?: string | null; material_group?: string | null }) =>
+          matchesOfisEkipmanlariItTrigger(line)
+        )
+      const unavailableStatus = itReview ? IT_STATUS_INCELEMEDE : depotStatus
 
       if (allItemsUnavailable || allItems.length === 1) {
         const isAlreadyUnavailable = request.status === unavailableStatus
@@ -366,6 +373,7 @@ export default function WarehouseManagerMaterialCard({
             .from('purchase_requests')
             .update({
               status: unavailableStatus,
+              ...(itReview ? { it_workflow_applies: true } : {}),
               updated_at: new Date().toISOString()
             })
             .eq('id', request.id)
@@ -380,6 +388,8 @@ export default function WarehouseManagerMaterialCard({
               comments:
                 unavailableStatus === 'satın almaya gönderildi'
                   ? 'Depo yöneticisi — depoda mevcut değil. Şantiye depo yöneticisi talebi satın almaya gönderildi'
+                  : unavailableStatus === IT_STATUS_INCELEMEDE
+                    ? 'Ana depoda stok yok. Talep IT incelemesine alındı (Ofis Ekipmanları)'
                   : unavailableStatus === 'depoda mevcut değil'
                     ? 'Depo yöneticisi — depoda mevcut değil'
                     : 'Warehouse Manager — ana depoda yok olarak işaretlendi',
@@ -428,6 +438,8 @@ export default function WarehouseManagerMaterialCard({
       const markedLabel =
         unavailableStatus === 'satın almaya gönderildi'
           ? 'Satın Almaya Gönderildi'
+          : unavailableStatus === IT_STATUS_INCELEMEDE
+            ? 'IT İncelemede'
           : unavailableStatus === 'depoda mevcut değil'
             ? 'Depoda Mevcut Değil'
             : 'Ana Depoda Yok'

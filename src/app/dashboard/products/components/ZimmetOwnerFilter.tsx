@@ -1,11 +1,19 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
-import { Check, ChevronDown, UserRound } from 'lucide-react'
+import { useMemo, useState } from 'react'
+import { Check, ChevronDown, Loader2, UserRound } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { fetchZimmetOwnerOptions, type ZimmetOwnerOption } from '@/services/products.service'
+import { useZimmetOwnerOptions } from '../hooks/useProducts'
 import { cn } from '@/lib/utils'
+
+/** Seçenekler yüklenmeden önce seçili değerin okunur adı */
+function labelFromValue(value: string) {
+  if (value.startsWith('email:') || value.startsWith('name:')) {
+    return decodeURIComponent(value.slice(value.indexOf(':') + 1))
+  }
+  return 'Seçili kişi'
+}
 
 interface ZimmetOwnerFilterProps {
   value: string
@@ -16,26 +24,11 @@ interface ZimmetOwnerFilterProps {
 export function ZimmetOwnerFilter({ value, onChange, warehouseIds }: ZimmetOwnerFilterProps) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const [options, setOptions] = useState<ZimmetOwnerOption[]>([])
-  const [loading, setLoading] = useState(true)
-  const warehouseKey = (warehouseIds || []).filter(Boolean).join(',')
-
-  useEffect(() => {
-    let cancelled = false
-    setLoading(true)
-    fetchZimmetOwnerOptions(warehouseKey ? warehouseKey.split(',') : undefined)
-      .then((list) => {
-        if (!cancelled) setOptions(list)
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => {
-      cancelled = true
-    }
-  }, [warehouseKey])
+  const { data, isLoading: loading, isError, refetch, isFetching } = useZimmetOwnerOptions(warehouseIds)
+  const options = useMemo(() => data ?? [], [data])
 
   const selected = options.find((option) => option.value === value)
+  const selectedLabel = selected?.label || (value ? labelFromValue(value) : '')
   const visible = useMemo(() => {
     const term = query.trim().toLocaleLowerCase('tr')
     if (!term) return options
@@ -61,8 +54,8 @@ export function ZimmetOwnerFilter({ value, onChange, warehouseIds }: ZimmetOwner
       >
         <span className="flex min-w-0 items-center gap-2">
           <UserRound className="h-4 w-4 shrink-0 text-gray-400" />
-          <span className={cn('truncate', selected ? 'text-gray-900' : 'text-gray-500')}>
-            {selected?.label || 'Zimmetli kişi'}
+          <span className={cn('truncate', selectedLabel ? 'text-gray-900' : 'text-gray-500')}>
+            {selectedLabel || 'Zimmetli kişi'}
           </span>
         </span>
         <ChevronDown className="h-4 w-4 shrink-0 text-gray-400" />
@@ -71,7 +64,12 @@ export function ZimmetOwnerFilter({ value, onChange, warehouseIds }: ZimmetOwner
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="bg-white sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Zimmetli kişi</DialogTitle>
+            <DialogTitle>
+              Zimmetli kişi
+              {!loading && !isError && (
+                <span className="ml-2 text-sm font-normal text-gray-500">{options.length} kişi</span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           <Input
             autoFocus
@@ -89,9 +87,29 @@ export function ZimmetOwnerFilter({ value, onChange, warehouseIds }: ZimmetOwner
               Tüm kişiler
               {!value && <Check className="h-4 w-4" />}
             </button>
-            {loading && <p className="px-3 py-6 text-sm text-gray-500">Kişiler yükleniyor...</p>}
-            {!loading && visible.length === 0 && (
-              <p className="px-3 py-6 text-sm text-gray-500">Eşleşen kişi yok</p>
+            {loading && (
+              <p className="flex items-center gap-2 px-3 py-6 text-sm text-gray-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Kişiler yükleniyor...
+              </p>
+            )}
+            {isError && (
+              <div className="flex items-center justify-between gap-3 px-3 py-6 text-sm text-red-600">
+                Kişiler yüklenemedi
+                <button
+                  type="button"
+                  onClick={() => refetch()}
+                  disabled={isFetching}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  {isFetching ? 'Deneniyor...' : 'Tekrar dene'}
+                </button>
+              </div>
+            )}
+            {!loading && !isError && visible.length === 0 && (
+              <p className="px-3 py-6 text-sm text-gray-500">
+                {options.length === 0 ? 'Bu kapsamda aktif zimmeti olan kişi yok' : 'Eşleşen kişi yok'}
+              </p>
             )}
             {visible.map((option) => (
               <button

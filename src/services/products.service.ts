@@ -239,6 +239,74 @@ async function pagedIds(
   return ids
 }
 
+type PageResult<T> = { data: T[] | null; error: unknown; count?: number | null }
+
+/**
+ * PostgREST tek yanıtta en fazla 1000 satır döner.
+ * İlk sayfa toplam sayıyı da getirir, kalan sayfalar paralel çekilir.
+ */
+async function fetchAllPages<T>(
+  fetchPage: (from: number, to: number, withCount: boolean) => PromiseLike<PageResult<T>>
+): Promise<T[]> {
+  const first = await fetchPage(0, ID_PAGE - 1, true)
+  if (first.error) throw first.error
+  const rows = [...(first.data || [])]
+  const total = Math.min(first.count ?? rows.length, ID_PAGE * ID_PAGE_MAX)
+  if (rows.length < ID_PAGE || total <= ID_PAGE) return rows
+
+  const rest = await Promise.all(
+    Array.from({ length: Math.ceil(total / ID_PAGE) - 1 }, (_, index) => {
+      const from = (index + 1) * ID_PAGE
+      return fetchPage(from, from + ID_PAGE - 1, false)
+    })
+  )
+  for (const page of rest) {
+    if (page.error) throw page.error
+    rows.push(...(page.data || []))
+  }
+  return rows
+}
+
+export interface DepotStockSummary {
+  productCount: number
+  totalQuantity: number
+}
+
+/** Depo kartları: raftaki (zimmet satırı olmayan) adedi sıfırdan büyük ürün sayısı ve toplam adet. */
+export async function fetchDepotStockSummary(
+  warehouseIds: string[]
+): Promise<Record<string, DepotStockSummary>> {
+  const ids = warehouseIds.filter(Boolean)
+  if (ids.length === 0) return {}
+  const supabase = createClient()
+
+  const rows = await fetchAllPages<{ warehouse_id: string | null; product_id: string; quantity: number | null }>(
+    (from, to, withCount) =>
+      supabase
+        .from('warehouse_stock')
+        .select('warehouse_id, product_id, quantity', withCount ? { count: 'exact' } : undefined)
+        .in('warehouse_id', ids)
+        .is('user_id', null)
+        .gt('quantity', 0)
+        .order('id', { ascending: true })
+        .range(from, to)
+  )
+
+  const products = new Map<string, Set<string>>()
+  const summary: Record<string, DepotStockSummary> = {}
+  for (const row of rows) {
+    if (!row.warehouse_id) continue
+    const current = summary[row.warehouse_id] || { productCount: 0, totalQuantity: 0 }
+    current.totalQuantity += Number(row.quantity) || 0
+    const seen = products.get(row.warehouse_id) || new Set<string>()
+    seen.add(row.product_id)
+    products.set(row.warehouse_id, seen)
+    current.productCount = seen.size
+    summary[row.warehouse_id] = current
+  }
+  return summary
+}
+
 /** Hiçbir depoda stok satırı olmayan ürünler. */
 async function productIdsNeverStocked(
   supabase: ReturnType<typeof createClient>
@@ -409,39 +477,32 @@ async function productIdsForZimmetOwner(
 export async function fetchZimmetOwnerOptions(warehouseIds?: string[]): Promise<ZimmetOwnerOption[]> {
   const supabase = createClient()
   const scope = (warehouseIds || []).filter(Boolean)
-  const rows: {
+
+  const rows = await fetchAllPages<{
     user_id: string | null
     owner_name: string | null
     owner_email: string | null
-  }[] = []
-
-  for (let from = 0; from < 8000; from += 1000) {
+  }>((from, to, withCount) => {
     let query = supabase
       .from('user_inventory')
-      .select('user_id, owner_name, owner_email')
+      .select('user_id, owner_name, owner_email', withCount ? { count: 'exact' } : undefined)
       .eq('status', 'active')
       .gt('quantity', 0)
-      .order('id', { ascending: true })
-      .range(from, from + 999)
     if (scope.length === 1) query = query.eq('source_warehouse_id', scope[0])
     else if (scope.length > 1) query = query.in('source_warehouse_id', scope)
-
-    const { data, error } = await query
-    if (error) {
-      console.error('Zimmetli kişiler okunamadı:', error)
-      break
-    }
-    rows.push(...(data || []))
-    if (!data || data.length < 1000) break
-  }
+    return query.order('id', { ascending: true }).range(from, to)
+  })
 
   const missingProfileIds = [
     ...new Set(rows.filter((row) => row.user_id && !row.owner_name?.trim()).map((row) => row.user_id as string)),
   ]
   const profiles = new Map<string, { name: string; email: string | null }>()
-  for (let index = 0; index < missingProfileIds.length; index += 100) {
-    const chunk = missingProfileIds.slice(index, index + 100)
-    const { data } = await supabase.from('profiles').select('id, full_name, email').in('id', chunk)
+  const profileChunks = await Promise.all(
+    chunkIds(missingProfileIds, 100).map((chunk) =>
+      supabase.from('profiles').select('id, full_name, email').in('id', chunk)
+    )
+  )
+  for (const { data } of profileChunks) {
     for (const profile of data || []) {
       profiles.set(profile.id, {
         name: (profile.full_name || '').trim(),

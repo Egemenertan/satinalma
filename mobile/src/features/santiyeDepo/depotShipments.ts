@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { PurchaseRequestItemRow, ShipmentInfo } from '../../lib/requestOfferBundle'
 import { isConstructionWarehouseQueueSite, isSentToPurchasingStatus, isWarehouseDepotActionAllowed } from '../../lib/warehouseQueue'
+import { IT_STATUS_INCELEMEDE, matchesOfisEkipmanlariItTrigger } from '../../lib/it-workflow'
 
 export async function markItemDepotNotAvailable(
   supabase: SupabaseClient,
@@ -57,7 +58,7 @@ export async function markItemDepotNotAvailable(
     creatorRole = (creator as { role?: string } | null)?.role ?? null
   }
 
-  const unavailableStatus =
+  const depotStatus =
     actorRole !== 'warehouse_manager'
       ? null
       : !constructionSite
@@ -65,6 +66,13 @@ export async function markItemDepotNotAvailable(
         : creatorRole === 'santiye_depo_yonetici'
           ? 'satın almaya gönderildi'
           : 'depoda mevcut değil'
+  const itReview =
+    depotStatus === 'ana depoda yok' &&
+    matchesOfisEkipmanlariItTrigger({
+      material_class: item.material_class,
+      material_group: item.material_group,
+    })
+  const unavailableStatus = itReview ? IT_STATUS_INCELEMEDE : depotStatus
 
   const { error: shipmentError } = await supabase.from('shipments').insert({
     purchase_request_id: requestId,
@@ -101,7 +109,11 @@ export async function markItemDepotNotAvailable(
   if (shouldSetStatus && unavailableStatus && opts.requestStatus !== unavailableStatus) {
     const { error: statusError } = await supabase
       .from('purchase_requests')
-      .update({ status: unavailableStatus, updated_at: new Date().toISOString() })
+      .update({
+        status: unavailableStatus,
+        ...(itReview ? { it_workflow_applies: true } : {}),
+        updated_at: new Date().toISOString(),
+      })
       .eq('id', requestId)
     if (statusError) {
       return { ok: false, message: statusError.message }
@@ -113,6 +125,8 @@ export async function markItemDepotNotAvailable(
       comments:
         unavailableStatus === 'satın almaya gönderildi'
           ? 'Depo yöneticisi — depoda mevcut değil. Şantiye depo yöneticisi talebi satın almaya gönderildi'
+          : unavailableStatus === IT_STATUS_INCELEMEDE
+            ? 'Ana depoda stok yok. Talep IT incelemesine alındı (Ofis Ekipmanları)'
           : unavailableStatus === 'depoda mevcut değil'
             ? 'Depo yöneticisi — depoda mevcut değil'
             : 'Depo yöneticisi — ana depoda yok olarak işaretlendi',
@@ -131,6 +145,8 @@ export async function markItemDepotNotAvailable(
   const markedLabel =
     unavailableStatus === 'satın almaya gönderildi'
       ? 'Satın almaya gönderildi'
+      : unavailableStatus === IT_STATUS_INCELEMEDE
+        ? 'IT incelemede'
       : unavailableStatus === 'depoda mevcut değil'
         ? 'Depoda mevcut değil'
         : unavailableStatus === 'ana depoda yok'

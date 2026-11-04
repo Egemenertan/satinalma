@@ -76,7 +76,11 @@ export function formatMaterialClassLabel(className: string | null | undefined): 
   return name
 }
 
-export const IT_TRIGGER_MATERIAL_GROUPS = ['Bilgisayar Donanımları', 'Elektronik Cihazlar'] as const
+export const IT_TRIGGER_MATERIAL_GROUPS = [
+  'Bilgisayar Donanımları',
+  'Bilgisayar Aksesuarları',
+  'Elektronik Cihazlar',
+] as const
 
 const OFIS_CLASS_TOKEN = normalizeMaterialGroupToken(IT_TRIGGER_MATERIAL_CLASS)
 

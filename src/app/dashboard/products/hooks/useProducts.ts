@@ -12,6 +12,8 @@ import {
   deleteProduct,
   fetchProductStats,
   fetchProductsInsightsBundle,
+  fetchDepotStockSummary,
+  fetchZimmetOwnerOptions,
   type ProductFilters,
 } from '@/services/products.service'
 import type { Database } from '@/types/database.types'
@@ -68,6 +70,28 @@ export function useProductsInsights(siteId?: string, enabled = true) {
     queryFn: () => fetchProductsInsightsBundle(sid),
     enabled,
     staleTime: 60000,
+  })
+}
+
+/** Depo kartlarındaki ürün sayısı ve adet */
+export function useDepotStockSummary(warehouseIds: string[], enabled = true) {
+  const key = [...warehouseIds].filter(Boolean).sort().join(',')
+  return useQuery({
+    // 'products' altında: stok/zimmet işlemleri listeyle birlikte bunu da tazeler
+    queryKey: ['products', 'depot-stock-summary', key],
+    queryFn: () => fetchDepotStockSummary(key ? key.split(',') : []),
+    enabled: enabled && key !== '',
+    staleTime: 60000,
+  })
+}
+
+/** Zimmetli kişi filtresinin seçenekleri. Dialog her açıldığında yeniden yüklenmez. */
+export function useZimmetOwnerOptions(warehouseIds?: string[]) {
+  const key = (warehouseIds || []).filter(Boolean).sort().join(',')
+  return useQuery({
+    queryKey: ['products', 'zimmet-owner-options', key],
+    queryFn: () => fetchZimmetOwnerOptions(key ? key.split(',') : undefined),
+    staleTime: 5 * 60000,
   })
 }
 

@@ -82,6 +82,7 @@ export function formatMaterialClassLabel(className: string | null | undefined): 
 
 export const IT_TRIGGER_MATERIAL_GROUPS = [
   'Bilgisayar Donanımları',
+  'Bilgisayar Aksesuarları',
   'Elektronik Cihazlar'
 ] as const
 
@@ -101,7 +102,7 @@ const IT_TRIGGER_GROUP_TOKENS = new Set(
   IT_TRIGGER_MATERIAL_GROUPS.map(g => normalizeMaterialGroupToken(g))
 )
 
-/** Ofis Ekipmanları + Bilgisayar Donanımları / Elektronik Cihazlar */
+/** Ofis Ekipmanları + Bilgisayar Donanımları / Aksesuarları / Elektronik Cihazlar */
 export function matchesOfisEkipmanlariItTrigger(item: {
   material_class?: string | null
   material_group?: string | null

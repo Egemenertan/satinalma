@@ -12,8 +12,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, ChevronDown } from 'lucide-react'
-import { useProducts, useProductModal, useProductFilters, useCreateProduct, useUpdateProduct, useProductsInsights } from './hooks'
+import { Plus, Building2, Package, Boxes, Wrench, ClipboardCheck, UserPlus, ChevronDown, Loader2 } from 'lucide-react'
+import {
+  useProducts,
+  useProductModal,
+  useProductFilters,
+  useCreateProduct,
+  useUpdateProduct,
+  useProductsInsights,
+  useDepotStockSummary,
+} from './hooks'
 import { useToast } from '@/components/ui/toast'
 import { createClient } from '@/lib/supabase/client'
 import useSWR from 'swr'
@@ -41,8 +49,6 @@ interface Site {
 
 interface SiteStock {
   site: Site
-  productCount: number
-  totalQuantity: number
 }
 
 export default function ProductsPage() {
@@ -144,35 +150,7 @@ export default function ProductsPage() {
           visibleSites = visibleSites.filter((s) => allowed.has(s.id))
         }
 
-        const warehouseIds = visibleSites.map((site) => site.id)
-        const { data: stockData } = warehouseIds.length
-          ? await supabase
-              .from('warehouse_stock')
-              .select('warehouse_id, quantity')
-              .in('warehouse_id', warehouseIds)
-          : { data: [] as { warehouse_id: string; quantity: number | null }[] }
-
-        const stockByWarehouse = new Map<string, { productCount: number; totalQuantity: number }>()
-        for (const row of stockData || []) {
-          const current = stockByWarehouse.get(row.warehouse_id) || {
-            productCount: 0,
-            totalQuantity: 0,
-          }
-          current.productCount += 1
-          current.totalQuantity += Number(row.quantity || 0)
-          stockByWarehouse.set(row.warehouse_id, current)
-        }
-
-        const sitesWithStock = visibleSites.map((site) => {
-          const stock = stockByWarehouse.get(site.id)
-          return {
-            site,
-            productCount: stock?.productCount || 0,
-            totalQuantity: stock?.totalQuantity || 0,
-          }
-        })
-
-        setSites(sitesWithStock)
+        setSites(visibleSites.map((site) => ({ site })))
       } catch (error) {
         console.error('Sites yüklenirken hata:', error)
       } finally {
@@ -182,6 +160,9 @@ export default function ProductsPage() {
 
     loadSites()
   }, [warehouseAccess, supabase])
+
+  const siteIds = useMemo(() => sites.map((s) => s.site.id), [sites])
+  const { data: depotSummary, isLoading: depotSummaryLoading } = useDepotStockSummary(siteIds)
 
   const { data: productsData, isLoading, isFetching } = useProducts(
     filters,
@@ -435,17 +416,10 @@ export default function ProductsPage() {
             </div>
           ) : (
             (() => {
-              type DepotChip =
-                | { kind: 'all' }
-                | { kind: 'site'; site: SiteStock['site']; productCount: number; totalQuantity: number }
+              type DepotChip = { kind: 'all' } | { kind: 'site'; site: SiteStock['site'] }
               const chips: DepotChip[] = [
                 ...(warehouseAccess.canManageAll ? [{ kind: 'all' as const }] : []),
-                ...sites.map((s) => ({
-                  kind: 'site' as const,
-                  site: s.site,
-                  productCount: s.productCount,
-                  totalQuantity: s.totalQuantity,
-                })),
+                ...sites.map((s) => ({ kind: 'site' as const, site: s.site })),
               ]
               const firstRowLen = Math.ceil(chips.length / 2)
               const row1 = chips.slice(0, firstRowLen)
@@ -477,13 +451,17 @@ export default function ProductsPage() {
                       </span>
                       <span className="min-w-0">
                         <span className="block text-base font-medium leading-snug">Envanter</span>
-                        <span className="text-sm leading-snug text-gray-500">{totalCount} ürün</span>
+                        <span className="text-sm leading-snug text-gray-500">
+                          {/* totalCount seçili depoya göre değişir; yalnızca tüm envanterdeyken anlamlı */}
+                          {!siteId && !isLoading ? `${totalCount} ürün` : 'Tüm depolar'}
+                        </span>
                       </span>
                     </button>
                   )
                 }
 
                 const selected = siteId === chip.site.id
+                const summary = depotSummary?.[chip.site.id]
                 return (
                   <button
                     key={chip.site.id}
@@ -505,7 +483,15 @@ export default function ProductsPage() {
                     <span className="min-w-0">
                       <span className="block truncate text-base font-medium leading-snug">{chip.site.name}</span>
                       <span className="text-sm leading-snug text-gray-500">
-                        {chip.productCount} ürün · {Math.round(chip.totalQuantity)} adet
+                        {depotSummaryLoading ? (
+                          <span className="inline-block h-3.5 w-24 animate-pulse rounded bg-gray-200 align-middle" />
+                        ) : summary ? (
+                          `${summary.productCount} ürün · ${Math.round(summary.totalQuantity).toLocaleString('tr-TR')} adet`
+                        ) : depotSummary ? (
+                          'Stok yok'
+                        ) : (
+                          '—'
+                        )}
                       </span>
                     </span>
                   </button>
@@ -688,7 +674,18 @@ export default function ProductsPage() {
           </div>
         </CardHeader>
 
-        <CardContent className="px-8 pb-8">
+        <CardContent className="relative px-8 pb-8">
+          {/* Depo/filtre değişince yeni sayfa gelene kadar eski liste soluk gösterilir */}
+          {isFetching && !isLoading && (
+            <div className="pointer-events-none absolute right-8 top-0 z-10 inline-flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1 text-xs text-gray-600 shadow-sm">
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              Güncelleniyor
+            </div>
+          )}
+          <div
+            className={isFetching && !isLoading ? 'pointer-events-none opacity-50 transition-opacity' : 'transition-opacity'}
+            aria-busy={isFetching}
+          >
           <ProductsTable
             products={products}
             isLoading={!warehouseAccess.loaded || isLoading}
@@ -703,6 +700,7 @@ export default function ProductsPage() {
             ownWarehouseView={isRestrictedView}
             ownWarehouseQuantity={managesViewedWarehouse ? 'stock' : 'zimmet'}
           />
+          </div>
 
           {totalPages > 1 && (
             <div className="flex items-center justify-center gap-3 mt-10">
@@ -716,7 +714,9 @@ export default function ProductsPage() {
               </Button>
               <div className="flex items-center gap-3">
                 {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
-                  const page = i + 1
+                  // Mevcut sayfa ortada kalacak şekilde 5 sayfalık pencere
+                  const start = Math.min(Math.max(1, currentPage - 2), Math.max(1, totalPages - 4))
+                  const page = start + i
                   return (
                     <Button
                       key={page}
