@@ -27,7 +27,19 @@ import {
 } from '@/lib/supplier-performance'
 import { useToast } from '@/components/ui/toast'
 import { cn } from '@/lib/utils'
-import { Building2, ChevronRight, Hammer, Pencil, Plus, Search, X } from 'lucide-react'
+import { exportSupplierList, type SupplierReportFormat } from '@/lib/supplier-report'
+import {
+  Building2,
+  ChevronRight,
+  FileSpreadsheet,
+  FileText,
+  Hammer,
+  Loader2,
+  Pencil,
+  Plus,
+  Search,
+  X,
+} from 'lucide-react'
 
 interface Supplier {
   id: string
@@ -223,6 +235,7 @@ export default function SupplierManagement() {
   const [createOpen, setCreateOpen] = useState(false)
   const [creating, setCreating] = useState(false)
   const [newSubcontractor, setNewSubcontractor] = useState(emptySubcontractorForm)
+  const [exporting, setExporting] = useState<SupplierReportFormat | null>(null)
 
   const listKind: PartyKind = searchParams.get('tab') === 'taseronlar' ? 'subcontractor' : 'supplier'
   const isSubcontractor = listKind === 'subcontractor'
@@ -366,6 +379,19 @@ export default function SupplierManagement() {
     router.push('/dashboard/suppliers/create')
   }
 
+  // Rapor, ekrandaki arama/durum filtresinden bağımsız olarak tüm kayıtları kapsar.
+  const handleExport = async (format: SupplierReportFormat) => {
+    setExporting(format)
+    try {
+      await exportSupplierList(format, listKind, suppliers)
+    } catch (exportError) {
+      console.error('Liste dışa aktarılamadı:', exportError)
+      showToast(exportError instanceof Error ? exportError.message : 'Liste dışa aktarılamadı', 'error')
+    } finally {
+      setExporting(null)
+    }
+  }
+
   const handleSaveSubcontractor = async () => {
     if (!newSubcontractor.name.trim()) {
       showToast('Taşeron adı gerekli', 'error')
@@ -400,14 +426,40 @@ export default function SupplierManagement() {
               : 'En çok sipariş verilen tedarikçiler üstte. Fatura ve teslim performansları canlı veriden gelir.'}
           </p>
         </div>
-        <Button
-          type="button"
-          onClick={handleCreate}
-          className="h-11 shrink-0 rounded-xl bg-bordeaux px-5 text-white hover:bg-bordeaux-700"
-        >
-          <Plus className="h-4 w-4" />
-          {isSubcontractor ? 'Yeni taşeron' : 'Yeni tedarikçi'}
-        </Button>
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleExport('pdf')}
+            disabled={exporting !== null || suppliers.length === 0}
+            className="h-11 rounded-xl border-elegant-gray-300 bg-white px-4 hover:bg-elegant-gray-50 hover:text-elegant-black"
+          >
+            {exporting === 'pdf' ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+            PDF
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleExport('xlsx')}
+            disabled={exporting !== null || suppliers.length === 0}
+            className="h-11 rounded-xl border-elegant-gray-300 bg-white px-4 hover:bg-elegant-gray-50 hover:text-elegant-black"
+          >
+            {exporting === 'xlsx' ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <FileSpreadsheet className="h-4 w-4" />
+            )}
+            Excel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleCreate}
+            className="h-11 rounded-xl bg-bordeaux px-5 text-white hover:bg-bordeaux-700"
+          >
+            <Plus className="h-4 w-4" />
+            {isSubcontractor ? 'Yeni taşeron' : 'Yeni tedarikçi'}
+          </Button>
+        </div>
       </div>
 
       <div
